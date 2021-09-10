@@ -214,6 +214,26 @@ impl Worktree {
                     .detach();
                 }
 
+                let _handle_connection_change = cx.spawn_weak(|this, mut cx| {
+                    let rpc = rpc.clone();
+                    let mut status = rpc.status();
+                    async move {
+                        while let Some((status, this)) = status.recv().await.zip(this.upgrade(&cx))
+                        {
+                            match status {
+                                rpc::Status::Connected { .. } => {
+                                    this.update(&mut cx, |this, cx| {
+                                        this.handle_reconnect(rpc.clone(), cx)
+                                    });
+                                }
+                                _ => this.update(&mut cx, |this, _| this.handle_disconnect()),
+                            }
+                        }
+                        Ok(())
+                    }
+                    .log_err()
+                });
+
                 let _subscriptions = vec![
                     rpc.subscribe_from_model(remote_id, cx, Self::handle_add_peer),
                     rpc.subscribe_from_model(remote_id, cx, Self::handle_remove_peer),
@@ -237,6 +257,8 @@ impl Worktree {
                     queued_operations: Default::default(),
                     languages,
                     _subscriptions,
+                    _handle_connection_change,
+                    connected: true,
                 })
             })
         });
@@ -352,6 +374,89 @@ impl Worktree {
         self.as_local_mut()
             .unwrap()
             .close_remote_buffer(envelope, cx)
+    }
+
+    pub fn handle_disconnect(&mut self) {
+        match self {
+            Worktree::Local(worktree) => {
+                if let Some(share) = worktree.share.as_mut() {
+                    share.connected = false;
+                }
+            }
+            Worktree::Remote(worktree) => worktree.connected = false,
+        }
+    }
+
+    pub fn handle_reconnect(&mut self, rpc: Arc<rpc::Client>, cx: &mut ModelContext<Self>) {
+        cx.spawn(|this, mut cx| {
+            async move {
+                let reopen_request = this.update(&mut cx, |this, cx| {
+                    let this = this.as_remote_mut().unwrap();
+                    proto::ReopenWorktree {
+                        worktree_id: this.remote_id,
+                        replica_id: this.replica_id as u32,
+                        buffer_versions: this
+                            .open_buffers
+                            .iter()
+                            .filter_map(|(_, buffer)| {
+                                if let RemoteBuffer::Loaded(buffer) = buffer {
+                                    if let Some(buffer) = buffer.upgrade(cx) {
+                                        let buffer = buffer.read(cx);
+                                        return Some(proto::BufferVersion {
+                                            buffer_id: buffer.remote_id(),
+                                            version: (&buffer.version).into(),
+                                        });
+                                    }
+                                }
+                                None
+                            })
+                            .collect(),
+                    }
+                });
+
+                let reopen_response = rpc.request(reopen_request).await?;
+                this.update(&mut cx, |this, cx| {
+                    let this = this.as_remote_mut().unwrap();
+                    let new_replica_id = reopen_response.replica_id as u16;
+                    let buffer_updates_by_id = reopen_response
+                        .buffers
+                        .into_iter()
+                        .map(|buffer| (buffer.id, buffer))
+                        .collect::<HashMap<_, _>>();
+
+                    let mut buffer_handles = Vec::new();
+                    this.open_buffers.retain(|_, buffer| {
+                        if let RemoteBuffer::Loaded(handle) = buffer {
+                            if let Some(handle) = handle.upgrade(cx) {
+                                buffer_handles.push(handle);
+                                return true;
+                            }
+                        }
+                        false
+                    });
+
+                    for buffer in buffer_handles {
+                        buffer.update(cx, |buffer, cx| {
+                            if let Some(update) = buffer_updates_by_id.get(&buffer.remote_id()) {
+                                // apply operations that happened while disconnected
+                            } else {
+                                // buffer is closed on host. mark it as read-only and conflicting.
+                            }
+                        });
+                    }
+
+                    if new_replica_id != this.replica_id {
+                        // update queued operations to reflect the new replica id
+                    }
+
+                    this.connected = true;
+                });
+
+                Ok(())
+            }
+            .log_err()
+        })
+        .detach();
     }
 
     pub fn peers(&self) -> &HashMap<PeerId, ReplicaId> {
@@ -1021,6 +1126,7 @@ impl LocalWorktree {
                     rpc,
                     remote_id: share_response.worktree_id,
                     snapshots_tx: snapshots_to_send_tx,
+                    connected: true,
                     _subscriptions,
                 });
             });
@@ -1080,6 +1186,7 @@ impl fmt::Debug for LocalWorktree {
 struct ShareState {
     rpc: Arc<rpc::Client>,
     remote_id: u64,
+    connected: bool,
     snapshots_tx: Sender<Snapshot>,
     _subscriptions: Vec<rpc::Subscription>,
 }
@@ -1096,6 +1203,8 @@ pub struct RemoteWorktree {
     languages: Arc<LanguageRegistry>,
     queued_operations: Vec<(u64, Operation)>,
     _subscriptions: Vec<rpc::Subscription>,
+    _handle_connection_change: Task<Option<()>>,
+    connected: bool,
 }
 
 impl RemoteWorktree {
@@ -1547,31 +1656,37 @@ impl File {
 
     pub fn buffer_updated(&self, buffer_id: u64, operation: Operation, cx: &mut MutableAppContext) {
         self.worktree.update(cx, |worktree, cx| {
-            if let Some((rpc, remote_id)) = match worktree {
+            if let Some((rpc, remote_id, connected)) = match worktree {
                 Worktree::Local(worktree) => worktree
                     .share
                     .as_ref()
-                    .map(|share| (share.rpc.clone(), share.remote_id)),
-                Worktree::Remote(worktree) => Some((worktree.rpc.clone(), worktree.remote_id)),
+                    .map(|share| (share.rpc.clone(), share.remote_id, share.connected)),
+                Worktree::Remote(worktree) => {
+                    Some((worktree.rpc.clone(), worktree.remote_id, worktree.connected))
+                }
             } {
                 cx.spawn(|worktree, mut cx| async move {
-                    if let Err(error) = rpc
-                        .request(proto::UpdateBuffer {
-                            worktree_id: remote_id,
-                            buffer_id,
-                            operations: vec![(&operation).into()],
-                        })
-                        .await
-                    {
-                        worktree.update(&mut cx, |worktree, _| {
-                            log::error!("error sending buffer operation: {}", error);
-                            match worktree {
-                                Worktree::Local(t) => &mut t.queued_operations,
-                                Worktree::Remote(t) => &mut t.queued_operations,
-                            }
-                            .push((buffer_id, operation));
-                        });
+                    if connected {
+                        match rpc
+                            .request(proto::UpdateBuffer {
+                                worktree_id: remote_id,
+                                buffer_id,
+                                operations: vec![(&operation).into()],
+                            })
+                            .await
+                        {
+                            Ok(_) => return,
+                            Err(error) => log::error!("error sending buffer operation: {}", error),
+                        }
                     }
+
+                    worktree.update(&mut cx, |worktree, _| {
+                        match worktree {
+                            Worktree::Local(t) => &mut t.queued_operations,
+                            Worktree::Remote(t) => &mut t.queued_operations,
+                        }
+                        .push((buffer_id, operation));
+                    });
                 })
                 .detach();
             }

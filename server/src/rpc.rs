@@ -1023,7 +1023,7 @@ mod tests {
         editor::{Editor, Insert},
         fs::{FakeFs, Fs as _},
         language::LanguageRegistry,
-        rpc::{self, Client},
+        rpc::Client,
         settings,
         user::UserStore,
         worktree::Worktree,
@@ -1768,10 +1768,7 @@ mod tests {
         // Disconnect client B, ensuring we can still access its cached channel data.
         server.forbid_connections();
         server.disconnect_client(user_id_b);
-        while !matches!(
-            status_b.recv().await,
-            Some(rpc::Status::ReconnectionError { .. })
-        ) {}
+        while !status_b.recv().await.unwrap().is_reconnect_error() {}
 
         channels_b.read_with(&cx_b, |channels, _| {
             assert_eq!(
@@ -1871,6 +1868,130 @@ mod tests {
                 .map(|m| (m.sender.github_login.clone(), m.body.clone()))
                 .collect()
         }
+    }
+
+    #[gpui::test]
+    async fn test_worktree_reconnection(mut cx_a: TestAppContext, mut cx_b: TestAppContext) {
+        cx_a.foreground().forbid_parking();
+        let lang_registry = Arc::new(LanguageRegistry::new());
+        let mut server = TestServer::start().await;
+        let (_, client_a) = server.create_client(&mut cx_a, "user_a").await;
+        let (user_id_b, client_b) = server.create_client(&mut cx_b, "user_b").await;
+
+        let fs = Arc::new(FakeFs::new());
+        fs.insert_tree(
+            "/dir",
+            json!({
+                "file1": "contents 1",
+                "file2": "contents 2",
+                "file3": "contents 3",
+            }),
+        )
+        .await;
+
+        // Share a worktree
+        let worktree_a = Worktree::open_local(
+            "/dir".as_ref(),
+            lang_registry.clone(),
+            fs,
+            &mut cx_a.to_async(),
+        )
+        .await
+        .unwrap();
+        worktree_a
+            .read_with(&cx_a, |tree, _| tree.as_local().unwrap().scan_complete())
+            .await;
+        let (worktree_id, worktree_token) = worktree_a
+            .update(&mut cx_a, |tree, cx| {
+                tree.as_local_mut().unwrap().share(client_a.clone(), cx)
+            })
+            .await
+            .unwrap();
+
+        // Join the worktree as a guest.
+        let worktree_b = Worktree::open_remote(
+            client_b.clone(),
+            worktree_id,
+            worktree_token,
+            lang_registry.clone(),
+            &mut cx_b.to_async(),
+        )
+        .await
+        .unwrap();
+        worktree_a
+            .condition(&cx_a, |tree, _| tree.peers().len() == 1)
+            .await;
+
+        // Open a buffer as the host.
+        let buffer_1_a = worktree_a
+            .update(&mut cx_a, |tree, cx| tree.open_buffer("file1", cx))
+            .await
+            .unwrap();
+
+        // Open the same buffer and one other buffer as the guest.
+        let buffer_1_b = worktree_b
+            .update(&mut cx_b, |tree, cx| tree.open_buffer("file1", cx))
+            .await
+            .unwrap();
+        let buffer_2_b = worktree_b
+            .update(&mut cx_b, |tree, cx| tree.open_buffer("file2", cx))
+            .await
+            .unwrap();
+
+        // Edit each buffer, wait for edits to propagate.
+        buffer_1_a.update(&mut cx_a, |buffer, cx| {
+            let len = buffer.len();
+            buffer.edit(Some(len..len), ". A1", cx)
+        });
+        buffer_2_b.update(&mut cx_b, |buffer, cx| buffer.edit(Some(0..0), "B2. ", cx));
+        buffer_1_b.update(&mut cx_b, |buffer, cx| buffer.edit(Some(0..0), "B1. ", cx));
+        buffer_1_a
+            .condition(&cx_a, |buffer, _| buffer.text() == "B1. contents 1. A1")
+            .await;
+        buffer_1_b
+            .condition(&cx_b, |buffer, _| buffer.text() == "B1. contents 1. A1")
+            .await;
+
+        // Disconnect the guest.
+        server.forbid_connections();
+        server.disconnect_client(user_id_b);
+        let mut status_b = client_b.status();
+        while !status_b.recv().await.unwrap().is_reconnect_error() {}
+
+        // Edit each buffer again, while disconnected.
+        buffer_1_a.update(&mut cx_a, |buffer, cx| {
+            let len = buffer.len();
+            buffer.edit(Some(len..len), ". A2", cx)
+        });
+        buffer_1_b.update(&mut cx_b, |buffer, cx| buffer.edit(Some(0..0), "B3. ", cx));
+        buffer_2_b.update(&mut cx_b, |buffer, cx| buffer.edit(Some(0..0), "B4. ", cx));
+
+        // The buffers have diverged.
+        cx_b.foreground().advance_clock(Duration::from_secs(1));
+        assert_eq!(
+            buffer_1_a.update(&mut cx_a, |buffer, _| buffer.text()),
+            "B1. contents 1. A1. A2"
+        );
+        assert_eq!(
+            buffer_1_b.update(&mut cx_b, |buffer, _| buffer.text()),
+            "B3. B1. contents 1. A1"
+        );
+
+        // Allow the guest to reconnect.
+        server.allow_connections();
+        cx_b.foreground().advance_clock(Duration::from_secs(10));
+        while !status_b.recv().await.unwrap().is_connected() {}
+
+        // The buffers converge.
+        cx_b.foreground().advance_clock(Duration::from_secs(1));
+        assert_eq!(
+            buffer_1_a.update(&mut cx_a, |buffer, _| buffer.text()),
+            "B3. B1. contents 1. A1. A2"
+        );
+        assert_eq!(
+            buffer_1_b.update(&mut cx_b, |buffer, _| buffer.text()),
+            "B3. B1. contents 1. A1. A2"
+        );
     }
 
     struct TestServer {

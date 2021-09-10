@@ -499,6 +499,16 @@ impl Client {
     }
 }
 
+impl Status {
+    pub fn is_connected(&self) -> bool {
+        matches!(self, Status::Connected { .. })
+    }
+
+    pub fn is_reconnect_error(&self) -> bool {
+        matches!(self, Status::ReconnectionError { .. })
+    }
+}
+
 const WORKTREE_URL_PREFIX: &'static str = "zed://worktrees/";
 
 pub fn encode_worktree_url(id: u64, access_token: &str) -> String {

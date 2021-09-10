@@ -35,6 +35,8 @@ message Envelope {
         ChannelMessageSent channel_message_sent = 30;
         GetChannelMessages get_channel_messages = 31;
         GetChannelMessagesResponse get_channel_messages_response = 32;
+        ReopenWorktree reopen_worktree = 33;
+        ReopenWorktreeResponse reopen_worktree_response = 34;
     }
 }
 
@@ -77,6 +79,22 @@ message UpdateWorktree {
 
 message CloseWorktree {
     uint64 worktree_id = 1;
+}
+
+message ReopenWorktree {
+    uint64 worktree_id = 1;
+    uint32 replica_id = 2;
+    repeated BufferVersion buffer_versions = 3;
+}
+
+message ReopenWorktreeResponse {
+    uint32 replica_id = 1;
+    repeated Buffer buffers = 2;
+}
+
+message BufferVersion {
+    uint64 buffer_id = 1;
+    repeated VectorClockEntry version = 2;
 }
 
 message AddPeer {
