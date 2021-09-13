@@ -108,7 +108,7 @@ impl Peer {
         })
     }
 
-    pub async fn connect(
+    pub async fn add_connection(
         self: &Arc<Self>,
         conn: Conn,
     ) -> (
@@ -144,17 +144,16 @@ impl Peer {
         (connection_id, handle_io, incoming_rx)
     }
 
-    pub async fn reconnect(
+    pub async fn resume_connection(
         self: &Arc<Self>,
         connection_id: ConnectionId,
         conn: Conn,
     ) -> Result<impl Future<Output = anyhow::Result<()>> + Send> {
         let mut connections = self.connections.write().await;
-        if matches!(
-            connections.get(&connection_id),
-            None | Some(Connection::Ready(_))
-        ) {
-            return Err(anyhow!("connection is still open or does not exist"));
+        match connections.get(&connection_id) {
+            None => Err(anyhow!("no such connection"))?,
+            Some(Connection::Ready(_)) => Err(anyhow!("connection is still open"))?,
+            _ => {}
         }
 
         if let Connection::Suspended {
@@ -266,6 +265,11 @@ impl Peer {
                 },
             );
         }
+    }
+
+    pub async fn remove_connection(&self, connection_id: ConnectionId) {
+        let mut connections = self.connections.write().await;
+        connections.remove(&connection_id);
     }
 
     pub async fn reset(&self) {
@@ -436,12 +440,14 @@ mod tests {
             let client2 = Peer::new();
 
             let (client1_to_server_conn, server_to_client_1_conn, _) = Conn::in_memory();
-            let (client1_conn_id, io_task1, _) = client1.connect(client1_to_server_conn).await;
-            let (_, io_task2, incoming1) = server.connect(server_to_client_1_conn).await;
+            let (client1_conn_id, io_task1, _) =
+                client1.add_connection(client1_to_server_conn).await;
+            let (_, io_task2, incoming1) = server.add_connection(server_to_client_1_conn).await;
 
             let (client2_to_server_conn, server_to_client_2_conn, _) = Conn::in_memory();
-            let (client2_conn_id, io_task3, _) = client2.connect(client2_to_server_conn).await;
-            let (_, io_task4, incoming2) = server.connect(server_to_client_2_conn).await;
+            let (client2_conn_id, io_task3, _) =
+                client2.add_connection(client2_to_server_conn).await;
+            let (_, io_task4, incoming2) = server.add_connection(server_to_client_2_conn).await;
 
             smol::spawn(io_task1).detach();
             smol::spawn(io_task2).detach();
@@ -570,7 +576,8 @@ mod tests {
             let (client_conn, mut server_conn, _) = Conn::in_memory();
 
             let client = Peer::new();
-            let (connection_id, io_handler, mut incoming) = client.connect(client_conn).await;
+            let (connection_id, io_handler, mut incoming) =
+                client.add_connection(client_conn).await;
 
             let (mut io_ended_tx, mut io_ended_rx) = postage::barrier::channel();
             smol::spawn(async move {
@@ -604,12 +611,12 @@ mod tests {
 
             let client = Peer::new();
             let (conn_to_server_id, client_io_handler, _client_incoming) =
-                client.connect(client_conn).await;
+                client.add_connection(client_conn).await;
             let client_io_handler = smol::spawn(client_io_handler);
 
             let server = Peer::new();
             let (conn_to_client_id, server_io_handler, mut server_incoming) =
-                server.connect(server_conn).await;
+                server.add_connection(server_conn).await;
             let server_io_handler = smol::spawn(server_io_handler);
 
             let client_ping = smol::spawn(client.request(conn_to_server_id, proto::Ping {}));
@@ -628,14 +635,14 @@ mod tests {
             let (client_conn, server_conn, _) = Conn::in_memory();
             smol::spawn(
                 client
-                    .reconnect(conn_to_server_id, client_conn)
+                    .resume_connection(conn_to_server_id, client_conn)
                     .await
                     .unwrap(),
             )
             .detach();
             smol::spawn(
                 server
-                    .reconnect(conn_to_client_id, server_conn)
+                    .resume_connection(conn_to_client_id, server_conn)
                     .await
                     .unwrap(),
             )
@@ -651,7 +658,8 @@ mod tests {
             drop(server_conn);
 
             let client = Peer::new();
-            let (connection_id, io_handler, mut incoming) = client.connect(client_conn).await;
+            let (connection_id, io_handler, mut incoming) =
+                client.add_connection(client_conn).await;
             smol::spawn(io_handler).detach();
             smol::spawn(async move { incoming.next().await }).detach();
 

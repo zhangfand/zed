@@ -31,9 +31,9 @@ lazy_static! {
 pub struct Client {
     peer: Arc<Peer>,
     state: RwLock<ClientState>,
-    auth_callback:
+    authenticate:
         Option<Box<dyn Send + Sync + Fn(&AsyncAppContext) -> Task<Result<(u64, String)>>>>,
-    connect_callback: Option<
+    establish_connection: Option<
         Box<
             dyn Send
                 + Sync
@@ -89,13 +89,13 @@ pub struct ConnectionOptions {
     pub user_id: u64,
     pub access_token: String,
     pub connection_token: u128,
-    pub is_reconnection: bool,
+    pub resume_connection: bool,
 }
 
 #[derive(Error, Debug)]
 pub enum ConnectError {
     #[error("reconnect failed")]
-    ReconnectFailed,
+    ReconnectRejected,
     #[error("request error: {0}")]
     HttpError(#[from] async_tungstenite::tungstenite::http::Error),
     #[error("io error: {0}")]
@@ -110,7 +110,7 @@ impl From<async_tungstenite::tungstenite::Error> for ConnectError {
     fn from(error: async_tungstenite::tungstenite::Error) -> Self {
         if let async_tungstenite::tungstenite::Error::Http(response) = &error {
             if response.status() == StatusCode::GONE {
-                Self::ReconnectFailed
+                Self::ReconnectRejected
             } else {
                 Self::WebSocketError(error)
             }
@@ -158,25 +158,30 @@ impl Client {
         Arc::new(Self {
             peer: Peer::new(),
             state: Default::default(),
-            auth_callback: None,
-            connect_callback: None,
+            authenticate: None,
+            establish_connection: None,
         })
     }
 
     #[cfg(any(test, feature = "test-support"))]
-    pub fn set_login_and_connect_callbacks<Login, Connect>(
-        &mut self,
-        login: Login,
-        connect: Connect,
-    ) where
-        Login: 'static + Send + Sync + Fn(&AsyncAppContext) -> Task<Result<(u64, String)>>,
-        Connect: 'static
+    pub fn override_authenticate<F>(&mut self, login: F) -> &mut Self
+    where
+        F: 'static + Send + Sync + Fn(&AsyncAppContext) -> Task<Result<(u64, String)>>,
+    {
+        self.authenticate = Some(Box::new(login));
+        self
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn override_establish_connection<F>(&mut self, connect: F) -> &mut Self
+    where
+        F: 'static
             + Send
             + Sync
             + Fn(&ConnectionOptions, &AsyncAppContext) -> Task<Result<Conn, ConnectError>>,
     {
-        self.auth_callback = Some(Box::new(login));
-        self.connect_callback = Some(Box::new(connect));
+        self.establish_connection = Some(Box::new(connect));
+        self
     }
 
     pub fn status(&self) -> watch::Receiver<Status> {
@@ -211,7 +216,7 @@ impl Client {
                     user_id,
                     access_token,
                     connection_token,
-                    is_reconnection: true,
+                    resume_connection: true,
                 };
                 state._maintain_connection = Some(cx.spawn(|cx| {
                     let reconnect = {
@@ -222,12 +227,12 @@ impl Client {
                             let mut rng = StdRng::from_entropy();
                             let mut delay = Duration::from_millis(100);
                             loop {
-                                match this.connect(&connection_opts, &cx).await {
+                                match this.establish_connection(&connection_opts, &cx).await {
                                     Ok(conn) => {
                                         // TODO: use Peer::reconnect.
                                         break;
                                     }
-                                    Err(ConnectError::ReconnectFailed) => {
+                                    Err(ConnectError::ReconnectRejected) => {
                                         this.set_status(Status::ConnectionLost { user_id }, &cx);
                                         break;
                                     }
@@ -382,12 +387,30 @@ impl Client {
             user_id,
             access_token,
             connection_token: rng.gen(),
-            is_reconnection: false,
+            resume_connection: false,
         };
-        match self.connect(&opts, cx).await {
+        match self.establish_connection(&opts, cx).await {
             Ok(conn) => {
                 log::info!("connected to rpc address {}", *ZED_SERVER_URL);
-                self.set_connection(conn, opts, cx).await;
+
+                let (connection_id, io_work, mut incoming) = self.peer.add_connection(conn).await;
+                cx.foreground()
+                    .spawn({
+                        let mut cx = cx.clone();
+                        let this = self.clone();
+                        async move {
+                            while let Some(message) = incoming.recv().await {
+                                this.handle_incoming_message(message, &mut cx);
+                            }
+                        }
+                    })
+                    .detach();
+                self.maintain_connection_status(
+                    connection_id,
+                    opts,
+                    cx.background().spawn(io_work),
+                    cx,
+                );
                 Ok(())
             }
             Err(err) => {
@@ -397,55 +420,46 @@ impl Client {
         }
     }
 
-    async fn set_connection(
+    fn handle_incoming_message(
         self: &Arc<Self>,
-        conn: Conn,
+        message: Box<dyn AnyTypedEnvelope>,
+        cx: &mut AsyncAppContext,
+    ) {
+        let mut state = self.state.write();
+        if let Some(extract_entity_id) = state.entity_id_extractors.get(&message.payload_type_id())
+        {
+            let entity_id = (extract_entity_id)(message.as_ref());
+            if let Some(handler) = state
+                .model_handlers
+                .get_mut(&(message.payload_type_id(), entity_id))
+            {
+                let start_time = Instant::now();
+                log::info!("RPC client message {}", message.payload_type_name());
+                (handler)(message, cx);
+                log::info!("RPC message handled. duration:{:?}", start_time.elapsed());
+            } else {
+                log::info!("unhandled message {}", message.payload_type_name());
+            }
+        } else {
+            log::info!("unhandled message {}", message.payload_type_name());
+        }
+    }
+
+    fn maintain_connection_status(
+        self: &Arc<Self>,
+        connection_id: ConnectionId,
         opts: ConnectionOptions,
+        handle_io: Task<Result<()>>,
         cx: &AsyncAppContext,
     ) {
-        let (connection_id, handle_io, mut incoming) = self.peer.connect(conn).await;
-        cx.foreground()
-            .spawn({
-                let mut cx = cx.clone();
-                let this = self.clone();
-                async move {
-                    while let Some(message) = incoming.recv().await {
-                        let mut state = this.state.write();
-                        if let Some(extract_entity_id) =
-                            state.entity_id_extractors.get(&message.payload_type_id())
-                        {
-                            let entity_id = (extract_entity_id)(message.as_ref());
-                            if let Some(handler) = state
-                                .model_handlers
-                                .get_mut(&(message.payload_type_id(), entity_id))
-                            {
-                                let start_time = Instant::now();
-                                log::info!("RPC client message {}", message.payload_type_name());
-                                (handler)(message, &mut cx);
-                                log::info!(
-                                    "RPC message handled. duration:{:?}",
-                                    start_time.elapsed()
-                                );
-                            } else {
-                                log::info!("unhandled message {}", message.payload_type_name());
-                            }
-                        } else {
-                            log::info!("unhandled message {}", message.payload_type_name());
-                        }
-                    }
-                }
-            })
-            .detach();
-
         self.set_status(
             Status::Connected {
                 connection_id,
                 user_id: opts.user_id,
             },
-            cx,
+            &cx,
         );
 
-        let handle_io = cx.background().spawn(handle_io);
         let this = self.clone();
         let cx = cx.clone();
         cx.foreground()
@@ -453,7 +467,7 @@ impl Client {
                 match handle_io.await {
                     Ok(()) => this.set_status(Status::Disconnected, &cx),
                     Err(err) => {
-                        log::error!("connection error: {:?}", err);
+                        log::error!("connection error: {}", err);
                         this.set_status(
                             Status::ConnectionSuspended {
                                 connection_token: opts.connection_token,
@@ -470,26 +484,26 @@ impl Client {
     }
 
     fn authenticate(self: &Arc<Self>, cx: &AsyncAppContext) -> Task<Result<(u64, String)>> {
-        if let Some(callback) = self.auth_callback.as_ref() {
+        if let Some(callback) = self.authenticate.as_ref() {
             callback(cx)
         } else {
             self.authenticate_with_browser(cx)
         }
     }
 
-    fn connect(
+    fn establish_connection(
         self: &Arc<Self>,
         opts: &ConnectionOptions,
         cx: &AsyncAppContext,
     ) -> Task<Result<Conn, ConnectError>> {
-        if let Some(callback) = self.connect_callback.as_ref() {
+        if let Some(callback) = self.establish_connection.as_ref() {
             callback(&opts, cx)
         } else {
-            self.connect_with_websocket(&opts, cx)
+            self.establish_websocket_connection(&opts, cx)
         }
     }
 
-    fn connect_with_websocket(
+    fn establish_websocket_connection(
         self: &Arc<Self>,
         opts: &ConnectionOptions,
         cx: &AsyncAppContext,
@@ -499,7 +513,7 @@ impl Client {
             "Authorization",
             format!("{} {}", opts.user_id, opts.access_token),
         );
-        if opts.is_reconnection {
+        if opts.resume_connection {
             request = request.header("X-Zed-Reconnection-Token", connection_token);
         } else {
             request = request.header("X-Zed-Connection-Token", connection_token);

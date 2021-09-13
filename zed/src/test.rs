@@ -230,26 +230,24 @@ impl FakeServer {
 
         Arc::get_mut(client)
             .unwrap()
-            .set_login_and_connect_callbacks(
-                move |cx| {
-                    cx.spawn(|_| async move {
-                        let access_token = "the-token".to_string();
-                        Ok((client_user_id, access_token))
+            .override_authenticate(move |cx| {
+                cx.spawn(|_| async move {
+                    let access_token = "the-token".to_string();
+                    Ok((client_user_id, access_token))
+                })
+            })
+            .override_establish_connection({
+                let server = result.clone();
+                move |opts, cx| {
+                    assert_eq!(opts.user_id, client_user_id);
+                    assert_eq!(opts.access_token, "the-token");
+                    cx.spawn({
+                        let server = server.clone();
+                        let opts = opts.clone();
+                        move |cx| async move { server.connect(opts, &cx).await }
                     })
-                },
-                {
-                    let server = result.clone();
-                    move |opts, cx| {
-                        assert_eq!(opts.user_id, client_user_id);
-                        assert_eq!(opts.access_token, "the-token");
-                        cx.spawn({
-                            let server = server.clone();
-                            let opts = opts.clone();
-                            move |cx| async move { server.connect(opts, &cx).await }
-                        })
-                    }
-                },
-            );
+                }
+            });
 
         client
             .authenticate_and_connect(&cx.to_async())
@@ -274,9 +272,9 @@ impl FakeServer {
         opts: rpc::ConnectionOptions,
         cx: &AsyncAppContext,
     ) -> Result<Conn, rpc::ConnectError> {
-        if opts.is_reconnection {
+        if opts.resume_connection {
             if self.forbid_reconnections.load(SeqCst) {
-                Err(rpc::ConnectError::ReconnectFailed)
+                Err(rpc::ConnectError::ReconnectRejected)
             } else {
                 let mut connection = self.connection.lock();
                 if connection
@@ -287,25 +285,25 @@ impl FakeServer {
                     let (client_conn, server_conn, kill_tx) = Conn::in_memory();
                     let io = self
                         .peer
-                        .reconnect(connection.id, server_conn)
+                        .resume_connection(connection.id, server_conn)
                         .await
-                        .map_err(|_| rpc::ConnectError::ReconnectFailed)?;
+                        .map_err(|_| rpc::ConnectError::ReconnectRejected)?;
                     connection.kill_tx = kill_tx;
                     cx.background().spawn(io).detach();
                     Ok(client_conn)
                 } else {
-                    Err(rpc::ConnectError::ReconnectFailed)
+                    Err(rpc::ConnectError::ReconnectRejected)
                 }
             }
         } else {
             if self.forbid_new_connections.load(SeqCst) {
                 Err(rpc::ConnectError::IoError(io::Error::new(
                     io::ErrorKind::Other,
-                    "server is forbidding connections",
+                    "server is forbidding new connections",
                 )))
             } else {
                 let (client_conn, server_conn, kill_tx) = Conn::in_memory();
-                let (connection_id, io, incoming) = self.peer.connect(server_conn).await;
+                let (connection_id, io, incoming) = self.peer.add_connection(server_conn).await;
                 cx.background().spawn(io).detach();
                 *self.connection.lock() = Some(Connection {
                     id: connection_id,
