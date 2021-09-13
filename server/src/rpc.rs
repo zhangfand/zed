@@ -1010,6 +1010,7 @@ mod tests {
     use serde_json::json;
     use sqlx::types::time::OffsetDateTime;
     use std::{
+        io,
         path::Path,
         sync::{
             atomic::{AtomicBool, Ordering::SeqCst},
@@ -1930,7 +1931,10 @@ mod tests {
                         let client_name = client_name.clone();
                         cx.spawn(move |cx| async move {
                             if forbid_connections.load(SeqCst) {
-                                Err(anyhow!("server is forbidding connections"))
+                                Err(rpc::ConnectError::IoError(io::Error::new(
+                                    io::ErrorKind::Other,
+                                    "server is forbidding connections",
+                                )))
                             } else {
                                 let (client_conn, server_conn, kill_conn) = Conn::in_memory();
                                 connection_killers.lock().insert(client_user_id, kill_conn);

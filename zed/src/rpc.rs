@@ -91,8 +91,28 @@ pub struct ConnectionOptions {
 pub enum ConnectError {
     #[error("reconnect failed")]
     ReconnectFailed,
+    #[error("request error: {0}")]
+    HttpError(#[from] async_tungstenite::tungstenite::http::Error),
+    #[error("io error: {0}")]
+    IoError(#[from] std::io::Error),
+    #[error("web socket error: {0}")]
+    WebSocketError(async_tungstenite::tungstenite::Error),
     #[error("invalid server url {0}")]
     InvalidServerUrl(&'static str),
+}
+
+impl From<async_tungstenite::tungstenite::Error> for ConnectError {
+    fn from(error: async_tungstenite::tungstenite::Error) -> Self {
+        if let async_tungstenite::tungstenite::Error::Http(response) = &error {
+            if response.status() == StatusCode::GONE {
+                Self::ReconnectFailed
+            } else {
+                Self::WebSocketError(error)
+            }
+        } else {
+            Self::WebSocketError(error)
+        }
+    }
 }
 
 impl Default for ClientState {
@@ -159,7 +179,7 @@ impl Client {
 
     fn set_status(self: &Arc<Self>, status: Status, cx: &AsyncAppContext) {
         let mut state = self.state.write();
-        *state.status.0.borrow_mut() = status;
+        *state.status.0.borrow_mut() = status.clone();
 
         match status {
             Status::Connected { .. } => {
@@ -191,8 +211,25 @@ impl Client {
                 state._maintain_connection = Some(cx.spawn(|cx| async move {
                     let mut rng = StdRng::from_entropy();
                     let mut delay = Duration::from_millis(100);
-                    while let Err(error) = this.authenticate_and_connect(&cx).await {
-                        log::error!("failed to connect {}", error);
+                    loop {
+                        if connection_opts.is_reconnection {
+                            match this.connect(&connection_opts, &cx).await {
+                                Ok(conn) => {
+                                    // TODO: use Peer::reconnect.
+                                    break;
+                                }
+                                Err(ConnectError::ReconnectFailed) => {
+                                    connection_opts.is_reconnection = false;
+                                }
+                                Err(err) => log::error!("failed to reconnect {}", err),
+                            }
+                        } else {
+                            match this.authenticate_and_connect(&cx).await {
+                                Ok(()) => break,
+                                Err(err) => log::error!("failed to reconnect {}", err),
+                            }
+                        }
+
                         this.set_status(
                             Status::ReconnectionError {
                                 next_reconnection: Instant::now() + delay,

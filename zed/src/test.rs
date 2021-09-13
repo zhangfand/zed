@@ -15,6 +15,7 @@ use parking_lot::Mutex;
 use postage::{mpsc, prelude::Stream as _, sink::Sink as _, watch};
 use smol::channel;
 use std::{
+    io,
     marker::PhantomData,
     path::{Path, PathBuf},
     sync::{
@@ -202,13 +203,13 @@ impl<T: Entity> Observer<T> {
 pub struct FakeServer {
     peer: Arc<Peer>,
     connection: Mutex<Option<Connection>>,
+    incoming: Mutex<Option<mpsc::Receiver<Box<dyn proto::AnyTypedEnvelope>>>>,
     forbid_new_connections: AtomicBool,
     forbid_reconnections: AtomicBool,
 }
 
 struct Connection {
     id: ConnectionId,
-    incoming: mpsc::Receiver<Box<dyn proto::AnyTypedEnvelope>>,
     token: u128,
     kill_tx: watch::Sender<Option<()>>,
 }
@@ -222,6 +223,7 @@ impl FakeServer {
         let result = Arc::new(Self {
             peer: Peer::new(),
             connection: Default::default(),
+            incoming: Default::default(),
             forbid_new_connections: Default::default(),
             forbid_reconnections: Default::default(),
         });
@@ -267,10 +269,14 @@ impl FakeServer {
         let _ = connection.kill_tx.send(Some(())).await;
     }
 
-    async fn connect(&self, opts: rpc::ConnectionOptions, cx: &AsyncAppContext) -> Result<Conn> {
+    async fn connect(
+        &self,
+        opts: rpc::ConnectionOptions,
+        cx: &AsyncAppContext,
+    ) -> Result<Conn, rpc::ConnectError> {
         if opts.is_reconnection {
             if self.forbid_reconnections.load(SeqCst) {
-                Err(anyhow!("server is forbidding reconnections"))
+                Err(rpc::ConnectError::ReconnectFailed)
             } else {
                 let mut connection = self.connection.lock();
                 if connection
@@ -279,27 +285,34 @@ impl FakeServer {
                 {
                     let connection = connection.as_mut().unwrap();
                     let (client_conn, server_conn, kill_tx) = Conn::in_memory();
-                    let io = self.peer.reconnect(connection.id, server_conn).await?;
+                    let io = self
+                        .peer
+                        .reconnect(connection.id, server_conn)
+                        .await
+                        .map_err(|_| rpc::ConnectError::ReconnectFailed)?;
                     connection.kill_tx = kill_tx;
                     cx.background().spawn(io).detach();
                     Ok(client_conn)
                 } else {
-                    Err(anyhow!("cannot re-establish connection"))
+                    Err(rpc::ConnectError::ReconnectFailed)
                 }
             }
         } else {
             if self.forbid_new_connections.load(SeqCst) {
-                Err(anyhow!("server is forbidding connections"))
+                Err(rpc::ConnectError::IoError(io::Error::new(
+                    io::ErrorKind::Other,
+                    "server is forbidding connections",
+                )))
             } else {
                 let (client_conn, server_conn, kill_tx) = Conn::in_memory();
                 let (connection_id, io, incoming) = self.peer.connect(server_conn).await;
                 cx.background().spawn(io).detach();
                 *self.connection.lock() = Some(Connection {
                     id: connection_id,
-                    incoming,
                     token: opts.connection_token,
                     kill_tx,
                 });
+                *self.incoming.lock() = Some(incoming);
                 Ok(client_conn)
             }
         }
@@ -326,11 +339,11 @@ impl FakeServer {
     }
 
     pub async fn receive<M: proto::EnvelopedMessage>(&self) -> Result<TypedEnvelope<M>> {
-        let mut connection = self.connection.lock();
-        let message = connection
+        let message = self
+            .incoming
+            .lock()
             .as_mut()
             .expect("not connected")
-            .incoming
             .recv()
             .await
             .ok_or_else(|| anyhow!("other half hung up"))?;

@@ -84,8 +84,8 @@ pub struct Peer {
 }
 
 enum Connection {
-    Opened(ConnectionState),
-    Closed {
+    Ready(ConnectionState),
+    Paused {
         state: ConnectionState,
         first_outgoing: Option<proto::Envelope>,
         incoming_tx: mpsc::Sender<Box<dyn AnyTypedEnvelope>>,
@@ -139,7 +139,7 @@ impl Peer {
         self.connections
             .write()
             .await
-            .insert(connection_id, Connection::Opened(connection));
+            .insert(connection_id, Connection::Ready(connection));
 
         (connection_id, handle_io, incoming_rx)
     }
@@ -152,12 +152,12 @@ impl Peer {
         let mut connections = self.connections.write().await;
         if matches!(
             connections.get(&connection_id),
-            None | Some(Connection::Opened(_))
+            None | Some(Connection::Ready(_))
         ) {
             return Err(anyhow!("connection is still open or does not exist"));
         }
 
-        if let Connection::Closed {
+        if let Connection::Paused {
             state,
             first_outgoing,
             incoming_tx,
@@ -172,7 +172,7 @@ impl Peer {
                 first_outgoing,
                 outgoing_rx,
             );
-            connections.insert(connection_id, Connection::Opened(state));
+            connections.insert(connection_id, Connection::Ready(state));
             Ok(handle_io)
         } else {
             unreachable!()
@@ -221,14 +221,14 @@ impl Peer {
                                 break;
                             }
                             Err(error) => {
-                                this.close_connection(connection_id, incoming_tx, None, outgoing_rx).await;
+                                this.pause_connection(connection_id, incoming_tx, None, outgoing_rx).await;
                                 return Err(error).context("received invalid RPC message");
                             }
                         },
                         outgoing = outgoing.next().fuse() => match outgoing {
                             Some(outgoing) => {
                                 if let Err(result) = writer.write_message(&outgoing).await {
-                                    this.close_connection(connection_id, incoming_tx, Some(outgoing), outgoing_rx).await;
+                                    this.pause_connection(connection_id, incoming_tx, Some(outgoing), outgoing_rx).await;
                                     return Err(result).context("failed to write RPC message");
                                 }
                             }
@@ -247,7 +247,7 @@ impl Peer {
         self.connections.write().await.remove(&connection_id);
     }
 
-    async fn close_connection(
+    async fn pause_connection(
         &self,
         connection_id: ConnectionId,
         incoming_tx: mpsc::Sender<Box<dyn AnyTypedEnvelope>>,
@@ -255,10 +255,10 @@ impl Peer {
         outgoing_rx: mpsc::Receiver<proto::Envelope>,
     ) {
         let mut connections = self.connections.write().await;
-        if let Some(Connection::Opened(state)) = connections.remove(&connection_id) {
+        if let Some(Connection::Ready(state)) = connections.remove(&connection_id) {
             connections.insert(
                 connection_id,
-                Connection::Closed {
+                Connection::Paused {
                     state,
                     first_outgoing,
                     incoming_tx,
@@ -413,8 +413,8 @@ impl Peer {
                 .get(&connection_id)
                 .ok_or_else(|| anyhow!("no such connection: {}", connection_id))?;
             let state = match connection {
-                Connection::Opened(state) => state,
-                Connection::Closed { state, .. } => state,
+                Connection::Ready(state) => state,
+                Connection::Paused { state, .. } => state,
             };
             Ok(state.clone())
         }
