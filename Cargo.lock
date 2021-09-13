@@ -5855,6 +5855,7 @@ dependencies = [
  "smol",
  "surf",
  "tempdir",
+ "thiserror",
  "time 0.3.2",
  "tiny_http",
  "toml 0.5.8",

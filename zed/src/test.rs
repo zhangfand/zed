@@ -12,7 +12,7 @@ use crate::{
 use anyhow::{anyhow, Result};
 use gpui::{AsyncAppContext, Entity, ModelHandle, MutableAppContext, TestAppContext};
 use parking_lot::Mutex;
-use postage::{mpsc, prelude::Stream as _};
+use postage::{mpsc, prelude::Stream as _, sink::Sink as _, watch};
 use smol::channel;
 use std::{
     marker::PhantomData,
@@ -201,9 +201,16 @@ impl<T: Entity> Observer<T> {
 
 pub struct FakeServer {
     peer: Arc<Peer>,
-    incoming: Mutex<Option<mpsc::Receiver<Box<dyn proto::AnyTypedEnvelope>>>>,
-    connection_id: Mutex<Option<ConnectionId>>,
-    forbid_connections: AtomicBool,
+    connection: Mutex<Option<Connection>>,
+    forbid_new_connections: AtomicBool,
+    forbid_reconnections: AtomicBool,
+}
+
+struct Connection {
+    id: ConnectionId,
+    incoming: mpsc::Receiver<Box<dyn proto::AnyTypedEnvelope>>,
+    token: u128,
+    kill_tx: watch::Sender<Option<()>>,
 }
 
 impl FakeServer {
@@ -214,9 +221,9 @@ impl FakeServer {
     ) -> Arc<Self> {
         let result = Arc::new(Self {
             peer: Peer::new(),
-            incoming: Default::default(),
-            connection_id: Default::default(),
-            forbid_connections: Default::default(),
+            connection: Default::default(),
+            forbid_new_connections: Default::default(),
+            forbid_reconnections: Default::default(),
         });
 
         Arc::get_mut(client)
@@ -230,12 +237,13 @@ impl FakeServer {
                 },
                 {
                     let server = result.clone();
-                    move |user_id, access_token, cx| {
-                        assert_eq!(user_id, client_user_id);
-                        assert_eq!(access_token, "the-token");
+                    move |opts, cx| {
+                        assert_eq!(opts.user_id, client_user_id);
+                        assert_eq!(opts.access_token, "the-token");
                         cx.spawn({
                             let server = server.clone();
-                            move |cx| async move { server.connect(&cx).await }
+                            let opts = opts.clone();
+                            move |cx| async move { server.connect(opts, &cx).await }
                         })
                     }
                 },
@@ -250,29 +258,67 @@ impl FakeServer {
 
     pub async fn disconnect(&self) {
         self.peer.disconnect(self.connection_id()).await;
-        self.connection_id.lock().take();
-        self.incoming.lock().take();
+        self.connection.lock().take();
     }
 
-    async fn connect(&self, cx: &AsyncAppContext) -> Result<Conn> {
-        if self.forbid_connections.load(SeqCst) {
-            Err(anyhow!("server is forbidding connections"))
+    pub async fn kill_connection(&self) {
+        let mut connection = self.connection.lock();
+        let connection = connection.as_mut().expect("not connected");
+        let _ = connection.kill_tx.send(Some(())).await;
+    }
+
+    async fn connect(&self, opts: rpc::ConnectionOptions, cx: &AsyncAppContext) -> Result<Conn> {
+        if opts.is_reconnection {
+            if self.forbid_reconnections.load(SeqCst) {
+                Err(anyhow!("server is forbidding reconnections"))
+            } else {
+                let mut connection = self.connection.lock();
+                if connection
+                    .as_ref()
+                    .map_or(false, |c| c.token == opts.connection_token)
+                {
+                    let connection = connection.as_mut().unwrap();
+                    let (client_conn, server_conn, kill_tx) = Conn::in_memory();
+                    let io = self.peer.reconnect(connection.id, server_conn).await?;
+                    connection.kill_tx = kill_tx;
+                    cx.background().spawn(io).detach();
+                    Ok(client_conn)
+                } else {
+                    Err(anyhow!("cannot re-establish connection"))
+                }
+            }
         } else {
-            let (client_conn, server_conn, _) = Conn::in_memory();
-            let (connection_id, io, incoming) = self.peer.connect(server_conn).await;
-            cx.background().spawn(io).detach();
-            *self.incoming.lock() = Some(incoming);
-            *self.connection_id.lock() = Some(connection_id);
-            Ok(client_conn)
+            if self.forbid_new_connections.load(SeqCst) {
+                Err(anyhow!("server is forbidding connections"))
+            } else {
+                let (client_conn, server_conn, kill_tx) = Conn::in_memory();
+                let (connection_id, io, incoming) = self.peer.connect(server_conn).await;
+                cx.background().spawn(io).detach();
+                *self.connection.lock() = Some(Connection {
+                    id: connection_id,
+                    incoming,
+                    token: opts.connection_token,
+                    kill_tx,
+                });
+                Ok(client_conn)
+            }
         }
     }
 
-    pub fn forbid_connections(&self) {
-        self.forbid_connections.store(true, SeqCst);
+    pub fn forbid_new_connections(&self) {
+        self.forbid_new_connections.store(true, SeqCst);
     }
 
-    pub fn allow_connections(&self) {
-        self.forbid_connections.store(false, SeqCst);
+    pub fn allow_new_connections(&self) {
+        self.forbid_new_connections.store(false, SeqCst);
+    }
+
+    pub fn forbid_reconnections(&self) {
+        self.forbid_reconnections.store(true, SeqCst);
+    }
+
+    pub fn allow_reconnections(&self) {
+        self.forbid_reconnections.store(false, SeqCst);
     }
 
     pub async fn send<T: proto::EnvelopedMessage>(&self, message: T) {
@@ -280,11 +326,11 @@ impl FakeServer {
     }
 
     pub async fn receive<M: proto::EnvelopedMessage>(&self) -> Result<TypedEnvelope<M>> {
-        let message = self
-            .incoming
-            .lock()
+        let mut connection = self.connection.lock();
+        let message = connection
             .as_mut()
             .expect("not connected")
+            .incoming
             .recv()
             .await
             .ok_or_else(|| anyhow!("other half hung up"))?;
@@ -309,6 +355,6 @@ impl FakeServer {
     }
 
     fn connection_id(&self) -> ConnectionId {
-        self.connection_id.lock().expect("not connected")
+        self.connection.lock().as_ref().expect("not connected").id
     }
 }

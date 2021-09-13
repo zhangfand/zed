@@ -1920,9 +1920,9 @@ mod tests {
                             Ok((client_user_id.0 as u64, access_token))
                         })
                     },
-                    move |user_id, access_token, cx| {
-                        assert_eq!(user_id, client_user_id.0 as u64);
-                        assert_eq!(access_token, "the-token");
+                    move |opts, cx| {
+                        assert_eq!(opts.user_id, client_user_id.0 as u64);
+                        assert_eq!(opts.access_token, "the-token");
 
                         let server = server.clone();
                         let connection_killers = connection_killers.clone();
