@@ -247,7 +247,7 @@ impl Client {
                         let foreground = cx.foreground();
                         async move {
                             foreground.timer(grace_period).await;
-                            Err(anyhow!(""))
+                            Err(())
                         }
                     };
 
