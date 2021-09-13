@@ -139,8 +139,7 @@ impl Server {
     ) -> impl Future<Output = ()> {
         let this = self.clone();
         async move {
-            let (connection_id, handle_io, mut incoming_rx) =
-                this.peer.add_connection(connection).await;
+            let (connection_id, handle_io, mut incoming_rx) = this.peer.connect(connection).await;
             this.add_connection(connection_id, user_id).await;
 
             let handle_io = handle_io.fuse();

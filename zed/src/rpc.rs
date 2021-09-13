@@ -276,7 +276,7 @@ impl Client {
     }
 
     async fn set_connection(self: &Arc<Self>, user_id: u64, conn: Conn, cx: &AsyncAppContext) {
-        let (connection_id, handle_io, mut incoming) = self.peer.add_connection(conn).await;
+        let (connection_id, handle_io, mut incoming) = self.peer.connect(conn).await;
         cx.foreground()
             .spawn({
                 let mut cx = cx.clone();

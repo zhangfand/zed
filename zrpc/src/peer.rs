@@ -2,7 +2,7 @@ use super::proto::{self, AnyTypedEnvelope, EnvelopedMessage, MessageStream, Requ
 use super::Conn;
 use anyhow::{anyhow, Context, Result};
 use async_lock::{Mutex, RwLock};
-use futures::FutureExt as _;
+use futures::{stream, FutureExt as _, StreamExt as _};
 use postage::{
     mpsc,
     prelude::{Sink as _, Stream as _},
@@ -83,8 +83,18 @@ pub struct Peer {
     next_connection_id: AtomicU32,
 }
 
+enum Connection {
+    Opened(ConnectionState),
+    Closed {
+        state: ConnectionState,
+        first_outgoing: Option<proto::Envelope>,
+        incoming_tx: mpsc::Sender<Box<dyn AnyTypedEnvelope>>,
+        outgoing_rx: mpsc::Receiver<proto::Envelope>,
+    },
+}
+
 #[derive(Clone)]
-struct Connection {
+struct ConnectionState {
     outgoing_tx: mpsc::Sender<proto::Envelope>,
     next_message_id: Arc<AtomicU32>,
     response_channels: Arc<Mutex<HashMap<u32, mpsc::Sender<proto::Envelope>>>>,
@@ -98,7 +108,7 @@ impl Peer {
         })
     }
 
-    pub async fn add_connection(
+    pub async fn connect(
         self: &Arc<Self>,
         conn: Conn,
     ) -> (
@@ -110,19 +120,79 @@ impl Peer {
             self.next_connection_id
                 .fetch_add(1, atomic::Ordering::SeqCst),
         );
-        let (mut incoming_tx, incoming_rx) = mpsc::channel(64);
-        let (outgoing_tx, mut outgoing_rx) = mpsc::channel(64);
-        let connection = Connection {
+        let (incoming_tx, incoming_rx) = mpsc::channel(64);
+        let (outgoing_tx, outgoing_rx) = mpsc::channel(64);
+        let connection = ConnectionState {
             outgoing_tx,
             next_message_id: Default::default(),
             response_channels: Default::default(),
         };
-        let mut writer = MessageStream::new(conn.tx);
-        let mut reader = MessageStream::new(conn.rx);
+        let handle_io = self.handle_io(
+            connection_id,
+            conn,
+            connection.response_channels.clone(),
+            incoming_tx,
+            None,
+            outgoing_rx,
+        );
 
+        self.connections
+            .write()
+            .await
+            .insert(connection_id, Connection::Opened(connection));
+
+        (connection_id, handle_io, incoming_rx)
+    }
+
+    pub async fn reconnect(
+        self: &Arc<Self>,
+        connection_id: ConnectionId,
+        conn: Conn,
+    ) -> Result<impl Future<Output = anyhow::Result<()>> + Send> {
+        let mut connections = self.connections.write().await;
+        if matches!(
+            connections.get(&connection_id),
+            None | Some(Connection::Opened(_))
+        ) {
+            return Err(anyhow!("connection is still open or does not exist"));
+        }
+
+        if let Connection::Closed {
+            state,
+            first_outgoing,
+            incoming_tx,
+            outgoing_rx,
+        } = connections.remove(&connection_id).unwrap()
+        {
+            let handle_io = self.handle_io(
+                connection_id,
+                conn,
+                state.response_channels.clone(),
+                incoming_tx,
+                first_outgoing,
+                outgoing_rx,
+            );
+            connections.insert(connection_id, Connection::Opened(state));
+            Ok(handle_io)
+        } else {
+            unreachable!()
+        }
+    }
+
+    fn handle_io(
+        self: &Arc<Self>,
+        connection_id: ConnectionId,
+        connection: Conn,
+        response_channels: Arc<Mutex<HashMap<u32, mpsc::Sender<proto::Envelope>>>>,
+        mut incoming_tx: mpsc::Sender<Box<dyn AnyTypedEnvelope>>,
+        first_outgoing: Option<proto::Envelope>,
+        mut outgoing_rx: mpsc::Receiver<proto::Envelope>,
+    ) -> impl Send + Future<Output = Result<()>> {
         let this = self.clone();
-        let response_channels = connection.response_channels.clone();
-        let handle_io = async move {
+        async move {
+            let mut writer = MessageStream::new(connection.tx);
+            let mut reader = MessageStream::new(connection.rx);
+            let mut outgoing = stream::iter(first_outgoing).chain(&mut outgoing_rx);
             loop {
                 let read_message = reader.read_message().fuse();
                 futures::pin_mut!(read_message);
@@ -140,9 +210,8 @@ impl Peer {
                                 } else {
                                     if let Some(envelope) = proto::build_typed_envelope(connection_id, incoming) {
                                         if incoming_tx.send(envelope).await.is_err() {
-                                            response_channels.lock().await.clear();
-                                            this.connections.write().await.remove(&connection_id);
-                                            return Ok(())
+                                            this.disconnect(connection_id).await;
+                                            return Ok(());
                                         }
                                     } else {
                                         log::error!("unable to construct a typed envelope");
@@ -152,40 +221,51 @@ impl Peer {
                                 break;
                             }
                             Err(error) => {
-                                response_channels.lock().await.clear();
-                                this.connections.write().await.remove(&connection_id);
-                                Err(error).context("received invalid RPC message")?;
+                                this.close_connection(connection_id, incoming_tx, None, outgoing_rx).await;
+                                return Err(error).context("received invalid RPC message");
                             }
                         },
-                        outgoing = outgoing_rx.recv().fuse() => match outgoing {
+                        outgoing = outgoing.next().fuse() => match outgoing {
                             Some(outgoing) => {
                                 if let Err(result) = writer.write_message(&outgoing).await {
-                                    response_channels.lock().await.clear();
-                                    this.connections.write().await.remove(&connection_id);
-                                    Err(result).context("failed to write RPC message")?;
+                                    this.close_connection(connection_id, incoming_tx, Some(outgoing), outgoing_rx).await;
+                                    return Err(result).context("failed to write RPC message");
                                 }
                             }
                             None => {
-                                response_channels.lock().await.clear();
-                                this.connections.write().await.remove(&connection_id);
+                                this.disconnect(connection_id).await;
                                 return Ok(())
                             }
                         }
                     }
                 }
             }
-        };
-
-        self.connections
-            .write()
-            .await
-            .insert(connection_id, connection);
-
-        (connection_id, handle_io, incoming_rx)
+        }
     }
 
     pub async fn disconnect(&self, connection_id: ConnectionId) {
         self.connections.write().await.remove(&connection_id);
+    }
+
+    async fn close_connection(
+        &self,
+        connection_id: ConnectionId,
+        incoming_tx: mpsc::Sender<Box<dyn AnyTypedEnvelope>>,
+        first_outgoing: Option<proto::Envelope>,
+        outgoing_rx: mpsc::Receiver<proto::Envelope>,
+    ) {
+        let mut connections = self.connections.write().await;
+        if let Some(Connection::Opened(state)) = connections.remove(&connection_id) {
+            connections.insert(
+                connection_id,
+                Connection::Closed {
+                    state,
+                    first_outgoing,
+                    incoming_tx,
+                    outgoing_rx,
+                },
+            );
+        }
     }
 
     pub async fn reset(&self) {
@@ -218,7 +298,7 @@ impl Peer {
         let this = self.clone();
         let (tx, mut rx) = mpsc::channel(1);
         async move {
-            let mut connection = this.connection(receiver_id).await?;
+            let mut connection = this.connection_state(receiver_id).await?;
             let message_id = connection
                 .next_message_id
                 .fetch_add(1, atomic::Ordering::SeqCst);
@@ -252,7 +332,7 @@ impl Peer {
     ) -> impl Future<Output = Result<()>> {
         let this = self.clone();
         async move {
-            let mut connection = this.connection(receiver_id).await?;
+            let mut connection = this.connection_state(receiver_id).await?;
             let message_id = connection
                 .next_message_id
                 .fetch_add(1, atomic::Ordering::SeqCst);
@@ -272,7 +352,7 @@ impl Peer {
     ) -> impl Future<Output = Result<()>> {
         let this = self.clone();
         async move {
-            let mut connection = this.connection(receiver_id).await?;
+            let mut connection = this.connection_state(receiver_id).await?;
             let message_id = connection
                 .next_message_id
                 .fetch_add(1, atomic::Ordering::SeqCst);
@@ -291,7 +371,7 @@ impl Peer {
     ) -> impl Future<Output = Result<()>> {
         let this = self.clone();
         async move {
-            let mut connection = this.connection(receipt.sender_id).await?;
+            let mut connection = this.connection_state(receipt.sender_id).await?;
             let message_id = connection
                 .next_message_id
                 .fetch_add(1, atomic::Ordering::SeqCst);
@@ -310,7 +390,7 @@ impl Peer {
     ) -> impl Future<Output = Result<()>> {
         let this = self.clone();
         async move {
-            let mut connection = this.connection(receipt.sender_id).await?;
+            let mut connection = this.connection_state(receipt.sender_id).await?;
             let message_id = connection
                 .next_message_id
                 .fetch_add(1, atomic::Ordering::SeqCst);
@@ -322,17 +402,21 @@ impl Peer {
         }
     }
 
-    fn connection(
+    fn connection_state(
         self: &Arc<Self>,
         connection_id: ConnectionId,
-    ) -> impl Future<Output = Result<Connection>> {
+    ) -> impl Future<Output = Result<ConnectionState>> {
         let this = self.clone();
         async move {
             let connections = this.connections.read().await;
             let connection = connections
                 .get(&connection_id)
                 .ok_or_else(|| anyhow!("no such connection: {}", connection_id))?;
-            Ok(connection.clone())
+            let state = match connection {
+                Connection::Opened(state) => state,
+                Connection::Closed { state, .. } => state,
+            };
+            Ok(state.clone())
         }
     }
 }
@@ -342,7 +426,6 @@ mod tests {
     use super::*;
     use crate::TypedEnvelope;
     use async_tungstenite::tungstenite::Message as WebSocketMessage;
-    use futures::StreamExt as _;
 
     #[test]
     fn test_request_response() {
@@ -353,14 +436,12 @@ mod tests {
             let client2 = Peer::new();
 
             let (client1_to_server_conn, server_to_client_1_conn, _) = Conn::in_memory();
-            let (client1_conn_id, io_task1, _) =
-                client1.add_connection(client1_to_server_conn).await;
-            let (_, io_task2, incoming1) = server.add_connection(server_to_client_1_conn).await;
+            let (client1_conn_id, io_task1, _) = client1.connect(client1_to_server_conn).await;
+            let (_, io_task2, incoming1) = server.connect(server_to_client_1_conn).await;
 
             let (client2_to_server_conn, server_to_client_2_conn, _) = Conn::in_memory();
-            let (client2_conn_id, io_task3, _) =
-                client2.add_connection(client2_to_server_conn).await;
-            let (_, io_task4, incoming2) = server.add_connection(server_to_client_2_conn).await;
+            let (client2_conn_id, io_task3, _) = client2.connect(client2_to_server_conn).await;
+            let (_, io_task4, incoming2) = server.connect(server_to_client_2_conn).await;
 
             smol::spawn(io_task1).detach();
             smol::spawn(io_task2).detach();
@@ -489,8 +570,7 @@ mod tests {
             let (client_conn, mut server_conn, _) = Conn::in_memory();
 
             let client = Peer::new();
-            let (connection_id, io_handler, mut incoming) =
-                client.add_connection(client_conn).await;
+            let (connection_id, io_handler, mut incoming) = client.connect(client_conn).await;
 
             let (mut io_ended_tx, mut io_ended_rx) = postage::barrier::channel();
             smol::spawn(async move {
@@ -518,14 +598,60 @@ mod tests {
     }
 
     #[test]
+    fn test_reconnect() {
+        smol::block_on(async move {
+            let (client_conn, server_conn, mut kill_conn) = Conn::in_memory();
+
+            let client = Peer::new();
+            let (conn_to_server_id, client_io_handler, _client_incoming) =
+                client.connect(client_conn).await;
+            let client_io_handler = smol::spawn(client_io_handler);
+
+            let server = Peer::new();
+            let (conn_to_client_id, server_io_handler, mut server_incoming) =
+                server.connect(server_conn).await;
+            let server_io_handler = smol::spawn(server_io_handler);
+
+            let client_ping = smol::spawn(client.request(conn_to_server_id, proto::Ping {}));
+            let server_ping = server_incoming.next().await.unwrap();
+            let server_ping: Box<TypedEnvelope<proto::Ping>> =
+                server_ping.into_any().downcast().unwrap();
+
+            kill_conn.blocking_send(Some(())).unwrap();
+            client_io_handler.await.unwrap_err();
+            server_io_handler.await.unwrap_err();
+            server
+                .respond(server_ping.receipt(), proto::Ack {})
+                .await
+                .unwrap();
+
+            let (client_conn, server_conn, _) = Conn::in_memory();
+            smol::spawn(
+                client
+                    .reconnect(conn_to_server_id, client_conn)
+                    .await
+                    .unwrap(),
+            )
+            .detach();
+            smol::spawn(
+                server
+                    .reconnect(conn_to_client_id, server_conn)
+                    .await
+                    .unwrap(),
+            )
+            .detach();
+            assert_eq!(client_ping.await.unwrap(), proto::Ack {});
+        });
+    }
+
+    #[test]
     fn test_io_error() {
         smol::block_on(async move {
             let (client_conn, server_conn, _) = Conn::in_memory();
             drop(server_conn);
 
             let client = Peer::new();
-            let (connection_id, io_handler, mut incoming) =
-                client.add_connection(client_conn).await;
+            let (connection_id, io_handler, mut incoming) = client.connect(client_conn).await;
             smol::spawn(io_handler).detach();
             smol::spawn(async move { incoming.next().await }).detach();
 
