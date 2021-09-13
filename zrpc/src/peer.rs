@@ -85,7 +85,7 @@ pub struct Peer {
 
 enum Connection {
     Ready(ConnectionState),
-    Paused {
+    Suspended {
         state: ConnectionState,
         first_outgoing: Option<proto::Envelope>,
         incoming_tx: mpsc::Sender<Box<dyn AnyTypedEnvelope>>,
@@ -157,7 +157,7 @@ impl Peer {
             return Err(anyhow!("connection is still open or does not exist"));
         }
 
-        if let Connection::Paused {
+        if let Connection::Suspended {
             state,
             first_outgoing,
             incoming_tx,
@@ -221,14 +221,14 @@ impl Peer {
                                 break;
                             }
                             Err(error) => {
-                                this.pause_connection(connection_id, incoming_tx, None, outgoing_rx).await;
+                                this.suspend_connection(connection_id, incoming_tx, None, outgoing_rx).await;
                                 return Err(error).context("received invalid RPC message");
                             }
                         },
                         outgoing = outgoing.next().fuse() => match outgoing {
                             Some(outgoing) => {
                                 if let Err(result) = writer.write_message(&outgoing).await {
-                                    this.pause_connection(connection_id, incoming_tx, Some(outgoing), outgoing_rx).await;
+                                    this.suspend_connection(connection_id, incoming_tx, Some(outgoing), outgoing_rx).await;
                                     return Err(result).context("failed to write RPC message");
                                 }
                             }
@@ -247,7 +247,7 @@ impl Peer {
         self.connections.write().await.remove(&connection_id);
     }
 
-    async fn pause_connection(
+    async fn suspend_connection(
         &self,
         connection_id: ConnectionId,
         incoming_tx: mpsc::Sender<Box<dyn AnyTypedEnvelope>>,
@@ -258,7 +258,7 @@ impl Peer {
         if let Some(Connection::Ready(state)) = connections.remove(&connection_id) {
             connections.insert(
                 connection_id,
-                Connection::Paused {
+                Connection::Suspended {
                     state,
                     first_outgoing,
                     incoming_tx,
@@ -414,7 +414,7 @@ impl Peer {
                 .ok_or_else(|| anyhow!("no such connection: {}", connection_id))?;
             let state = match connection {
                 Connection::Ready(state) => state,
-                Connection::Paused { state, .. } => state,
+                Connection::Suspended { state, .. } => state,
             };
             Ok(state.clone())
         }

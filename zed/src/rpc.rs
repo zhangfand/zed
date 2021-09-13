@@ -6,6 +6,7 @@ use lazy_static::lazy_static;
 use parking_lot::RwLock;
 use postage::{prelude::Stream, watch};
 use rand::prelude::*;
+use smol::future::FutureExt;
 use std::{
     any::TypeId,
     collections::HashMap,
@@ -53,11 +54,14 @@ pub enum Status {
         connection_id: ConnectionId,
         user_id: u64,
     },
-    ConnectionLost {
+    ConnectionSuspended {
         connection_id: ConnectionId,
         connection_token: u128,
         user_id: u64,
         access_token: String,
+    },
+    ConnectionLost {
+        user_id: u64,
     },
     Reauthenticating,
     Reconnecting {
@@ -77,6 +81,7 @@ struct ClientState {
     >,
     _maintain_connection: Option<Task<()>>,
     heartbeat_interval: Duration,
+    grace_period: Duration,
 }
 
 #[derive(Clone)]
@@ -123,6 +128,7 @@ impl Default for ClientState {
             model_handlers: Default::default(),
             _maintain_connection: None,
             heartbeat_interval: Duration::from_secs(5),
+            grace_period: Duration::from_secs(5),
         }
     }
 }
@@ -193,43 +199,74 @@ impl Client {
                     }
                 }));
             }
-            Status::ConnectionLost {
+            Status::ConnectionSuspended {
                 user_id,
                 access_token,
                 connection_id,
                 connection_token,
             } => {
                 let this = self.clone();
-                let foreground = cx.foreground();
-                let heartbeat_interval = state.heartbeat_interval;
-                let mut connection_opts = ConnectionOptions {
+                let grace_period = state.grace_period;
+                let connection_opts = ConnectionOptions {
                     user_id,
                     access_token,
                     connection_token,
                     is_reconnection: true,
                 };
+                state._maintain_connection = Some(cx.spawn(|cx| {
+                    let reconnect = {
+                        let foreground = cx.foreground();
+                        let cx = cx.clone();
+                        let this = this.clone();
+                        async move {
+                            let mut rng = StdRng::from_entropy();
+                            let mut delay = Duration::from_millis(100);
+                            loop {
+                                match this.connect(&connection_opts, &cx).await {
+                                    Ok(conn) => {
+                                        // TODO: use Peer::reconnect.
+                                        break;
+                                    }
+                                    Err(ConnectError::ReconnectFailed) => {
+                                        this.set_status(Status::ConnectionLost { user_id }, &cx);
+                                        break;
+                                    }
+                                    Err(err) => {
+                                        log::error!("failed to reconnect {}", err);
+                                    }
+                                }
+
+                                foreground.timer(delay).await;
+                                delay = delay.mul_f32(rng.gen_range(1.0..=2.0)).min(grace_period);
+                            }
+                            Ok(())
+                        }
+                    };
+
+                    let timer = {
+                        let foreground = cx.foreground();
+                        async move {
+                            foreground.timer(grace_period).await;
+                            Err(anyhow!(""))
+                        }
+                    };
+
+                    async move {
+                        if let Err(_) = timer.race(reconnect).await {
+                            this.set_status(Status::ConnectionLost { user_id }, &cx);
+                        }
+                    }
+                }));
+            }
+            Status::ConnectionLost { .. } => {
+                let this = self.clone();
+                let foreground = cx.foreground();
+                let heartbeat_interval = state.heartbeat_interval;
                 state._maintain_connection = Some(cx.spawn(|cx| async move {
                     let mut rng = StdRng::from_entropy();
                     let mut delay = Duration::from_millis(100);
-                    loop {
-                        if connection_opts.is_reconnection {
-                            match this.connect(&connection_opts, &cx).await {
-                                Ok(conn) => {
-                                    // TODO: use Peer::reconnect.
-                                    break;
-                                }
-                                Err(ConnectError::ReconnectFailed) => {
-                                    connection_opts.is_reconnection = false;
-                                }
-                                Err(err) => log::error!("failed to reconnect {}", err),
-                            }
-                        } else {
-                            match this.authenticate_and_connect(&cx).await {
-                                Ok(()) => break,
-                                Err(err) => log::error!("failed to reconnect {}", err),
-                            }
-                        }
-
+                    while let Err(err) = this.authenticate_and_connect(&cx).await {
+                        log::error!("failed to reconnect {}", err);
                         this.set_status(
                             Status::ReconnectionError {
                                 next_reconnection: Instant::now() + delay,
@@ -311,6 +348,7 @@ impl Client {
             Status::Disconnected => true,
             Status::ConnectionError
             | Status::ConnectionLost { .. }
+            | Status::ConnectionSuspended { .. }
             | Status::ReconnectionError { .. } => false,
             Status::Connected { .. }
             | Status::Connecting { .. }
@@ -417,7 +455,7 @@ impl Client {
                     Err(err) => {
                         log::error!("connection error: {:?}", err);
                         this.set_status(
-                            Status::ConnectionLost {
+                            Status::ConnectionSuspended {
                                 connection_token: opts.connection_token,
                                 connection_id,
                                 user_id: opts.user_id,
