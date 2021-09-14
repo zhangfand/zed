@@ -229,7 +229,21 @@ impl Client {
                             loop {
                                 match this.establish_connection(&connection_opts, &cx).await {
                                     Ok(conn) => {
-                                        // TODO: use Peer::reconnect.
+                                        if let Ok(io_work) =
+                                            this.peer.resume_connection(connection_id, conn).await
+                                        {
+                                            this.maintain_connection_status(
+                                                connection_id,
+                                                connection_opts,
+                                                cx.background().spawn(io_work),
+                                                &cx,
+                                            );
+                                        } else {
+                                            this.set_status(
+                                                Status::ConnectionLost { user_id },
+                                                &cx,
+                                            );
+                                        }
                                         break;
                                     }
                                     Err(ConnectError::ReconnectRejected) => {
@@ -259,6 +273,7 @@ impl Client {
                     async move {
                         if let Err(_) = timer.race(reconnect).await {
                             this.set_status(Status::ConnectionLost { user_id }, &cx);
+                            this.peer.remove_connection(connection_id).await;
                         }
                     }
                 }));
