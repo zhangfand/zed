@@ -467,12 +467,12 @@ async fn test_diagnostics(mut cx: gpui::TestAppContext) {
                 Diagnostic {
                     range: Point::new(3, 9)..Point::new(3, 11),
                     severity: DiagnosticSeverity::ERROR,
-                    message: "undefined variable 'BB'".to_string()
+                    message: "undefined variable 'BB'"
                 },
                 Diagnostic {
                     range: Point::new(4, 9)..Point::new(4, 12),
                     severity: DiagnosticSeverity::ERROR,
-                    message: "undefined variable 'CCC'".to_string()
+                    message: "undefined variable 'CCC'"
                 }
             ]
         );
@@ -526,12 +526,12 @@ async fn test_diagnostics(mut cx: gpui::TestAppContext) {
                 Diagnostic {
                     range: Point::new(2, 9)..Point::new(2, 12),
                     severity: DiagnosticSeverity::WARNING,
-                    message: "unreachable statement".to_string()
+                    message: "unreachable statement"
                 },
                 Diagnostic {
                     range: Point::new(2, 9)..Point::new(2, 10),
                     severity: DiagnosticSeverity::ERROR,
-                    message: "undefined variable 'A'".to_string()
+                    message: "undefined variable 'A'"
                 },
             ]
         );

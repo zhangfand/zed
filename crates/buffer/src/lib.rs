@@ -1650,7 +1650,7 @@ impl<'a> From<&'a Content<'a>> for Content<'a> {
 }
 
 impl<'a> Content<'a> {
-    fn max_point(&self) -> Point {
+    pub fn max_point(&self) -> Point {
         self.visible_text.max_point()
     }
 
@@ -1674,7 +1674,7 @@ impl<'a> Content<'a> {
         self.visible_text.chunks_in_range(start..end)
     }
 
-    fn line_len(&self, row: u32) -> u32 {
+    pub fn line_len(&self, row: u32) -> u32 {
         let row_start_offset = Point::new(row, 0).to_offset(self);
         let row_end_offset = if row >= self.max_point().row {
             self.len()

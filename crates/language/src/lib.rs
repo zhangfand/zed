@@ -22,7 +22,7 @@ use smol::future::yield_now;
 use std::{
     any::Any,
     cell::RefCell,
-    cmp,
+    cmp::{self, Ordering},
     collections::{BTreeMap, HashMap, HashSet},
     ffi::OsString,
     future::Future,
@@ -62,7 +62,7 @@ pub struct Buffer {
     syntax_tree: Mutex<Option<SyntaxTree>>,
     parsing_in_background: bool,
     parse_count: usize,
-    diagnostics: AnchorRangeMultimap<(DiagnosticSeverity, String)>,
+    diagnostics: Arc<DiagnosticSet>,
     diagnostics_update_count: usize,
     language_server: Option<LanguageServerState>,
     #[cfg(test)]
@@ -72,17 +72,23 @@ pub struct Buffer {
 pub struct Snapshot {
     text: buffer::Snapshot,
     tree: Option<Tree>,
-    diagnostics: AnchorRangeMultimap<(DiagnosticSeverity, String)>,
+    diagnostics: Arc<DiagnosticSet>,
     is_parsing: bool,
     language: Option<Arc<Language>>,
     query_cursor: QueryCursorHandle,
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct Diagnostic {
-    pub range: Range<Point>,
+pub struct Diagnostic<'a, T> {
+    pub range: Range<T>,
     pub severity: DiagnosticSeverity,
-    pub message: String,
+    pub message: &'a str,
+}
+
+#[derive(Default)]
+struct DiagnosticSet {
+    in_memory: AnchorRangeMultimap<(DiagnosticSeverity, String)>,
+    on_disk: AnchorRangeMultimap<(DiagnosticSeverity, String)>,
 }
 
 struct LanguageServerState {
@@ -208,7 +214,7 @@ struct Diff {
     changes: Vec<(ChangeTag, usize)>,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 struct DiagnosticEndpoint {
     offset: usize,
     is_start: bool,
@@ -650,6 +656,39 @@ impl Buffer {
         diagnostics: Vec<lsp::Diagnostic>,
         cx: &mut ModelContext<Self>,
     ) -> Result<()> {
+        fn from_lsp_diagnostics(
+            diagnostics: Vec<lsp::Diagnostic>,
+            content: &Content,
+        ) -> AnchorRangeMultimap<(lsp::DiagnosticSeverity, String)> {
+            let max_point = content.max_point();
+            content.anchor_range_multimap(
+                Bias::Left,
+                Bias::Right,
+                diagnostics.into_iter().filter_map(|diagnostic| {
+                    // TODO: Use UTF-16 positions.
+                    let start = Point::new(
+                        diagnostic.range.start.line,
+                        diagnostic.range.start.character,
+                    );
+                    let end = Point::new(diagnostic.range.end.line, diagnostic.range.end.character);
+                    let severity = diagnostic.severity.unwrap_or(DiagnosticSeverity::ERROR);
+                    if start < max_point
+                        && end < max_point
+                        && start.column <= content.line_len(start.row)
+                        && end.column <= content.line_len(end.row)
+                    {
+                        Some((start..end, (severity, diagnostic.message)))
+                    } else {
+                        None
+                    }
+                }),
+            )
+        }
+
+        let language = self
+            .language
+            .as_ref()
+            .ok_or_else(|| anyhow!("missing language"))?;
         let version = version.map(|version| version as usize);
         let content = if let Some(version) = version {
             let language_server = self.language_server.as_mut().unwrap();
@@ -661,20 +700,25 @@ impl Buffer {
         } else {
             self.content()
         };
-        self.diagnostics = content.anchor_range_multimap(
-            Bias::Left,
-            Bias::Right,
-            diagnostics.into_iter().map(|diagnostic| {
-                // TODO: Use UTF-16 positions.
-                let start = Point::new(
-                    diagnostic.range.start.line,
-                    diagnostic.range.start.character,
-                );
-                let end = Point::new(diagnostic.range.end.line, diagnostic.range.end.character);
-                let severity = diagnostic.severity.unwrap_or(DiagnosticSeverity::ERROR);
-                (start..end, (severity, diagnostic.message))
-            }),
-        );
+
+        let empty_disk_sources = HashSet::new();
+        let disk_sources = language
+            .disk_based_diagnostic_sources()
+            .unwrap_or(&empty_disk_sources);
+        let (disk_diagnostics, memory_diagnostics) = diagnostics
+            .into_iter()
+            .partition::<Vec<_>, _>(|diagnostic| {
+                diagnostic
+                    .source
+                    .as_ref()
+                    .map_or(false, |source| disk_sources.contains(source))
+            });
+
+        self.diagnostics = Arc::new(DiagnosticSet {
+            in_memory: from_lsp_diagnostics(memory_diagnostics, &content),
+            // TODO: store a snapshot for the last saved version and try using that instead.
+            on_disk: from_lsp_diagnostics(disk_diagnostics, &content),
+        });
 
         if let Some(version) = version {
             let language_server = self.language_server.as_mut().unwrap();
@@ -693,19 +737,16 @@ impl Buffer {
         Ok(())
     }
 
-    pub fn diagnostics_in_range<'a, T: ToOffset>(
+    pub fn diagnostics_in_range<'a, T, O>(
         &'a self,
         range: Range<T>,
-    ) -> impl Iterator<Item = Diagnostic> + 'a {
-        let content = self.content();
-        let range = range.start.to_offset(&content)..range.end.to_offset(&content);
-        self.diagnostics
-            .intersecting_ranges(range, content, true)
-            .map(move |(_, range, (severity, message))| Diagnostic {
-                range,
-                severity: *severity,
-                message: message.clone(),
-            })
+    ) -> impl Iterator<Item = Diagnostic<O>> + 'a
+    where
+        T: 'a + ToOffset + Clone,
+        O: 'a + FromAnchor + Ord,
+    {
+        // TODO: Use the on-disk content.
+        self.diagnostics.range(range, self.content())
     }
 
     pub fn diagnostics_update_count(&self) -> usize {
@@ -1498,19 +1539,16 @@ impl Snapshot {
         let range = range.start.to_offset(&*self)..range.end.to_offset(&*self);
 
         let mut diagnostic_endpoints = Vec::<DiagnosticEndpoint>::new();
-        for (_, range, (severity, _)) in
-            self.diagnostics
-                .intersecting_ranges(range.clone(), self.content(), true)
-        {
+        for diagnostic in self.diagnostics.range(range.clone(), self.content()) {
             diagnostic_endpoints.push(DiagnosticEndpoint {
-                offset: range.start,
+                offset: diagnostic.range.start,
                 is_start: true,
-                severity: *severity,
+                severity: diagnostic.severity,
             });
             diagnostic_endpoints.push(DiagnosticEndpoint {
-                offset: range.end,
+                offset: diagnostic.range.end,
                 is_start: false,
-                severity: *severity,
+                severity: diagnostic.severity,
             });
         }
         diagnostic_endpoints.sort_unstable_by_key(|endpoint| endpoint.offset);
@@ -1566,6 +1604,49 @@ impl Deref for Snapshot {
 
     fn deref(&self) -> &Self::Target {
         &self.text
+    }
+}
+
+impl DiagnosticSet {
+    pub fn range<'a, T, O>(
+        &'a self,
+        range: Range<T>,
+        content: Content<'a>,
+    ) -> impl Iterator<Item = Diagnostic<O>> + 'a
+    where
+        T: 'a + ToOffset + Clone,
+        O: 'a + FromAnchor + Ord,
+    {
+        let mut in_memory = self
+            .in_memory
+            .intersecting_ranges::<_, O>(range.clone(), content.clone(), true)
+            .peekable();
+        let mut on_disk = self
+            .on_disk
+            .intersecting_ranges::<_, O>(range, content, true)
+            .peekable();
+        std::iter::from_fn(move || {
+            let diagnostic = match (in_memory.peek(), on_disk.peek()) {
+                (Some((_, in_memory_range, _)), Some((_, on_disk_range, _))) => {
+                    match in_memory_range
+                        .start
+                        .cmp(&on_disk_range.start)
+                        .then(in_memory_range.end.cmp(&on_disk_range.end).reverse())
+                    {
+                        Ordering::Less | Ordering::Equal => in_memory.next(),
+                        Ordering::Greater => on_disk.next(),
+                    }
+                }
+                (Some(_), None) => in_memory.next(),
+                (None, Some(_)) => on_disk.next(),
+                (None, None) => None,
+            };
+            diagnostic.map(|(_, range, (severity, message))| Diagnostic {
+                range,
+                severity: *severity,
+                message,
+            })
+        })
     }
 }
 
