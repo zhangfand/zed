@@ -78,8 +78,8 @@ fn test_random_edits(mut rng: StdRng) {
 
     for mut old_buffer in buffer_versions {
         for _ in 0..5 {
-            let offset = buffer.clip_offset(rng.gen_range(0..buffer.len()), Bias::Left);
-            let point = offset.to_point(&buffer);
+            let offset = old_buffer.clip_offset(rng.gen_range(0..=old_buffer.len()), Bias::Left);
+            let point = offset.to_point(&old_buffer);
             let bias = if rng.gen_bool(0.5) {
                 Bias::Left
             } else {
@@ -90,9 +90,9 @@ fn test_random_edits(mut rng: StdRng) {
             let offset1 = old_buffer
                 .anchor_at(point, bias)
                 .to_full_offset(&buffer, bias);
-            let offset2 = buffer
-                .versioned_anchor_at(point, bias, old_buffer.version)
-                .full_offset;
+            // let offset2 = buffer
+            //     .versioned_anchor_at(point, bias, old_buffer.version)
+            //     .full_offset;
         }
 
         let edits = buffer
