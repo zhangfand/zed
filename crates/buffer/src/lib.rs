@@ -2490,11 +2490,28 @@ pub trait ToOffset {
         cursor.seek(&offset, bias, &None);
         offset + cursor.start().deleted_bytes
     }
+
+    fn to_full_offset_from_version<'a>(
+        &self,
+        content: impl Into<Content<'a>>,
+        bias: Bias,
+        version: clock::Global,
+    ) -> usize;
 }
 
 impl ToOffset for Point {
     fn to_offset<'a>(&self, content: impl Into<Content<'a>>) -> usize {
         content.into().visible_text.to_offset(*self)
+    }
+
+    fn to_full_offset_from_version<'a>(
+        &self,
+        content: impl Into<Content<'a>>,
+        bias: Bias,
+        version: clock::Global,
+    ) -> usize {
+        let content = content.into();
+        todo!()
     }
 }
 
@@ -2503,17 +2520,44 @@ impl ToOffset for usize {
         assert!(*self <= content.into().len(), "offset is out of range");
         *self
     }
+
+    fn to_full_offset_from_version<'a>(
+        &self,
+        content: impl Into<Content<'a>>,
+        bias: Bias,
+        version: clock::Global,
+    ) -> usize {
+        todo!()
+    }
 }
 
 impl ToOffset for Anchor {
     fn to_offset<'a>(&self, content: impl Into<Content<'a>>) -> usize {
         content.into().summary_for_anchor(self).bytes
     }
+
+    fn to_full_offset_from_version<'a>(
+        &self,
+        content: impl Into<Content<'a>>,
+        bias: Bias,
+        version: clock::Global,
+    ) -> usize {
+        todo!()
+    }
 }
 
 impl<'a> ToOffset for &'a Anchor {
     fn to_offset<'b>(&self, content: impl Into<Content<'b>>) -> usize {
         content.into().summary_for_anchor(self).bytes
+    }
+
+    fn to_full_offset_from_version<'b>(
+        &self,
+        content: impl Into<Content<'b>>,
+        bias: Bias,
+        version: clock::Global,
+    ) -> usize {
+        todo!()
     }
 }
 
