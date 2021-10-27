@@ -77,6 +77,15 @@ fn test_random_edits(mut rng: StdRng) {
     }
 
     for mut old_buffer in buffer_versions {
+        for _ in rng.gen_range(0..5) {
+            let offset1 = old_buffer
+                .create_anchor(location)
+                .to_full_offset(new_buffer);
+            let offset2 = new_buffer
+                .create_anchor_at(location, old_buffer.version)
+                .full_offset;
+        }
+
         let edits = buffer
             .edits_since(old_buffer.version.clone())
             .collect::<Vec<_>>();
