@@ -1,3 +1,4 @@
+mod bitset;
 mod fold_map;
 mod tab_map;
 mod wrap_map;
