@@ -82,7 +82,9 @@ pub struct Chunks<'a> {
     input_chunk: Chunk<'a>,
     block_chunks: Option<BlockChunks<'a>>,
     output_position: BlockPoint,
+    buffer_position: Point,
     max_output_position: BlockPoint,
+    yield_empty_chunk: bool,
 }
 
 struct BlockChunks<'a> {
@@ -432,7 +434,7 @@ impl BlockSnapshot {
         let max_output_position = self.max_point().min(BlockPoint::new(rows.end, 0));
         let mut cursor = self.transforms.cursor::<(BlockPoint, WrapPoint)>();
         let output_position = BlockPoint::new(rows.start, 0);
-        cursor.seek(&output_position, Bias::Right, &());
+        cursor.seek(&output_position, Bias::Left, &());
         let (input_start, output_start) = cursor.start();
         let row_overshoot = rows.start - output_start.0.row;
         let input_start_row = input_start.0.row + row_overshoot;
@@ -440,6 +442,9 @@ impl BlockSnapshot {
         let input_chunks = self
             .wrap_snapshot
             .chunks(input_start_row..input_end_row, highlights);
+        let buffer_position = self
+            .wrap_snapshot
+            .to_point(WrapPoint::new(input_start_row, 0), Bias::Left);
         Chunks {
             input_chunks,
             input_chunk: Default::default(),
@@ -447,6 +452,8 @@ impl BlockSnapshot {
             transforms: cursor,
             output_position,
             max_output_position,
+            buffer_position,
+            yield_empty_chunk: true,
         }
     }
 
@@ -550,9 +557,17 @@ impl<'a> Iterator for Chunks<'a> {
     type Item = Chunk<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.output_position >= self.max_output_position {
-            return None;
-        }
+        // if self.output_position >= self.max_output_position {
+        //     if self.yield_empty_chunk_at_end {
+        //         self.yield_empty_chunk_at_end = false;
+        //         return Some(Chunk {
+        //             position: Some(Point::zero()),
+        //             ..Default::default()
+        //         });
+        //     } else {
+        //         return None;
+        //     }
+        // }
 
         if let Some(block_chunks) = self.block_chunks.as_mut() {
             if let Some(block_chunk) = block_chunks.next() {
@@ -580,6 +595,14 @@ impl<'a> Iterator for Chunks<'a> {
         if self.input_chunk.text.is_empty() {
             if let Some(input_chunk) = self.input_chunks.next() {
                 self.input_chunk = input_chunk;
+            } else if self.yield_empty_chunk {
+                self.yield_empty_chunk = false;
+                self.input_chunk = Chunk {
+                    position: Some(self.buffer_position),
+                    ..Default::default()
+                };
+            } else {
+                return None;
             }
         }
 
@@ -592,6 +615,7 @@ impl<'a> Iterator for Chunks<'a> {
         self.output_position.0 += prefix_lines;
         if let Some(position) = self.input_chunk.position.as_mut() {
             *position += prefix_lines;
+            self.buffer_position = *position;
         }
         let (prefix, suffix) = self.input_chunk.text.split_at(prefix_bytes);
         self.input_chunk.text = suffix;
@@ -1105,6 +1129,7 @@ mod tests {
                 assert_eq!(blocks_snapshot.to_wrap_point(block_point), wrap_point);
             }
 
+            dbg!(blocks_snapshot.transforms.items(&()));
             assert_eq!(
                 buffer_rows_from_chunks(
                     blocks_snapshot.chunks(0..blocks_snapshot.max_point().row + 1, false)
@@ -1130,9 +1155,11 @@ mod tests {
                 if chunk_row > 0 {
                     chunk_offset += 1;
                     buffer_rows.push(buffer_row_for_current_row);
-                    buffer_row_for_current_row = None;
                     if let Some(position) = position.as_mut() {
                         *position += Point::new(1, 0);
+                        buffer_row_for_current_row = Some(position.row);
+                    } else {
+                        buffer_row_for_current_row = None;
                     }
                 }
 
