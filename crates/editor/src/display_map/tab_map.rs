@@ -175,10 +175,6 @@ impl Snapshot {
         }
     }
 
-    pub fn buffer_rows(&self, row: u32) -> fold_map::BufferRows {
-        self.fold_snapshot.buffer_rows(row)
-    }
-
     #[cfg(test)]
     pub fn text(&self) -> String {
         self.chunks(TabPoint::zero()..self.max_point(), false)

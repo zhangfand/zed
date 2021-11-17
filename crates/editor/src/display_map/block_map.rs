@@ -93,16 +93,6 @@ struct BlockChunks<'a> {
     offset: usize,
 }
 
-pub struct BufferRows<'a> {
-    transforms: sum_tree::Cursor<'a, Transform, (BlockPoint, WrapPoint)>,
-    input_buffer_rows: wrap_map::BufferRows<'a>,
-    input_buffer_row: Option<(u32, bool)>,
-    input_row: u32,
-    output_row: u32,
-    max_output_row: u32,
-    in_block: bool,
-}
-
 impl BlockMap {
     pub fn new(buffer: ModelHandle<Buffer>, wrap_snapshot: WrapSnapshot) -> Self {
         Self {
@@ -460,31 +450,6 @@ impl BlockSnapshot {
         }
     }
 
-    pub fn buffer_rows(&self, start_row: u32) -> BufferRows {
-        let mut transforms = self.transforms.cursor::<(BlockPoint, WrapPoint)>();
-        transforms.seek(&BlockPoint::new(start_row, 0), Bias::Left, &());
-        let mut input_row = transforms.start().1.row();
-        let transform = transforms.item().unwrap();
-        let in_block;
-        if transform.is_isomorphic() {
-            input_row += start_row - transforms.start().0.row;
-            in_block = false;
-        } else {
-            in_block = true;
-        }
-        let mut input_buffer_rows = self.wrap_snapshot.buffer_rows(input_row);
-        let input_buffer_row = input_buffer_rows.next().unwrap();
-        BufferRows {
-            transforms,
-            input_buffer_row: Some(input_buffer_row),
-            input_buffer_rows,
-            input_row,
-            output_row: start_row,
-            max_output_row: self.max_point().row,
-            in_block,
-        }
-    }
-
     pub fn max_point(&self) -> BlockPoint {
         BlockPoint(self.transforms.summary().output)
     }
@@ -707,78 +672,6 @@ impl<'a> Iterator for BlockChunks<'a> {
     }
 }
 
-impl<'a> Iterator for BufferRows<'a> {
-    type Item = (u32, bool);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.output_row > self.max_output_row {
-            return None;
-        }
-
-        let (buffer_row, is_wrapped) = self.input_buffer_row.unwrap();
-        let in_block = self.in_block;
-
-        // log::info!(
-        //     "============== next - (output_row: {}, input_row: {}, buffer_row: {}, in_block: {}) ===============",
-        //     self.output_row,
-        //     self.input_row,
-        //     buffer_row,
-        //     in_block
-        // );
-
-        self.output_row += 1;
-        let output_point = BlockPoint::new(self.output_row, 0);
-        let transform_end = self.transforms.end(&()).0;
-        // if output_point > transform_end || output_point == transform_end && in_block {
-        if output_point >= transform_end {
-            // log::info!("  Calling next once");
-            self.transforms.next(&());
-            if self.transforms.end(&()).0 < output_point {
-                // log::info!("  Calling next twice");
-                self.transforms.next(&());
-            }
-
-            if let Some(transform) = self.transforms.item() {
-                self.in_block = !transform.is_isomorphic();
-            }
-
-            // log::info!(
-            //     "  Advanced to the next transform (block text: {:?}). Output row: {}, Transform starts at: {:?}",
-            //     self.transforms.item().and_then(|t| t.block.as_ref()).map(|b| b.text.to_string()),
-            //     self.output_row,
-            //     self.transforms.start().1
-            // );
-
-            let mut new_input_position = self.transforms.start().1 .0;
-            if self.transforms.item().map_or(false, |t| t.is_isomorphic()) {
-                new_input_position += Point::new(self.output_row, 0) - self.transforms.start().0 .0;
-                new_input_position = cmp::min(new_input_position, self.transforms.end(&()).1 .0);
-            }
-
-            if new_input_position.row > self.input_row {
-                self.input_row = new_input_position.row;
-                self.input_buffer_row = self.input_buffer_rows.next();
-                // log::info!(
-                //     "    Advanced the input buffer row. Input row: {}, Input buffer row {:?}",
-                //     self.input_row,
-                //     self.input_buffer_row
-                // )
-            }
-        } else if self.transforms.item().map_or(true, |t| t.is_isomorphic()) {
-            self.input_row += 1;
-            self.input_buffer_row = self.input_buffer_rows.next();
-            // log::info!(
-            //     "  Advancing in isomorphic transform (off the end: {}). Input row: {}, Input buffer row {:?}",
-            //     self.transforms.item().is_none(),
-            //     self.input_row,
-            //     self.input_buffer_row
-            // )
-        }
-
-        Some((buffer_row, false))
-    }
-}
-
 impl sum_tree::Item for Transform {
     type Summary = TransformSummary;
 
@@ -811,10 +704,6 @@ impl<'a> sum_tree::Dimension<'a, TransformSummary> for BlockPoint {
 impl BlockDisposition {
     fn is_above(&self) -> bool {
         matches!(self, BlockDisposition::Above)
-    }
-
-    fn is_below(&self) -> bool {
-        matches!(self, BlockDisposition::Below)
     }
 }
 
@@ -940,16 +829,8 @@ mod tests {
         );
 
         assert_eq!(
-            snapshot.buffer_rows(0).collect::<Vec<_>>(),
-            &[
-                (0, true),
-                (1, false),
-                (1, false),
-                (1, true),
-                (2, true),
-                (3, true),
-                (3, false),
-            ]
+            buffer_rows_from_chunks(snapshot.chunks(0..snapshot.max_point().row + 1, false)),
+            &[Some(0), None, None, Some(1), Some(2), Some(3), None]
         );
 
         // Insert a line break, separating two block decorations into separate
@@ -1194,7 +1075,7 @@ mod tests {
                         expected_text.push_str(&text);
                         expected_text.push('\n');
                         for _ in text.split('\n') {
-                            expected_buffer_rows.push((buffer_row, false));
+                            expected_buffer_rows.push(None);
                         }
                         sorted_blocks.next();
                     } else {
@@ -1203,7 +1084,7 @@ mod tests {
                 }
 
                 let soft_wrapped = wraps_snapshot.to_tab_point(WrapPoint::new(row, 0)).column() > 0;
-                expected_buffer_rows.push((buffer_row, false));
+                expected_buffer_rows.push(if soft_wrapped { None } else { Some(buffer_row) });
                 expected_text.push_str(input_line);
 
                 while let Some((_, block)) = sorted_blocks.peek() {
@@ -1212,7 +1093,7 @@ mod tests {
                         expected_text.push('\n');
                         expected_text.push_str(&text);
                         for _ in text.split('\n') {
-                            expected_buffer_rows.push((buffer_row, false));
+                            expected_buffer_rows.push(None);
                         }
                         sorted_blocks.next();
                     } else {
@@ -1229,9 +1110,42 @@ mod tests {
             }
 
             assert_eq!(
-                blocks_snapshot.buffer_rows(0).collect::<Vec<_>>(),
+                buffer_rows_from_chunks(
+                    blocks_snapshot.chunks(0..blocks_snapshot.max_point().row + 1, false)
+                ),
                 expected_buffer_rows
             );
         }
+    }
+
+    fn buffer_rows_from_chunks<'a>(chunks: impl Iterator<Item = Chunk<'a>>) -> Vec<Option<u32>> {
+        let mut buffer_rows = Vec::new();
+        let mut buffer_row_for_current_row = None;
+        for chunk in chunks.chain([Chunk {
+            text: "\n",
+            ..Default::default()
+        }]) {
+            let mut position = chunk.position;
+            let mut chunk_offset = 0;
+            for (chunk_row, line) in dbg!(chunk).text.split('\n').enumerate() {
+                if chunk_row > 0 {
+                    chunk_offset += 1;
+                    buffer_rows.push(buffer_row_for_current_row);
+                    buffer_row_for_current_row = None;
+                    if let Some(position) = position.as_mut() {
+                        *position += Point::new(1, 0);
+                    }
+                }
+
+                if chunk_offset < chunk.text.len() {
+                    if let Some(Point { column: 0, row }) = position {
+                        buffer_row_for_current_row = Some(row);
+                    }
+                }
+
+                chunk_offset += line.len();
+            }
+        }
+        buffer_rows
     }
 }

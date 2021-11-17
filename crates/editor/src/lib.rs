@@ -2695,11 +2695,7 @@ impl Snapshot {
         self.display_snapshot.buffer_row_count()
     }
 
-    pub fn buffer_rows(&self, start_row: u32) -> BufferRows {
-        self.display_snapshot.buffer_rows(start_row)
-    }
-
-    pub fn chunks(&mut self, display_rows: Range<u32>) -> display_map::Chunks {
+    pub fn chunks(&self, display_rows: Range<u32>) -> display_map::Chunks {
         self.display_snapshot.chunks(display_rows)
     }
 

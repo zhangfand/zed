@@ -31,6 +31,7 @@ impl FoldPoint {
         self.0.column
     }
 
+    #[cfg(test)]
     pub fn row_mut(&mut self) -> &mut u32 {
         &mut self.0.row
     }
@@ -567,17 +568,6 @@ impl Snapshot {
         (line_end - line_start) as u32
     }
 
-    pub fn buffer_rows(&self, start_row: u32) -> BufferRows {
-        if start_row > self.transforms.summary().output.lines.row {
-            panic!("invalid display row {}", start_row);
-        }
-
-        let fold_point = FoldPoint::new(start_row, 0);
-        let mut cursor = self.transforms.cursor();
-        cursor.seek(&fold_point, Bias::Left, &());
-        BufferRows { fold_point, cursor }
-    }
-
     pub fn max_point(&self) -> FoldPoint {
         FoldPoint(self.transforms.summary().output.lines)
     }
@@ -902,34 +892,6 @@ impl<'a> sum_tree::SeekTarget<'a, FoldSummary, Fold> for Fold {
 impl<'a> sum_tree::Dimension<'a, FoldSummary> for usize {
     fn add_summary(&mut self, summary: &'a FoldSummary, _: &buffer::Snapshot) {
         *self += summary.count;
-    }
-}
-
-pub struct BufferRows<'a> {
-    cursor: Cursor<'a, Transform, (FoldPoint, Point)>,
-    fold_point: FoldPoint,
-}
-
-impl<'a> Iterator for BufferRows<'a> {
-    type Item = u32;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        while self.fold_point > self.cursor.end(&()).0 {
-            self.cursor.next(&());
-            if self.cursor.item().is_none() {
-                // TODO: Return a bool from next?
-                break;
-            }
-        }
-
-        if self.cursor.item().is_some() {
-            let overshoot = self.fold_point.0 - self.cursor.start().0 .0;
-            let buffer_point = self.cursor.start().1 + overshoot;
-            *self.fold_point.row_mut() += 1;
-            Some(buffer_point.row)
-        } else {
-            None
-        }
     }
 }
 
@@ -1377,13 +1339,7 @@ mod tests {
             }
 
             for (idx, buffer_row) in expected_buffer_rows.iter().enumerate() {
-                let fold_row = Point::new(*buffer_row, 0)
-                    .to_fold_point(&snapshot, Right)
-                    .row();
-                assert_eq!(
-                    snapshot.buffer_rows(fold_row).collect::<Vec<_>>(),
-                    expected_buffer_rows[idx..],
-                );
+                // TODO - assert about buffer rows reported by chunks
             }
 
             for fold_range in map.merged_fold_ranges(cx.as_ref()) {
@@ -1476,8 +1432,10 @@ mod tests {
 
         let (snapshot, _) = map.read(cx.as_ref());
         assert_eq!(snapshot.text(), "aa…cccc\nd…eeeee\nffffff\n");
-        assert_eq!(snapshot.buffer_rows(0).collect::<Vec<_>>(), [0, 3, 5, 6]);
-        assert_eq!(snapshot.buffer_rows(3).collect::<Vec<_>>(), [6]);
+
+        // TODO! assert about buffer rows provided by chunks
+        // assert_eq!(snapshot.buffer_rows(0).collect::<Vec<_>>(), [0, 3, 5, 6]);
+        // assert_eq!(snapshot.buffer_rows(3).collect::<Vec<_>>(), [6]);
     }
 
     impl FoldMap {

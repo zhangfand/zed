@@ -2,6 +2,7 @@ use super::{
     DisplayPoint, Editor, EditorMode, EditorSettings, EditorStyle, Input, Scroll, Select,
     SelectPhase, Snapshot, MAX_LINE_LEN,
 };
+use buffer::Point;
 use clock::ReplicaId;
 use gpui::{
     color::Color,
@@ -401,59 +402,19 @@ impl EditorElement {
             .width()
     }
 
-    fn layout_line_numbers(
+    fn layout_lines(
         &self,
-        rows: Range<u32>,
+        mut rows: Range<u32>,
         active_rows: &BTreeMap<u32, bool>,
         snapshot: &Snapshot,
         cx: &LayoutContext,
-    ) -> Vec<Option<text_layout::Line>> {
+    ) -> (Vec<text_layout::Line>, Vec<Option<text_layout::Line>>) {
         let style = &self.settings.style;
-        let mut layouts = Vec::with_capacity(rows.len());
-        let mut line_number = String::new();
-        for (ix, (buffer_row, soft_wrapped)) in snapshot
-            .buffer_rows(rows.start)
-            .take((rows.end - rows.start) as usize)
-            .enumerate()
-        {
-            let display_row = rows.start + ix as u32;
-            let color = if active_rows.contains_key(&display_row) {
-                style.line_number_active
-            } else {
-                style.line_number
-            };
-            if soft_wrapped {
-                layouts.push(None);
-            } else {
-                line_number.clear();
-                write!(&mut line_number, "{}", buffer_row + 1).unwrap();
-                layouts.push(Some(cx.text_layout_cache.layout_str(
-                    &line_number,
-                    style.text.font_size,
-                    &[(
-                        line_number.len(),
-                        RunStyle {
-                            font_id: style.text.font_id,
-                            color,
-                            underline: None,
-                        },
-                    )],
-                )));
-            }
-        }
+        let include_line_numbers = snapshot.mode == EditorMode::Full;
 
-        layouts
-    }
-
-    fn layout_lines(
-        &mut self,
-        mut rows: Range<u32>,
-        snapshot: &mut Snapshot,
-        cx: &LayoutContext,
-    ) -> Vec<text_layout::Line> {
         rows.end = cmp::min(rows.end, snapshot.max_point().row() + 1);
         if rows.start >= rows.end {
-            return Vec::new();
+            return Default::default();
         }
 
         // When the editor is empty and unfocused, then show the placeholder.
@@ -466,30 +427,50 @@ impl EditorElement {
                 .split('\n')
                 .skip(rows.start as usize)
                 .take(rows.len());
-            return placeholder_lines
-                .map(|line| {
-                    cx.text_layout_cache.layout_str(
-                        line,
-                        placeholder_style.font_size,
+            return (
+                placeholder_lines
+                    .map(|line| {
+                        cx.text_layout_cache.layout_str(
+                            line,
+                            placeholder_style.font_size,
+                            &[(
+                                line.len(),
+                                RunStyle {
+                                    font_id: placeholder_style.font_id,
+                                    color: placeholder_style.color,
+                                    underline: None,
+                                },
+                            )],
+                        )
+                    })
+                    .collect(),
+                if include_line_numbers {
+                    vec![Some(cx.text_layout_cache.layout_str(
+                        "1",
+                        style.text.font_size,
                         &[(
-                            line.len(),
+                            1,
                             RunStyle {
-                                font_id: placeholder_style.font_id,
-                                color: placeholder_style.color,
+                                font_id: style.text.font_id,
+                                color: style.line_number,
                                 underline: None,
                             },
                         )],
-                    )
-                })
-                .collect();
+                    ))]
+                } else {
+                    Vec::new()
+                },
+            );
         }
 
-        let style = &self.settings.style;
         let mut prev_font_properties = style.text.font_properties.clone();
         let mut prev_font_id = style.text.font_id;
 
+        let mut line_number_layouts = Vec::with_capacity(rows.len());
         let mut layouts = Vec::with_capacity(rows.len());
         let mut line = String::new();
+        let mut line_number = String::new();
+        let mut buffer_row_for_current_row = None;
         let mut styles = Vec::new();
         let mut row = rows.start;
         let mut line_exceeded_max_len = false;
@@ -500,8 +481,40 @@ impl EditorElement {
             ..Default::default()
         };
         'outer: for chunk in chunks.chain([newline_chunk]) {
+            let mut buffer_position = chunk.position;
+
             for (ix, mut line_chunk) in chunk.text.split('\n').enumerate() {
                 if ix > 0 {
+                    if include_line_numbers {
+                        if let Some(buffer_row) = buffer_row_for_current_row {
+                            let color = if active_rows.contains_key(&row) {
+                                style.line_number_active
+                            } else {
+                                style.line_number
+                            };
+                            write!(&mut line_number, "{}", buffer_row + 1).unwrap();
+                            line_number_layouts.push(Some(cx.text_layout_cache.layout_str(
+                                &line_number,
+                                style.text.font_size,
+                                &[(
+                                    line_number.len(),
+                                    RunStyle {
+                                        font_id: style.text.font_id,
+                                        color,
+                                        underline: None,
+                                    },
+                                )],
+                            )));
+                            line_number.clear();
+                        } else {
+                            line_number_layouts.push(None);
+                        }
+                    }
+                    if let Some(position) = &mut buffer_position {
+                        *position += Point::new(1, 0);
+                    }
+                    buffer_row_for_current_row = None;
+
                     layouts.push(cx.text_layout_cache.layout_str(
                         &line,
                         style.text.font_size,
@@ -514,6 +527,10 @@ impl EditorElement {
                     if row == rows.end {
                         break 'outer;
                     }
+                }
+
+                if let Some(Point { row, column: 0 }) = buffer_position {
+                    buffer_row_for_current_row = Some(row);
                 }
 
                 if !line_chunk.is_empty() && !line_exceeded_max_len {
@@ -569,7 +586,7 @@ impl EditorElement {
             }
         }
 
-        layouts
+        (layouts, line_number_layouts)
     }
 }
 
@@ -677,14 +694,9 @@ impl Element for EditorElement {
             }
         });
 
-        let line_number_layouts = if snapshot.mode == EditorMode::Full {
-            self.layout_line_numbers(start_row..end_row, &active_rows, &snapshot, cx)
-        } else {
-            Vec::new()
-        };
-
         let mut max_visible_line_width = 0.0;
-        let line_layouts = self.layout_lines(start_row..end_row, &mut snapshot, cx);
+        let (line_layouts, line_number_layouts) =
+            self.layout_lines(start_row..end_row, &active_rows, &mut snapshot, cx);
         for line in &line_layouts {
             if line.width() > max_visible_line_width {
                 max_visible_line_width = line.width();
@@ -1079,11 +1091,11 @@ mod tests {
         });
         let element = EditorElement::new(editor.downgrade(), settings);
 
-        let layouts = editor.update(cx, |editor, cx| {
+        let (_, layouts) = editor.update(cx, |editor, cx| {
             let snapshot = editor.snapshot(cx);
             let mut presenter = cx.build_presenter(window_id, 30.);
             let mut layout_cx = presenter.build_layout_context(false, cx);
-            element.layout_line_numbers(0..6, &Default::default(), &snapshot, &mut layout_cx)
+            element.layout_lines(0..6, &Default::default(), &snapshot, &mut layout_cx)
         });
         assert_eq!(layouts.len(), 6);
     }

@@ -14,7 +14,7 @@ use sum_tree::Bias;
 use tab_map::TabMap;
 use wrap_map::WrapMap;
 
-pub use block_map::{BlockDisposition, BlockProperties, BufferRows, Chunks};
+pub use block_map::{BlockDisposition, BlockProperties, Chunks};
 
 pub trait ToDisplayPoint {
     fn to_display_point(&self, map: &DisplayMapSnapshot) -> DisplayPoint;
@@ -172,10 +172,6 @@ impl DisplayMapSnapshot {
         self.buffer_snapshot.len() == 0
     }
 
-    pub fn buffer_rows(&self, start_row: u32) -> BufferRows {
-        self.blocks_snapshot.buffer_rows(start_row)
-    }
-
     pub fn buffer_row_count(&self) -> u32 {
         self.buffer_snapshot.max_point().row + 1
     }
@@ -235,7 +231,7 @@ impl DisplayMapSnapshot {
             .map(|h| h.text)
     }
 
-    pub fn chunks(&mut self, display_rows: Range<u32>) -> block_map::Chunks {
+    pub fn chunks(&self, display_rows: Range<u32>) -> block_map::Chunks {
         self.blocks_snapshot.chunks(display_rows, true)
     }
 
@@ -1012,7 +1008,7 @@ mod tests {
         theme: &'a SyntaxTheme,
         cx: &mut MutableAppContext,
     ) -> Vec<(String, Option<&'a str>)> {
-        let mut snapshot = map.update(cx, |map, cx| map.snapshot(cx));
+        let snapshot = map.update(cx, |map, cx| map.snapshot(cx));
         let mut chunks: Vec<(String, Option<&str>)> = Vec::new();
         for chunk in snapshot.chunks(rows) {
             let style_name = chunk.highlight_id.name(theme);
