@@ -953,6 +953,8 @@ impl<'a> Iterator for Chunks<'a> {
         // If we're in a fold, then return the fold's display text and
         // advance the transform and buffer cursors to the end of the fold.
         if let Some(output_text) = transform.output_text {
+            let position = self.buffer_chunks.position();
+
             self.buffer_chunk.take();
             self.buffer_offset += transform.summary.input.bytes;
             self.buffer_chunks.seek(self.buffer_offset);
@@ -967,6 +969,7 @@ impl<'a> Iterator for Chunks<'a> {
                 text: output_text,
                 highlight_id: HighlightId::default(),
                 diagnostic: None,
+                position: Some(position),
             });
         }
 

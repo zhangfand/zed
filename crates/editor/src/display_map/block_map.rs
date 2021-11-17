@@ -619,11 +619,15 @@ impl<'a> Iterator for Chunks<'a> {
         }
 
         let transform_end = self.transforms.end(&()).0 .0;
+        let position = self.input_chunk.position;
         let (prefix_lines, prefix_bytes) = offset_for_point(
             self.input_chunk.text,
             transform_end - self.output_position.0,
         );
         self.output_position.0 += prefix_lines;
+        if let Some(position) = self.input_chunk.position.as_mut() {
+            *position += prefix_lines;
+        }
         let (prefix, suffix) = self.input_chunk.text.split_at(prefix_bytes);
         self.input_chunk.text = suffix;
         if self.output_position.0 == transform_end {
@@ -632,6 +636,7 @@ impl<'a> Iterator for Chunks<'a> {
 
         Some(Chunk {
             text: prefix,
+            position,
             ..self.input_chunk
         })
     }
@@ -697,6 +702,7 @@ impl<'a> Iterator for BlockChunks<'a> {
             text: chunk,
             highlight_id: Default::default(),
             diagnostic: None,
+            position: None,
         })
     }
 }

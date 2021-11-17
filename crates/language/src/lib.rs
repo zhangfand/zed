@@ -202,6 +202,7 @@ pub struct Chunks<'a> {
     information_depth: usize,
     hint_depth: usize,
     highlights: Option<Highlights<'a>>,
+    position: Point,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -209,6 +210,7 @@ pub struct Chunk<'a> {
     pub text: &'a str,
     pub highlight_id: HighlightId,
     pub diagnostic: Option<DiagnosticSeverity>,
+    pub position: Option<Point>,
 }
 
 struct Diff {
@@ -1634,7 +1636,8 @@ impl Snapshot {
             .all(|chunk| chunk.matches(|c: char| !c.is_whitespace()).next().is_none())
     }
 
-    pub fn chunks<T: ToOffset>(&self, range: Range<T>, highlight: bool) -> Chunks {
+    pub fn chunks<T: ToOffset + ToPoint>(&self, range: Range<T>, highlight: bool) -> Chunks {
+        let position = range.start.to_point(&*self);
         let range = range.start.to_offset(&*self)..range.end.to_offset(&*self);
 
         let mut highlights = None;
@@ -1692,6 +1695,7 @@ impl Snapshot {
             information_depth: 0,
             hint_depth: 0,
             highlights,
+            position,
         }
     }
 }
@@ -1763,6 +1767,10 @@ impl<'a> Chunks<'a> {
 
     pub fn offset(&self) -> usize {
         self.range.start
+    }
+
+    pub fn position(&self) -> Point {
+        self.position
     }
 
     fn update_diagnostic_depths(&mut self, endpoint: DiagnosticEndpoint) {
@@ -1855,6 +1863,8 @@ impl<'a> Iterator for Chunks<'a> {
 
             let slice =
                 &chunk[chunk_start - self.chunks.offset()..chunk_end - self.chunks.offset()];
+            let position = self.position;
+            self.position += Point::from_str(slice);
             self.range.start = chunk_end;
             if self.range.start == self.chunks.offset() + chunk.len() {
                 self.chunks.next().unwrap();
@@ -1864,6 +1874,7 @@ impl<'a> Iterator for Chunks<'a> {
                 text: slice,
                 highlight_id,
                 diagnostic: self.current_diagnostic_severity(),
+                position: Some(position),
             })
         } else {
             None

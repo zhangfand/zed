@@ -396,28 +396,42 @@ impl<'a> Iterator for Chunks<'a> {
             }
         }
 
+        let mut next_chunk_position = self.chunk.position.unwrap();
         for (ix, c) in self.chunk.text.char_indices() {
             match c {
                 '\t' => {
+                    next_chunk_position.column += 1;
                     if ix > 0 {
                         let (prefix, suffix) = self.chunk.text.split_at(ix);
+                        let position = self.chunk.position;
                         self.chunk.text = suffix;
+                        self.chunk.position = Some(next_chunk_position);
                         return Some(Chunk {
                             text: prefix,
+                            position,
                             ..self.chunk
                         });
                     } else {
+                        let position = self.chunk.position;
                         self.chunk.text = &self.chunk.text[1..];
+                        self.chunk.position = Some(next_chunk_position);
                         let len = self.tab_size - self.column % self.tab_size;
                         self.column += len;
                         return Some(Chunk {
                             text: &SPACES[0..len],
+                            position,
                             ..self.chunk
                         });
                     }
                 }
-                '\n' => self.column = 0,
-                _ => self.column += 1,
+                '\n' => {
+                    next_chunk_position += Point::new(1, 0);
+                    self.column = 0
+                }
+                _ => {
+                    next_chunk_position.column += 1;
+                    self.column += 1
+                }
             }
         }
 

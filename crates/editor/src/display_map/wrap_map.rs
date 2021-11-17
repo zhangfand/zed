@@ -746,6 +746,7 @@ impl<'a> Iterator for Chunks<'a> {
             self.transforms.next(&());
             return Some(Chunk {
                 text: &display_text[start_ix..end_ix],
+                position: None,
                 ..self.input_chunk
             });
         }
@@ -754,11 +755,12 @@ impl<'a> Iterator for Chunks<'a> {
             self.input_chunk = self.input_chunks.next().unwrap();
         }
 
-        let mut input_len = 0;
+        let mut prefix_len = 0;
+        let prev_output_position = self.output_position;
         let transform_end = self.transforms.end(&()).0;
         for c in self.input_chunk.text.chars() {
             let char_len = c.len_utf8();
-            input_len += char_len;
+            prefix_len += char_len;
             if c == '\n' {
                 *self.output_position.row_mut() += 1;
                 *self.output_position.column_mut() = 0;
@@ -772,10 +774,14 @@ impl<'a> Iterator for Chunks<'a> {
             }
         }
 
-        let (prefix, suffix) = self.input_chunk.text.split_at(input_len);
+        let position = self.input_chunk.position;
+        let (prefix, suffix) = self.input_chunk.text.split_at(prefix_len);
         self.input_chunk.text = suffix;
+        self.input_chunk.position = Some(self.output_position.0 - prev_output_position.0);
+
         Some(Chunk {
             text: prefix,
+            position,
             ..self.input_chunk
         })
     }
