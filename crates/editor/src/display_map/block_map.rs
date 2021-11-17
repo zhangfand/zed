@@ -899,13 +899,9 @@ mod tests {
     fn test_random_blocks(cx: &mut gpui::MutableAppContext, mut rng: StdRng) {
         let operations = env::var("OPERATIONS")
             .map(|i| i.parse().expect("invalid `OPERATIONS` variable"))
-            .unwrap_or(10);
+            .unwrap_or(1);
 
-        let wrap_width = if rng.gen_bool(0.2) {
-            None
-        } else {
-            Some(rng.gen_range(0.0..=100.0))
-        };
+        let wrap_width = None;
         let tab_size = 1;
         let family_id = cx.font_cache().load_family(&["Helvetica"]).unwrap();
         let font_id = cx
@@ -931,15 +927,15 @@ mod tests {
 
         for _ in 0..operations {
             match rng.gen_range(0..=100) {
-                0..=19 => {
-                    let wrap_width = if rng.gen_bool(0.2) {
-                        None
-                    } else {
-                        Some(rng.gen_range(0.0..=100.0))
-                    };
-                    log::info!("Setting wrap width to {:?}", wrap_width);
-                    wrap_map.update(cx, |map, cx| map.set_wrap_width(wrap_width, cx));
-                }
+                // 0..=19 => {
+                //     let wrap_width = if rng.gen_bool(0.2) {
+                //         None
+                //     } else {
+                //         Some(rng.gen_range(0.0..=100.0))
+                //     };
+                //     log::info!("Setting wrap width to {:?}", wrap_width);
+                //     wrap_map.update(cx, |map, cx| map.set_wrap_width(wrap_width, cx));
+                // }
                 20..=39 => {
                     let block_count = rng.gen_range(1..=1);
                     let block_properties = (0..block_count)
@@ -1119,12 +1115,15 @@ mod tests {
     }
 
     fn buffer_rows_from_chunks<'a>(chunks: impl Iterator<Item = Chunk<'a>>) -> Vec<Option<u32>> {
+        let mut chunks = chunks.collect::<Vec<_>>();
+        let mut text = chunks.last().unwrap().text.to_string();
+        text.push('\n');
+        chunks.last_mut().unwrap().text = &text;
+
         let mut buffer_rows = Vec::new();
         let mut buffer_row_for_current_row = None;
-        for chunk in chunks.chain([Chunk {
-            text: "\n",
-            ..Default::default()
-        }]) {
+
+        for chunk in chunks {
             let mut position = chunk.position;
             let mut chunk_offset = 0;
             for (chunk_row, line) in dbg!(chunk).text.split('\n').enumerate() {
@@ -1137,7 +1136,7 @@ mod tests {
                     }
                 }
 
-                if chunk_offset < chunk.text.len() {
+                if chunk_offset < chunk.text.len() || (chunk_offset == 0 && chunk.text.is_empty()) {
                     if let Some(Point { column: 0, row }) = position {
                         buffer_row_for_current_row = Some(row);
                     }
@@ -1146,6 +1145,7 @@ mod tests {
                 chunk_offset += line.len();
             }
         }
+
         buffer_rows
     }
 }
