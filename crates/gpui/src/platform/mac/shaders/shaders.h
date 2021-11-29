@@ -23,7 +23,8 @@ typedef struct
     float border_left;
     vector_uchar4 border_color;
     float corner_radius;
-    float checkerboard;
+    float checkerboard_stride;
+    float checkerboard_jitter;
 } GPUIQuad;
 
 typedef enum

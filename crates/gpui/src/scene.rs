@@ -39,7 +39,13 @@ pub struct Quad {
     pub background: Option<Color>,
     pub border: Border,
     pub corner_radius: f32,
-    pub checkerboard: f32,
+    pub checkerboard: Checkerboard,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Checkerboard {
+    pub stride: f32,
+    pub jitter: f32,
 }
 
 #[derive(Debug)]

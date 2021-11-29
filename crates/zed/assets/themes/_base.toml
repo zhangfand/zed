@@ -249,11 +249,11 @@ line_number_active = "$text.0.color"
 selection = "$selection.host"
 guest_selections = "$selection.guests"
 error_color = "$status.bad"
-error_diagnostic = { text = "$status.bad" }
-invalid_error_diagnostic = { text = "$text.3.color" }
-warning_diagnostic = { text = "$status.warn" }
-invalid_warning_diagnostic = { text = "$text.3.color" }
-information_diagnostic = { text = "$status.info" }
-invalid_information_diagnostic = { text = "$text.3.color" }
-hint_diagnostic = { text = "$status.info" }
-invalid_hint_diagnostic = { text = "$text.3.color" }
+error_diagnostic = { text = "$status.bad", underline_stride = 3, underline_jitter = 1 }
+invalid_error_diagnostic = { text = "$text.3.color", underline_stride = 3, underline_jitter = 1 }
+warning_diagnostic = { text = "$status.warn", underline_stride = 3, underline_jitter = 1 }
+invalid_warning_diagnostic = { text = "$text.3.color", underline_stride = 3, underline_jitter = 1 }
+information_diagnostic = { text = "$status.info", underline_stride = 3, underline_jitter = 1 }
+invalid_information_diagnostic = { text = "$text.3.color", underline_stride = 3, underline_jitter = 1 }
+hint_diagnostic = { text = "$status.info", underline_stride = 3, underline_jitter = 1 }
+invalid_hint_diagnostic = { text = "$text.3.color", underline_stride = 3, underline_jitter = 1 }

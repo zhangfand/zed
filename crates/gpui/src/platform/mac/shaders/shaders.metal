@@ -44,7 +44,8 @@ struct QuadFragmentInput {
     float border_left;
     float4 border_color;
     float corner_radius;
-    float checkerboard;
+    float checkerboard_stride;
+    float checkerboard_jitter;
 };
 
 float4 quad_sdf(QuadFragmentInput input) {
@@ -81,11 +82,13 @@ float4 quad_sdf(QuadFragmentInput input) {
     }
 
     float4 checkerboard_mask;
-    if (input.checkerboard == 0.) {
+    if (input.checkerboard_stride == 0.) {
         checkerboard_mask = float4(1.);
     } else {
-        float y_half_plane = step(center.y, round(input.position.y));
-        float y_half_plane_to_show = step(0., fmod(input.position.x - input.origin.x, 2. * input.checkerboard) - input.checkerboard);
+        float y_half_plane = step(center.y, input.position.y);
+        float x_position = input.position.x - input.origin.x;
+        x_position -= input.checkerboard_jitter * y_half_plane;
+        float y_half_plane_to_show = step(0., fmod(x_position, 2. * input.checkerboard_stride) - input.checkerboard_stride);
         checkerboard_mask = float4(1., 1., 1., 1. - abs(y_half_plane - y_half_plane_to_show));
     }
 
@@ -117,7 +120,8 @@ vertex QuadFragmentInput quad_vertex(
         quad.border_left,
         coloru_to_colorf(quad.border_color),
         quad.corner_radius,
-        quad.checkerboard,
+        quad.checkerboard_stride,
+        quad.checkerboard_jitter
     };
 }
 
@@ -261,7 +265,8 @@ vertex QuadFragmentInput image_vertex(
         image.border_left,
         coloru_to_colorf(image.border_color),
         image.corner_radius,
-        0.
+        0.,
+        0.,
     };
 }
 

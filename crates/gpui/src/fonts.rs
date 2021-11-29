@@ -10,6 +10,7 @@ pub use font_kit::{
     metrics::Metrics,
     properties::{Properties, Stretch, Style, Weight},
 };
+use ordered_float::OrderedFloat;
 use serde::{de, Deserialize};
 use serde_json::Value;
 use std::{cell::RefCell, sync::Arc};
@@ -27,14 +28,21 @@ pub struct TextStyle {
     pub font_id: FontId,
     pub font_size: f32,
     pub font_properties: Properties,
-    pub underline: Option<Color>,
+    pub underline: Option<Underline>,
 }
 
 #[derive(Copy, Clone, Debug, Default)]
 pub struct HighlightStyle {
     pub color: Color,
     pub font_properties: Properties,
-    pub underline: Option<Color>,
+    pub underline: Option<Underline>,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct Underline {
+    pub color: Color,
+    pub stride: OrderedFloat<f32>,
+    pub jitter: OrderedFloat<f32>,
 }
 
 #[allow(non_camel_case_types)]
@@ -82,6 +90,11 @@ struct HighlightStyleJson {
 enum UnderlineStyleJson {
     Underlined(bool),
     UnderlinedWithColor(Color),
+    Full {
+        color: Option<Color>,
+        stride: Option<f32>,
+        jitter: Option<f32>,
+    },
 }
 
 impl TextStyle {
@@ -89,7 +102,7 @@ impl TextStyle {
         font_family_name: impl Into<Arc<str>>,
         font_size: f32,
         font_properties: Properties,
-        underline: Option<Color>,
+        underline: Option<Underline>,
         color: Color,
         font_cache: &FontCache,
     ) -> anyhow::Result<Self> {
@@ -271,11 +284,28 @@ impl<'de> Deserialize<'de> for HighlightStyle {
     }
 }
 
-fn underline_from_json(json: UnderlineStyleJson, text_color: Color) -> Option<Color> {
+fn underline_from_json(json: UnderlineStyleJson, text_color: Color) -> Option<Underline> {
     match json {
         UnderlineStyleJson::Underlined(false) => None,
-        UnderlineStyleJson::Underlined(true) => Some(text_color),
-        UnderlineStyleJson::UnderlinedWithColor(color) => Some(color),
+        UnderlineStyleJson::Underlined(true) => Some(Underline {
+            color: text_color,
+            stride: Default::default(),
+            jitter: Default::default(),
+        }),
+        UnderlineStyleJson::UnderlinedWithColor(color) => Some(Underline {
+            color,
+            stride: Default::default(),
+            jitter: Default::default(),
+        }),
+        UnderlineStyleJson::Full {
+            color,
+            stride,
+            jitter,
+        } => Some(Underline {
+            color: color.unwrap_or(text_color),
+            stride: stride.unwrap_or_default().into(),
+            jitter: jitter.unwrap_or_default().into(),
+        }),
     }
 }
 

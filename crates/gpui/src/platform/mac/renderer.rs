@@ -495,7 +495,8 @@ impl Renderer {
                 border_left: border_width * (quad.border.left as usize as f32),
                 border_color: quad.border.color.to_uchar4(),
                 corner_radius: quad.corner_radius * scale_factor,
-                checkerboard: quad.checkerboard * scale_factor,
+                checkerboard_stride: quad.checkerboard.stride * scale_factor,
+                checkerboard_jitter: quad.checkerboard.jitter * scale_factor,
             };
             unsafe {
                 *(buffer_contents.offset(ix as isize)) = shader_quad;

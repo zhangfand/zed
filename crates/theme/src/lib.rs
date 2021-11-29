@@ -253,6 +253,10 @@ pub struct EditorStyle {
 #[derive(Copy, Clone, Deserialize, Default)]
 pub struct DiagnosticStyle {
     pub text: Color,
+    #[serde(default)]
+    pub underline_stride: f32,
+    #[serde(default)]
+    pub underline_jitter: f32,
     #[serde(flatten)]
     pub block: BlockStyle,
 }

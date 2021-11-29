@@ -1,11 +1,13 @@
 use crate::{
     color::Color,
-    fonts::{FontId, GlyphId},
+    fonts::{FontId, GlyphId, Underline},
     geometry::{
         rect::RectF,
         vector::{vec2f, Vector2F},
     },
-    platform, scene, FontSystem, PaintContext,
+    platform,
+    scene::{self, Checkerboard},
+    FontSystem, PaintContext,
 };
 use ordered_float::OrderedFloat;
 use parking_lot::{Mutex, RwLock, RwLockUpgradableReadGuard};
@@ -28,7 +30,7 @@ pub struct TextLayoutCache {
 pub struct RunStyle {
     pub color: Color,
     pub font_id: FontId,
-    pub underline: Option<Color>,
+    pub underline: Option<Underline>,
 }
 
 impl TextLayoutCache {
@@ -167,7 +169,7 @@ impl<'a> Hash for CacheKeyRef<'a> {
 #[derive(Default, Debug)]
 pub struct Line {
     layout: Arc<LineLayout>,
-    style_runs: SmallVec<[(u32, Color, Option<Color>); 32]>,
+    style_runs: SmallVec<[(u32, Color, Option<Underline>); 32]>,
 }
 
 #[derive(Default, Debug)]
@@ -268,25 +270,28 @@ impl Line {
                 }
 
                 if glyph.index >= run_end {
-                    if let Some((run_len, run_color, run_underline_color)) = style_runs.next() {
-                        if let Some((underline_origin, underline_color)) = underline {
-                            if *run_underline_color != Some(underline_color) {
+                    if let Some((run_len, run_color, run_underline)) = style_runs.next() {
+                        if let Some((underline_origin, underline_style)) = underline {
+                            if *run_underline != Some(underline_style) {
                                 cx.scene.push_underline(scene::Quad {
                                     bounds: RectF::from_points(
                                         underline_origin,
-                                        glyph_origin + vec2f(0., 1.),
+                                        glyph_origin + vec2f(0., 2.),
                                     ),
-                                    background: Some(underline_color),
+                                    background: Some(underline_style.color),
                                     border: Default::default(),
                                     corner_radius: 0.,
-                                    checkerboard: 0.,
+                                    checkerboard: Checkerboard {
+                                        stride: underline_style.stride.into(),
+                                        jitter: underline_style.jitter.into(),
+                                    },
                                 });
                                 underline = None;
                             }
                         }
 
-                        if let Some(run_underline_color) = run_underline_color {
-                            underline.get_or_insert((glyph_origin, *run_underline_color));
+                        if let Some(run_underline) = run_underline {
+                            underline.get_or_insert((glyph_origin, *run_underline));
                         }
 
                         run_end += *run_len as usize;
@@ -294,16 +299,19 @@ impl Line {
                     } else {
                         run_end = self.layout.len;
                         color = Color::black();
-                        if let Some((underline_origin, underline_color)) = underline.take() {
+                        if let Some((underline_origin, underline_style)) = underline.take() {
                             cx.scene.push_underline(scene::Quad {
                                 bounds: RectF::from_points(
                                     underline_origin,
-                                    glyph_origin + vec2f(0., 1.),
+                                    glyph_origin + vec2f(0., 2.),
                                 ),
-                                background: Some(underline_color),
+                                background: Some(underline_style.color),
                                 border: Default::default(),
                                 corner_radius: 0.,
-                                checkerboard: 0.,
+                                checkerboard: Checkerboard {
+                                    stride: underline_style.stride.into(),
+                                    jitter: underline_style.jitter.into(),
+                                },
                             });
                         }
                     }
@@ -319,15 +327,18 @@ impl Line {
             }
         }
 
-        if let Some((underline_start, underline_color)) = underline.take() {
+        if let Some((underline_start, underline_style)) = underline.take() {
             let line_end = origin + baseline_offset + vec2f(self.layout.width, 0.);
 
             cx.scene.push_underline(scene::Quad {
-                bounds: RectF::from_points(underline_start, line_end + vec2f(0., 1.)),
-                background: Some(underline_color),
+                bounds: RectF::from_points(underline_start, line_end + vec2f(0., 2.)),
+                background: Some(underline_style.color),
                 border: Default::default(),
                 corner_radius: 0.,
-                checkerboard: 0.,
+                checkerboard: Checkerboard {
+                    stride: underline_style.stride.into(),
+                    jitter: underline_style.jitter.into(),
+                },
             });
         }
     }

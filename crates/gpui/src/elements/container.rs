@@ -209,7 +209,7 @@ impl Element for Container {
                 background: self.style.background_color,
                 border: Default::default(),
                 corner_radius: self.style.corner_radius,
-                checkerboard: 0.,
+                checkerboard: Default::default(),
             });
 
             self.child.paint(child_origin, visible_bounds, cx);
@@ -220,7 +220,7 @@ impl Element for Container {
                 background: Default::default(),
                 border: self.style.border,
                 corner_radius: self.style.corner_radius,
-                checkerboard: 0.,
+                checkerboard: Default::default(),
             });
             cx.scene.pop_layer();
         } else {
@@ -229,7 +229,7 @@ impl Element for Container {
                 background: self.style.background_color,
                 border: self.style.border,
                 corner_radius: self.style.corner_radius,
-                checkerboard: 0.,
+                checkerboard: Default::default(),
             });
 
             let child_origin = child_origin

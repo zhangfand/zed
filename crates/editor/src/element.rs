@@ -5,6 +5,7 @@ use super::{
 use clock::ReplicaId;
 use gpui::{
     color::Color,
+    fonts::Underline,
     geometry::{
         rect::RectF,
         vector::{vec2f, Vector2F},
@@ -227,14 +228,14 @@ impl EditorElement {
             background: Some(style.gutter_background),
             border: Border::new(0., Color::transparent_black()),
             corner_radius: 0.,
-            checkerboard: 0.,
+            checkerboard: Default::default(),
         });
         cx.scene.push_quad(Quad {
             bounds: text_bounds,
             background: Some(style.background),
             border: Border::new(0., Color::transparent_black()),
             corner_radius: 0.,
-            checkerboard: 0.,
+            checkerboard: Default::default(),
         });
 
         if let EditorMode::Full = editor.mode {
@@ -262,7 +263,7 @@ impl EditorElement {
                         background: Some(style.active_line_background),
                         border: Border::default(),
                         corner_radius: 0.,
-                        checkerboard: 0.,
+                        checkerboard: Default::default(),
                     });
                 }
             }
@@ -278,7 +279,7 @@ impl EditorElement {
                     background: Some(style.highlighted_line_background),
                     border: Border::default(),
                     corner_radius: 0.,
-                    checkerboard: 0.,
+                    checkerboard: Default::default(),
                 });
             }
         }
@@ -306,7 +307,7 @@ impl EditorElement {
                         left: false,
                     }),
                 corner_radius: 0.,
-                checkerboard: 0.,
+                checkerboard: Default::default(),
             });
             cx.scene.push_quad(Quad {
                 bounds: RectF::new(
@@ -326,7 +327,7 @@ impl EditorElement {
                         left: false,
                     }),
                 corner_radius: 0.,
-                checkerboard: 0.,
+                checkerboard: Default::default(),
             });
         }
     }
@@ -652,7 +653,12 @@ impl EditorElement {
                     }
 
                     let underline = if let Some(severity) = chunk.diagnostic {
-                        Some(super::diagnostic_style(severity, true, style).text)
+                        let style = super::diagnostic_style(severity, true, style);
+                        Some(Underline {
+                            color: style.text,
+                            stride: style.underline_stride.into(),
+                            jitter: style.underline_jitter.into(),
+                        })
                     } else {
                         highlight_style.underline
                     };
@@ -1036,7 +1042,7 @@ impl Cursor {
             background: Some(self.color),
             border: Border::new(0., Color::black()),
             corner_radius: 0.,
-            checkerboard: 0.,
+            checkerboard: Default::default(),
         });
     }
 }
