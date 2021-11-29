@@ -192,6 +192,7 @@ impl ContactsPanel {
                                         background: Some(tree_branch_color),
                                         border: gpui::Border::default(),
                                         corner_radius: 0.,
+                                        checkerboard: 0.,
                                     });
                                     cx.scene.push_quad(gpui::Quad {
                                         bounds: RectF::from_points(
@@ -201,6 +202,7 @@ impl ContactsPanel {
                                         background: Some(tree_branch_color),
                                         border: gpui::Border::default(),
                                         corner_radius: 0.,
+                                        checkerboard: 0.,
                                     });
                                 })
                                 .constrained()

@@ -39,6 +39,7 @@ pub struct Quad {
     pub background: Option<Color>,
     pub border: Border,
     pub corner_radius: f32,
+    pub checkerboard: f32,
 }
 
 #[derive(Debug)]

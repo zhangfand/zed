@@ -227,12 +227,14 @@ impl EditorElement {
             background: Some(style.gutter_background),
             border: Border::new(0., Color::transparent_black()),
             corner_radius: 0.,
+            checkerboard: 0.,
         });
         cx.scene.push_quad(Quad {
             bounds: text_bounds,
             background: Some(style.background),
             border: Border::new(0., Color::transparent_black()),
             corner_radius: 0.,
+            checkerboard: 0.,
         });
 
         if let EditorMode::Full = editor.mode {
@@ -260,6 +262,7 @@ impl EditorElement {
                         background: Some(style.active_line_background),
                         border: Border::default(),
                         corner_radius: 0.,
+                        checkerboard: 0.,
                     });
                 }
             }
@@ -275,6 +278,7 @@ impl EditorElement {
                     background: Some(style.highlighted_line_background),
                     border: Border::default(),
                     corner_radius: 0.,
+                    checkerboard: 0.,
                 });
             }
         }
@@ -302,6 +306,7 @@ impl EditorElement {
                         left: false,
                     }),
                 corner_radius: 0.,
+                checkerboard: 0.,
             });
             cx.scene.push_quad(Quad {
                 bounds: RectF::new(
@@ -321,6 +326,7 @@ impl EditorElement {
                         left: false,
                     }),
                 corner_radius: 0.,
+                checkerboard: 0.,
             });
         }
     }
@@ -1030,6 +1036,7 @@ impl Cursor {
             background: Some(self.color),
             border: Border::new(0., Color::black()),
             corner_radius: 0.,
+            checkerboard: 0.,
         });
     }
 }

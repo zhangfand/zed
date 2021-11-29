@@ -279,6 +279,7 @@ impl Line {
                                     background: Some(underline_color),
                                     border: Default::default(),
                                     corner_radius: 0.,
+                                    checkerboard: 0.,
                                 });
                                 underline = None;
                             }
@@ -302,6 +303,7 @@ impl Line {
                                 background: Some(underline_color),
                                 border: Default::default(),
                                 corner_radius: 0.,
+                                checkerboard: 0.,
                             });
                         }
                     }
@@ -325,6 +327,7 @@ impl Line {
                 background: Some(underline_color),
                 border: Default::default(),
                 corner_radius: 0.,
+                checkerboard: 0.,
             });
         }
     }

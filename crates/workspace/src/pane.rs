@@ -232,6 +232,7 @@ impl Pane {
                                                         background: Some(color),
                                                         border: Default::default(),
                                                         corner_radius: diameter / 2.,
+                                                        checkerboard: 0.,
                                                     });
                                                 }
                                             })

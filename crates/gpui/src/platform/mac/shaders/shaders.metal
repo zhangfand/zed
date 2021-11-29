@@ -44,6 +44,7 @@ struct QuadFragmentInput {
     float border_left;
     float4 border_color;
     float corner_radius;
+    float checkerboard;
 };
 
 float4 quad_sdf(QuadFragmentInput input) {
@@ -79,8 +80,17 @@ float4 quad_sdf(QuadFragmentInput input) {
         );
     }
 
+    float4 checkerboard_mask;
+    if (input.checkerboard == 0.) {
+        checkerboard_mask = float4(1.);
+    } else {
+        float y_half_plane = step(center.y, round(input.position.y));
+        float y_half_plane_to_show = step(0., fmod(input.position.x - input.origin.x, 2. * input.checkerboard) - input.checkerboard);
+        checkerboard_mask = float4(1., 1., 1., 1. - abs(y_half_plane - y_half_plane_to_show));
+    }
+
     float4 coverage = float4(1., 1., 1., saturate(0.5 - distance));
-    return coverage * color;
+    return coverage * color * checkerboard_mask;
 }
 
 vertex QuadFragmentInput quad_vertex(
@@ -107,6 +117,7 @@ vertex QuadFragmentInput quad_vertex(
         quad.border_left,
         coloru_to_colorf(quad.border_color),
         quad.corner_radius,
+        quad.checkerboard,
     };
 }
 
@@ -250,6 +261,7 @@ vertex QuadFragmentInput image_vertex(
         image.border_left,
         coloru_to_colorf(image.border_color),
         image.corner_radius,
+        0.
     };
 }
 
