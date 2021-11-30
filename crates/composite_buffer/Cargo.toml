@@ -1,0 +1,14 @@
+[package]
+name = "composite_buffer"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+path = "src/composite_buffer.rs"
+
+[dependencies]
+anyhow = "1.0.38"
+clock = { path = "../clock" }
+gpui = { path = "../gpui" }
+language = { path = "../language" }
+lsp = { path = "../lsp" }
