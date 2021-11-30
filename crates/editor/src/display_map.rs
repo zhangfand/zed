@@ -6,6 +6,7 @@ mod wrap_map;
 
 pub use block_map::{BlockDisposition, BlockId, BlockProperties, BufferRows, Chunks};
 use block_map::{BlockMap, BlockPoint};
+use composite_buffer::CompositeBuffer;
 use fold_map::{FoldMap, ToFoldPoint as _};
 use gpui::{
     fonts::{FontId, HighlightStyle},
@@ -27,7 +28,7 @@ pub trait ToDisplayPoint {
 }
 
 pub struct DisplayMap {
-    buffer: ModelHandle<Buffer>,
+    buffer: ModelHandle<CompositeBuffer>,
     fold_map: FoldMap,
     tab_map: TabMap,
     wrap_map: ModelHandle<WrapMap>,
@@ -40,7 +41,7 @@ impl Entity for DisplayMap {
 
 impl DisplayMap {
     pub fn new(
-        buffer: ModelHandle<Buffer>,
+        buffer: ModelHandle<CompositeBuffer>,
         tab_size: usize,
         font_id: FontId,
         font_size: f32,

@@ -1,7 +1,8 @@
 use anyhow::Result;
-use gpui::{Entity, ModelContext, Task};
+use gpui::{Entity, ModelContext, ModelHandle, Task};
 use language::{
-    Diagnostic, File, FromAnchor, Language, Point, Selection, SelectionSetId, ToOffset, Tree,
+    Buffer, Diagnostic, File, FromAnchor, Language, Point, Selection, SelectionSetId, ToOffset,
+    Tree,
 };
 use std::{
     ops::Range,
@@ -14,6 +15,10 @@ pub struct CompositeBuffer {}
 pub struct Snapshot {}
 
 impl CompositeBuffer {
+    pub fn singleton(buffer: ModelHandle<Buffer>) -> Self {
+        todo!()
+    }
+
     pub fn snapshot(&self) -> Snapshot {
         todo!()
     }

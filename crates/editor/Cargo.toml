@@ -16,6 +16,7 @@ test-support = [
 [dependencies]
 text = { path = "../text" }
 clock = { path = "../clock" }
+composite_buffer = { path = "../composite_buffer" }
 gpui = { path = "../gpui" }
 language = { path = "../language" }
 project = { path = "../project" }

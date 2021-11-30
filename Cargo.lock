@@ -1538,6 +1538,7 @@ dependencies = [
  "aho-corasick",
  "anyhow",
  "clock",
+ "composite_buffer",
  "ctor",
  "env_logger",
  "gpui",

@@ -8,6 +8,7 @@ mod test;
 
 use aho_corasick::AhoCorasick;
 use clock::ReplicaId;
+use composite_buffer::CompositeBuffer;
 use display_map::*;
 pub use display_map::{DisplayPoint, DisplayRow};
 pub use element::*;
@@ -346,7 +347,7 @@ pub enum SoftWrap {
 
 pub struct Editor {
     handle: WeakViewHandle<Self>,
-    buffer: ModelHandle<Buffer>,
+    buffer: ModelHandle<CompositeBuffer>,
     display_map: ModelHandle<DisplayMap>,
     selection_set_id: SelectionSetId,
     pending_selection: Option<PendingSelection>,
@@ -442,7 +443,11 @@ impl Editor {
         build_settings: impl 'static + Fn(&AppContext) -> EditorSettings,
         cx: &mut ViewContext<Self>,
     ) -> Self {
-        Self::new(buffer, Rc::new(RefCell::new(build_settings)), cx)
+        Self::new(
+            cx.add_model(|_| CompositeBuffer::singleton(buffer)),
+            Rc::new(RefCell::new(build_settings)),
+            cx,
+        )
     }
 
     pub fn clone(&self, cx: &mut ViewContext<Self>) -> Self {
@@ -453,7 +458,7 @@ impl Editor {
     }
 
     pub fn new(
-        buffer: ModelHandle<Buffer>,
+        buffer: ModelHandle<CompositeBuffer>,
         build_settings: Rc<RefCell<dyn Fn(&AppContext) -> EditorSettings>>,
         cx: &mut ViewContext<Self>,
     ) -> Self {
@@ -528,7 +533,7 @@ impl Editor {
         self.buffer.read(cx).replica_id()
     }
 
-    pub fn buffer(&self) -> &ModelHandle<Buffer> {
+    pub fn buffer(&self) -> &ModelHandle<CompositeBuffer> {
         &self.buffer
     }
 
@@ -546,8 +551,8 @@ impl Editor {
         }
     }
 
-    pub fn language<'a>(&self, cx: &'a AppContext) -> Option<&'a Arc<Language>> {
-        self.buffer.read(cx).language()
+    pub fn language<'a>(&self, position: Point, cx: &'a AppContext) -> Option<&'a Arc<Language>> {
+        self.buffer.read(cx).language(position)
     }
 
     pub fn set_placeholder_text(
@@ -1141,7 +1146,7 @@ impl Editor {
                 let end = selection.end.to_offset(buffer);
 
                 let mut insert_extra_newline = false;
-                if let Some(language) = buffer.language() {
+                if let Some(language) = buffer.language(selection.head()) {
                     let leading_whitespace_len = buffer
                         .reversed_chars_at(start)
                         .take_while(|c| c.is_whitespace() && *c != '\n')
@@ -3454,14 +3459,14 @@ impl Editor {
         self.show_local_cursors
     }
 
-    fn on_buffer_changed(&mut self, _: ModelHandle<Buffer>, cx: &mut ViewContext<Self>) {
+    fn on_buffer_changed(&mut self, _: ModelHandle<CompositeBuffer>, cx: &mut ViewContext<Self>) {
         self.refresh_active_diagnostics(cx);
         cx.notify();
     }
 
     fn on_buffer_event(
         &mut self,
-        _: ModelHandle<Buffer>,
+        _: ModelHandle<CompositeBuffer>,
         event: &language::Event,
         cx: &mut ViewContext<Self>,
     ) {
@@ -5722,7 +5727,7 @@ mod tests {
     }
 
     fn build_editor(
-        buffer: ModelHandle<Buffer>,
+        buffer: ModelHandle<CompositeBuffer>,
         settings: EditorSettings,
         cx: &mut ViewContext<Editor>,
     ) -> Editor {
