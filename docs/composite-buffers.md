@@ -20,7 +20,15 @@
 - Rows can be reported in a non-contiguous fashion given that each buffer has its own region that it tracks
 - Each buffer should have its own header, so:
   - Have an API to report those locations (probably the current buffer rows could be adapted to report them)
-  - Note how each header will affect the scroll height, so maybe the editor could inject a block line for each header and take care of repositioning them as context lines get expanded/shrunk (or deleting them if the buffer is removed from the composite buffer)
+  - Note how each header will affect the scroll height, so maybe the editor could inject a block line for each header or delete them if the buffer is removed from the composite buffer
+  - Allow `BlockMap` to be associated with excerpt anchors in addition to text-level anchor
+- `AnchorRangeMap`s could be represented as:
+  ```rust
+  struct AnchorRangeMap {
+    ranges: Vec<(ExcerptOffset, BufferAnchorRangeMap)>>,
+    version: clock::Global
+  }
+  ```
 - `Item`-specific features:
   - `is_dirty`: we could OR each `Buffer::is_dirty`
   - `has_conflict`: same
