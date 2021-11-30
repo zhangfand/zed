@@ -5,7 +5,7 @@ use gpui::{
     MutableAppContext, RenderContext, Subscription, Task, View, ViewContext, ViewHandle,
     WeakModelHandle,
 };
-use language::{Buffer, Diagnostic, File as _};
+use language::{Buffer, Diagnostic, Editable, File as _};
 use postage::watch;
 use project::{ProjectPath, Worktree};
 use std::fmt::Write;
@@ -117,7 +117,7 @@ impl WeakItemHandle for WeakBufferItemHandle {
     }
 }
 
-impl ItemView for Editor {
+impl<E: Editable> ItemView for Editor<E> {
     fn should_activate_item_on_event(event: &Event) -> bool {
         matches!(event, Event::Activate)
     }
@@ -235,7 +235,11 @@ impl CursorPosition {
         }
     }
 
-    fn update_position(&mut self, editor: ViewHandle<Editor>, cx: &mut ViewContext<Self>) {
+    fn update_position<E: Editable>(
+        &mut self,
+        editor: ViewHandle<Editor<E>>,
+        cx: &mut ViewContext<Self>,
+    ) {
         let editor = editor.read(cx);
         let buffer = editor.buffer().read(cx);
 
@@ -285,7 +289,9 @@ impl StatusItemView for CursorPosition {
         active_pane_item: Option<&dyn ItemViewHandle>,
         cx: &mut ViewContext<Self>,
     ) {
-        if let Some(editor) = active_pane_item.and_then(|item| item.to_any().downcast::<Editor>()) {
+        if let Some(editor) =
+            active_pane_item.and_then(|item| item.to_any().downcast::<Editor<language::Buffer>>())
+        {
             self._observe_active_editor = Some(cx.observe(&editor, Self::update_position));
             self.update_position(editor, cx);
         } else {
@@ -312,7 +318,7 @@ impl DiagnosticMessage {
         }
     }
 
-    fn update(&mut self, editor: ViewHandle<Editor>, cx: &mut ViewContext<Self>) {
+    fn update<E: Editable>(&mut self, editor: ViewHandle<Editor<E>>, cx: &mut ViewContext<Self>) {
         let editor = editor.read(cx);
         let cursor_position = editor.newest_selection(cx).head();
         let new_diagnostic = editor

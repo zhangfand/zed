@@ -209,66 +209,68 @@ pub fn init(cx: &mut MutableAppContext, entry_openers: &mut Vec<Box<dyn EntryOpe
         Binding::new("alt-cmd-f", FoldSelectedRanges, Some("Editor")),
     ]);
 
-    cx.add_action(Editor::open_new);
-    cx.add_action(|this: &mut Editor, action: &Scroll, cx| this.set_scroll_position(action.0, cx));
-    cx.add_action(Editor::select);
-    cx.add_action(Editor::cancel);
-    cx.add_action(Editor::handle_input);
-    cx.add_action(Editor::newline);
-    cx.add_action(Editor::backspace);
-    cx.add_action(Editor::delete);
-    cx.add_action(Editor::tab);
-    cx.add_action(Editor::outdent);
-    cx.add_action(Editor::delete_line);
-    cx.add_action(Editor::delete_to_previous_word_boundary);
-    cx.add_action(Editor::delete_to_next_word_boundary);
-    cx.add_action(Editor::delete_to_beginning_of_line);
-    cx.add_action(Editor::delete_to_end_of_line);
-    cx.add_action(Editor::cut_to_end_of_line);
-    cx.add_action(Editor::duplicate_line);
-    cx.add_action(Editor::move_line_up);
-    cx.add_action(Editor::move_line_down);
-    cx.add_action(Editor::cut);
-    cx.add_action(Editor::copy);
-    cx.add_action(Editor::paste);
-    cx.add_action(Editor::undo);
-    cx.add_action(Editor::redo);
-    cx.add_action(Editor::move_up);
-    cx.add_action(Editor::move_down);
-    cx.add_action(Editor::move_left);
-    cx.add_action(Editor::move_right);
-    cx.add_action(Editor::move_to_previous_word_boundary);
-    cx.add_action(Editor::move_to_next_word_boundary);
-    cx.add_action(Editor::move_to_beginning_of_line);
-    cx.add_action(Editor::move_to_end_of_line);
-    cx.add_action(Editor::move_to_beginning);
-    cx.add_action(Editor::move_to_end);
-    cx.add_action(Editor::select_up);
-    cx.add_action(Editor::select_down);
-    cx.add_action(Editor::select_left);
-    cx.add_action(Editor::select_right);
-    cx.add_action(Editor::select_to_previous_word_boundary);
-    cx.add_action(Editor::select_to_next_word_boundary);
-    cx.add_action(Editor::select_to_beginning_of_line);
-    cx.add_action(Editor::select_to_end_of_line);
-    cx.add_action(Editor::select_to_beginning);
-    cx.add_action(Editor::select_to_end);
-    cx.add_action(Editor::select_all);
-    cx.add_action(Editor::select_line);
-    cx.add_action(Editor::split_selection_into_lines);
-    cx.add_action(Editor::add_selection_above);
-    cx.add_action(Editor::add_selection_below);
-    cx.add_action(Editor::select_next);
-    cx.add_action(Editor::toggle_comments);
-    cx.add_action(Editor::select_larger_syntax_node);
-    cx.add_action(Editor::select_smaller_syntax_node);
-    cx.add_action(Editor::move_to_enclosing_bracket);
-    cx.add_action(Editor::show_next_diagnostic);
-    cx.add_action(Editor::page_up);
-    cx.add_action(Editor::page_down);
-    cx.add_action(Editor::fold);
-    cx.add_action(Editor::unfold);
-    cx.add_action(Editor::fold_selected_ranges);
+    cx.add_action(Editor::<Buffer>::open_new);
+    cx.add_action(|this: &mut Editor<Buffer>, action: &Scroll, cx| {
+        this.set_scroll_position(action.0, cx)
+    });
+    cx.add_action(Editor::<Buffer>::select);
+    cx.add_action(Editor::<Buffer>::cancel);
+    cx.add_action(Editor::<Buffer>::handle_input);
+    cx.add_action(Editor::<Buffer>::newline);
+    cx.add_action(Editor::<Buffer>::backspace);
+    cx.add_action(Editor::<Buffer>::delete);
+    cx.add_action(Editor::<Buffer>::tab);
+    cx.add_action(Editor::<Buffer>::outdent);
+    cx.add_action(Editor::<Buffer>::delete_line);
+    cx.add_action(Editor::<Buffer>::delete_to_previous_word_boundary);
+    cx.add_action(Editor::<Buffer>::delete_to_next_word_boundary);
+    cx.add_action(Editor::<Buffer>::delete_to_beginning_of_line);
+    cx.add_action(Editor::<Buffer>::delete_to_end_of_line);
+    cx.add_action(Editor::<Buffer>::cut_to_end_of_line);
+    cx.add_action(Editor::<Buffer>::duplicate_line);
+    cx.add_action(Editor::<Buffer>::move_line_up);
+    cx.add_action(Editor::<Buffer>::move_line_down);
+    cx.add_action(Editor::<Buffer>::cut);
+    cx.add_action(Editor::<Buffer>::copy);
+    cx.add_action(Editor::<Buffer>::paste);
+    cx.add_action(Editor::<Buffer>::undo);
+    cx.add_action(Editor::<Buffer>::redo);
+    cx.add_action(Editor::<Buffer>::move_up);
+    cx.add_action(Editor::<Buffer>::move_down);
+    cx.add_action(Editor::<Buffer>::move_left);
+    cx.add_action(Editor::<Buffer>::move_right);
+    cx.add_action(Editor::<Buffer>::move_to_previous_word_boundary);
+    cx.add_action(Editor::<Buffer>::move_to_next_word_boundary);
+    cx.add_action(Editor::<Buffer>::move_to_beginning_of_line);
+    cx.add_action(Editor::<Buffer>::move_to_end_of_line);
+    cx.add_action(Editor::<Buffer>::move_to_beginning);
+    cx.add_action(Editor::<Buffer>::move_to_end);
+    cx.add_action(Editor::<Buffer>::select_up);
+    cx.add_action(Editor::<Buffer>::select_down);
+    cx.add_action(Editor::<Buffer>::select_left);
+    cx.add_action(Editor::<Buffer>::select_right);
+    cx.add_action(Editor::<Buffer>::select_to_previous_word_boundary);
+    cx.add_action(Editor::<Buffer>::select_to_next_word_boundary);
+    cx.add_action(Editor::<Buffer>::select_to_beginning_of_line);
+    cx.add_action(Editor::<Buffer>::select_to_end_of_line);
+    cx.add_action(Editor::<Buffer>::select_to_beginning);
+    cx.add_action(Editor::<Buffer>::select_to_end);
+    cx.add_action(Editor::<Buffer>::select_all);
+    cx.add_action(Editor::<Buffer>::select_line);
+    cx.add_action(Editor::<Buffer>::split_selection_into_lines);
+    cx.add_action(Editor::<Buffer>::add_selection_above);
+    cx.add_action(Editor::<Buffer>::add_selection_below);
+    cx.add_action(Editor::<Buffer>::select_next);
+    cx.add_action(Editor::<Buffer>::toggle_comments);
+    cx.add_action(Editor::<Buffer>::select_larger_syntax_node);
+    cx.add_action(Editor::<Buffer>::select_smaller_syntax_node);
+    cx.add_action(Editor::<Buffer>::move_to_enclosing_bracket);
+    cx.add_action(Editor::<Buffer>::show_next_diagnostic);
+    cx.add_action(Editor::<Buffer>::page_up);
+    cx.add_action(Editor::<Buffer>::page_down);
+    cx.add_action(Editor::<Buffer>::fold);
+    cx.add_action(Editor::<Buffer>::unfold);
+    cx.add_action(Editor::<Buffer>::fold_selected_ranges);
 }
 
 trait SelectionExt {
@@ -344,9 +346,9 @@ pub enum SoftWrap {
     Column(u32),
 }
 
-pub struct Editor {
+pub struct Editor<E: Editable> {
     handle: WeakViewHandle<Self>,
-    buffer: ModelHandle<Buffer>,
+    buffer: ModelHandle<E>,
     display_map: ModelHandle<DisplayMap>,
     selection_set_id: SelectionSetId,
     pending_selection: Option<PendingSelection>,
@@ -415,7 +417,7 @@ struct ClipboardSelection {
     is_entire_line: bool,
 }
 
-impl Editor {
+impl<E: Editable> Editor<E> {
     pub fn single_line(
         build_settings: impl 'static + Fn(&AppContext) -> EditorSettings,
         cx: &mut ViewContext<Self>,
@@ -453,7 +455,7 @@ impl Editor {
     }
 
     pub fn new(
-        buffer: ModelHandle<Buffer>,
+        buffer: ModelHandle<E>,
         build_settings: Rc<RefCell<dyn Fn(&AppContext) -> EditorSettings>>,
         cx: &mut ViewContext<Self>,
     ) -> Self {
@@ -2860,7 +2862,7 @@ impl Editor {
         }
     }
 
-    fn refresh_active_diagnostics(&mut self, cx: &mut ViewContext<Editor>) {
+    fn refresh_active_diagnostics(&mut self, cx: &mut ViewContext<Self>) {
         if let Some(active_diagnostics) = self.active_diagnostics.as_mut() {
             let buffer = self.buffer.read(cx);
             let primary_range_start = active_diagnostics.primary_range.start.to_offset(buffer);
@@ -3612,7 +3614,7 @@ pub enum Event {
     Closed,
 }
 
-impl Entity for Editor {
+impl<E: Editable> Entity for Editor<E> {
     type Event = Event;
 
     fn release(&mut self, cx: &mut MutableAppContext) {
@@ -3624,7 +3626,7 @@ impl Entity for Editor {
     }
 }
 
-impl View for Editor {
+impl<E: Editable> View for Editor<E> {
     fn render(&mut self, cx: &mut RenderContext<Self>) -> ElementBox {
         let settings = self.build_settings.borrow_mut()(cx);
         self.display_map.update(cx, |map, cx| {
@@ -5697,7 +5699,7 @@ mod tests {
         });
     }
 
-    impl Editor {
+    impl<E: Editable> Editor<E> {
         fn selection_ranges(&self, cx: &mut MutableAppContext) -> Vec<Range<DisplayPoint>> {
             self.intersecting_selections(
                 self.selection_set_id,
@@ -5721,11 +5723,11 @@ mod tests {
         point..point
     }
 
-    fn build_editor(
-        buffer: ModelHandle<Buffer>,
+    fn build_editor<E: Editable>(
+        buffer: ModelHandle<E>,
         settings: EditorSettings,
-        cx: &mut ViewContext<Editor>,
-    ) -> Editor {
+        cx: &mut ViewContext<Editor<E>>,
+    ) -> Editor<E> {
         Editor::for_buffer(buffer, move |_| settings.clone(), cx)
     }
 }

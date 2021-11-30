@@ -17,7 +17,7 @@ use gpui::{
     MutableAppContext, PaintContext, Quad, Scene, SizeConstraint, ViewContext, WeakViewHandle,
 };
 use json::json;
-use language::Chunk;
+use language::{Chunk, Editable};
 use smallvec::SmallVec;
 use std::{
     cmp::{self, Ordering},
@@ -27,23 +27,23 @@ use std::{
 };
 use theme::BlockStyle;
 
-pub struct EditorElement {
-    view: WeakViewHandle<Editor>,
+pub struct EditorElement<E: Editable> {
+    view: WeakViewHandle<Editor<E>>,
     settings: EditorSettings,
 }
 
-impl EditorElement {
-    pub fn new(view: WeakViewHandle<Editor>, settings: EditorSettings) -> Self {
+impl<E: Editable> EditorElement<E> {
+    pub fn new(view: WeakViewHandle<Editor<E>>, settings: EditorSettings) -> Self {
         Self { view, settings }
     }
 
-    fn view<'a>(&self, cx: &'a AppContext) -> &'a Editor {
+    fn view<'a>(&self, cx: &'a AppContext) -> &'a Editor<E> {
         self.view.upgrade(cx).unwrap().read(cx)
     }
 
     fn update_view<F, T>(&self, cx: &mut MutableAppContext, f: F) -> T
     where
-        F: FnOnce(&mut Editor, &mut ViewContext<Editor>) -> T,
+        F: FnOnce(&mut Editor<E>, &mut ViewContext<Editor<E>>) -> T,
     {
         self.view.upgrade(cx).unwrap().update(cx, f)
     }
@@ -670,7 +670,7 @@ impl EditorElement {
     }
 }
 
-impl Element for EditorElement {
+impl<E: Editable> Element for EditorElement<E> {
     type LayoutState = Option<LayoutState>;
     type PaintState = Option<PaintState>;
 

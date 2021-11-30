@@ -49,6 +49,8 @@ lazy_static! {
 // TODO - Make this configurable
 const INDENT_SIZE: u32 = 4;
 
+pub trait Editable: 'static + Entity {}
+
 pub struct Buffer {
     text: TextBuffer,
     file: Option<Box<dyn File>>,
@@ -221,6 +223,8 @@ struct DiagnosticEndpoint {
     is_start: bool,
     severity: DiagnosticSeverity,
 }
+
+impl Editable for Buffer {}
 
 impl Buffer {
     pub fn new<T: Into<Arc<str>>>(
