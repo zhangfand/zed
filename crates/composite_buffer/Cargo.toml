@@ -12,3 +12,4 @@ clock = { path = "../clock" }
 gpui = { path = "../gpui" }
 language = { path = "../language" }
 lsp = { path = "../lsp" }
+theme = { path = "../theme" }

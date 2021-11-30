@@ -2,6 +2,7 @@ use super::{
     wrap_map::{self, Edit as WrapEdit, Snapshot as WrapSnapshot, WrapPoint},
     BlockStyle, DisplayRow,
 };
+use composite_buffer::{CompositeAnchor as Anchor, CompositeBuffer, ToOffset, ToPoint as _};
 use gpui::{fonts::HighlightStyle, AppContext, ModelHandle};
 use language::{Buffer, Chunk};
 use parking_lot::Mutex;
@@ -18,11 +19,11 @@ use std::{
     vec,
 };
 use sum_tree::SumTree;
-use text::{rope, Anchor, Bias, Edit, Point, Rope, ToOffset, ToPoint as _};
+use text::{rope, Bias, Edit, Point, Rope};
 use theme::SyntaxTheme;
 
 pub struct BlockMap {
-    buffer: ModelHandle<Buffer>,
+    buffer: ModelHandle<CompositeBuffer>,
     next_block_id: AtomicUsize,
     wrap_snapshot: Mutex<WrapSnapshot>,
     blocks: Vec<Arc<Block>>,
@@ -125,7 +126,7 @@ pub struct BufferRows<'a> {
 }
 
 impl BlockMap {
-    pub fn new(buffer: ModelHandle<Buffer>, wrap_snapshot: WrapSnapshot) -> Self {
+    pub fn new(buffer: ModelHandle<CompositeBuffer>, wrap_snapshot: WrapSnapshot) -> Self {
         Self {
             buffer,
             next_block_id: AtomicUsize::new(0),
@@ -1317,11 +1318,14 @@ mod tests {
             log::info!("initial buffer text: {:?}", text);
             Buffer::new(0, text, cx)
         });
-        let (fold_map, folds_snapshot) = FoldMap::new(buffer.clone(), cx);
+        let composite_buffer = cx.add_model(|cx| {
+            CompositeBuffer::singleton(buffer.clone());
+        });
+        let (fold_map, folds_snapshot) = FoldMap::new(composite_buffer.clone(), cx);
         let (tab_map, tabs_snapshot) = TabMap::new(folds_snapshot.clone(), tab_size);
         let (wrap_map, wraps_snapshot) =
             WrapMap::new(tabs_snapshot, font_id, font_size, wrap_width, cx);
-        let mut block_map = BlockMap::new(buffer.clone(), wraps_snapshot);
+        let mut block_map = BlockMap::new(composite_buffer.clone(), wraps_snapshot);
         let mut expected_blocks = Vec::new();
 
         for _ in 0..operations {

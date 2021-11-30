@@ -6,13 +6,13 @@ mod wrap_map;
 
 pub use block_map::{BlockDisposition, BlockId, BlockProperties, BufferRows, Chunks};
 use block_map::{BlockMap, BlockPoint};
-use composite_buffer::CompositeBuffer;
+use composite_buffer::{CompositeAnchor as Anchor, CompositeBuffer, ToOffset, ToPoint};
 use fold_map::{FoldMap, ToFoldPoint as _};
 use gpui::{
     fonts::{FontId, HighlightStyle},
     AppContext, Entity, ModelContext, ModelHandle,
 };
-use language::{Anchor, Buffer, Point, ToOffset, ToPoint};
+use language::{Buffer, Point};
 use std::{
     collections::{HashMap, HashSet},
     ops::Range,
@@ -170,7 +170,7 @@ impl DisplayMap {
 }
 
 pub struct DisplayMapSnapshot {
-    pub buffer_snapshot: language::Snapshot,
+    pub buffer_snapshot: composite_buffer::Snapshot,
     folds_snapshot: fold_map::Snapshot,
     tabs_snapshot: tab_map::Snapshot,
     wraps_snapshot: wrap_map::Snapshot,
@@ -487,6 +487,7 @@ mod tests {
         });
 
         let map = cx.add_model(|cx| {
+            let buffer = cx.add_model(|cx| CompositeBuffer::singleton(buffer.clone()));
             DisplayMap::new(buffer.clone(), tab_size, font_id, font_size, wrap_width, cx)
         });
         let (_observer, notifications) = Observer::new(&map, &mut cx);
@@ -643,6 +644,7 @@ mod tests {
 
         let text = "one two three four five\nsix seven eight";
         let buffer = cx.add_model(|cx| Buffer::new(0, text.to_string(), cx));
+        let buffer = cx.add_model(|cx| CompositeBuffer::singleton(buffer));
         let map = cx.add_model(|cx| {
             DisplayMap::new(buffer.clone(), tab_size, font_id, font_size, wrap_width, cx)
         });
@@ -716,6 +718,7 @@ mod tests {
     fn test_text_chunks(cx: &mut gpui::MutableAppContext) {
         let text = sample_text(6, 6);
         let buffer = cx.add_model(|cx| Buffer::new(0, text, cx));
+        let buffer = cx.add_model(|cx| CompositeBuffer::singleton(buffer));
         let tab_size = 4;
         let family_id = cx.font_cache().load_family(&["Helvetica"]).unwrap();
         let font_id = cx
@@ -794,6 +797,7 @@ mod tests {
         let buffer =
             cx.add_model(|cx| Buffer::new(0, text, cx).with_language(Some(lang), None, cx));
         buffer.condition(&cx, |buf, _| !buf.is_parsing()).await;
+        let buffer = cx.add_model(|cx| CompositeBuffer::singleton(buffer));
 
         let tab_size = 2;
         let font_cache = cx.font_cache();
@@ -881,6 +885,7 @@ mod tests {
         let buffer =
             cx.add_model(|cx| Buffer::new(0, text, cx).with_language(Some(lang), None, cx));
         buffer.condition(&cx, |buf, _| !buf.is_parsing()).await;
+        let buffer = cx.add_model(|cx| CompositeBuffer::singleton(buffer));
 
         let font_cache = cx.font_cache();
 
@@ -927,6 +932,7 @@ mod tests {
         let text = "\n'a', 'α',\t'✋',\t'❎', '🍐'\n";
         let display_text = "\n'a', 'α',   '✋',    '❎', '🍐'\n";
         let buffer = cx.add_model(|cx| Buffer::new(0, text, cx));
+        let buffer = cx.add_model(|cx| CompositeBuffer::singleton(buffer));
 
         let tab_size = 4;
         let font_cache = cx.font_cache();
@@ -971,6 +977,7 @@ mod tests {
     fn test_tabs_with_multibyte_chars(cx: &mut gpui::MutableAppContext) {
         let text = "✅\t\tα\nβ\t\n🏀β\t\tγ";
         let buffer = cx.add_model(|cx| Buffer::new(0, text, cx));
+        let buffer = cx.add_model(|cx| CompositeBuffer::singleton(buffer));
         let tab_size = 4;
         let font_cache = cx.font_cache();
         let family_id = font_cache.load_family(&["Helvetica"]).unwrap();
@@ -1030,6 +1037,7 @@ mod tests {
     #[gpui::test]
     fn test_max_point(cx: &mut gpui::MutableAppContext) {
         let buffer = cx.add_model(|cx| Buffer::new(0, "aaa\n\t\tbbb", cx));
+        let buffer = cx.add_model(|cx| CompositeBuffer::singleton(buffer));
         let tab_size = 4;
         let font_cache = cx.font_cache();
         let family_id = font_cache.load_family(&["Helvetica"]).unwrap();

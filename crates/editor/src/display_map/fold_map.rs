@@ -1,5 +1,6 @@
+use composite_buffer::{AnchorRangeExt as _, CompositeAnchor as Anchor, CompositeBuffer, ToOffset};
 use gpui::{AppContext, ModelHandle};
-use language::{Anchor, AnchorRangeExt, Buffer, Chunk, Point, PointUtf16, TextSummary, ToOffset};
+use language::{Chunk, Point, PointUtf16, TextSummary};
 use parking_lot::Mutex;
 use std::{
     cmp::{self, Ordering},
@@ -190,7 +191,7 @@ impl<'a> FoldMapWriter<'a> {
 }
 
 pub struct FoldMap {
-    buffer: ModelHandle<Buffer>,
+    buffer: ModelHandle<CompositeBuffer>,
     transforms: Mutex<SumTree<Transform>>,
     folds: SumTree<Fold>,
     last_sync: Mutex<SyncState>,
@@ -205,7 +206,7 @@ struct SyncState {
 }
 
 impl FoldMap {
-    pub fn new(buffer_handle: ModelHandle<Buffer>, cx: &AppContext) -> (Self, Snapshot) {
+    pub fn new(buffer_handle: ModelHandle<CompositeBuffer>, cx: &AppContext) -> (Self, Snapshot) {
         let buffer = buffer_handle.read(cx);
         let this = Self {
             buffer: buffer_handle,
@@ -488,7 +489,7 @@ impl FoldMap {
 pub struct Snapshot {
     transforms: SumTree<Transform>,
     folds: SumTree<Fold>,
-    buffer_snapshot: language::Snapshot,
+    buffer_snapshot: composite_buffer::Snapshot,
     pub version: usize,
 }
 
@@ -711,7 +712,7 @@ impl Snapshot {
 }
 
 fn intersecting_folds<'a, T>(
-    buffer: &'a text::Snapshot,
+    buffer: &'a composite_buffer::Snapshot,
     folds: &'a SumTree<Fold>,
     range: Range<T>,
     inclusive: bool,
@@ -862,9 +863,9 @@ impl Default for FoldSummary {
 }
 
 impl sum_tree::Summary for FoldSummary {
-    type Context = text::Snapshot;
+    type Context = composite_buffer::Snapshot;
 
-    fn add_summary(&mut self, other: &Self, buffer: &text::Snapshot) {
+    fn add_summary(&mut self, other: &Self, buffer: &composite_buffer::Snapshot) {
         if other.min_start.cmp(&self.min_start, buffer).unwrap() == Ordering::Less {
             self.min_start = other.min_start.clone();
         }
@@ -1076,6 +1077,7 @@ impl FoldEdit {
 mod tests {
     use super::*;
     use crate::{test::sample_text, ToPoint};
+    use language::Buffer;
     use rand::prelude::*;
     use std::{env, mem};
     use text::RandomCharIter;
@@ -1084,6 +1086,7 @@ mod tests {
     #[gpui::test]
     fn test_basic_folds(cx: &mut gpui::MutableAppContext) {
         let buffer = cx.add_model(|cx| Buffer::new(0, sample_text(5, 6), cx));
+        let buffer = cx.add_model(|cx| CompositeBuffer::singleton(buffer));
         let mut map = FoldMap::new(buffer.clone(), cx.as_ref()).0;
 
         let (mut writer, _, _) = map.write(cx.as_ref());
@@ -1150,6 +1153,7 @@ mod tests {
     #[gpui::test]
     fn test_adjacent_folds(cx: &mut gpui::MutableAppContext) {
         let buffer = cx.add_model(|cx| Buffer::new(0, "abcdefghijkl", cx));
+        let buffer = cx.add_model(|cx| CompositeBuffer::singleton(buffer));
 
         {
             let mut map = FoldMap::new(buffer.clone(), cx.as_ref()).0;
@@ -1232,6 +1236,7 @@ mod tests {
     #[gpui::test]
     fn test_folds_in_range(cx: &mut gpui::MutableAppContext) {
         let buffer = cx.add_model(|cx| Buffer::new(0, sample_text(5, 6), cx));
+        let buffer = cx.add_model(|cx| CompositeBuffer::singleton(buffer));
         let mut map = FoldMap::new(buffer.clone(), cx.as_ref()).0;
         let buffer = buffer.read(cx);
 

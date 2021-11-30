@@ -8,7 +8,7 @@ mod test;
 
 use aho_corasick::AhoCorasick;
 use clock::ReplicaId;
-use composite_buffer::CompositeBuffer;
+use composite_buffer::{CompositeAnchor as Anchor, CompositeBuffer};
 use display_map::*;
 pub use display_map::{DisplayPoint, DisplayRow};
 pub use element::*;
@@ -5727,7 +5727,7 @@ mod tests {
     }
 
     fn build_editor(
-        buffer: ModelHandle<CompositeBuffer>,
+        buffer: ModelHandle<Buffer>,
         settings: EditorSettings,
         cx: &mut ViewContext<Editor>,
     ) -> Editor {
