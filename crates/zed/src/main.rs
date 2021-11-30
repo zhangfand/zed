@@ -25,7 +25,7 @@ fn main() {
 
     let themes = ThemeRegistry::new(Assets, app.font_cache());
     let theme = themes.get(DEFAULT_THEME_NAME).unwrap();
-    let settings = Settings::new("Inconsolata", &app.font_cache(), theme)
+    let settings = Settings::new("PragmataPro Liga", &app.font_cache(), theme)
         .unwrap()
         .with_overrides(
             language::PLAIN_TEXT.name(),

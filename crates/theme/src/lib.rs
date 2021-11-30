@@ -252,7 +252,7 @@ pub struct EditorStyle {
 
 #[derive(Copy, Clone, Deserialize, Default)]
 pub struct DiagnosticStyle {
-    pub text: Color,
+    pub text: HighlightStyle,
     #[serde(flatten)]
     pub block: BlockStyle,
 }

@@ -1,5 +1,5 @@
 [text]
-base = { family = "Inconsolata", size = 15 }
+base = { family = "SF Mono", size = 15 }
 
 [workspace]
 background = "$surface.0"
@@ -249,11 +249,11 @@ line_number_active = "$text.0.color"
 selection = "$selection.host"
 guest_selections = "$selection.guests"
 error_color = "$status.bad"
-error_diagnostic = { text = "$status.bad" }
-invalid_error_diagnostic = { text = "$text.3.color" }
-warning_diagnostic = { text = "$status.warn" }
-invalid_warning_diagnostic = { text = "$text.3.color" }
-information_diagnostic = { text = "$status.info" }
-invalid_information_diagnostic = { text = "$text.3.color" }
-hint_diagnostic = { text = "$status.info" }
-invalid_hint_diagnostic = { text = "$text.3.color" }
+error_diagnostic = { text = { color = "$status.bad", italic = true } }
+invalid_error_diagnostic = { text = { color = "$text.3.color", italic = true } }
+warning_diagnostic = { text = { color = "$status.warn", italic = true } }
+invalid_warning_diagnostic = { text = { color = "$text.3.color", italic = true } }
+information_diagnostic = { text = { color = "$status.info", italic = true } }
+invalid_information_diagnostic = { text = { color = "$text.3.color", italic = true } }
+hint_diagnostic = { text = { color = "$status.info", italic = true } }
+invalid_hint_diagnostic = { text = { color = "$text.3.color", italic = true } }
