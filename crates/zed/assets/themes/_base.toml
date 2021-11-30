@@ -249,7 +249,7 @@ line_number_active = "$text.0.color"
 selection = "$selection.host"
 guest_selections = "$selection.guests"
 error_color = "$status.bad"
-error_diagnostic = { text = { color = "$status.bad", italic = true } }
+error_diagnostic = { border_left = "$status.bad", text = { color = "$status.bad", italic = true } }
 invalid_error_diagnostic = { text = { color = "$text.3.color", italic = true } }
 warning_diagnostic = { text = { color = "$status.warn", italic = true } }
 invalid_warning_diagnostic = { text = { color = "$text.3.color", italic = true } }

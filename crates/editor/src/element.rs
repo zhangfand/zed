@@ -218,6 +218,7 @@ impl EditorElement {
         cx: &mut PaintContext,
     ) {
         let bounds = gutter_bounds.union_rect(text_bounds);
+        let content_origin = text_bounds.origin() + layout.text_offset;
         let scroll_top = layout.snapshot.scroll_position().y() * layout.line_height;
         let start_row = layout.snapshot.scroll_position().y() as u32;
         let editor = self.view(cx.app);
@@ -280,27 +281,30 @@ impl EditorElement {
         }
 
         // Draw block backgrounds
-        for (ixs, block_style) in &layout.block_layouts {
-            let row = start_row + ixs.start;
+        for block_layout in &layout.block_layouts {
+            let row = start_row + block_layout.line_layout_ixs.start;
             let offset = vec2f(0., row as f32 * layout.line_height - scroll_top);
-            let height = ixs.len() as f32 * layout.line_height;
+            let height = block_layout.line_layout_ixs.len() as f32 * layout.line_height;
+
+            if let Some(border_left_color) = block_layout.style.border_left {
+                cx.scene.push_quad(Quad {
+                    bounds: RectF::new(
+                        content_origin + offset + vec2f(block_layout.left_edge, 0.),
+                        vec2f(1., height),
+                    ),
+                    background: Some(border_left_color),
+                    border: Default::default(),
+                    corner_radius: 0.,
+                })
+            }
+
             cx.scene.push_quad(Quad {
                 bounds: RectF::new(
                     text_bounds.origin() + offset,
                     vec2f(text_bounds.width(), height),
                 ),
-                background: block_style.background,
-                border: block_style
-                    .border
-                    .map_or(Default::default(), |color| Border {
-                        width: 1.,
-                        color,
-                        overlay: true,
-                        top: true,
-                        right: false,
-                        bottom: true,
-                        left: false,
-                    }),
+                background: block_layout.style.background,
+                border: Default::default(),
                 corner_radius: 0.,
             });
             cx.scene.push_quad(Quad {
@@ -308,8 +312,9 @@ impl EditorElement {
                     gutter_bounds.origin() + offset,
                     vec2f(gutter_bounds.width(), height),
                 ),
-                background: block_style.gutter_background,
-                border: block_style
+                background: block_layout.style.gutter_background,
+                border: block_layout
+                    .style
                     .gutter_border
                     .map_or(Default::default(), |color| Border {
                         width: 1.,
@@ -484,17 +489,15 @@ impl EditorElement {
     fn layout_rows(
         &self,
         rows: Range<u32>,
+        line_layouts: &[text_layout::Line],
         active_rows: &BTreeMap<u32, bool>,
         snapshot: &Snapshot,
         cx: &LayoutContext,
-    ) -> (
-        Vec<Option<text_layout::Line>>,
-        Vec<(Range<u32>, BlockStyle)>,
-    ) {
+    ) -> (Vec<Option<text_layout::Line>>, Vec<BlockLayout>) {
         let style = &self.settings.style;
         let include_line_numbers = snapshot.mode == EditorMode::Full;
         let mut last_block_id = None;
-        let mut blocks = Vec::<(Range<u32>, BlockStyle)>::new();
+        let mut blocks = Vec::<BlockLayout>::new();
         let mut line_number_layouts = Vec::with_capacity(rows.len());
         let mut line_number = String::new();
         for (ix, row) in snapshot
@@ -528,17 +531,21 @@ impl EditorElement {
                     }
                     last_block_id = None;
                 }
-                DisplayRow::Block(block_id, style) => {
+                DisplayRow::Block { id, style, column } => {
                     let ix = ix as u32;
-                    if last_block_id == Some(block_id) {
-                        if let Some((row_range, _)) = blocks.last_mut() {
-                            row_range.end += 1;
+                    if last_block_id == Some(id) {
+                        if let Some(block_layout) = blocks.last_mut() {
+                            block_layout.line_layout_ixs.end += 1;
                         }
                     } else if let Some(style) = style {
-                        blocks.push((ix..ix + 1, style));
+                        blocks.push(BlockLayout {
+                            line_layout_ixs: ix..ix + 1,
+                            left_edge: line_layouts[ix as usize].x_for_index(column as usize),
+                            style,
+                        });
                     }
                     line_number_layouts.push(None);
-                    last_block_id = Some(block_id);
+                    last_block_id = Some(id);
                 }
                 DisplayRow::Wrap => {
                     line_number_layouts.push(None);
@@ -773,9 +780,6 @@ impl Element for EditorElement {
             }
         });
 
-        let (line_number_layouts, block_layouts) =
-            self.layout_rows(start_row..end_row, &active_rows, &snapshot, cx);
-
         let mut max_visible_line_width = 0.0;
         let line_layouts = self.layout_lines(start_row..end_row, &mut snapshot, cx);
         for line in &line_layouts {
@@ -783,6 +787,14 @@ impl Element for EditorElement {
                 max_visible_line_width = line.width();
             }
         }
+
+        let (line_number_layouts, block_layouts) = self.layout_rows(
+            start_row..end_row,
+            &line_layouts,
+            &active_rows,
+            &snapshot,
+            cx,
+        );
 
         let mut layout = LayoutState {
             size,
@@ -927,7 +939,7 @@ pub struct LayoutState {
     highlighted_row: Option<u32>,
     line_layouts: Vec<text_layout::Line>,
     line_number_layouts: Vec<Option<text_layout::Line>>,
-    block_layouts: Vec<(Range<u32>, BlockStyle)>,
+    block_layouts: Vec<BlockLayout>,
     line_height: f32,
     em_width: f32,
     em_advance: f32,
@@ -935,6 +947,12 @@ pub struct LayoutState {
     overscroll: Vector2F,
     text_offset: Vector2F,
     max_visible_line_width: f32,
+}
+
+struct BlockLayout {
+    line_layout_ixs: Range<u32>,
+    left_edge: f32,
+    style: BlockStyle,
 }
 
 impl LayoutState {
@@ -1189,7 +1207,7 @@ mod tests {
             let snapshot = editor.snapshot(cx);
             let mut presenter = cx.build_presenter(window_id, 30.);
             let mut layout_cx = presenter.build_layout_context(false, cx);
-            element.layout_rows(0..6, &Default::default(), &snapshot, &mut layout_cx)
+            element.layout_rows(0..6, &[], &Default::default(), &snapshot, &mut layout_cx)
         });
         assert_eq!(layouts.len(), 6);
     }

@@ -915,7 +915,11 @@ impl<'a> Iterator for BufferRows<'a> {
             let style = self
                 .cx
                 .and_then(|cx| block.build_style.lock().as_ref().map(|f| f(cx)));
-            Some(DisplayRow::Block(block.id, style))
+            Some(DisplayRow::Block {
+                id: block.id,
+                style,
+                column: block.column,
+            })
         } else {
             Some(self.input_buffer_rows.next().unwrap())
         }
@@ -1217,12 +1221,24 @@ mod tests {
             snapshot.buffer_rows(0, None).collect::<Vec<_>>(),
             &[
                 DisplayRow::Buffer(0),
-                DisplayRow::Block(block_ids[0], None),
-                DisplayRow::Block(block_ids[1], None),
+                DisplayRow::Block {
+                    id: block_ids[0],
+                    style: None,
+                    column: 0
+                },
+                DisplayRow::Block {
+                    id: block_ids[1],
+                    style: None,
+                    column: 0
+                },
                 DisplayRow::Buffer(1),
                 DisplayRow::Buffer(2),
                 DisplayRow::Buffer(3),
-                DisplayRow::Block(block_ids[2], None)
+                DisplayRow::Block {
+                    id: block_ids[2],
+                    style: None,
+                    column: 0
+                }
             ]
         );
 

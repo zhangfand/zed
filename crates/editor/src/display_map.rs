@@ -439,7 +439,11 @@ impl ToDisplayPoint for Anchor {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DisplayRow {
     Buffer(u32),
-    Block(BlockId, Option<BlockStyle>),
+    Block {
+        id: BlockId,
+        column: u32,
+        style: Option<BlockStyle>,
+    },
     Wrap,
 }
 

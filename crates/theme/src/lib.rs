@@ -276,7 +276,7 @@ pub struct InputEditorStyle {
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
 pub struct BlockStyle {
     pub background: Option<Color>,
-    pub border: Option<Color>,
+    pub border_left: Option<Color>,
     pub gutter_background: Option<Color>,
     pub gutter_border: Option<Color>,
 }
