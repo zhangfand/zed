@@ -39,7 +39,7 @@ struct Excerpt {
     buffer: language::Snapshot,
     rows: Range<u32>,
     summary: TextSummary,
-    include_buffer_header: bool,
+    header_lines: u32,
 }
 
 pub struct CompositeBufferSubscription {}
@@ -59,6 +59,7 @@ pub struct Chunks<'a> {
     cursor: sum_tree::Cursor<'a, Excerpt, usize>,
     range: Range<usize>,
     buffer_chunks: language::Chunks<'a>,
+    header_lines: u32,
     theme: Option<&'a SyntaxTheme>,
 }
 
@@ -75,8 +76,24 @@ pub trait ToOffset {
 }
 
 impl CompositeBuffer {
-    pub fn new<T>(
+    pub fn multiple<T>(
         iter: impl IntoIterator<Item = (ModelHandle<Buffer>, Vec<Range<T>>)>,
+        cx: &mut ModelContext<Self>,
+    ) -> Self
+    where
+        T: language::ToPoint + language::ToOffset,
+    {
+        Self::new(iter, false, cx)
+    }
+
+    pub fn singleton(buffer: ModelHandle<Buffer>, cx: &mut ModelContext<Self>) -> Self {
+        let buffer_len = buffer.read(cx).len();
+        Self::new([(buffer, vec![0..buffer_len])], true, cx)
+    }
+
+    fn new<T>(
+        iter: impl IntoIterator<Item = (ModelHandle<Buffer>, Vec<Range<T>>)>,
+        singleton: bool,
         cx: &mut ModelContext<Self>,
     ) -> Self
     where
@@ -85,10 +102,17 @@ impl CompositeBuffer {
         let mut excerpts = SumTree::new();
         let mut excerpt_sets = Vec::new();
         for (buffer_handle, ranges) in iter {
-            buffer_handle.update(cx, |buffer, cx| {
+            buffer_handle.update(cx, |buffer, _| {
                 for (ix, range) in ranges.iter().enumerate() {
                     let rows = range.start.to_point(buffer).row..range.end.to_point(buffer).row + 1;
-                    excerpts.push(Excerpt::new(buffer.snapshot(), rows, ix == 0, cx), &());
+                    let header_lines = if singleton {
+                        0
+                    } else if ix > 0 {
+                        1
+                    } else {
+                        2
+                    };
+                    excerpts.push(Excerpt::new(buffer.snapshot(), rows, header_lines), &());
                 }
 
                 let ranges = buffer.anchor_range_set(
@@ -110,15 +134,8 @@ impl CompositeBuffer {
         Self {
             snapshot: Snapshot { excerpts },
             excerpt_sets,
-            singleton: false,
+            singleton,
         }
-    }
-
-    pub fn singleton(buffer: ModelHandle<Buffer>, cx: &mut ModelContext<Self>) -> Self {
-        let buffer_len = buffer.read(cx).len();
-        let mut this = Self::new([(buffer, vec![0..buffer_len])], cx);
-        this.singleton = true;
-        this
     }
 
     pub fn subscribe(&mut self) -> CompositeBufferSubscription {
@@ -338,31 +355,23 @@ impl CompositeBuffer {
 }
 
 impl Excerpt {
-    fn new(
-        buffer: language::Snapshot,
-        rows: Range<u32>,
-        include_buffer_header: bool,
-        cx: &AppContext,
-    ) -> Self {
+    fn new(buffer: language::Snapshot, rows: Range<u32>, header_lines: u32) -> Self {
         let mut summary = buffer.text_summary_for_range::<TextSummary, _>(
             Point::new(rows.start, 0)..Point::new(rows.end, 0),
         );
 
-        if include_buffer_header {
-            summary.bytes += 1;
-            summary.lines.row += 1;
-            summary.lines_utf16.row += 1;
+        if header_lines > 0 {
+            summary.bytes += header_lines as usize;
+            summary.lines.row += header_lines;
+            summary.lines_utf16.row += header_lines;
+            summary.first_line_chars = 0;
         }
-        summary.bytes += 1;
-        summary.lines.row += 1;
-        summary.lines_utf16.row += 1;
-        summary.first_line_chars = 0;
 
         Self {
             buffer,
             rows,
             summary,
-            include_buffer_header,
+            header_lines,
         }
     }
 }
@@ -489,14 +498,26 @@ impl Snapshot {
         let excerpt_start_point = Point::new(excerpt.rows.start, 0);
         let excerpt_start_offset =
             language::ToOffset::to_offset(&excerpt_start_point, &excerpt.buffer);
-        let start_offset = excerpt_start_offset + overshoot;
-        let end_offset = excerpt_start_offset + cmp::min(range.len(), excerpt.summary.bytes);
+
+        let header_lines;
+        let start_offset;
+        if overshoot < excerpt.header_lines as usize {
+            header_lines = excerpt.header_lines - overshoot as u32;
+            start_offset = excerpt_start_offset;
+        } else {
+            header_lines = 0;
+            start_offset = excerpt_start_offset + overshoot - excerpt.header_lines as usize;
+        }
+
+        let end_offset = start_offset + cmp::min(range.len(), excerpt.summary.bytes)
+            - excerpt.header_lines as usize;
         let buffer_chunks = excerpt.buffer.chunks(start_offset..end_offset, theme);
 
         Chunks {
             cursor,
             range,
             buffer_chunks,
+            header_lines,
             theme,
         }
     }
@@ -625,18 +646,31 @@ impl<'a> Iterator for Chunks<'a> {
     type Item = Chunk<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(chunk) = self.buffer_chunks.next() {
-            return Some(chunk);
-        }
+        loop {
+            if self.header_lines > 0 {
+                let chunk = Chunk {
+                    text: &"\n\n"[..self.header_lines as usize],
+                    highlight_style: None,
+                    diagnostic: None,
+                };
+                self.header_lines = 0;
+                return Some(chunk);
+            }
 
-        self.cursor.next(&());
-        self.range.start = *self.cursor.start();
-        let excerpt = self.cursor.item()?;
-        let start_point = Point::new(excerpt.rows.start, 0);
-        let start_offset = language::ToOffset::to_offset(&start_point, &excerpt.buffer);
-        let end_offset = start_offset + cmp::min(self.range.len(), excerpt.summary.bytes);
-        self.buffer_chunks = excerpt.buffer.chunks(start_offset..end_offset, self.theme);
-        self.buffer_chunks.next()
+            if let Some(chunk) = self.buffer_chunks.next() {
+                return Some(chunk);
+            }
+
+            self.cursor.next(&());
+            self.range.start = *self.cursor.start();
+            let excerpt = self.cursor.item()?;
+
+            let start_point = Point::new(excerpt.rows.start, 0);
+            let start_offset = language::ToOffset::to_offset(&start_point, &excerpt.buffer);
+            let end_offset = start_offset + cmp::min(self.range.len(), excerpt.summary.bytes);
+            self.header_lines = excerpt.header_lines;
+            self.buffer_chunks = excerpt.buffer.chunks(start_offset..end_offset, self.theme);
+        }
     }
 }
 
@@ -746,6 +780,14 @@ mod tests {
 
     #[gpui::test]
     fn test_multi_composite_buffer(cx: &mut MutableAppContext) {
-        // cx.add_model(build_model)
+        let buffer1 = cx.add_model(|cx| Buffer::new(0, "one\ntwo\nthree\nfour\n", cx));
+        let buffer2 = cx.add_model(|cx| Buffer::new(1, "five\nsix\nseven\neight\n", cx));
+        let composite = cx.add_model(|cx| {
+            CompositeBuffer::multiple([(buffer1, vec![0..1, 2..4]), (buffer2, vec![1..3])], cx)
+        });
+        assert_eq!(
+            composite.read(cx).text(),
+            "\n\none\n\nthree\nfour\n\n\nsix\nseven\n"
+        );
     }
 }
