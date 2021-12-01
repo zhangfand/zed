@@ -1,5 +1,6 @@
 use crate::{Editor, EditorSettings, Event};
 use anyhow::Result;
+use composite_buffer::ToPoint as _;
 use gpui::{
     elements::*, fonts::TextStyle, AppContext, Entity, ModelContext, ModelHandle,
     MutableAppContext, RenderContext, Subscription, Task, View, ViewContext, ViewHandle,
@@ -10,7 +11,7 @@ use postage::watch;
 use project::{ProjectPath, Worktree};
 use std::fmt::Write;
 use std::path::Path;
-use text::{Point, Selection, ToPoint};
+use text::{Point, Selection};
 use workspace::{
     settings, EntryOpener, ItemHandle, ItemView, ItemViewHandle, Settings, StatusItemView,
     WeakItemHandle,
@@ -174,39 +175,41 @@ impl ItemView for Editor {
         path: &Path,
         cx: &mut ViewContext<Self>,
     ) -> Task<Result<()>> {
-        self.buffer().update(cx, |buffer, cx| {
-            let handle = cx.handle();
-            let text = buffer.as_rope().clone();
-            let version = buffer.version();
+        todo!()
 
-            let save_as = worktree.update(cx, |worktree, cx| {
-                worktree
-                    .as_local_mut()
-                    .unwrap()
-                    .save_buffer_as(handle, path, text, cx)
-            });
+        // self.buffer().update(cx, |buffer, cx| {
+        //     let handle = cx.handle();
+        //     let text = buffer.as_rope().clone();
+        //     let version = buffer.version();
 
-            cx.spawn(|buffer, mut cx| async move {
-                save_as.await.map(|new_file| {
-                    let (language, language_server) = worktree.update(&mut cx, |worktree, cx| {
-                        let worktree = worktree.as_local_mut().unwrap();
-                        let language = worktree
-                            .languages()
-                            .select_language(new_file.full_path())
-                            .cloned();
-                        let language_server = language
-                            .as_ref()
-                            .and_then(|language| worktree.ensure_language_server(language, cx));
-                        (language, language_server.clone())
-                    });
+        //     let save_as = worktree.update(cx, |worktree, cx| {
+        //         worktree
+        //             .as_local_mut()
+        //             .unwrap()
+        //             .save_buffer_as(handle, path, text, cx)
+        //     });
 
-                    buffer.update(&mut cx, |buffer, cx| {
-                        buffer.did_save(version, new_file.mtime, Some(Box::new(new_file)), cx);
-                        buffer.set_language(language, language_server, cx);
-                    });
-                })
-            })
-        })
+        //     cx.spawn(|buffer, mut cx| async move {
+        //         save_as.await.map(|new_file| {
+        //             let (language, language_server) = worktree.update(&mut cx, |worktree, cx| {
+        //                 let worktree = worktree.as_local_mut().unwrap();
+        //                 let language = worktree
+        //                     .languages()
+        //                     .select_language(new_file.full_path())
+        //                     .cloned();
+        //                 let language_server = language
+        //                     .as_ref()
+        //                     .and_then(|language| worktree.ensure_language_server(language, cx));
+        //                 (language, language_server.clone())
+        //             });
+
+        //             buffer.update(&mut cx, |buffer, cx| {
+        //                 buffer.did_save(version, new_file.mtime, Some(Box::new(new_file)), cx);
+        //                 buffer.set_language(language, language_server, cx);
+        //             });
+        //         })
+        //     })
+        // })
     }
 
     fn is_dirty(&self, cx: &AppContext) -> bool {

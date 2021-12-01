@@ -1105,10 +1105,11 @@ mod tests {
         let text = "aaa\nbbb\nccc\nddd";
 
         let buffer = cx.add_model(|cx| Buffer::new(0, text, cx));
-        let (fold_map, folds_snapshot) = FoldMap::new(buffer.clone(), cx);
+        let composite_buffer = cx.add_model(|cx| CompositeBuffer::singleton(buffer));
+        let (fold_map, folds_snapshot) = FoldMap::new(composite_buffer.clone(), cx);
         let (tab_map, tabs_snapshot) = TabMap::new(folds_snapshot.clone(), 1);
         let (wrap_map, wraps_snapshot) = WrapMap::new(tabs_snapshot, font_id, 14.0, None, cx);
-        let mut block_map = BlockMap::new(buffer.clone(), wraps_snapshot.clone());
+        let mut block_map = BlockMap::new(composite_buffer.clone(), wraps_snapshot.clone());
 
         let mut writer = block_map.write(wraps_snapshot.clone(), vec![], cx);
         let block_ids = writer.insert(
@@ -1256,10 +1257,11 @@ mod tests {
         let text = "one two three\nfour five six\nseven eight";
 
         let buffer = cx.add_model(|cx| Buffer::new(0, text, cx));
-        let (_, folds_snapshot) = FoldMap::new(buffer.clone(), cx);
+        let composite_buffer = cx.add_model(|cx| CompositeBuffer::singleton(buffer));
+        let (_, folds_snapshot) = FoldMap::new(composite_buffer.clone(), cx);
         let (_, tabs_snapshot) = TabMap::new(folds_snapshot.clone(), 1);
         let (_, wraps_snapshot) = WrapMap::new(tabs_snapshot, font_id, 14.0, Some(60.), cx);
-        let mut block_map = BlockMap::new(buffer.clone(), wraps_snapshot.clone());
+        let mut block_map = BlockMap::new(composite_buffer.clone(), wraps_snapshot.clone());
 
         let mut writer = block_map.write(wraps_snapshot.clone(), vec![], cx);
         writer.insert(
@@ -1318,14 +1320,12 @@ mod tests {
             log::info!("initial buffer text: {:?}", text);
             Buffer::new(0, text, cx)
         });
-        let composite_buffer = cx.add_model(|cx| {
-            CompositeBuffer::singleton(buffer.clone());
-        });
-        let (fold_map, folds_snapshot) = FoldMap::new(composite_buffer.clone(), cx);
+        let buffer = cx.add_model(|cx| CompositeBuffer::singleton(buffer.clone()));
+        let (fold_map, folds_snapshot) = FoldMap::new(buffer.clone(), cx);
         let (tab_map, tabs_snapshot) = TabMap::new(folds_snapshot.clone(), tab_size);
         let (wrap_map, wraps_snapshot) =
             WrapMap::new(tabs_snapshot, font_id, font_size, wrap_width, cx);
-        let mut block_map = BlockMap::new(composite_buffer.clone(), wraps_snapshot);
+        let mut block_map = BlockMap::new(buffer.clone(), wraps_snapshot);
         let mut expected_blocks = Vec::new();
 
         for _ in 0..operations {

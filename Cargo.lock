@@ -1064,6 +1064,7 @@ dependencies = [
  "gpui",
  "language",
  "lsp",
+ "rand 0.8.3",
  "theme",
 ]
 

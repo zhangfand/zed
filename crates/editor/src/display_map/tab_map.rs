@@ -451,6 +451,7 @@ impl<'a> Iterator for Chunks<'a> {
 mod tests {
     use super::*;
     use crate::display_map::fold_map::FoldMap;
+    use composite_buffer::CompositeBuffer;
     use language::Buffer;
     use rand::{prelude::StdRng, Rng};
     use text::{RandomCharIter, Rope};
@@ -470,6 +471,7 @@ mod tests {
             let text = RandomCharIter::new(&mut rng).take(len).collect::<String>();
             Buffer::new(0, text, cx)
         });
+        let buffer = cx.add_model(|cx| CompositeBuffer::singleton(buffer));
         log::info!("Buffer text: {:?}", buffer.read(cx).text());
 
         let (mut fold_map, _) = FoldMap::new(buffer.clone(), cx);

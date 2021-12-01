@@ -8,6 +8,7 @@ path = "src/editor.rs"
 
 [features]
 test-support = [
+    "composite_buffer/test-support",
     "text/test-support",
     "language/test-support",
     "gpui/test-support",

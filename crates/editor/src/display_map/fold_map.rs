@@ -1,4 +1,6 @@
-use composite_buffer::{AnchorRangeExt as _, CompositeAnchor as Anchor, CompositeBuffer, ToOffset};
+use composite_buffer::{
+    AnchorRangeExt as _, CompositeAnchor as Anchor, CompositeBuffer, ToOffset, ToPoint as _,
+};
 use gpui::{AppContext, ModelHandle};
 use language::{Chunk, Point, PointUtf16, TextSummary};
 use parking_lot::Mutex;
@@ -889,20 +891,20 @@ impl sum_tree::Summary for FoldSummary {
 }
 
 impl<'a> sum_tree::Dimension<'a, FoldSummary> for Fold {
-    fn add_summary(&mut self, summary: &'a FoldSummary, _: &text::Snapshot) {
+    fn add_summary(&mut self, summary: &'a FoldSummary, _: &composite_buffer::Snapshot) {
         self.0.start = summary.start.clone();
         self.0.end = summary.end.clone();
     }
 }
 
 impl<'a> sum_tree::SeekTarget<'a, FoldSummary, Fold> for Fold {
-    fn cmp(&self, other: &Self, buffer: &text::Snapshot) -> Ordering {
+    fn cmp(&self, other: &Self, buffer: &composite_buffer::Snapshot) -> Ordering {
         self.0.cmp(&other.0, buffer).unwrap()
     }
 }
 
 impl<'a> sum_tree::Dimension<'a, FoldSummary> for usize {
-    fn add_summary(&mut self, summary: &'a FoldSummary, _: &text::Snapshot) {
+    fn add_summary(&mut self, summary: &'a FoldSummary, _: &composite_buffer::Snapshot) {
         *self += summary.count;
     }
 }
@@ -937,7 +939,7 @@ impl<'a> Iterator for BufferRows<'a> {
 
 pub struct Chunks<'a> {
     transform_cursor: Cursor<'a, Transform, (FoldOffset, usize)>,
-    buffer_chunks: language::Chunks<'a>,
+    buffer_chunks: composite_buffer::Chunks<'a>,
     buffer_chunk: Option<(usize, Chunk<'a>)>,
     buffer_offset: usize,
     output_offset: usize,
@@ -1076,7 +1078,7 @@ impl FoldEdit {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{test::sample_text, ToPoint};
+    use crate::test::sample_text;
     use language::Buffer;
     use rand::prelude::*;
     use std::{env, mem};
@@ -1195,6 +1197,7 @@ mod tests {
     #[gpui::test]
     fn test_overlapping_folds(cx: &mut gpui::MutableAppContext) {
         let buffer = cx.add_model(|cx| Buffer::new(0, sample_text(5, 6), cx));
+        let buffer = cx.add_model(|cx| CompositeBuffer::singleton(buffer));
         let mut map = FoldMap::new(buffer.clone(), cx.as_ref()).0;
         let (mut writer, _, _) = map.write(cx.as_ref());
         writer.fold(
@@ -1213,6 +1216,7 @@ mod tests {
     #[gpui::test]
     fn test_merging_folds_via_edit(cx: &mut gpui::MutableAppContext) {
         let buffer = cx.add_model(|cx| Buffer::new(0, sample_text(5, 6), cx));
+        let buffer = cx.add_model(|cx| CompositeBuffer::singleton(buffer));
         let mut map = FoldMap::new(buffer.clone(), cx.as_ref()).0;
 
         let (mut writer, _, _) = map.write(cx.as_ref());
@@ -1275,6 +1279,7 @@ mod tests {
             let text = RandomCharIter::new(&mut rng).take(len).collect::<String>();
             Buffer::new(0, text, cx)
         });
+        let buffer = cx.add_model(|cx| CompositeBuffer::singleton(buffer));
         let mut map = FoldMap::new(buffer.clone(), cx.as_ref()).0;
 
         let (mut initial_snapshot, _) = map.read(cx.as_ref());
@@ -1288,7 +1293,7 @@ mod tests {
                 }
                 _ => {
                     let edits = buffer.update(cx, |buffer, _| {
-                        let start_version = buffer.version.clone();
+                        let start_version = buffer.version();
                         let edit_count = rng.gen_range(1..=5);
                         buffer.randomly_edit(&mut rng, edit_count);
                         buffer
@@ -1481,6 +1486,7 @@ mod tests {
     fn test_buffer_rows(cx: &mut gpui::MutableAppContext) {
         let text = sample_text(6, 6) + "\n";
         let buffer = cx.add_model(|cx| Buffer::new(0, text, cx));
+        let buffer = cx.add_model(|cx| CompositeBuffer::singleton(buffer));
 
         let mut map = FoldMap::new(buffer.clone(), cx.as_ref()).0;
 

@@ -8,7 +8,10 @@ mod test;
 
 use aho_corasick::AhoCorasick;
 use clock::ReplicaId;
-use composite_buffer::{CompositeAnchor as Anchor, CompositeBuffer};
+use composite_buffer::{
+    AnchorRangeExt as _, CompositeAnchor as Anchor, CompositeAnchorRangeSet as AnchorRangeSet,
+    CompositeBuffer, CompositeSelectionSet as SelectionSet, ToOffset, ToPoint,
+};
 use display_map::*;
 pub use display_map::{DisplayPoint, DisplayRow};
 pub use element::*;
@@ -551,7 +554,11 @@ impl Editor {
         }
     }
 
-    pub fn language<'a>(&self, position: Point, cx: &'a AppContext) -> Option<&'a Arc<Language>> {
+    pub fn language<'a, T: ToOffset>(
+        &self,
+        position: T,
+        cx: &'a AppContext,
+    ) -> Option<&'a Arc<Language>> {
         self.buffer.read(cx).language(position)
     }
 
@@ -1290,8 +1297,8 @@ impl Editor {
     fn autoclose_pairs(&mut self, cx: &mut ViewContext<Self>) {
         let selections = self.selections::<usize>(cx).collect::<Vec<_>>();
         let new_autoclose_pair_state = self.buffer.update(cx, |buffer, cx| {
-            let autoclose_pair = buffer.language().and_then(|language| {
-                let first_selection_start = selections.first().unwrap().start;
+            let first_selection_start = selections.first().unwrap().start;
+            let autoclose_pair = buffer.language(first_selection_start).and_then(|language| {
                 let pair = language.brackets().iter().find(|pair| {
                     buffer.contains_str_at(
                         first_selection_start.saturating_sub(pair.start.len()),
@@ -1696,7 +1703,7 @@ impl Editor {
         let mut contiguous_selections = Vec::new();
         while let Some(selection) = selections.next() {
             // Accumulate contiguous regions of rows that we want to move.
-            contiguous_selections.push(selection.point_range(buffer));
+            contiguous_selections.push(buffer.selection_point_range(&selection));
             let SpannedRows {
                 mut buffer_rows,
                 mut display_rows,
@@ -1710,7 +1717,7 @@ impl Editor {
                 if next_buffer_rows.start <= buffer_rows.end {
                     buffer_rows.end = next_buffer_rows.end;
                     display_rows.end = next_display_rows.end;
-                    contiguous_selections.push(next_selection.point_range(buffer));
+                    contiguous_selections.push(buffer.selection_point_range(next_selection));
                     selections.next().unwrap();
                 } else {
                     break;
@@ -1786,7 +1793,7 @@ impl Editor {
         let mut contiguous_selections = Vec::new();
         while let Some(selection) = selections.next() {
             // Accumulate contiguous regions of rows that we want to move.
-            contiguous_selections.push(selection.point_range(buffer));
+            contiguous_selections.push(buffer.selection_point_range(selection));
             let SpannedRows {
                 mut buffer_rows,
                 mut display_rows,
@@ -1799,7 +1806,7 @@ impl Editor {
                 if next_buffer_rows.start <= buffer_rows.end {
                     buffer_rows.end = next_buffer_rows.end;
                     display_rows.end = next_display_rows.end;
-                    contiguous_selections.push(next_selection.point_range(buffer));
+                    contiguous_selections.push(buffer.selection_point_range(next_selection));
                     selections.next().unwrap();
                 } else {
                     break;
@@ -2630,12 +2637,14 @@ impl Editor {
     pub fn toggle_comments(&mut self, _: &ToggleComments, cx: &mut ViewContext<Self>) {
         // Get the line comment prefix. Split its trailing whitespace into a separate string,
         // as that portion won't be used for detecting if a line is a comment.
-        let full_comment_prefix =
-            if let Some(prefix) = self.language(cx).and_then(|l| l.line_comment_prefix()) {
-                prefix.to_string()
-            } else {
-                return;
-            };
+        let full_comment_prefix = if let Some(prefix) = self
+            .language(self.newest_selection::<Point>(cx).head(), cx)
+            .and_then(|l| l.line_comment_prefix())
+        {
+            prefix.to_string()
+        } else {
+            return;
+        };
         let comment_prefix = full_comment_prefix.trim_end_matches(' ');
         let comment_prefix_whitespace = &full_comment_prefix[comment_prefix.len()..];
 
@@ -3467,7 +3476,7 @@ impl Editor {
     fn on_buffer_event(
         &mut self,
         _: ModelHandle<CompositeBuffer>,
-        event: &language::Event,
+        event: &composite_buffer::Event,
         cx: &mut ViewContext<Self>,
     ) {
         match event {

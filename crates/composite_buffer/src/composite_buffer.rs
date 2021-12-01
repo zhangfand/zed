@@ -1,4 +1,5 @@
 use anyhow::Result;
+use clock::ReplicaId;
 use gpui::{Entity, ModelContext, ModelHandle, Task};
 use language::{
     rope::TextDimension, Bias, Buffer, Chunk, Diagnostic, File, FromAnchor, Language, Point,
@@ -6,11 +7,14 @@ use language::{
 };
 use std::{
     cmp::Ordering,
+    io,
     ops::{Deref, Range},
     sync::Arc,
     time::{Instant, SystemTime},
 };
 use theme::SyntaxTheme;
+
+pub use language::Event;
 
 pub struct CompositeBuffer {}
 
@@ -18,9 +22,21 @@ pub struct CompositeBuffer {}
 pub struct CompositeAnchor {}
 
 #[derive(Debug, Clone)]
+pub struct CompositeAnchorRangeSet {}
+
+#[derive(Debug, Clone)]
+pub struct CompositeSelectionSet {
+    pub active: bool,
+}
+
+#[derive(Debug, Clone)]
 pub struct Snapshot {}
 
 pub struct Chunks<'a> {
+    snapshot: &'a Snapshot,
+}
+
+pub struct Bytes<'a> {
     snapshot: &'a Snapshot,
 }
 
@@ -45,6 +61,10 @@ impl CompositeBuffer {
         None
     }
 
+    pub fn replica_id(&self) -> ReplicaId {
+        todo!()
+    }
+
     pub fn save(
         &mut self,
         cx: &mut ModelContext<Self>,
@@ -52,32 +72,20 @@ impl CompositeBuffer {
         todo!()
     }
 
-    pub fn set_language(
-        &mut self,
-        language: Option<Arc<Language>>,
-        language_server: Option<Arc<lsp::LanguageServer>>,
-        cx: &mut ModelContext<Self>,
-    ) {
-    }
-
-    pub fn did_save(
-        &mut self,
-        version: clock::Global,
-        mtime: SystemTime,
-        new_file: Option<Box<dyn File>>,
-        cx: &mut ModelContext<Self>,
-    ) {
-    }
-
     pub fn close(&mut self, cx: &mut ModelContext<Self>) {
         // cx.emit(Event::Closed);
     }
 
-    pub fn language(&self, position: Point) -> Option<&Arc<Language>> {
+    pub fn language<T: ToOffset>(&self, position: T) -> Option<&Arc<Language>> {
         todo!()
     }
 
     pub fn parse_count(&self) -> usize {
+        todo!()
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn is_parsing(&self) -> bool {
         todo!()
     }
 
@@ -187,6 +195,17 @@ impl CompositeBuffer {
         todo!()
     }
 
+    pub fn selection_set(&self, set_id: SelectionSetId) -> Result<&CompositeSelectionSet> {
+        todo!()
+    }
+
+    pub fn selection_sets(
+        &self,
+    ) -> impl Iterator<Item = (&SelectionSetId, &CompositeSelectionSet)> {
+        todo!();
+        None.into_iter()
+    }
+
     pub fn add_selection_set<T: ToOffset>(
         &mut self,
         selections: &[Selection<T>],
@@ -233,7 +252,28 @@ impl CompositeBuffer {
     }
 }
 
+#[cfg(any(test, feature = "test-support"))]
+impl CompositeBuffer {
+    pub fn randomly_edit<T>(&mut self, rng: &mut T, old_range_count: usize)
+    where
+        T: rand::Rng,
+    {
+        todo!()
+    }
+
+    pub fn randomly_mutate<T>(&mut self, rng: &mut T)
+    where
+        T: rand::Rng,
+    {
+        todo!()
+    }
+}
+
 impl Snapshot {
+    pub fn text(&self) -> String {
+        todo!()
+    }
+
     pub fn text_summary(&self) -> TextSummary {
         todo!()
     }
@@ -257,8 +297,11 @@ impl Snapshot {
         todo!()
     }
 
-    pub fn text_for_range<'a, T: ToOffset>(&'a self, range: Range<T>) -> Chunks<'a> {
-        todo!()
+    pub fn text_for_range<'a, T: ToOffset>(
+        &'a self,
+        range: Range<T>,
+    ) -> impl Iterator<Item = &'a str> {
+        self.chunks(range, None).map(|chunk| chunk.text)
     }
 
     pub fn contains_str_at<T>(&self, position: T, needle: &str) -> bool
@@ -280,6 +323,18 @@ impl Snapshot {
         todo!()
     }
 
+    pub fn anchor_range_set<E>(
+        &self,
+        start_bias: Bias,
+        end_bias: Bias,
+        entries: E,
+    ) -> CompositeAnchorRangeSet
+    where
+        E: IntoIterator<Item = Range<usize>>,
+    {
+        todo!()
+    }
+
     pub fn to_offset(&self, point: Point) -> usize {
         todo!()
     }
@@ -289,6 +344,10 @@ impl Snapshot {
     }
 
     pub fn point_for_offset(&self, offset: usize) -> Result<Point> {
+        todo!()
+    }
+
+    pub fn selection_point_range<T: ToPoint>(&self, selection: &Selection<T>) -> Range<Point> {
         todo!()
     }
 
@@ -333,9 +392,8 @@ impl Snapshot {
         None.into_iter()
     }
 
-    pub fn bytes_in_range<T: ToOffset>(&self, range: Range<T>) -> impl Iterator<Item = u8> + '_ {
-        todo!();
-        None.into_iter()
+    pub fn bytes_in_range<T: ToOffset>(&self, range: Range<T>) -> Bytes {
+        todo!()
     }
 
     pub fn chars_for_range<T: ToOffset>(&self, range: Range<T>) -> impl Iterator<Item = char> + '_ {
@@ -356,12 +414,101 @@ impl CompositeAnchor {
     pub fn cmp(&self, other: &Self, buffer: &Snapshot) -> Result<Ordering> {
         todo!()
     }
+
+    pub fn summary<'a, D>(&self, content: &'a Snapshot) -> D
+    where
+        D: TextDimension<'a>,
+    {
+        todo!()
+    }
+}
+
+impl CompositeAnchorRangeSet {
+    pub fn len(&self) -> usize {
+        todo!()
+    }
+
+    pub fn ranges<'a, D>(&'a self, content: &'a Snapshot) -> impl 'a + Iterator<Item = Range<Point>>
+    where
+        D: 'a + TextDimension<'a>,
+    {
+        todo!();
+        None.into_iter()
+    }
+}
+
+impl CompositeSelectionSet {
+    pub fn len(&self) -> usize {
+        todo!()
+    }
+
+    pub fn selections<'a, D>(
+        &'a self,
+        content: &'a Snapshot,
+    ) -> impl 'a + Iterator<Item = Selection<D>>
+    where
+        D: 'a + TextDimension<'a>,
+    {
+        todo!();
+        None.into_iter()
+    }
+
+    pub fn intersecting_selections<'a, D, I>(
+        &'a self,
+        range: Range<(I, Bias)>,
+        content: &'a Snapshot,
+    ) -> impl 'a + Iterator<Item = Selection<D>>
+    where
+        D: 'a + TextDimension<'a>,
+        I: 'a + ToOffset,
+    {
+        todo!();
+        None.into_iter()
+    }
+
+    pub fn oldest_selection<'a, D>(&'a self, content: &'a Snapshot) -> Option<Selection<D>>
+    where
+        D: 'a + TextDimension<'a>,
+    {
+        todo!()
+    }
+
+    pub fn newest_selection<'a, D>(&'a self, content: &'a Snapshot) -> Option<Selection<D>>
+    where
+        D: 'a + TextDimension<'a>,
+    {
+        todo!()
+    }
 }
 
 impl<'a> Iterator for Chunks<'a> {
     type Item = Chunk<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
+        todo!()
+    }
+}
+
+impl<'a> Chunks<'a> {
+    pub fn seek(&mut self, offset: usize) {
+        todo!()
+    }
+
+    pub fn offset(&self) -> usize {
+        todo!()
+    }
+}
+
+impl<'a> Iterator for Bytes<'a> {
+    type Item = &'a [u8];
+
+    fn next(&mut self) -> Option<Self::Item> {
+        todo!()
+    }
+}
+
+impl<'a> io::Read for Bytes<'a> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         todo!()
     }
 }
@@ -375,7 +522,7 @@ impl Deref for CompositeBuffer {
 }
 
 impl Entity for CompositeBuffer {
-    type Event = ();
+    type Event = language::Event;
 }
 
 impl ToPoint for Point {

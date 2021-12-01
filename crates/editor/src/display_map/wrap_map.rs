@@ -991,6 +991,7 @@ mod tests {
         display_map::{fold_map::FoldMap, tab_map::TabMap},
         test::Observer,
     };
+    use composite_buffer::CompositeBuffer;
     use language::{Buffer, RandomCharIter};
     use rand::prelude::*;
     use std::{cmp, env};
@@ -1026,6 +1027,7 @@ mod tests {
             let text = RandomCharIter::new(&mut rng).take(len).collect::<String>();
             Buffer::new(0, text, cx)
         });
+        let buffer = cx.add_model(|cx| CompositeBuffer::singleton(buffer));
         let (mut fold_map, folds_snapshot) = cx.read(|cx| FoldMap::new(buffer.clone(), cx));
         let (tab_map, tabs_snapshot) = TabMap::new(folds_snapshot.clone(), tab_size);
         log::info!(

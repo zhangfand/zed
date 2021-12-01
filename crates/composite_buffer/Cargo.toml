@@ -3,6 +3,9 @@ name = "composite_buffer"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+test-support = ["rand"]
+
 [lib]
 path = "src/composite_buffer.rs"
 
@@ -13,3 +16,7 @@ gpui = { path = "../gpui" }
 language = { path = "../language" }
 lsp = { path = "../lsp" }
 theme = { path = "../theme" }
+rand = { version = "0.8.3", optional = true }
+
+[dev-dependencies]
+rand = "0.8.3"

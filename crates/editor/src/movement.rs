@@ -1,7 +1,7 @@
 use super::{Bias, DisplayMapSnapshot, DisplayPoint, SelectionGoal, ToDisplayPoint};
 use anyhow::Result;
+use composite_buffer::ToPoint as _;
 use std::{cmp, ops::Range};
-use text::ToPoint;
 
 pub fn left(map: &DisplayMapSnapshot, mut point: DisplayPoint) -> Result<DisplayPoint> {
     if point.column() > 0 {
@@ -245,6 +245,7 @@ fn char_kind(c: char) -> CharKind {
 mod tests {
     use super::*;
     use crate::{display_map::DisplayMap, Buffer};
+    use composite_buffer::CompositeBuffer;
 
     #[gpui::test]
     fn test_prev_next_word_boundary_multibyte(cx: &mut gpui::MutableAppContext) {
@@ -257,6 +258,7 @@ mod tests {
         let font_size = 14.0;
 
         let buffer = cx.add_model(|cx| Buffer::new(0, "a bcΔ defγ hi—jk", cx));
+        let buffer = cx.add_model(|cx| CompositeBuffer::singleton(buffer));
         let display_map =
             cx.add_model(|cx| DisplayMap::new(buffer, tab_size, font_id, font_size, None, cx));
         let snapshot = display_map.update(cx, |map, cx| map.snapshot(cx));
@@ -313,6 +315,7 @@ mod tests {
             .unwrap();
         let font_size = 14.0;
         let buffer = cx.add_model(|cx| Buffer::new(0, "lorem ipsum   dolor\n    sit", cx));
+        let buffer = cx.add_model(|cx| CompositeBuffer::singleton(buffer));
         let display_map =
             cx.add_model(|cx| DisplayMap::new(buffer, tab_size, font_id, font_size, None, cx));
         let snapshot = display_map.update(cx, |map, cx| map.snapshot(cx));
