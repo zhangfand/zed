@@ -258,7 +258,7 @@ mod tests {
         let font_size = 14.0;
 
         let buffer = cx.add_model(|cx| Buffer::new(0, "a bcΔ defγ hi—jk", cx));
-        let buffer = cx.add_model(|_| CompositeBuffer::singleton(buffer));
+        let buffer = cx.add_model(|cx| CompositeBuffer::singleton(buffer, cx));
         let display_map =
             cx.add_model(|cx| DisplayMap::new(buffer, tab_size, font_id, font_size, None, cx));
         let snapshot = display_map.update(cx, |map, cx| map.snapshot(cx));
@@ -315,7 +315,7 @@ mod tests {
             .unwrap();
         let font_size = 14.0;
         let buffer = cx.add_model(|cx| Buffer::new(0, "lorem ipsum   dolor\n    sit", cx));
-        let buffer = cx.add_model(|_| CompositeBuffer::singleton(buffer));
+        let buffer = cx.add_model(|cx| CompositeBuffer::singleton(buffer, cx));
         let display_map =
             cx.add_model(|cx| DisplayMap::new(buffer, tab_size, font_id, font_size, None, cx));
         let snapshot = display_map.update(cx, |map, cx| map.snapshot(cx));

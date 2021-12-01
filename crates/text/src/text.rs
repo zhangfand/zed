@@ -1632,9 +1632,10 @@ impl Snapshot {
         self.text_summary_for_range(0..cursor.start().1 + overshoot)
     }
 
-    pub fn text_summary_for_range<'a, D, O: ToOffset>(&'a self, range: Range<O>) -> D
+    pub fn text_summary_for_range<'a, D, O>(&'a self, range: Range<O>) -> D
     where
         D: TextDimension<'a>,
+        O: ToOffset,
     {
         self.visible_text
             .cursor(range.start.to_offset(self))

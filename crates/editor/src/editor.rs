@@ -447,7 +447,7 @@ impl Editor {
         cx: &mut ViewContext<Self>,
     ) -> Self {
         Self::new(
-            cx.add_model(|_| CompositeBuffer::singleton(buffer)),
+            cx.add_model(|cx| CompositeBuffer::singleton(buffer, cx)),
             Rc::new(RefCell::new(build_settings)),
             cx,
         )
@@ -1656,7 +1656,7 @@ impl Editor {
             let start = Point::new(rows.start, 0);
             let end = Point::new(rows.end - 1, buffer.line_len(rows.end - 1));
             let text = buffer
-                .text_for_range(start..end)
+                .text_for_range(start..end, cx)
                 .chain(Some("\n"))
                 .collect::<String>();
             edits.push((start, text, rows.len() as u32));
@@ -1735,7 +1735,7 @@ impl Editor {
                 let prev_row_buffer_start_offset = prev_row_buffer_start.to_offset(buffer);
 
                 let mut text = String::new();
-                text.extend(buffer.text_for_range(start..end));
+                text.extend(buffer.text_for_range(start..end, cx));
                 text.push('\n');
                 edits.push((
                     prev_row_buffer_start_offset..prev_row_buffer_start_offset,
@@ -1826,7 +1826,7 @@ impl Editor {
 
                 let mut text = String::new();
                 text.push('\n');
-                text.extend(buffer.text_for_range(start..end));
+                text.extend(buffer.text_for_range(start..end, cx));
                 edits.push((start..end + 1, String::new()));
                 edits.push((next_row_buffer_end_offset..next_row_buffer_end_offset, text));
 
@@ -1879,7 +1879,7 @@ impl Editor {
                     selection.end = cmp::min(max_point, Point::new(selection.end.row + 1, 0));
                 }
                 let mut len = 0;
-                for chunk in buffer.text_for_range(selection.start..selection.end) {
+                for chunk in buffer.text_for_range(selection.start..selection.end, cx) {
                     text.push_str(chunk);
                     len += chunk.len();
                 }
@@ -1912,7 +1912,7 @@ impl Editor {
                 end = cmp::min(max_point, Point::new(start.row + 1, 0));
             }
             let mut len = 0;
-            for chunk in buffer.text_for_range(start..end) {
+            for chunk in buffer.text_for_range(start..end, cx) {
                 text.push_str(chunk);
                 len += chunk.len();
             }
@@ -2611,7 +2611,7 @@ impl Editor {
                 selection.reversed = false;
 
                 let query = buffer
-                    .text_for_range(selection.start..selection.end)
+                    .text_for_range(selection.start..selection.end, cx)
                     .collect::<String>();
                 let select_state = SelectNextState {
                     query: AhoCorasick::new_auto_configured(&[query]),
@@ -2622,7 +2622,7 @@ impl Editor {
                 self.select_next_state = Some(select_state);
             } else {
                 let query = buffer
-                    .text_for_range(selection.start..selection.end)
+                    .text_for_range(selection.start..selection.end, cx)
                     .collect::<String>();
                 self.select_next_state = Some(SelectNextState {
                     query: AhoCorasick::new_auto_configured(&[query]),
@@ -3394,7 +3394,7 @@ impl Editor {
     }
 
     pub fn text(&self, cx: &AppContext) -> String {
-        self.buffer.read(cx).text()
+        self.buffer.read(cx).text(cx)
     }
 
     pub fn display_text(&self, cx: &mut MutableAppContext) -> String {

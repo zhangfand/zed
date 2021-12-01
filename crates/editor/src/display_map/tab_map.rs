@@ -471,7 +471,7 @@ mod tests {
             let text = RandomCharIter::new(&mut rng).take(len).collect::<String>();
             Buffer::new(0, text, cx)
         });
-        let buffer = cx.add_model(|_| CompositeBuffer::singleton(buffer));
+        let buffer = cx.add_model(|cx| CompositeBuffer::singleton(buffer, cx));
         let buffer_snapshot = buffer.read(cx).snapshot();
         log::info!("Buffer text: {:?}", buffer.read(cx).text());
 

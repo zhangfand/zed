@@ -1105,7 +1105,7 @@ mod tests {
         let text = "aaa\nbbb\nccc\nddd";
 
         let buffer = cx.add_model(|cx| Buffer::new(0, text, cx));
-        let buffer = cx.add_model(|_| CompositeBuffer::singleton(buffer));
+        let buffer = cx.add_model(|cx| CompositeBuffer::singleton(buffer, cx));
         let subscription = buffer.update(cx, |buffer, _| buffer.subscribe());
         let (fold_map, folds_snapshot) = FoldMap::new(buffer.read(cx).snapshot());
         let (tab_map, tabs_snapshot) = TabMap::new(folds_snapshot.clone(), 1);
@@ -1260,7 +1260,7 @@ mod tests {
         let text = "one two three\nfour five six\nseven eight";
 
         let buffer = cx.add_model(|cx| Buffer::new(0, text, cx));
-        let buffer = cx.add_model(|_| CompositeBuffer::singleton(buffer));
+        let buffer = cx.add_model(|cx| CompositeBuffer::singleton(buffer, cx));
         let (_, folds_snapshot) = FoldMap::new(buffer.read(cx).snapshot());
         let (_, tabs_snapshot) = TabMap::new(folds_snapshot.clone(), 1);
         let (_, wraps_snapshot) = WrapMap::new(tabs_snapshot, font_id, 14.0, Some(60.), cx);
@@ -1323,7 +1323,7 @@ mod tests {
             log::info!("initial buffer text: {:?}", text);
             Buffer::new(0, text, cx)
         });
-        let buffer = cx.add_model(|_| CompositeBuffer::singleton(buffer));
+        let buffer = cx.add_model(|cx| CompositeBuffer::singleton(buffer, cx));
         let subscription = buffer.update(cx, |buffer, _| buffer.subscribe());
         let mut buffer_snapshot = buffer.read(cx).snapshot();
         let (fold_map, folds_snapshot) = FoldMap::new(buffer_snapshot.clone());

@@ -15,6 +15,7 @@ clock = { path = "../clock" }
 gpui = { path = "../gpui" }
 language = { path = "../language" }
 lsp = { path = "../lsp" }
+sum_tree = { path = "../sum_tree" }
 theme = { path = "../theme" }
 rand = { version = "0.8.3", optional = true }
 

@@ -1025,7 +1025,7 @@ mod tests {
             let text = RandomCharIter::new(&mut rng).take(len).collect::<String>();
             Buffer::new(0, text, cx)
         });
-        let buffer = cx.add_model(|_| CompositeBuffer::singleton(buffer));
+        let buffer = cx.add_model(|cx| CompositeBuffer::singleton(buffer, cx));
         let subscription = buffer.update(&mut cx, |buffer, _| buffer.subscribe());
         let buffer_snapshot = buffer.read_with(&cx, |buffer, _| buffer.snapshot());
         let (mut fold_map, folds_snapshot) = FoldMap::new(buffer_snapshot.clone());
