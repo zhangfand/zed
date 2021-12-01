@@ -1,18 +1,19 @@
 mod block_map;
 mod fold_map;
-mod patch;
 mod tab_map;
 mod wrap_map;
 
 pub use block_map::{BlockDisposition, BlockId, BlockProperties, BufferRows, Chunks};
 use block_map::{BlockMap, BlockPoint};
-use composite_buffer::{CompositeAnchor as Anchor, CompositeBuffer, ToOffset, ToPoint};
+use composite_buffer::{
+    CompositeAnchor as Anchor, CompositeBuffer, CompositeBufferSubscription, ToOffset, ToPoint,
+};
 use fold_map::{FoldMap, ToFoldPoint as _};
 use gpui::{
     fonts::{FontId, HighlightStyle},
     AppContext, Entity, ModelContext, ModelHandle,
 };
-use language::{Buffer, Point};
+use language::Point;
 use std::{
     collections::{HashMap, HashSet},
     ops::Range,
@@ -29,6 +30,7 @@ pub trait ToDisplayPoint {
 
 pub struct DisplayMap {
     buffer: ModelHandle<CompositeBuffer>,
+    buffer_subscription: CompositeBufferSubscription,
     fold_map: FoldMap,
     tab_map: TabMap,
     wrap_map: ModelHandle<WrapMap>,
@@ -48,13 +50,15 @@ impl DisplayMap {
         wrap_width: Option<f32>,
         cx: &mut ModelContext<Self>,
     ) -> Self {
-        let (fold_map, snapshot) = FoldMap::new(buffer.clone(), cx);
+        let buffer_subscription = buffer.update(cx, |buffer, _| buffer.subscribe());
+        let (fold_map, snapshot) = FoldMap::new(buffer.read(cx).snapshot());
         let (tab_map, snapshot) = TabMap::new(snapshot, tab_size);
         let (wrap_map, snapshot) = WrapMap::new(snapshot, font_id, font_size, wrap_width, cx);
         let block_map = BlockMap::new(buffer.clone(), snapshot);
         cx.observe(&wrap_map, |_, _, cx| cx.notify()).detach();
         DisplayMap {
             buffer,
+            buffer_subscription,
             fold_map,
             tab_map,
             wrap_map,
@@ -63,7 +67,9 @@ impl DisplayMap {
     }
 
     pub fn snapshot(&self, cx: &mut ModelContext<Self>) -> DisplayMapSnapshot {
-        let (folds_snapshot, edits) = self.fold_map.read(cx);
+        let buffer_snapshot = self.buffer.read(cx).snapshot();
+        let edits = self.buffer_subscription.consume().into_inner();
+        let (folds_snapshot, edits) = self.fold_map.read(buffer_snapshot, edits);
         let (tabs_snapshot, edits) = self.tab_map.sync(folds_snapshot.clone(), edits);
         let (wraps_snapshot, edits) = self
             .wrap_map
@@ -84,13 +90,15 @@ impl DisplayMap {
         ranges: impl IntoIterator<Item = Range<T>>,
         cx: &mut ModelContext<Self>,
     ) {
-        let (mut fold_map, snapshot, edits) = self.fold_map.write(cx);
+        let snapshot = self.buffer.read(cx).snapshot();
+        let edits = self.buffer_subscription.consume().into_inner();
+        let (mut fold_map, snapshot, edits) = self.fold_map.write(snapshot, edits);
         let (snapshot, edits) = self.tab_map.sync(snapshot, edits);
         let (snapshot, edits) = self
             .wrap_map
             .update(cx, |map, cx| map.sync(snapshot, edits, cx));
         self.block_map.read(snapshot, edits, cx);
-        let (snapshot, edits) = fold_map.fold(ranges, cx);
+        let (snapshot, edits) = fold_map.fold(ranges);
         let (snapshot, edits) = self.tab_map.sync(snapshot, edits);
         let (snapshot, edits) = self
             .wrap_map
@@ -103,13 +111,15 @@ impl DisplayMap {
         ranges: impl IntoIterator<Item = Range<T>>,
         cx: &mut ModelContext<Self>,
     ) {
-        let (mut fold_map, snapshot, edits) = self.fold_map.write(cx);
+        let snapshot = self.buffer.read(cx).snapshot();
+        let edits = self.buffer_subscription.consume().into_inner();
+        let (mut fold_map, snapshot, edits) = self.fold_map.write(snapshot, edits);
         let (snapshot, edits) = self.tab_map.sync(snapshot, edits);
         let (snapshot, edits) = self
             .wrap_map
             .update(cx, |map, cx| map.sync(snapshot, edits, cx));
         self.block_map.read(snapshot, edits, cx);
-        let (snapshot, edits) = fold_map.unfold(ranges, cx);
+        let (snapshot, edits) = fold_map.unfold(ranges);
         let (snapshot, edits) = self.tab_map.sync(snapshot, edits);
         let (snapshot, edits) = self
             .wrap_map
@@ -126,7 +136,9 @@ impl DisplayMap {
         P: ToOffset + Clone,
         T: Into<Rope> + Clone,
     {
-        let (snapshot, edits) = self.fold_map.read(cx);
+        let snapshot = self.buffer.read(cx).snapshot();
+        let edits = self.buffer_subscription.consume().into_inner();
+        let (snapshot, edits) = self.fold_map.read(snapshot, edits);
         let (snapshot, edits) = self.tab_map.sync(snapshot, edits);
         let (snapshot, edits) = self
             .wrap_map
@@ -144,7 +156,9 @@ impl DisplayMap {
     }
 
     pub fn remove_blocks(&mut self, ids: HashSet<BlockId>, cx: &mut ModelContext<Self>) {
-        let (snapshot, edits) = self.fold_map.read(cx);
+        let snapshot = self.buffer.read(cx).snapshot();
+        let edits = self.buffer_subscription.consume().into_inner();
+        let (snapshot, edits) = self.fold_map.read(snapshot, edits);
         let (snapshot, edits) = self.tab_map.sync(snapshot, edits);
         let (snapshot, edits) = self
             .wrap_map
@@ -449,7 +463,7 @@ mod tests {
     use super::*;
     use crate::{movement, test::*};
     use gpui::{color::Color, MutableAppContext};
-    use language::{Language, LanguageConfig, RandomCharIter, SelectionGoal};
+    use language::{Buffer, Language, LanguageConfig, RandomCharIter, SelectionGoal};
     use rand::{prelude::StdRng, Rng};
     use std::{env, sync::Arc};
     use theme::SyntaxTheme;
@@ -527,7 +541,7 @@ mod tests {
                     }
                 }
                 _ => {
-                    buffer.update(&mut cx, |buffer, _| buffer.randomly_edit(&mut rng, 5));
+                    buffer.update(&mut cx, |buffer, cx| buffer.randomly_edit(&mut rng, 5, cx));
                 }
             }
 

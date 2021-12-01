@@ -3486,7 +3486,7 @@ impl Editor {
             language::Event::FileHandleChanged => cx.emit(Event::FileHandleChanged),
             language::Event::Reloaded => cx.emit(Event::FileHandleChanged),
             language::Event::Closed => cx.emit(Event::Closed),
-            language::Event::Reparsed => {}
+            _ => {}
         }
     }
 

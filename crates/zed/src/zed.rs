@@ -590,7 +590,7 @@ mod tests {
             assert!(!editor.is_dirty(cx.as_ref()));
             assert_eq!(editor.title(cx.as_ref()), "untitled");
             assert!(Arc::ptr_eq(
-                editor.language(cx).unwrap(),
+                editor.language(0, cx).unwrap(),
                 &language::PLAIN_TEXT
             ));
             editor.handle_input(&editor::Input("hi".into()), cx);
@@ -620,7 +620,7 @@ mod tests {
         });
         // The language is assigned based on the path
         editor.read_with(&cx, |editor, cx| {
-            assert_eq!(editor.language(cx).unwrap().name(), "Rust")
+            assert_eq!(editor.language(0, cx).unwrap().name(), "Rust")
         });
 
         // Edit the file and save it again. This time, there is no filename prompt.
@@ -687,7 +687,7 @@ mod tests {
 
         editor.update(&mut cx, |editor, cx| {
             assert!(Arc::ptr_eq(
-                editor.language(cx).unwrap(),
+                editor.language(0, cx).unwrap(),
                 &language::PLAIN_TEXT
             ));
             editor.handle_input(&editor::Input("hi".into()), cx);
@@ -706,7 +706,7 @@ mod tests {
 
         // The language is assigned based on the path
         editor.read_with(&cx, |editor, cx| {
-            assert_eq!(editor.language(cx).unwrap().name(), "Rust")
+            assert_eq!(editor.language(0, cx).unwrap().name(), "Rust")
         });
     }
 

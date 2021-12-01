@@ -2,8 +2,8 @@ use anyhow::Result;
 use clock::ReplicaId;
 use gpui::{Entity, ModelContext, ModelHandle, Task};
 use language::{
-    rope::TextDimension, Bias, Buffer, Chunk, Diagnostic, File, FromAnchor, Language, Point,
-    PointUtf16, Selection, SelectionSetId, TextSummary, Tree,
+    rope::TextDimension, Bias, Buffer, Chunk, Diagnostic, Edit, File, FromAnchor, Language, Patch,
+    Point, PointUtf16, Selection, SelectionSetId, TextSummary, Tree,
 };
 use std::{
     cmp::Ordering,
@@ -17,6 +17,8 @@ use theme::SyntaxTheme;
 pub use language::Event;
 
 pub struct CompositeBuffer {}
+
+pub struct CompositeBufferSubscription {}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CompositeAnchor {}
@@ -51,6 +53,21 @@ pub trait ToOffset {
 impl CompositeBuffer {
     pub fn singleton(buffer: ModelHandle<Buffer>) -> Self {
         todo!()
+    }
+
+    pub fn subscribe(&mut self) -> CompositeBufferSubscription {
+        todo!()
+    }
+
+    pub fn edits_since<'a, D>(
+        &'a self,
+        since: &'a clock::Global,
+    ) -> impl 'a + Iterator<Item = Edit<D>>
+    where
+        D: 'a + TextDimension<'a> + Ord,
+    {
+        todo!();
+        std::iter::empty()
     }
 
     pub fn snapshot(&self) -> Snapshot {
@@ -399,6 +416,20 @@ impl Snapshot {
     pub fn chars_for_range<T: ToOffset>(&self, range: Range<T>) -> impl Iterator<Item = char> + '_ {
         todo!();
         None.into_iter()
+    }
+
+    pub fn diagnostics_update_count(&self) -> usize {
+        todo!()
+    }
+
+    pub fn parse_count(&self) -> usize {
+        todo!()
+    }
+}
+
+impl CompositeBufferSubscription {
+    pub fn consume(&self) -> Patch<usize> {
+        todo!()
     }
 }
 
