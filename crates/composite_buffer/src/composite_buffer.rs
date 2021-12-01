@@ -2,8 +2,8 @@ use anyhow::Result;
 use clock::ReplicaId;
 use gpui::{Entity, ModelContext, ModelHandle, Task};
 use language::{
-    rope::TextDimension, Bias, Buffer, Chunk, Diagnostic, Edit, File, FromAnchor, Language, Patch,
-    Point, PointUtf16, Selection, SelectionSetId, TextSummary, Tree,
+    rope::TextDimension, Bias, Buffer, Chunk, Diagnostic, File, FromAnchor, Language, Patch, Point,
+    PointUtf16, Selection, SelectionSetId, TextSummary, Tree,
 };
 use std::{
     cmp::Ordering,
@@ -57,17 +57,6 @@ impl CompositeBuffer {
 
     pub fn subscribe(&mut self) -> CompositeBufferSubscription {
         todo!()
-    }
-
-    pub fn edits_since<'a, D>(
-        &'a self,
-        since: &'a clock::Global,
-    ) -> impl 'a + Iterator<Item = Edit<D>>
-    where
-        D: 'a + TextDimension<'a> + Ord,
-    {
-        todo!();
-        std::iter::empty()
     }
 
     pub fn snapshot(&self) -> Snapshot {
@@ -261,10 +250,6 @@ impl CompositeBuffer {
     }
 
     pub fn redo(&mut self, cx: &mut ModelContext<Self>) {
-        todo!()
-    }
-
-    pub fn version(&self) -> clock::Global {
         todo!()
     }
 }

@@ -1025,7 +1025,8 @@ mod tests {
             let text = RandomCharIter::new(&mut rng).take(len).collect::<String>();
             Buffer::new(0, text, cx)
         });
-        let buffer = cx.add_model(|cx| CompositeBuffer::singleton(buffer));
+        let buffer = cx.add_model(|_| CompositeBuffer::singleton(buffer));
+        let subscription = buffer.update(&mut cx, |buffer, _| buffer.subscribe());
         let buffer_snapshot = buffer.read_with(&cx, |buffer, _| buffer.snapshot());
         let (mut fold_map, folds_snapshot) = FoldMap::new(buffer_snapshot.clone());
         let (tab_map, tabs_snapshot) = TabMap::new(folds_snapshot.clone(), tab_size);
@@ -1068,7 +1069,6 @@ mod tests {
         for _i in 0..operations {
             log::info!("{} ==============================================", _i);
 
-            let mut buffer_edits = Vec::new();
             match rng.gen_range(0..=100) {
                 0..=19 => {
                     wrap_width = if rng.gen_bool(0.2) {
@@ -1090,18 +1090,17 @@ mod tests {
                     }
                 }
                 _ => {
-                    buffer.update(&mut cx, |buffer, cx| {
-                        let v0 = buffer.version();
+                    buffer.update(&mut cx, |buffer, _| {
                         let edit_count = rng.gen_range(1..=5);
                         buffer.randomly_edit(&mut rng, edit_count);
-                        buffer_edits.extend(buffer.edits_since(&v0));
                     });
                 }
             }
 
             let buffer_snapshot = buffer.read_with(&cx, |buffer, _| buffer.snapshot());
             log::info!("Unwrapped text (no folds): {:?}", buffer_snapshot.text());
-            let (folds_snapshot, fold_edits) = fold_map.read(buffer_snapshot, buffer_edits);
+            let (folds_snapshot, fold_edits) =
+                fold_map.read(buffer_snapshot, subscription.consume().into_inner());
             log::info!(
                 "Unwrapped text (unexpanded tabs): {:?}",
                 folds_snapshot.text()

@@ -1,8 +1,6 @@
 use composite_buffer::{
-    AnchorRangeExt as _, CompositeAnchor as Anchor, CompositeBuffer,
-    Snapshot as CompositeBufferSnapshot, ToOffset, ToPoint as _,
+    AnchorRangeExt as _, CompositeAnchor as Anchor, Snapshot as CompositeBufferSnapshot, ToOffset,
 };
-use gpui::{AppContext, ModelHandle};
 use language::{Chunk, Edit, Point, PointUtf16, TextSummary};
 use parking_lot::Mutex;
 use std::{
@@ -1067,6 +1065,7 @@ impl FoldEdit {
 mod tests {
     use super::*;
     use crate::test::sample_text;
+    use composite_buffer::{CompositeBuffer, ToPoint as _};
     use language::Buffer;
     use rand::prelude::*;
     use std::{env, mem};
@@ -1076,7 +1075,8 @@ mod tests {
     #[gpui::test]
     fn test_basic_folds(cx: &mut gpui::MutableAppContext) {
         let buffer = cx.add_model(|cx| Buffer::new(0, sample_text(5, 6), cx));
-        let buffer = cx.add_model(|cx| CompositeBuffer::singleton(buffer));
+        let buffer = cx.add_model(|_| CompositeBuffer::singleton(buffer));
+        let subscription = buffer.update(cx, |buffer, _| buffer.subscribe());
         let buffer_snapshot = buffer.read(cx).snapshot();
         let mut map = FoldMap::new(buffer_snapshot.clone()).0;
 
@@ -1100,8 +1100,7 @@ mod tests {
             ]
         );
 
-        let (buffer_snapshot, edits) = buffer.update(cx, |buffer, cx| {
-            let v0 = buffer.version();
+        let buffer_snapshot = buffer.update(cx, |buffer, cx| {
             buffer.edit(
                 vec![
                     Point::new(0, 0)..Point::new(0, 1),
@@ -1110,9 +1109,10 @@ mod tests {
                 "123",
                 cx,
             );
-            (buffer.snapshot(), buffer.edits_since(&v0).collect())
+            buffer.snapshot()
         });
-        let (snapshot3, edits) = map.read(buffer_snapshot.clone(), edits);
+        let (snapshot3, edits) =
+            map.read(buffer_snapshot.clone(), subscription.consume().into_inner());
         assert_eq!(snapshot3.text(), "123a…c123c…eeeee");
         assert_eq!(
             edits,
@@ -1128,12 +1128,11 @@ mod tests {
             ]
         );
 
-        let (buffer_snapshot, edits) = buffer.update(cx, |buffer, cx| {
-            let v0 = buffer.version();
+        let buffer_snapshot = buffer.update(cx, |buffer, cx| {
             buffer.edit(vec![Point::new(2, 6)..Point::new(4, 3)], "456", cx);
-            (buffer.snapshot(), buffer.edits_since(&v0).collect())
+            buffer.snapshot()
         });
-        let (snapshot4, _) = map.read(buffer_snapshot.clone(), edits);
+        let (snapshot4, _) = map.read(buffer_snapshot.clone(), subscription.consume().into_inner());
         assert_eq!(snapshot4.text(), "123a…c123456eee");
 
         let (mut writer, _, _) = map.write(buffer_snapshot.clone(), vec![]);
@@ -1145,7 +1144,8 @@ mod tests {
     #[gpui::test]
     fn test_adjacent_folds(cx: &mut gpui::MutableAppContext) {
         let buffer = cx.add_model(|cx| Buffer::new(0, "abcdefghijkl", cx));
-        let buffer = cx.add_model(|cx| CompositeBuffer::singleton(buffer));
+        let buffer = cx.add_model(|_| CompositeBuffer::singleton(buffer));
+        let subscription = buffer.update(cx, |buffer, _| buffer.subscribe());
         let buffer_snapshot = buffer.read(cx).snapshot();
 
         {
@@ -1179,12 +1179,12 @@ mod tests {
             assert_eq!(snapshot.text(), "…fghijkl");
 
             // Edit within one of the folds.
-            let (buffer_snapshot, edits) = buffer.update(cx, |buffer, cx| {
-                let v0 = buffer.version();
+            let buffer_snapshot = buffer.update(cx, |buffer, cx| {
                 buffer.edit(vec![0..1], "12345", cx);
-                (buffer.snapshot(), buffer.edits_since(&v0).collect())
+                buffer.snapshot()
             });
-            let (snapshot, _) = map.read(buffer_snapshot.clone(), edits);
+            let (snapshot, _) =
+                map.read(buffer_snapshot.clone(), subscription.consume().into_inner());
             assert_eq!(snapshot.text(), "12345…fghijkl");
         }
     }
@@ -1192,7 +1192,7 @@ mod tests {
     #[gpui::test]
     fn test_overlapping_folds(cx: &mut gpui::MutableAppContext) {
         let buffer = cx.add_model(|cx| Buffer::new(0, sample_text(5, 6), cx));
-        let buffer = cx.add_model(|cx| CompositeBuffer::singleton(buffer));
+        let buffer = cx.add_model(|_| CompositeBuffer::singleton(buffer));
         let buffer_snapshot = buffer.read(cx).snapshot();
         let mut map = FoldMap::new(buffer_snapshot.clone()).0;
         let (mut writer, _, _) = map.write(buffer_snapshot.clone(), vec![]);
@@ -1209,7 +1209,8 @@ mod tests {
     #[gpui::test]
     fn test_merging_folds_via_edit(cx: &mut gpui::MutableAppContext) {
         let buffer = cx.add_model(|cx| Buffer::new(0, sample_text(5, 6), cx));
-        let buffer = cx.add_model(|cx| CompositeBuffer::singleton(buffer));
+        let buffer = cx.add_model(|_| CompositeBuffer::singleton(buffer));
+        let subscription = buffer.update(cx, |buffer, _| buffer.subscribe());
         let buffer_snapshot = buffer.read(cx).snapshot();
         let mut map = FoldMap::new(buffer_snapshot.clone()).0;
 
@@ -1221,19 +1222,18 @@ mod tests {
         let (snapshot, _) = map.read(buffer_snapshot.clone(), vec![]);
         assert_eq!(snapshot.text(), "aa…cccc\nd…eeeee");
 
-        let (buffer_snapshot, edits) = buffer.update(cx, |buffer, cx| {
-            let v0 = buffer.version();
+        let buffer_snapshot = buffer.update(cx, |buffer, cx| {
             buffer.edit(Some(Point::new(2, 2)..Point::new(3, 1)), "", cx);
-            (buffer.snapshot(), buffer.edits_since(&v0).collect())
+            buffer.snapshot()
         });
-        let (snapshot, _) = map.read(buffer_snapshot.clone(), edits);
+        let (snapshot, _) = map.read(buffer_snapshot.clone(), subscription.consume().into_inner());
         assert_eq!(snapshot.text(), "aa…eeeee");
     }
 
     #[gpui::test]
     fn test_folds_in_range(cx: &mut gpui::MutableAppContext) {
         let buffer = cx.add_model(|cx| Buffer::new(0, sample_text(5, 6), cx));
-        let buffer = cx.add_model(|cx| CompositeBuffer::singleton(buffer));
+        let buffer = cx.add_model(|_| CompositeBuffer::singleton(buffer));
         let buffer_snapshot = buffer.read(cx).snapshot();
         let mut map = FoldMap::new(buffer_snapshot.clone()).0;
         let buffer = buffer.read(cx);
@@ -1270,7 +1270,8 @@ mod tests {
             let text = RandomCharIter::new(&mut rng).take(len).collect::<String>();
             Buffer::new(0, text, cx)
         });
-        let buffer = cx.add_model(|cx| CompositeBuffer::singleton(buffer));
+        let buffer = cx.add_model(|_| CompositeBuffer::singleton(buffer));
+        let subscription = buffer.update(cx, |buffer, _| buffer.subscribe());
         let buffer_snapshot = buffer.read(cx).snapshot();
         let mut map = FoldMap::new(buffer_snapshot.clone()).0;
 
@@ -1279,25 +1280,21 @@ mod tests {
 
         for _ in 0..operations {
             log::info!("text: {:?}", buffer.read(cx).text());
-            let buffer_edits = match rng.gen_range(0..=100) {
+            match rng.gen_range(0..=100) {
                 0..=59 => {
                     snapshot_edits.extend(map.randomly_mutate(&mut rng));
-                    vec![]
                 }
-                _ => buffer.update(cx, |buffer, cx| {
-                    let start_version = buffer.version().clone();
+                _ => buffer.update(cx, |buffer, _| {
                     let edit_count = rng.gen_range(1..=5);
+                    let subscription = buffer.subscribe();
                     buffer.randomly_edit(&mut rng, edit_count);
-                    let edits = buffer
-                        .edits_since::<Point>(&start_version)
-                        .collect::<Vec<_>>();
-                    log::info!("editing {:?}", edits);
-                    buffer.edits_since::<usize>(&start_version).collect()
+                    log::info!("editing {:?}", subscription.consume().into_inner());
                 }),
             };
             let buffer_snapshot = buffer.read(cx).snapshot();
 
-            let (snapshot, edits) = map.read(buffer_snapshot.clone(), buffer_edits);
+            let (snapshot, edits) =
+                map.read(buffer_snapshot.clone(), subscription.consume().into_inner());
             snapshot_edits.push((snapshot.clone(), edits));
 
             let mut expected_text: String = buffer_snapshot.text().to_string();
@@ -1481,7 +1478,7 @@ mod tests {
     fn test_buffer_rows(cx: &mut gpui::MutableAppContext) {
         let text = sample_text(6, 6) + "\n";
         let buffer = cx.add_model(|cx| Buffer::new(0, text, cx));
-        let buffer = cx.add_model(|cx| CompositeBuffer::singleton(buffer));
+        let buffer = cx.add_model(|_| CompositeBuffer::singleton(buffer));
 
         let buffer_snapshot = buffer.read(cx).snapshot();
         let mut map = FoldMap::new(buffer_snapshot.clone()).0;

@@ -6,7 +6,7 @@ use gpui::{
     MutableAppContext, RenderContext, Subscription, Task, View, ViewContext, ViewHandle,
     WeakModelHandle,
 };
-use language::{Buffer, Diagnostic, File as _};
+use language::{Buffer, Diagnostic};
 use postage::watch;
 use project::{ProjectPath, Worktree};
 use std::fmt::Write;
@@ -171,9 +171,9 @@ impl ItemView for Editor {
 
     fn save_as(
         &mut self,
-        worktree: ModelHandle<Worktree>,
-        path: &Path,
-        cx: &mut ViewContext<Self>,
+        _worktree: ModelHandle<Worktree>,
+        _path: &Path,
+        _cx: &mut ViewContext<Self>,
     ) -> Task<Result<()>> {
         todo!()
 
