@@ -1066,6 +1066,7 @@ dependencies = [
  "lsp",
  "rand 0.8.3",
  "sum_tree",
+ "text",
  "theme",
 ]
 

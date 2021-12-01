@@ -2,11 +2,11 @@ use anyhow::Result;
 use clock::ReplicaId;
 use gpui::{AppContext, Entity, ModelContext, ModelHandle, Task};
 use language::{
-    rope::TextDimension, Anchor, AnchorRangeSet, Bias, Buffer, Chunk, Diagnostic, File, FromAnchor,
+    rope::TextDimension, AnchorRangeSet, Bias, Buffer, Chunk, Diagnostic, File, FromAnchor,
     Language, Patch, Point, PointUtf16, Selection, SelectionSetId, Subscription, TextSummary, Tree,
 };
 use std::{
-    cmp::Ordering,
+    cmp::{self, Ordering},
     io,
     ops::{Deref, Range},
     sync::Arc,
@@ -36,7 +36,7 @@ struct ExcerptSet {
 
 #[derive(Clone)]
 struct Excerpt {
-    buffer: ModelHandle<Buffer>,
+    buffer: language::Snapshot,
     rows: Range<u32>,
     summary: TextSummary,
     include_buffer_header: bool,
@@ -59,7 +59,7 @@ pub struct Chunks<'a> {
     cursor: sum_tree::Cursor<'a, Excerpt, usize>,
     range: Range<usize>,
     buffer_chunks: language::Chunks<'a>,
-    cx: &'a AppContext,
+    theme: Option<&'a SyntaxTheme>,
 }
 
 pub struct Bytes<'a> {
@@ -88,7 +88,7 @@ impl CompositeBuffer {
             buffer_handle.update(cx, |buffer, cx| {
                 for (ix, range) in ranges.iter().enumerate() {
                     let rows = range.start.to_point(buffer).row..range.end.to_point(buffer).row + 1;
-                    excerpts.push(Excerpt::new(buffer_handle.clone(), rows, ix == 0, cx), &());
+                    excerpts.push(Excerpt::new(buffer.snapshot(), rows, ix == 0, cx), &());
                 }
 
                 let ranges = buffer.anchor_range_set(
@@ -339,12 +339,12 @@ impl CompositeBuffer {
 
 impl Excerpt {
     fn new(
-        buffer: ModelHandle<Buffer>,
+        buffer: language::Snapshot,
         rows: Range<u32>,
         include_buffer_header: bool,
         cx: &AppContext,
     ) -> Self {
-        let mut summary = buffer.read(cx).text_summary_for_range::<TextSummary, _>(
+        let mut summary = buffer.text_summary_for_range::<TextSummary, _>(
             Point::new(rows.start, 0)..Point::new(rows.end, 0),
         );
 
@@ -376,8 +376,8 @@ impl sum_tree::Item for Excerpt {
 }
 
 impl Snapshot {
-    pub fn text(&self, cx: &AppContext) -> String {
-        self.chunks(0..self.len(), None, cx)
+    pub fn text(&self) -> String {
+        self.chunks(0..self.len(), None)
             .map(|chunk| chunk.text)
             .collect()
     }
@@ -408,9 +408,8 @@ impl Snapshot {
     pub fn text_for_range<'a, T: ToOffset>(
         &'a self,
         range: Range<T>,
-        cx: &'a AppContext,
     ) -> impl Iterator<Item = &'a str> {
-        self.chunks(range, None, cx).map(|chunk| chunk.text)
+        self.chunks(range, None).map(|chunk| chunk.text)
     }
 
     pub fn contains_str_at<T>(&self, position: T, needle: &str) -> bool
@@ -480,26 +479,25 @@ impl Snapshot {
         &'a self,
         range: Range<T>,
         theme: Option<&'a SyntaxTheme>,
-        cx: &'a AppContext,
     ) -> Chunks<'a> {
         let range = range.start.to_offset(self)..range.end.to_offset(self);
         let mut cursor = self.excerpts.cursor::<usize>();
         cursor.seek(&range.start, Bias::Left, &());
         let excerpt = cursor.item().unwrap();
-        let buffer = excerpt.buffer.read(cx);
 
         let overshoot = range.start - cursor.start();
         let excerpt_start_point = Point::new(excerpt.rows.start, 0);
-        let excerpt_start_offset = excerpt_start_point.to_offset(buffer);
+        let excerpt_start_offset =
+            language::ToOffset::to_offset(&excerpt_start_point, &excerpt.buffer);
         let start_offset = excerpt_start_offset + overshoot;
         let end_offset = excerpt_start_offset + cmp::min(range.len(), excerpt.summary.bytes);
-        let buffer_chunks = buffer.chunks(start_offset..end_offset, theme);
+        let buffer_chunks = excerpt.buffer.chunks(start_offset..end_offset, theme);
 
         Chunks {
             cursor,
             range,
             buffer_chunks,
-            cx,
+            theme,
         }
     }
 
@@ -627,7 +625,18 @@ impl<'a> Iterator for Chunks<'a> {
     type Item = Chunk<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        todo!()
+        if let Some(chunk) = self.buffer_chunks.next() {
+            return Some(chunk);
+        }
+
+        self.cursor.next(&());
+        self.range.start = *self.cursor.start();
+        let excerpt = self.cursor.item()?;
+        let start_point = Point::new(excerpt.rows.start, 0);
+        let start_offset = language::ToOffset::to_offset(&start_point, &excerpt.buffer);
+        let end_offset = start_offset + cmp::min(self.range.len(), excerpt.summary.bytes);
+        self.buffer_chunks = excerpt.buffer.chunks(start_offset..end_offset, self.theme);
+        self.buffer_chunks.next()
     }
 }
 
@@ -659,7 +668,7 @@ impl Deref for CompositeBuffer {
     type Target = Snapshot;
 
     fn deref(&self) -> &Self::Target {
-        todo!()
+        &self.snapshot
     }
 }
 
@@ -692,8 +701,8 @@ impl ToOffset for Point {
 }
 
 impl ToOffset for usize {
-    fn to_offset<'a>(&self, content: &Snapshot) -> usize {
-        todo!()
+    fn to_offset<'a>(&self, _: &Snapshot) -> usize {
+        *self
     }
 }
 

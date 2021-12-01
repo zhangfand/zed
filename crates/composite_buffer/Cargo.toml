@@ -20,4 +20,8 @@ theme = { path = "../theme" }
 rand = { version = "0.8.3", optional = true }
 
 [dev-dependencies]
+gpui = { path = "../gpui", features = ["test-support"] }
+language = { path = "../language", features = ["test-support"] }
+lsp = { path = "../lsp", features = ["test-support"] }
+text = { path = "../text", features = ["test-support"] }
 rand = "0.8.3"
