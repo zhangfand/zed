@@ -1,5 +1,6 @@
 pub mod display_map;
 mod element;
+mod find;
 pub mod items;
 pub mod movement;
 mod multi_buffer;
@@ -13,6 +14,7 @@ use collections::{HashMap, HashSet};
 pub use display_map::DisplayPoint;
 use display_map::*;
 pub use element::*;
+use find::FindPanel;
 use gpui::{
     action,
     elements::*,
@@ -20,7 +22,8 @@ use gpui::{
     geometry::vector::{vec2f, Vector2F},
     keymap::Binding,
     text_layout, AppContext, ClipboardItem, Element, ElementBox, Entity, ModelHandle,
-    MutableAppContext, RenderContext, View, ViewContext, WeakModelHandle, WeakViewHandle,
+    MutableAppContext, RenderContext, View, ViewContext, ViewHandle, WeakModelHandle,
+    WeakViewHandle,
 };
 use items::BufferItemHandle;
 use itertools::Itertools as _;
@@ -110,8 +113,11 @@ action!(Unfold);
 action!(FoldSelectedRanges);
 action!(Scroll, Vector2F);
 action!(Select, SelectPhase);
+action!(ShowFindPanel);
 
 pub fn init(cx: &mut MutableAppContext, entry_openers: &mut Vec<Box<dyn EntryOpener>>) {
+    find::init(cx);
+
     entry_openers.push(Box::new(items::BufferOpener));
     cx.add_bindings(vec![
         Binding::new("escape", Cancel, Some("Editor")),
@@ -216,6 +222,7 @@ pub fn init(cx: &mut MutableAppContext, entry_openers: &mut Vec<Box<dyn EntryOpe
         Binding::new("alt-cmd-[", Fold, Some("Editor")),
         Binding::new("alt-cmd-]", Unfold, Some("Editor")),
         Binding::new("alt-cmd-f", FoldSelectedRanges, Some("Editor")),
+        Binding::new("cmd-f", ShowFindPanel, Some("Editor && mode == full")),
     ]);
 
     cx.add_action(Editor::open_new);
@@ -278,6 +285,7 @@ pub fn init(cx: &mut MutableAppContext, entry_openers: &mut Vec<Box<dyn EntryOpe
     cx.add_action(Editor::fold);
     cx.add_action(Editor::unfold);
     cx.add_action(Editor::fold_selected_ranges);
+    cx.add_action(Editor::show_find_panel);
 }
 
 trait SelectionExt {
@@ -383,6 +391,8 @@ pub struct Editor {
     mode: EditorMode,
     placeholder_text: Option<Arc<str>>,
     highlighted_row: Option<u32>,
+    is_find_panel_visible: bool,
+    find_panel: ViewHandle<FindPanel>,
 }
 
 pub struct EditorSnapshot {
@@ -392,6 +402,8 @@ pub struct EditorSnapshot {
     is_focused: bool,
     scroll_position: Vector2F,
     scroll_top_anchor: Anchor,
+    pub is_find_panel_visible: bool,
+    pub find_panel: ViewHandle<FindPanel>,
 }
 
 struct PendingSelection {
@@ -523,6 +535,8 @@ impl Editor {
             mode: EditorMode::Full,
             placeholder_text: None,
             highlighted_row: None,
+            is_find_panel_visible: false,
+            find_panel: cx.add_view(|_| FindPanel::new()),
         }
     }
 
@@ -557,6 +571,8 @@ impl Editor {
                 .handle
                 .upgrade(cx)
                 .map_or(false, |handle| handle.is_focused(cx)),
+            is_find_panel_visible: self.is_find_panel_visible,
+            find_panel: self.find_panel.clone(),
         }
     }
 
@@ -3435,6 +3451,12 @@ impl Editor {
             self.request_autoscroll(Autoscroll::Fit, cx);
             cx.notify();
         }
+    }
+
+    pub fn show_find_panel(&mut self, _: &ShowFindPanel, cx: &mut ViewContext<Self>) {
+        self.is_find_panel_visible = true;
+        cx.focus(&self.find_panel);
+        cx.notify();
     }
 
     pub fn insert_blocks<P>(

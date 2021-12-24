@@ -7,6 +7,7 @@ use clock::ReplicaId;
 use collections::{BTreeMap, HashMap};
 use gpui::{
     color::Color,
+    elements::ChildView,
     geometry::{
         rect::RectF,
         vector::{vec2f, Vector2F},
@@ -675,6 +676,15 @@ impl Element for EditorElement {
         }
 
         let snapshot = self.snapshot(cx.app);
+
+        let find_panel = if snapshot.is_find_panel_visible {
+            let mut find_panel = ChildView::new(snapshot.find_panel.id()).boxed();
+            find_panel.layout(constraint, cx);
+            Some(find_panel)
+        } else {
+            None
+        };
+
         let style = self.settings.style.clone();
         let line_height = style.text.line_height(cx.font_cache);
 
@@ -794,6 +804,7 @@ impl Element for EditorElement {
             em_advance,
             selections,
             max_visible_line_width,
+            find_panel,
         };
 
         let scroll_max = layout.scroll_max(cx.font_cache, cx.text_layout_cache).x();
@@ -845,6 +856,12 @@ impl Element for EditorElement {
             }
             self.paint_text(text_bounds, visible_bounds, layout, cx);
             self.paint_blocks(text_bounds, visible_bounds, layout, cx);
+
+            if let Some(find_panel) = layout.find_panel.as_mut() {
+                cx.scene.push_layer(None);
+                find_panel.paint(bounds.origin(), visible_bounds, cx);
+                cx.scene.pop_layer();
+            }
 
             cx.scene.pop_layer();
 
@@ -927,6 +944,7 @@ pub struct LayoutState {
     overscroll: Vector2F,
     text_offset: Vector2F,
     max_visible_line_width: f32,
+    find_panel: Option<ElementBox>,
 }
 
 impl LayoutState {
