@@ -1,6 +1,5 @@
 pub mod display_map;
 mod element;
-mod find;
 pub mod items;
 pub mod movement;
 mod multi_buffer;
@@ -14,7 +13,7 @@ use collections::{HashMap, HashSet};
 pub use display_map::DisplayPoint;
 use display_map::*;
 pub use element::*;
-use find::FindPanel;
+
 use gpui::{
     action,
     elements::*,
@@ -116,7 +115,7 @@ action!(Select, SelectPhase);
 action!(ShowFindPanel);
 
 pub fn init(cx: &mut MutableAppContext, entry_openers: &mut Vec<Box<dyn EntryOpener>>) {
-    find::init(cx);
+    find_in_buffer::init(cx);
 
     entry_openers.push(Box::new(items::BufferOpener));
     cx.add_bindings(vec![
@@ -536,7 +535,7 @@ impl Editor {
             placeholder_text: None,
             highlighted_row: None,
             is_find_panel_visible: false,
-            find_panel: cx.add_view(|_| FindPanel::new()),
+            find_panel: cx.add_view(|_| FindPanel::new(cx.handle(), build_settings.clone(), cx)),
         }
     }
 

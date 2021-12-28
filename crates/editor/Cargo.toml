@@ -26,6 +26,7 @@ sum_tree = { path = "../sum_tree" }
 theme = { path = "../theme" }
 util = { path = "../util" }
 workspace = { path = "../workspace" }
+find_in_buffer = { path = "../find_in_buffer" }
 aho-corasick = "0.7"
 anyhow = "1.0"
 itertools = "0.10"
