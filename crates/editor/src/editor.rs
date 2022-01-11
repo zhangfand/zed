@@ -423,7 +423,7 @@ struct ClipboardSelection {
 }
 
 impl Editor {
-    pub fn single_line(build_settings: BuildSettings, cx: &mut ViewContext<Self>) -> Self {
+    pub fn single_line2(build_settings: BuildSettings, cx: &mut ViewContext<Self>) -> Self {
         let buffer = cx.add_model(|cx| Buffer::new(0, String::new(), cx));
         let buffer = cx.add_model(|cx| MultiBuffer::singleton(buffer, cx));
         let mut view = Self::for_buffer(buffer, build_settings, cx);
@@ -3534,7 +3534,7 @@ impl Editor {
             .max_point()
     }
 
-    pub fn text(&self, cx: &AppContext) -> String {
+    pub fn text2(&self, cx: &AppContext) -> String {
         self.buffer.read(cx).read(cx).text()
     }
 
