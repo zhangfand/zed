@@ -1754,7 +1754,7 @@ impl Editor {
                 // Don't move lines across excerpts
                 if !buffer.range_contains_excerpt_boundary(insertion_point..range_to_move.end) {
                     let text = buffer
-                        .text_for_range(range_to_move)
+                        .text_for_range(range_to_move.clone())
                         .flat_map(|s| s.chars())
                         .skip(1)
                         .chain(['\n'])
@@ -1766,7 +1766,7 @@ impl Editor {
                         String::new(),
                     ));
                     let insertion_anchor = buffer.anchor_after(insertion_point);
-                    edits.push((insertion_anchor..insertion_anchor, text));
+                    edits.push((insertion_anchor.clone()..insertion_anchor, text));
 
                     let row_delta = range_to_move.start.row - insertion_point.row + 1;
 
@@ -2797,7 +2797,7 @@ impl Editor {
             .iter()
             .map(|selection| {
                 let old_range = selection.start..selection.end;
-                let mut new_range = old_range;
+                let mut new_range = old_range.clone();
                 while let Some(containing_range) =
                     buffer.range_for_syntax_ancestor(new_range.clone())
                 {
@@ -3569,7 +3569,7 @@ impl Editor {
         let epoch = self.next_blink_epoch();
         cx.spawn(|this, mut cx| {
             let this = this.downgrade();
-            async move {
+            async {
                 Timer::after(CURSOR_BLINK_INTERVAL).await;
                 if let Some(this) = cx.read(|cx| this.upgrade(cx)) {
                     this.update(&mut cx, |this, cx| this.resume_cursor_blinking(epoch, cx))
@@ -3844,7 +3844,7 @@ pub fn diagnostic_block_renderer(
     is_valid: bool,
     build_settings: BuildSettings,
 ) -> RenderBlock {
-    Arc::new(move |cx: &BlockContext| {
+    Arc::new(|cx: &BlockContext| {
         let settings = build_settings(cx);
         let mut text_style = settings.style.text.clone();
         text_style.color = diagnostic_style(diagnostic.severity, is_valid, &settings.style).text;
