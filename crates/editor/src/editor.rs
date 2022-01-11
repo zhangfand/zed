@@ -423,7 +423,7 @@ struct ClipboardSelection {
 }
 
 impl Editor {
-    pub fn single_line2(build_settings: BuildSettings, cx: &mut ViewContext<Self>) -> Self {
+    pub fn single_line(build_settings: BuildSettings, cx: &mut ViewContext<Self>) -> Self {
         let buffer = cx.add_model(|cx| Buffer::new(0, String::new(), cx));
         let buffer = cx.add_model(|cx| MultiBuffer::singleton(buffer, cx));
         let mut view = Self::for_buffer(buffer, build_settings, cx);
@@ -1754,7 +1754,7 @@ impl Editor {
                 // Don't move lines across excerpts
                 if !buffer.range_contains_excerpt_boundary(insertion_point..range_to_move.end) {
                     let text = buffer
-                        .text_for_range(range_to_move.clone())
+                        .text_for_range(range_to_move)
                         .flat_map(|s| s.chars())
                         .skip(1)
                         .chain(['\n'])
@@ -1766,7 +1766,7 @@ impl Editor {
                         String::new(),
                     ));
                     let insertion_anchor = buffer.anchor_after(insertion_point);
-                    edits.push((insertion_anchor.clone()..insertion_anchor, text));
+                    edits.push((insertion_anchor..insertion_anchor, text));
 
                     let row_delta = range_to_move.start.row - insertion_point.row + 1;
 
@@ -2797,7 +2797,7 @@ impl Editor {
             .iter()
             .map(|selection| {
                 let old_range = selection.start..selection.end;
-                let mut new_range = old_range.clone();
+                let mut new_range = old_range;
                 while let Some(containing_range) =
                     buffer.range_for_syntax_ancestor(new_range.clone())
                 {
@@ -3534,7 +3534,7 @@ impl Editor {
             .max_point()
     }
 
-    pub fn text2(&self, cx: &AppContext) -> String {
+    pub fn text(&self, cx: &AppContext) -> String {
         self.buffer.read(cx).read(cx).text()
     }
 
