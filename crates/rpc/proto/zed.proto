@@ -20,6 +20,8 @@ message Envelope {
         LeaveProject leave_project = 14;
         AddProjectCollaborator add_project_collaborator = 15;
         RemoveProjectCollaborator remove_project_collaborator = 16;
+        GetDefinition get_definition = 44;
+        GetDefinitionResponse get_definition_response = 45;
 
         RegisterWorktree register_worktree = 17;
         UnregisterWorktree unregister_worktree = 18;
@@ -130,6 +132,27 @@ message AddProjectCollaborator {
 message RemoveProjectCollaborator {
     uint64 project_id = 1;
     uint32 peer_id = 2;
+}
+
+message GetDefinition {
+    uint64 project_id = 1;
+    uint64 worktree_id = 2;
+    uint64 buffer_id = 3;
+    Anchor position = 4;
+}
+
+message GetDefinitionResponse {
+    repeated Definition definitions = 1;
+}
+
+message Definition {
+    uint64 worktree_id = 1;
+    oneof buffer {
+        uint64 id = 2;
+        Buffer state = 3;
+    }
+    Anchor target_start = 4;
+    Anchor target_end = 5;
 }
 
 message OpenBuffer {

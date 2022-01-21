@@ -338,8 +338,8 @@ impl Worktree {
 
         // If there is already a buffer for the given path, then return it.
         let existing_buffer = match self {
-            Worktree::Local(worktree) => worktree.get_open_buffer(path, cx),
-            Worktree::Remote(worktree) => worktree.get_open_buffer(path, cx),
+            Worktree::Local(worktree) => worktree.existing_buffer_for_path(path, cx),
+            Worktree::Remote(worktree) => worktree.existing_buffer_for_path(path, cx),
         };
         if let Some(existing_buffer) = existing_buffer {
             return cx.spawn(move |_, _| async move { Ok((existing_buffer, false)) });
@@ -946,7 +946,7 @@ impl LocalWorktree {
         self.config.collaborators.clone()
     }
 
-    fn get_open_buffer(
+    fn existing_buffer_for_path(
         &mut self,
         path: &Path,
         cx: &mut ModelContext<Worktree>,
@@ -1500,7 +1500,7 @@ impl fmt::Debug for LocalWorktree {
 }
 
 impl RemoteWorktree {
-    fn get_open_buffer(
+    fn existing_buffer_for_path(
         &mut self,
         path: &Path,
         cx: &mut ModelContext<Worktree>,
@@ -1520,6 +1520,60 @@ impl RemoteWorktree {
             }
         });
         existing_buffer
+    }
+
+    pub fn existing_buffer_for_remote_id(
+        &mut self,
+        id: u64,
+        cx: &mut ModelContext<Worktree>,
+    ) -> Option<ModelHandle<Buffer>> {
+        let mut existing_buffer = None;
+        self.open_buffers.retain(|_buffer_id, buffer| {
+            if let Some(buffer) = buffer.upgrade(cx.as_ref()) {
+                if buffer.read(cx).remote_id() == id {
+                    existing_buffer = Some(buffer);
+                }
+                true
+            } else {
+                false
+            }
+        });
+        existing_buffer
+    }
+
+    pub fn add_remote_buffer(
+        &mut self,
+        entry_id: usize,
+        message: proto::Buffer,
+        cx: &mut ModelContext<Worktree>,
+    ) -> Result<(ModelHandle<Buffer>, bool)> {
+        if let Some(buffer) = self.existing_buffer_for_remote_id(message.id, cx) {
+            return Ok((buffer, false));
+        }
+
+        let file = self.entry_for_id(entry_id).map(|entry| {
+            Box::new(File {
+                entry_id: Some(entry_id),
+                worktree: cx.handle(),
+                worktree_path: self.snapshot.abs_path.clone(),
+                path: entry.path,
+                mtime: entry.mtime,
+                is_local: false,
+            }) as Box<dyn language::File>
+        });
+
+        let buffer_id = message.id as usize;
+        let buffer =
+            cx.add_model(|cx| Buffer::from_proto(self.replica_id, message, file, cx).unwrap());
+
+        if let Some(RemoteBuffer::Operations(pending_ops)) = self
+            .open_buffers
+            .insert(buffer_id, RemoteBuffer::Loaded(buffer.downgrade()))
+        {
+            buffer.update(cx, |buf, cx| buf.apply_ops(pending_ops, cx))?;
+        }
+
+        Ok((buffer, true))
     }
 
     fn open_buffer(

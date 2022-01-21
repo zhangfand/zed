@@ -155,7 +155,7 @@ pub fn serialize_diagnostics<'a>(
         .collect()
 }
 
-fn serialize_anchor(anchor: &Anchor) -> proto::Anchor {
+pub fn serialize_anchor(anchor: &Anchor) -> proto::Anchor {
     proto::Anchor {
         replica_id: anchor.timestamp.replica_id as u32,
         local_timestamp: anchor.timestamp.value,

@@ -13,7 +13,8 @@ use gpui::{
     WeakModelHandle,
 };
 use language::{
-    Bias, Buffer, DiagnosticEntry, File as _, Language, LanguageRegistry, ToOffset, ToPointUtf16,
+    proto::serialize_anchor, Bias, Buffer, DiagnosticEntry, File as _, Language, LanguageRegistry,
+    ToOffset, ToPointUtf16,
 };
 use lsp::{DiagnosticSeverity, LanguageServer};
 use postage::{prelude::Stream, watch};
@@ -818,8 +819,61 @@ impl Project {
 
                 Ok(definitions)
             })
+        } else if let Some(project_id) = self.remote_id() {
+            let client = self.client.clone();
+            let request = proto::GetDefinition {
+                project_id,
+                worktree_id: worktree.read(cx).id().to_proto(),
+                buffer_id: buffer.remote_id(),
+                position: Some(serialize_anchor(&buffer.anchor_before(position))),
+            };
+            cx.spawn(|this, cx| async move {
+                let response = client.request(request).await?;
+                cx.update(|cx| {
+                    let mut definitions = Vec::new();
+                    for definition in response.definitions {
+                        let worktree = this
+                            .read(cx)
+                            .worktree_for_id(WorktreeId::from_proto(definition.worktree_id), cx)
+                            .ok_or_else(|| {
+                                anyhow!("no worktree found for id {}", definition.worktree_id)
+                            })?;
+
+                        worktree.update(cx, |worktree, cx| {
+                            let worktree = worktree
+                                .as_remote_mut()
+                                .ok_or_else(|| anyhow!("worktree is not remote"))?;
+
+                            let buffer =
+                                match definition.buffer.ok_or_else(|| anyhow!("missing buffer"))? {
+                                    proto::definition::Buffer::Id(id) => worktree
+                                        .existing_buffer_for_remote_id(id, cx)
+                                        .ok_or_else(|| anyhow!("no buffer exists for id {}", id))?,
+                                    proto::definition::Buffer::State(state) => {
+                                        if let Some(buffer) =
+                                            worktree.existing_buffer_for_remote_id(state.id, cx)
+                                        {
+                                            buffer
+                                        } else {
+                                            todo!()
+                                        }
+                                    }
+                                };
+
+                            Ok(Default::default())
+                        });
+
+                        definitions.push(Definition {
+                            target_buffer: todo!(),
+                            target_range: todo!(),
+                        })
+                    }
+
+                    Ok(Default::default())
+                })
+            })
         } else {
-            todo!()
+            Task::ready(Err(anyhow!("project does not have a remote id")))
         }
     }
 
