@@ -1,10 +1,14 @@
 mod event;
 #[cfg(target_os = "macos")]
 pub mod mac;
+#[cfg(not(target_os = "macos"))]
+pub mod agnostic;
 pub mod test;
 pub mod current {
     #[cfg(target_os = "macos")]
     pub use super::mac::*;
+    #[cfg(not(target_os = "macos"))]
+    pub use super::agnostic::*;
 }
 
 use crate::{
