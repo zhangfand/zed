@@ -3,10 +3,11 @@ use crate::geometry::{
     vector::{vec2i, Vector2I},
 };
 use etagere::BucketedAtlasAllocator;
-use wgpu::{Device, TextureDescriptor, Texture};
+use wgpu::{Device, Queue, TextureDescriptor, Texture};
 
 pub struct AtlasAllocator {
     device: Device,
+    queue: Queue,
     texture_descriptor: TextureDescriptor<'static>,
     atlases: Vec<Atlas>,
     free_atlases: Vec<Atlas>,
@@ -61,7 +62,7 @@ impl AtlasAllocator {
     pub fn upload(&mut self, size: Vector2I, bytes: &[u8]) -> (AllocId, RectI) {
         let (alloc_id, origin) = self.allocate(size);
         let bounds = RectI::new(origin, size);
-        self.atlases[alloc_id.atlas_id].upload(bounds, bytes);
+        self.atlases[alloc_id.atlas_id].upload(self.queue, bounds, bytes);
         (alloc_id, bounds)
     }
 
@@ -134,7 +135,28 @@ impl Atlas {
         Some((alloc.id, vec2i(origin.x, origin.y)))
     }
 
-    fn upload(&mut self, bounds: RectI, bytes: &[u8]) {
+    fn upload(&mut self, queue: Queue, bounds: RectI, bytes: &[u8]) {
+        queue.write_texture(
+            // Where to put the new pixel data
+            wgpu::ImageCopyTexture {
+                texture: &self.texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d {
+                    x: bounds.origin.x() as f32,
+                    y: bounds.origin.y() as f32,
+                    z: 0.0,
+                },
+                aspect: wgpu::TextureAspect::All,
+            },
+            // Pixel data to put in the texture
+            bytes,
+            // 
+            wgpu::TextureDataLayout {
+                offset: 0,
+                bytes_per_row: bounds.size.x() as u32,
+                rows_per_image: bounds.size.y() as u32,
+            },
+        );
         let region = metal::MTLRegion::new_2d(
             bounds.origin().x() as u64,
             bounds.origin().y() as u64,
