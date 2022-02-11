@@ -3,7 +3,7 @@ use crate::geometry::{
     vector::{vec2i, Vector2I},
 };
 use etagere::BucketedAtlasAllocator;
-use wgpu::{Device, Queue, TextureDescriptor, Texture};
+use wgpu::{Device, Queue, Texture, TextureDescriptor, TextureFormat};
 
 pub struct AtlasAllocator {
     device: Device,
@@ -20,9 +20,10 @@ pub struct AllocId {
 }
 
 impl AtlasAllocator {
-    pub fn new(device: Device, texture_descriptor: TextureDescriptor<'static>) -> Self {
+    pub fn new(device: Device, queue: Queue, texture_descriptor: TextureDescriptor<'static>) -> Self {
         let mut me = Self {
             device,
+            queue,
             texture_descriptor,
             atlases: Vec::new(),
             free_atlases: Vec::new(),
@@ -82,7 +83,7 @@ impl AtlasAllocator {
         self.free_atlases.extend(self.atlases.drain(1..));
     }
 
-    pub fn texture(&self, atlas_id: usize) -> Option<&metal::TextureRef> {
+    pub fn texture(&self, atlas_id: usize) -> Option<&Texture> {
         self.atlases.get(atlas_id).map(|a| a.texture.as_ref())
     }
 
@@ -112,13 +113,15 @@ impl AtlasAllocator {
 struct Atlas {
     allocator: BucketedAtlasAllocator,
     texture: Texture,
+    texture_format: TextureFormat,
 }
 
 impl Atlas {
-    fn new(size: Vector2I, texture: Texture) -> Self {
+    fn new(texture_descriptor: &TextureDescriptor<'static>, size: Vector2I, texture: Texture) -> Self {
         Self {
             allocator: BucketedAtlasAllocator::new(etagere::Size::new(size.x(), size.y())),
             texture,
+            texture_format: texture_descriptor.format,
         }
     }
 
@@ -135,49 +138,42 @@ impl Atlas {
         Some((alloc.id, vec2i(origin.x, origin.y)))
     }
 
-    fn upload(&mut self, queue: Queue, bounds: RectI, bytes: &[u8]) {
+    fn upload(&mut self, queue: Queue, bounds: RectI, data_to_upload: &[u8]) {
+        let location_to_write_to = wgpu::ImageCopyTexture {
+            texture: &self.texture,
+            mip_level: 0,
+            origin: wgpu::Origin3d {
+                x: bounds.origin.x() as f32,
+                y: bounds.origin.y() as f32,
+                z: 0.0,
+            },
+            aspect: wgpu::TextureAspect::All,
+        };
+
+        let bytes_per_row = std::num::NonZeroU32::new(
+            bounds.size.x() as u32 * self.bytes_per_pixel());
+        let image_data_layout = wgpu::ImageDataLayout {
+            offset: 0,
+            bytes_per_row,
+            rows_per_image: None,
+        };
+
+        let modified_size = wgpu::Extent3d {
+            width: bounds.size.x() as u32,
+            height: bounds.size.y() as u32,
+            depth: 1,
+        };
+
         queue.write_texture(
-            // Where to put the new pixel data
-            wgpu::ImageCopyTexture {
-                texture: &self.texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d {
-                    x: bounds.origin.x() as f32,
-                    y: bounds.origin.y() as f32,
-                    z: 0.0,
-                },
-                aspect: wgpu::TextureAspect::All,
-            },
-            // Pixel data to put in the texture
-            bytes,
-            // 
-            wgpu::TextureDataLayout {
-                offset: 0,
-                bytes_per_row: bounds.size.x() as u32,
-                rows_per_image: bounds.size.y() as u32,
-            },
-        );
-        let region = metal::MTLRegion::new_2d(
-            bounds.origin().x() as u64,
-            bounds.origin().y() as u64,
-            bounds.size().x() as u64,
-            bounds.size().y() as u64,
-        );
-        self.texture.replace_region(
-            region,
-            0,
-            bytes.as_ptr() as *const _,
-            (bounds.size().x() * self.bytes_per_pixel() as i32) as u64,
+            location_to_write_to,
+            data_to_upload,
+            image_data_layout,
+            modified_size,
         );
     }
 
     fn bytes_per_pixel(&self) -> u8 {
-        use metal::MTLPixelFormat::*;
-        match self.texture.pixel_format() {
-            A8Unorm | R8Unorm => 1,
-            RGBA8Unorm | BGRA8Unorm => 4,
-            _ => unimplemented!(),
-        }
+        self.texture_format.describe().block_size
     }
 
     fn deallocate(&mut self, id: etagere::AllocId) {

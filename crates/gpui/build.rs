@@ -5,12 +5,16 @@ use std::{
 };
 
 fn main() {
-    generate_dispatch_bindings();
-    compile_context_predicate_parser();
-    compile_metal_shaders();
-    generate_shader_bindings();
+    #[cfg(target_os = "macos")]
+    {
+        generate_dispatch_bindings();
+        compile_context_predicate_parser();
+        compile_metal_shaders();
+        generate_shader_bindings();
+    }
 }
 
+#[cfg(target_os = "macos")]
 fn generate_dispatch_bindings() {
     println!("cargo:rustc-link-lib=framework=System");
     println!("cargo:rerun-if-changed=src/platform/mac/dispatch.h");
@@ -30,6 +34,7 @@ fn generate_dispatch_bindings() {
         .expect("couldn't write dispatch bindings");
 }
 
+#[cfg(target_os = "macos")]
 fn compile_context_predicate_parser() {
     let dir = PathBuf::from("./grammars/context-predicate/src");
     let parser_c = dir.join("parser.c");
@@ -41,8 +46,9 @@ fn compile_context_predicate_parser() {
         .compile("tree_sitter_context_predicate");
 }
 
-const SHADER_HEADER_PATH: &str = "./src/platform/mac/shaders/shaders.h";
+const SHADER_HEADER_PATH: &'static str = "./src/platform/mac/shaders/shaders.h";
 
+#[cfg(target_os = "macos")]
 fn compile_metal_shaders() {
     let shader_path = "./src/platform/mac/shaders/shaders.metal";
     let air_output_path = PathBuf::from(env::var("OUT_DIR").unwrap()).join("shaders.air");
@@ -92,6 +98,7 @@ fn compile_metal_shaders() {
     }
 }
 
+#[cfg(target_os = "macos")]
 fn generate_shader_bindings() {
     let bindings = bindgen::Builder::default()
         .header(SHADER_HEADER_PATH)

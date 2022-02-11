@@ -13,6 +13,7 @@ doctest = false
 test-support = ["backtrace", "dhat", "env_logger", "collections/test-support"]
 
 [dependencies]
+anyhow = "1"
 collections = { path = "../collections" }
 gpui_macros = { path = "../gpui_macros" }
 util = { path = "../util" }
