@@ -63,7 +63,7 @@ impl AtlasAllocator {
     pub fn upload(&mut self, size: Vector2I, bytes: &[u8]) -> (AllocId, RectI) {
         let (alloc_id, origin) = self.allocate(size);
         let bounds = RectI::new(origin, size);
-        self.atlases[alloc_id.atlas_id].upload(self.queue, bounds, bytes);
+        self.atlases[alloc_id.atlas_id].upload(&self.queue, bounds, bytes);
         (alloc_id, bounds)
     }
 
@@ -84,7 +84,7 @@ impl AtlasAllocator {
     }
 
     pub fn texture(&self, atlas_id: usize) -> Option<&Texture> {
-        self.atlases.get(atlas_id).map(|a| a.texture.as_ref())
+        self.atlases.get(atlas_id).map(|a| &a.texture)
     }
 
     fn new_atlas(&mut self, required_size: Vector2I) -> Atlas {
@@ -94,10 +94,10 @@ impl AtlasAllocator {
             self.free_atlases.remove(i)
         } else {
             let size = self.default_atlas_size().max(required_size);
-            if size.x() as u64 > self.texture_descriptor.size.x
-                || size.y() as u64 > self.texture_descriptor.size.y
+            if size.x() as u32 > self.texture_descriptor.size.width
+                || size.y() as u32 > self.texture_descriptor.size.height
             {
-                self.texture_descriptor.size = Extent3d {
+                self.texture_descriptor.size = wgpu::Extent3d {
                     width: size.x() as u32,
                     height: size.y() as u32,
                     depth_or_array_layers: 1,
@@ -105,7 +105,7 @@ impl AtlasAllocator {
             }
 
             let texture = self.device.create_texture(&self.texture_descriptor);
-            Atlas::new(size, texture)
+            Atlas::new(&self.texture_descriptor, size, texture)
         }
     }
 }
@@ -138,20 +138,20 @@ impl Atlas {
         Some((alloc.id, vec2i(origin.x, origin.y)))
     }
 
-    fn upload(&mut self, queue: Queue, bounds: RectI, data_to_upload: &[u8]) {
+    fn upload(&mut self, queue: &Queue, bounds: RectI, data_to_upload: &[u8]) {
         let location_to_write_to = wgpu::ImageCopyTexture {
             texture: &self.texture,
             mip_level: 0,
             origin: wgpu::Origin3d {
-                x: bounds.origin.x() as f32,
-                y: bounds.origin.y() as f32,
-                z: 0.0,
+                x: bounds.origin_x() as u32,
+                y: bounds.origin_y() as u32,
+                z: 0,
             },
             aspect: wgpu::TextureAspect::All,
         };
 
         let bytes_per_row = std::num::NonZeroU32::new(
-            bounds.size.x() as u32 * self.bytes_per_pixel());
+            bounds.width() as u32 * self.bytes_per_pixel() as u32);
         let image_data_layout = wgpu::ImageDataLayout {
             offset: 0,
             bytes_per_row,
@@ -159,9 +159,9 @@ impl Atlas {
         };
 
         let modified_size = wgpu::Extent3d {
-            width: bounds.size.x() as u32,
-            height: bounds.size.y() as u32,
-            depth: 1,
+            width: bounds.width() as u32,
+            height: bounds.height() as u32,
+            depth_or_array_layers: 1,
         };
 
         queue.write_texture(

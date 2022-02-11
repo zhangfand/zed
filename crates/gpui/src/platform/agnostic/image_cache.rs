@@ -2,6 +2,7 @@ use crate::{
     geometry::{rect::RectI, vector::Vector2I},
     ImageData,
 };
+use super::atlas::{AllocId, AtlasAllocator};
 use wgpu::{Device, Queue, Texture, TextureDescriptor, TextureFormat};
 use std::{collections::HashMap, mem};
 
@@ -15,8 +16,8 @@ impl ImageCache {
     pub fn new(device: Device, queue: Queue, size: Vector2I) -> Self {
         let descriptor = TextureDescriptor {
             size: wgpu::Extent3d {
-                width: size.x,
-                height: size.y,
+                width: size.x() as u32,
+                height: size.y() as u32,
                 depth_or_array_layers: 1,
             },
             mip_level_count: 1,

@@ -56,14 +56,14 @@ impl SpriteCache {
     ) -> Self {
         let descriptor = TextureDescriptor {
             size: wgpu::Extent3d {
-                width: size.x,
-                height: size.y,
+                width: size.x() as u32,
+                height: size.y() as u32,
                 depth_or_array_layers: 1,
             },
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: TextureFormat::A8Unorm,
+            format: TextureFormat::R8Unorm,
             usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
             label: None,
         };
@@ -168,7 +168,7 @@ impl SpriteCache {
             .clone()
     }
 
-    pub fn atlas_texture(&self, atlas_id: usize) -> Option<&metal::TextureRef> {
+    pub fn atlas_texture(&self, atlas_id: usize) -> Option<&wgpu::Texture> {
         self.atlases.texture(atlas_id)
     }
 }

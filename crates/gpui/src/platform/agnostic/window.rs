@@ -41,6 +41,10 @@ impl Window {
     ) -> Self {
         unimplemented!()
     }
+
+    pub fn key_window_id() -> Option<usize> {
+        unimplemented!()
+    }
 }
 
 impl platform::Window for Window {

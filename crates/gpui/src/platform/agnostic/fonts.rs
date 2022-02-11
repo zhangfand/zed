@@ -1,5 +1,5 @@
 use crate::{
-    fonts::{FontId, GlyphId},
+    fonts::{FontId, GlyphId, Metrics, Properties},
     geometry::{
         rect::{RectF, RectI},
         vector::Vector2F,
