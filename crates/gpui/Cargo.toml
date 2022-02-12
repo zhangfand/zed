@@ -59,6 +59,11 @@ backtrace = "0.3"
 collections = { path = "../collections", features = ["test-support"] }
 dhat = "0.3"
 env_logger = "0.9"
+winit = "0.26"
+cgmath = "0.18"
+wgpu = "0.12"
+pollster = "0.2"
+bytemuck = { version = "1.4", features = [ "derive" ] }
 png = "0.16"
 simplelog = "0.9"
 
