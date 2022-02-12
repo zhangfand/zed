@@ -4,7 +4,7 @@ use crate::{
 };
 use super::atlas::{AllocId, AtlasAllocator};
 use wgpu::{Device, Queue, Texture, TextureDescriptor, TextureFormat};
-use std::{collections::HashMap, mem};
+use std::{collections::HashMap, sync::Arc, mem};
 
 pub struct ImageCache {
     prev_frame: HashMap<usize, (AllocId, RectI)>,
@@ -13,7 +13,7 @@ pub struct ImageCache {
 }
 
 impl ImageCache {
-    pub fn new(device: Device, queue: Queue, size: Vector2I) -> Self {
+    pub fn new(device: Arc<Device>, queue: Arc<Queue>, size: Vector2I) -> Self {
         let descriptor = TextureDescriptor {
             size: wgpu::Extent3d {
                 width: size.x() as u32,

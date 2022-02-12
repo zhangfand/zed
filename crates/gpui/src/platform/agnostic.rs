@@ -1,4 +1,4 @@
-mod atlas;
+pub mod atlas;
 mod dispatcher;
 mod fonts;
 mod image_cache;

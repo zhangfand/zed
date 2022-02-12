@@ -8,10 +8,10 @@ fn main() {
     #[cfg(target_os = "macos")]
     {
         generate_dispatch_bindings();
-        compile_context_predicate_parser();
         compile_metal_shaders();
         generate_shader_bindings();
     }
+    compile_context_predicate_parser();
 }
 
 #[cfg(target_os = "macos")]
@@ -34,7 +34,6 @@ fn generate_dispatch_bindings() {
         .expect("couldn't write dispatch bindings");
 }
 
-#[cfg(target_os = "macos")]
 fn compile_context_predicate_parser() {
     let dir = PathBuf::from("./grammars/context-predicate/src");
     let parser_c = dir.join("parser.c");

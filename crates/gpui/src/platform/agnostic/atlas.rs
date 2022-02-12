@@ -4,10 +4,11 @@ use crate::geometry::{
 };
 use etagere::BucketedAtlasAllocator;
 use wgpu::{Device, Queue, Texture, TextureDescriptor, TextureFormat};
+use std::sync::Arc;
 
 pub struct AtlasAllocator {
-    device: Device,
-    queue: Queue,
+    device: Arc<Device>,
+    queue: Arc<Queue>,
     texture_descriptor: TextureDescriptor<'static>,
     atlases: Vec<Atlas>,
     free_atlases: Vec<Atlas>,
@@ -20,7 +21,7 @@ pub struct AllocId {
 }
 
 impl AtlasAllocator {
-    pub fn new(device: Device, queue: Queue, texture_descriptor: TextureDescriptor<'static>) -> Self {
+    pub fn new(device: Arc<Device>, queue: Arc<Queue>, texture_descriptor: TextureDescriptor<'static>) -> Self {
         let mut me = Self {
             device,
             queue,

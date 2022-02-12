@@ -5,7 +5,7 @@ use crate::{
     platform,
 };
 use ordered_float::OrderedFloat;
-use wgpu::{TextureDescriptor, TextureFormat};
+use wgpu::{Device, Queue, Texture, TextureDescriptor, TextureFormat};
 use std::{borrow::Cow, collections::HashMap, sync::Arc};
 
 #[derive(Hash, Eq, PartialEq)]
@@ -48,8 +48,8 @@ pub struct SpriteCache {
 
 impl SpriteCache {
     pub fn new(
-        device: wgpu::Device,
-        queue: wgpu::Queue,
+        device: Arc<Device>,
+        queue: Arc<Queue>,
         size: Vector2I,
         scale_factor: f32,
         fonts: Arc<dyn platform::FontSystem>,
@@ -168,7 +168,7 @@ impl SpriteCache {
             .clone()
     }
 
-    pub fn atlas_texture(&self, atlas_id: usize) -> Option<&wgpu::Texture> {
+    pub fn atlas_texture(&self, atlas_id: usize) -> Option<&Texture> {
         self.atlases.texture(atlas_id)
     }
 }
