@@ -32,7 +32,7 @@ impl ImageCache {
             curr_frame: Default::default(),
             atlases: AtlasAllocator::new(device, queue, descriptor),
         }
-    } 
+    }
 
     pub fn render(&mut self, image: &ImageData) -> (AllocId, RectI) {
         let (alloc_id, atlas_bounds) = self
