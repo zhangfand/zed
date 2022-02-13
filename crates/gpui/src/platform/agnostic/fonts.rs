@@ -19,8 +19,9 @@ use parking_lot::RwLock;
 use swash::{
     Attributes, CacheKey, Charmap, FontRef,
     shape::{Direction, ShapeContext},
-    scale::{ScaleContext, StrikeWith},
+    scale::{Render, ScaleContext, Source, StrikeWith},
     text::Script,
+    zeno::Vector,
 };
 use std::{
     path::Path,
@@ -68,7 +69,7 @@ impl SwashFont {
     }
 }
 
-pub struct FontSystem(Arc<RwLock<FontSystemState>>);
+pub struct FontSystem(RwLock<FontSystemState>);
 
 struct FontSystemState {
     memory_source: MemSource,
@@ -79,12 +80,12 @@ struct FontSystemState {
 
 impl FontSystem {
     pub fn new() -> Self {
-        Self(Arc::new(RwLock::new(FontSystemState {
+        Self(RwLock::new(FontSystemState {
             memory_source: MemSource::empty(),
             shape_context: ShapeContext::new(),
             scale_context: ScaleContext::new(),
             fonts: Vec::new(),
-        })))
+        }))
     }
 }
 
@@ -227,10 +228,18 @@ impl FontSystemState {
     ) -> Option<(RectI, Vec<u8>)> {
         let font = self.fonts[font_id.0].as_ref();
         let mut scaler = self.scale_context.builder(font)
-            .size(font_size)
+            .size(font_size * scale_factor)
             .build();
 
-        let image = scaler.scale_bitmap(glyph_id as u16, StrikeWith::BestFit)?;
+        let image = Render::new(&[
+            // Color outline with the first palette
+            Source::ColorOutline(0),
+            // Color bitmap with best fit selection mode
+            Source::ColorBitmap(StrikeWith::BestFit),
+            // Standard scalable outline
+            Source::Outline,
+        ]).offset(Vector::new(subpixel_shift.x(), subpixel_shift.y()))
+            .render(&mut scaler, glyph_id as u16)?;
 
         Some((
             RectI::new(Vector2I::new(image.placement.left, image.placement.top),

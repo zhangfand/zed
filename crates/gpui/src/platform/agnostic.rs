@@ -1,10 +1,10 @@
 pub mod atlas;
+pub mod fonts;
+pub mod sprite_cache;
 mod dispatcher;
-mod fonts;
 mod image_cache;
 mod platform;
 mod renderer;
-mod sprite_cache;
 mod window;
 
 pub use dispatcher::Dispatcher;
