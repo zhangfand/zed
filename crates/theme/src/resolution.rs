@@ -50,6 +50,12 @@ enum Node {
 #[derive(Clone)]
 struct Tree(Rc<RefCell<Node>>);
 
+fn parse_reference(value: &str) -> Option<&str> {
+    value
+        .strip_prefix("{")
+        .and_then(|value| value.strip_suffix("}"))
+}
+
 impl Tree {
     pub fn new(node: Node) -> Self {
         Self(Rc::new(RefCell::new(node)))
@@ -58,7 +64,7 @@ impl Tree {
     fn from_json(value: Value) -> Result<Self> {
         match value {
             Value::String(value) => {
-                if let Some(path) = value.strip_prefix("$") {
+                if let Some(path) = parse_reference(&value) {
                     Ok(Self::new(Node::Reference {
                         path: path.to_string(),
                         parent: None,
@@ -93,7 +99,7 @@ impl Tree {
                     let value = if key == "extends" {
                         if value.is_string() {
                             if let Value::String(value) = value {
-                                base = value.strip_prefix("$").map(str::to_string);
+                                base = parse_reference(&value).map(str::to_string);
                                 resolved = false;
                                 Self::new(Node::String {
                                     value,
@@ -436,15 +442,15 @@ mod test {
     fn test_references() {
         let json = serde_json::json!({
             "a": {
-                "extends": "$g",
-                "x": "$b.d"
+                "extends": "{g}",
+                "x": "{b.d}"
             },
             "b": {
-                "c": "$a",
-                "d": "$e.f"
+                "c": "{a}",
+                "d": "{e.f}"
             },
             "e": {
-                "extends": "$a",
+                "extends": "{a}",
                 "f": "1"
             },
             "g": {
@@ -456,20 +462,20 @@ mod test {
             resolve_references(json).unwrap(),
             serde_json::json!({
                 "a": {
-                    "extends": "$g",
+                    "extends": "{g}",
                     "x": "1",
                     "h": 2
                 },
                 "b": {
                     "c": {
-                        "extends": "$g",
+                        "extends": "{g}",
                         "x": "1",
                         "h": 2
                     },
                     "d": "1"
                 },
                 "e": {
-                    "extends": "$a",
+                    "extends": "{a}",
                     "f": "1",
                     "x": "1",
                     "h": 2
@@ -485,10 +491,10 @@ mod test {
     fn test_cycles() {
         let json = serde_json::json!({
             "a": {
-                "b": "$c.d"
+                "b": "{c.d}"
             },
             "c": {
-                "d": "$a.b",
+                "d": "{a.b}",
             },
         });
 
