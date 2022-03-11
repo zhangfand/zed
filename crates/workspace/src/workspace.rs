@@ -754,20 +754,29 @@ impl Workspace {
         })
     }
 
-    pub fn toggle_modal<V, F>(&mut self, cx: &mut ViewContext<Self>, add_view: F)
+    // Returns the model that was toggled closed if it was open
+    pub fn toggle_modal<V, F>(
+        &mut self,
+        cx: &mut ViewContext<Self>,
+        add_view: F,
+    ) -> Option<ViewHandle<V>>
     where
         V: 'static + View,
         F: FnOnce(&mut ViewContext<Self>, &mut Self) -> ViewHandle<V>,
     {
-        if self.modal.as_ref().map_or(false, |modal| modal.is::<V>()) {
-            self.modal.take();
+        cx.notify();
+        // Whatever modal was visible is getting clobbered. If its the same type as V, then return
+        // it. Otherwise, create a new modal and set it as active.
+        let already_open_modal = self.modal.take().and_then(|modal| modal.downcast::<V>());
+        if let Some(already_open_modal) = already_open_modal {
             cx.focus_self();
+            Some(already_open_modal)
         } else {
             let modal = add_view(cx, self);
             cx.focus(&modal);
             self.modal = Some(modal.into());
+            None
         }
-        cx.notify();
     }
 
     pub fn modal(&self) -> Option<&AnyViewHandle> {
@@ -1502,6 +1511,8 @@ fn open(action: &Open, cx: &mut MutableAppContext) {
     .detach();
 }
 
+pub struct WorkspaceCreated(WeakViewHandle<Workspace>);
+
 pub fn open_paths(
     abs_paths: &[PathBuf],
     app_state: &Arc<AppState>,
@@ -1528,7 +1539,7 @@ pub fn open_paths(
     }
 
     let workspace = existing.unwrap_or_else(|| {
-        cx.add_window((app_state.build_window_options)(), |cx| {
+        let (_, workspace) = cx.add_window((app_state.build_window_options)(), |cx| {
             let project = Project::local(
                 app_state.client.clone(),
                 app_state.user_store.clone(),
@@ -1537,8 +1548,9 @@ pub fn open_paths(
                 cx,
             );
             (app_state.build_workspace)(project, &app_state, cx)
-        })
-        .1
+        });
+        cx.emit_global(WorkspaceCreated(workspace.downgrade()));
+        workspace
     });
 
     let task = workspace.update(cx, |workspace, cx| workspace.open_paths(abs_paths, cx));
@@ -1572,12 +1584,13 @@ pub fn join_project(
             &mut cx,
         )
         .await?;
-        let (_, workspace) = cx.update(|cx| {
-            cx.add_window((app_state.build_window_options)(), |cx| {
+        Ok(cx.update(|cx| {
+            let (_, workspace) = cx.add_window((app_state.build_window_options)(), |cx| {
                 (app_state.build_workspace)(project, &app_state, cx)
-            })
-        });
-        Ok(workspace)
+            });
+            cx.emit_global(WorkspaceCreated(workspace.downgrade()));
+            workspace
+        }))
     })
 }
 
@@ -1592,5 +1605,6 @@ fn open_new(app_state: &Arc<AppState>, cx: &mut MutableAppContext) {
         );
         (app_state.build_workspace)(project, &app_state, cx)
     });
+    cx.emit_global(WorkspaceCreated(workspace.downgrade()));
     cx.dispatch_action(window_id, vec![workspace.id()], &OpenNew(app_state.clone()));
 }
