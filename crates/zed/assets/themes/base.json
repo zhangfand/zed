@@ -1,12 +1,257 @@
 {
+	"text": {
+		"primary": {
+			"font_size": "{font_size.sm}",
+			"font_family": [
+				"Zed Sans",
+				"zed-sans",
+				"San Francisco"
+			],
+			"font_weight": 400,
+			"extends": "{text.ui.base}",
+			"text_color": "{text_color.primary}"
+		},
+		"secondary": {
+			"font_size": "{font_size.sm}",
+			"font_family": [
+				"Zed Sans",
+				"zed-sans",
+				"San Francisco"
+			],
+			"font_weight": 400,
+			"extends": "{text.ui.base}",
+			"text_color": "{text_color.secondary}"
+		},
+		"muted": {
+			"font_size": "{font_size.sm}",
+			"font_family": [
+				"Zed Sans",
+				"zed-sans",
+				"San Francisco"
+			],
+			"font_weight": 400,
+			"extends": "{text.ui.base}",
+			"text_color": "{text_color.muted}"
+		},
+		"ui": {
+			"base": {
+				"font_size": "{font_size.sm}",
+				"font_family": [
+					"Zed Sans",
+					"zed-sans",
+					"San Francisco"
+				],
+				"font_weight": 400
+			},
+			"xs": {
+				"extends": "{text.ui.base}",
+				"font_size": "{font_size.2xs}"
+			},
+			"sm": {
+				"extends": "{text.ui.base}",
+				"font_size": "{font_size.xs}"
+			},
+			"lg": {
+				"extends": "{text.ui.base}",
+				"font_size": "{font_size.default}"
+			},
+			"xl": {
+				"extends": "{text.ui.base}",
+				"font_size": "{font_size.lg}"
+			},
+			"primary": {
+				"extends": "{text.ui.base}",
+				"text_color": "{text_color.primary}"
+			},
+			"secondary": {
+				"extends": "{text.ui.base}",
+				"text_color": "{text_color.secondary}"
+			},
+			"muted": {
+				"extends": "{text.ui.base}",
+				"text_color": "{text_color.muted}"
+			},
+			"minimal": {
+				"extends": "{text.ui.base}",
+				"text_color": "{text_color.minimal}"
+			},
+			"active": {
+				"extends": "{text.ui.base}",
+				"text_color": "{text_color.active}"
+			},
+			"posititve": {
+				"extends": "{text.ui.base}",
+				"text_color": "{text_color.posititve}"
+			},
+			"negative": {
+				"extends": "{text.ui.base}",
+				"text_color": "{text_color.negative}"
+			},
+			"warning": {
+				"extends": "{text.ui.base}",
+				"text_color": "{text_color.warning}"
+			},
+			"info": {
+				"extends": "{text.ui.base}",
+				"text_color": "{text_color.info}"
+			}
+		},
+		"editor": {
+			"base": {
+				"font_size": "{font_size.default}",
+				"font_family": [
+					"Zed UI",
+					"zed-ui",
+					"SF Mono"
+				],
+				"font_weight": 400
+			},
+			"primary": {
+				"extends": "{text.sans.default}",
+				"text_color": "{text_color.primary}"
+			},
+			"secondary": {
+				"extends": "{text.sans.default}",
+				"text_color": "{text_color.secondary}"
+			},
+			"muted": {
+				"extends": "{text.sans.default}",
+				"text_color": "{text_color.muted}"
+			},
+			"minimal": {
+				"extends": "{text.sans.default}",
+				"text_color": "{text_color.minimal}"
+			}
+		}
+	},
+	"icon": {
+		"base": {
+			"size": 16,
+			"stroke_width": 1.5
+		},
+		"primary": {
+			"extends": "{icon.base}",
+			"color": "{icon_color.primary}"
+		},
+		"secondary": {
+			"extends": "{icon.base}",
+			"color": "{icon_color.secondary}"
+		},
+		"active": {
+			"extends": "{icon.base}",
+			"color": "{icon_color.active}"
+		},
+		"disabled": {
+			"extends": "{icon.base}",
+			"color": "{icon_color.disabled}"
+		},
+		"positive": {
+			"extends": "{icon.base}",
+			"color": "{icon_color.positive}"
+		},
+		"negative": {
+			"extends": "{icon.base}",
+			"color": "{icon_color.negative}"
+		},
+		"warning": {
+			"extends": "{icon.base}",
+			"color": "{icon_color.warning}"
+		},
+		"info": {
+			"extends": "{icon.base}",
+			"color": "{icon_color.info}"
+		}
+	},
+	"border": {
+		"base": {
+			"border_width": 1,
+			"border_style": "{border.style.default}"
+		},
+		"primary": {
+			"extends": "{border.base}",
+			"border_color": "{border_color.primary}"
+		},
+		"secondary": {
+			"extends": "{border.base}",
+			"border_color": "{border_color.secondary}"
+		},
+		"muted": {
+			"extends": "{border.base}",
+			"border_color": "{border_color.muted}"
+		},
+		"minimal": {
+			"extends": "{border.base}",
+			"border_color": "{border_color.minimal}"
+		},
+		"active": {
+			"extends": "{border.base}",
+			"border_color": "{border_color.active}"
+		},
+		"focused": {
+			"extends": "{border.base}",
+			"border_color": "{border_color.focused}"
+		}
+	},
+	"surface": {
+		"100": "{surface_color.100}",
+		"300": "{surface_color.300}",
+		"500": "{surface_color.500}"
+	},
+	"player": {
+		"1": {
+			"color": "{player.color.1}",
+			"selection": "{player.selection.1}"
+		},
+		"2": {
+			"color": "{player.color.2}",
+			"selection": "{player.selection.2}"
+		},
+		"3": {
+			"color": "{player.color.3}",
+			"selection": "{player.selection.3}"
+		},
+		"4": {
+			"color": "{player.color.4}",
+			"selection": "{player.selection.4}"
+		},
+		"5": {
+			"color": "{player.color.5}",
+			"selection": "{player.selection.5}"
+		},
+		"6": {
+			"color": "{player.color.6}",
+			"selection": "{player.selection.6}"
+		},
+		"7": {
+			"color": "{player.color.7}",
+			"selection": "{player.selection.7}"
+		},
+		"8": {
+			"color": "{player.color.8}",
+			"selection": "{player.selection.8}"
+		}
+	},
+	"shadow": {
+		"base": {
+			"blur": 16,
+			"offset": [
+				0,
+				2
+			]
+		},
+		"300": {
+			"extends": "{shadow.base}",
+			"color": "{elevation.300.color}"
+		}
+	},
 	"chat_panel": {
 		"extends": "{panel}",
 		"channel_name": {
-			"extends": "{text.0}",
+			"extends": "{text.primary}",
 			"weight": "bold"
 		},
 		"channel_name_hash": {
-			"text": "{text.2}",
+			"text": "{text.muted}",
 			"padding": {
 				"right": 8
 			}
@@ -14,7 +259,7 @@
 		"channel_select": {
 			"active_item": {
 				"extends": "{chat_panel.channel_select.item}",
-				"name": "{text.0}"
+				"name": "{text.primary}"
 			},
 			"header": {
 				"extends": "{chat_panel.channel_select.active_item}",
@@ -25,7 +270,7 @@
 			},
 			"hovered_active_item": {
 				"extends": "{chat_panel.channel_select.hovered_item}",
-				"name": "{text.0}"
+				"name": "{text.primary}"
 			},
 			"hovered_item": {
 				"background": "{state.hover}",
@@ -33,10 +278,10 @@
 				"extends": "{chat_panel.channel_select.item}"
 			},
 			"item": {
-				"name": "{text.1}",
+				"name": "{text}",
 				"padding": 4,
 				"hash": {
-					"extends": "{text.2}",
+					"extends": "{text.muted}",
 					"margin": {
 						"right": 8
 					}
@@ -67,9 +312,9 @@
 		"input_editor": {
 			"background": "{surface.1}",
 			"corner_radius": 6,
-			"placeholder_text": "{text.2}",
+			"placeholder_text": "{text.muted}",
 			"selection": "{selection.host}",
-			"text": "{text.0}",
+			"text": "{text.primary}",
 			"border": {
 				"color": "{border.0}",
 				"width": 1
@@ -83,12 +328,12 @@
 		},
 		"message": {
 			"body": "{text.1}",
-			"timestamp": "{text.2}",
+			"timestamp": "{text.muted}",
 			"padding": {
 				"bottom": 6
 			},
 			"sender": {
-				"extends": "{text.0}",
+				"extends": "{text.primary}",
 				"weight": "bold",
 				"margin": {
 					"right": 8
@@ -108,7 +353,7 @@
 			}
 		},
 		"sign_in_prompt": {
-			"extends": "{text.0}",
+			"extends": "{text.primary}",
 			"underline": true
 		}
 	},
@@ -122,7 +367,7 @@
 			"width": 18
 		},
 		"host_username": {
-			"extends": "{text.0}",
+			"extends": "{text.primary}",
 			"padding": {
 				"left": 8
 			}
@@ -157,7 +402,7 @@
 		"shared_project": {
 			"extends": "{contacts_panel.project}",
 			"name": {
-				"color": "{text.0.color}"
+				"color": "{text.primary.text_color}"
 			}
 		},
 		"unshared_project": {
@@ -178,7 +423,7 @@
 		"gutter_padding_factor": 2.5,
 		"highlighted_line_background": "{state.highlighted_line}",
 		"line_number": "{text.2.color}",
-		"line_number_active": "{text.0.color}",
+		"line_number_active": "{text.primary.text_color}",
 		"selection": "{selection.host}",
 		"text_color": "{text.1.color}",
 		"autocomplete": {
@@ -220,12 +465,12 @@
 			"text_scale_factor": 0.857,
 			"border": {
 				"bottom": true,
-				"color": "{border.1}",
+				"color": "{border.}",
 				"top": true,
 				"width": 1
 			},
 			"code": {
-				"extends": "{text.2}",
+				"extends": "{text.muted}",
 				"size": 14,
 				"margin": {
 					"left": 10
@@ -233,7 +478,7 @@
 			},
 			"message": {
 				"highlight_text": {
-					"extends": "{text.0}",
+					"extends": "{text.primary}",
 					"size": 14,
 					"weight": "bold"
 				},
@@ -247,11 +492,11 @@
 			"background": "{state.active_line}",
 			"text_scale_factor": 0.857,
 			"filename": {
-				"extends": "{text.0}",
+				"extends": "{text.primary}",
 				"size": 14
 			},
 			"path": {
-				"extends": "{text.2}",
+				"extends": "{text.muted}",
 				"size": 14,
 				"margin": {
 					"left": 12
@@ -373,11 +618,11 @@
 		"tab_icon_width": 13,
 		"tab_summary_spacing": 10,
 		"empty_message": {
-			"extends": "{text.0}",
+			"extends": "{text.primary}",
 			"size": 18
 		},
 		"status_bar_item": {
-			"extends": "{text.2}",
+			"extends": "{text.muted}",
 			"margin": {
 				"right": 10
 			}
@@ -399,7 +644,7 @@
 		"hovered_selected_entry": {
 			"extends": "{project_panel.hovered_entry}",
 			"text": {
-				"extends": "{text.0}"
+				"extends": "{text.primary}"
 			}
 		},
 		"padding": {
@@ -408,7 +653,7 @@
 		"selected_entry": {
 			"extends": "{project_panel.entry}",
 			"text": {
-				"extends": "{text.0}"
+				"extends": "{text.primary}"
 			}
 		}
 	},
@@ -429,9 +674,9 @@
 			"background": "{surface.0}",
 			"corner_radius": 6,
 			"max_width": 400,
-			"placeholder_text": "{text.2}",
+			"placeholder_text": "{text.muted}",
 			"selection": "{selection.host}",
-			"text": "{text.0}",
+			"text": "{text.primary}",
 			"border": {
 				"color": "{border.0}",
 				"width": 1
@@ -490,7 +735,7 @@
 			}
 		},
 		"results_status": {
-			"extends": "{text.0}",
+			"extends": "{text.primary}",
 			"size": 18
 		}
 	},
@@ -501,14 +746,14 @@
 		"active_item": {
 			"background": "{state.hover}",
 			"extends": "{selector.item}",
-			"text": "{text.0}"
+			"text": "{text.primary}"
 		},
 		"border": {
 			"color": "{border.0}",
 			"width": 1
 		},
 		"empty": {
-			"text": "{text.2}",
+			"text": "{text.muted}",
 			"padding": {
 				"bottom": 4,
 				"left": 16,
@@ -519,9 +764,9 @@
 		"input_editor": {
 			"background": "{surface.1}",
 			"corner_radius": 6,
-			"placeholder_text": "{text.2}",
+			"placeholder_text": "{text.muted}",
 			"selection": "{selection.host}",
-			"text": "{text.0}",
+			"text": "{text.primary}",
 			"border": {
 				"color": "{border.0}",
 				"width": 1
@@ -561,18 +806,12 @@
 			]
 		}
 	},
-	"text": {
-		"base": {
-			"family": "Zed Sans",
-			"size": 14
-		}
-	},
 	"workspace": {
 		"background": "{surface.0}",
 		"active_tab": {
 			"background": "{surface.1}",
 			"extends": "{workspace.tab}",
-			"text": "{text.0}",
+			"text": "{text.primary}",
 			"border": {
 				"bottom": false
 			}
@@ -601,7 +840,7 @@
 			"width": 30,
 			"active_item": {
 				"extends": "{workspace.sidebar.item}",
-				"icon_color": "{text.0.color}"
+				"icon_color": "{text.primary.text_color}"
 			},
 			"border": {
 				"color": "{border.0}",
@@ -621,11 +860,11 @@
 			}
 		},
 		"status_bar": {
-			"cursor_position": "{text.2}",
-			"diagnostic_message": "{text.2}",
+			"cursor_position": "{text.muted}",
+			"diagnostic_message": "{text.muted}",
 			"height": 24,
 			"item_spacing": 8,
-			"lsp_message": "{text.2}",
+			"lsp_message": "{text.muted}",
 			"padding": {
 				"left": 6,
 				"right": 6
@@ -634,12 +873,12 @@
 		"tab": {
 			"height": 34,
 			"icon_close": "{text.2.color}",
-			"icon_close_active": "{text.0.color}",
+			"icon_close_active": "{text.primary.text_color}",
 			"icon_conflict": "{status.warn}",
 			"icon_dirty": "{status.info}",
 			"icon_width": 8,
 			"spacing": 10,
-			"text": "{text.2}",
+			"text": "{text.muted}",
 			"border": {
 				"bottom": true,
 				"color": "{border.0}",
@@ -655,9 +894,9 @@
 		"titlebar": {
 			"avatar_width": 18,
 			"height": 32,
-			"share_icon_active_color": "{text.0.color}",
+			"share_icon_active_color": "{text.primary.text_color}",
 			"share_icon_color": "{text.2.color}",
-			"title": "{text.0}",
+			"title": "{text.primary}",
 			"avatar": {
 				"corner_radius": 10,
 				"border": {
@@ -687,11 +926,11 @@
 				}
 			},
 			"outdated_warning": {
-				"extends": "{text.2}",
+				"extends": "{text.muted}",
 				"size": 13
 			},
 			"sign_in_prompt": {
-				"extends": "{text.2}",
+				"extends": "{text.muted}",
 				"size": 13,
 				"underline": true,
 				"padding": {
