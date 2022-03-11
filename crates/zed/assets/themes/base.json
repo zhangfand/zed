@@ -1,38 +1,5 @@
 {
 	"text": {
-		"primary": {
-			"font_size": "{font_size.sm}",
-			"font_family": [
-				"Zed Sans",
-				"zed-sans",
-				"San Francisco"
-			],
-			"font_weight": 400,
-			"extends": "{text.ui.base}",
-			"text_color": "{text_color.primary}"
-		},
-		"secondary": {
-			"font_size": "{font_size.sm}",
-			"font_family": [
-				"Zed Sans",
-				"zed-sans",
-				"San Francisco"
-			],
-			"font_weight": 400,
-			"extends": "{text.ui.base}",
-			"text_color": "{text_color.secondary}"
-		},
-		"muted": {
-			"font_size": "{font_size.sm}",
-			"font_family": [
-				"Zed Sans",
-				"zed-sans",
-				"San Francisco"
-			],
-			"font_weight": 400,
-			"extends": "{text.ui.base}",
-			"text_color": "{text_color.muted}"
-		},
 		"ui": {
 			"base": {
 				"font_size": "{font_size.sm}",
@@ -41,7 +8,7 @@
 					"zed-sans",
 					"San Francisco"
 				],
-				"font_weight": 400
+				"weight": "normal"
 			},
 			"xs": {
 				"extends": "{text.ui.base}",
@@ -164,71 +131,32 @@
 	},
 	"border": {
 		"base": {
-			"border_width": 1,
+			"width": 1,
 			"border_style": "{border.style.default}"
 		},
 		"primary": {
 			"extends": "{border.base}",
-			"border_color": "{border_color.primary}"
+			"color": "{border_color.primary}"
 		},
 		"secondary": {
 			"extends": "{border.base}",
-			"border_color": "{border_color.secondary}"
+			"color": "{border_color.secondary}"
 		},
 		"muted": {
 			"extends": "{border.base}",
-			"border_color": "{border_color.muted}"
+			"color": "{border_color.muted}"
 		},
 		"minimal": {
 			"extends": "{border.base}",
-			"border_color": "{border_color.minimal}"
+			"color": "{border_color.minimal}"
 		},
 		"active": {
 			"extends": "{border.base}",
-			"border_color": "{border_color.active}"
+			"color": "{border_color.active}"
 		},
 		"focused": {
 			"extends": "{border.base}",
-			"border_color": "{border_color.focused}"
-		}
-	},
-	"surface": {
-		"100": "{surface_color.100}",
-		"300": "{surface_color.300}",
-		"500": "{surface_color.500}"
-	},
-	"player": {
-		"1": {
-			"color": "{player.color.1}",
-			"selection": "{player.selection.1}"
-		},
-		"2": {
-			"color": "{player.color.2}",
-			"selection": "{player.selection.2}"
-		},
-		"3": {
-			"color": "{player.color.3}",
-			"selection": "{player.selection.3}"
-		},
-		"4": {
-			"color": "{player.color.4}",
-			"selection": "{player.selection.4}"
-		},
-		"5": {
-			"color": "{player.color.5}",
-			"selection": "{player.selection.5}"
-		},
-		"6": {
-			"color": "{player.color.6}",
-			"selection": "{player.selection.6}"
-		},
-		"7": {
-			"color": "{player.color.7}",
-			"selection": "{player.selection.7}"
-		},
-		"8": {
-			"color": "{player.color.8}",
-			"selection": "{player.selection.8}"
+			"color": "{border_color.focused}"
 		}
 	},
 	"shadow": {
@@ -247,11 +175,11 @@
 	"chat_panel": {
 		"extends": "{panel}",
 		"channel_name": {
-			"extends": "{text.primary}",
+			"extends": "{text.ui.primary}",
 			"weight": "bold"
 		},
 		"channel_name_hash": {
-			"text": "{text.muted}",
+			"text": "{text.ui.muted}",
 			"padding": {
 				"right": 8
 			}
@@ -259,7 +187,7 @@
 		"channel_select": {
 			"active_item": {
 				"extends": "{chat_panel.channel_select.item}",
-				"name": "{text.primary}"
+				"name": "{text.ui.primary}"
 			},
 			"header": {
 				"extends": "{chat_panel.channel_select.active_item}",
@@ -270,55 +198,42 @@
 			},
 			"hovered_active_item": {
 				"extends": "{chat_panel.channel_select.hovered_item}",
-				"name": "{text.primary}"
+				"name": "{text.ui.primary}"
 			},
 			"hovered_item": {
-				"background": "{state.hover}",
-				"corner_radius": 6,
+				"background": "{surface.hover}",
+				"corner_radius": "{corner_radius.base}",
 				"extends": "{chat_panel.channel_select.item}"
 			},
 			"item": {
-				"name": "{text}",
+				"name": "{text.ui.secondary}",
 				"padding": 4,
 				"hash": {
-					"extends": "{text.muted}",
+					"extends": "{text.ui.muted}",
 					"margin": {
 						"right": 8
 					}
 				}
 			},
 			"menu": {
-				"background": "{surface.0}",
-				"corner_radius": 6,
+				"background": "{surface.300}",
+				"corner_radius": "{corner_radius.base}",
 				"padding": 4,
-				"border": {
-					"color": "{border.0}",
-					"width": 1
-				},
-				"shadow": {
-					"blur": 16,
-					"color": "{shadow.0}",
-					"offset": [
-						0,
-						2
-					]
-				}
+				"border": "{border.primary}",
+				"shadow": "{shadow.300}"
 			}
 		},
 		"hovered_sign_in_prompt": {
-			"color": "{text.1.color}",
+			"color": "{text.ui.secondary.text_color}",
 			"extends": "{chat_panel.sign_in_prompt}"
 		},
 		"input_editor": {
-			"background": "{surface.1}",
-			"corner_radius": 6,
-			"placeholder_text": "{text.muted}",
-			"selection": "{selection.host}",
-			"text": "{text.primary}",
-			"border": {
-				"color": "{border.0}",
-				"width": 1
-			},
+			"background": "{surface.300}",
+			"corner_radius": "{corner_radius.base}",
+			"placeholder_text": "{text.ui.muted}",
+			"selection": "{player.selection.1}",
+			"text": "{text.ui.primary}",
+			"border": "{border.primary}",
 			"padding": {
 				"bottom": 7,
 				"left": 8,
@@ -327,13 +242,13 @@
 			}
 		},
 		"message": {
-			"body": "{text.1}",
-			"timestamp": "{text.muted}",
+			"body": "{text.ui.primary}",
+			"timestamp": "{text.ui.muted}",
 			"padding": {
 				"bottom": 6
 			},
 			"sender": {
-				"extends": "{text.primary}",
+				"extends": "{text.ui.primary}",
 				"weight": "bold",
 				"margin": {
 					"right": 8
@@ -343,17 +258,17 @@
 		"pending_message": {
 			"extends": "{chat_panel.message}",
 			"body": {
-				"color": "{text.3.color}"
+				"color": "{text.ui.minimal.color}"
 			},
 			"sender": {
-				"color": "{text.3.color}"
+				"color": "{text.ui.minimal.color}"
 			},
 			"timestamp": {
-				"color": "{text.3.color}"
+				"color": "{text.ui.minimal.color}"
 			}
 		},
 		"sign_in_prompt": {
-			"extends": "{text.primary}",
+			"extends": "{text.ui.primary}",
 			"underline": true
 		}
 	},
@@ -410,22 +325,22 @@
 		}
 	},
 	"editor": {
-		"active_line_background": "{state.active_line}",
-		"background": "{surface.1}",
-		"code_actions_indicator": "{text.3.color}",
-		"diff_background_deleted": "{state.deleted_line}",
-		"diff_background_inserted": "{state.inserted_line}",
+		"active_line_background": "{editor.line.active}",
+		"background": "{surface.500}",
+		"code_actions_indicator": "{icon.secondary.color}",
+		"diff_background_deleted": "{editor.line.deleted}",
+		"diff_background_inserted": "{editor.line.inserted}",
 		"document_highlight_read_background": "#99999920",
 		"document_highlight_write_background": "#99999916",
-		"error_color": "{status.bad}",
+		"error_color": "{text_color.negative}",
 		"guest_selections": "{selection.guests}",
-		"gutter_background": "{surface.1}",
+		"gutter_background": "{surface.500}",
 		"gutter_padding_factor": 2.5,
-		"highlighted_line_background": "{state.highlighted_line}",
-		"line_number": "{text.2.color}",
-		"line_number_active": "{text.primary.text_color}",
-		"selection": "{selection.host}",
-		"text_color": "{text.1.color}",
+		"highlighted_line_background": "{editor.line.highlighted}",
+		"line_number": "{text.editor.minimal}",
+		"line_number_active": "{text.editor.primary}",
+		"selection": "{player.selection.1}",
+		"text_color": "{text.editor.primary}",
 		"autocomplete": {
 			"background": "{surface.2}",
 			"corner_radius": 6,
