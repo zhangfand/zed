@@ -84,7 +84,7 @@ impl ThemeRegistry {
 
 fn flatten_token_values(value: &mut Value) {
     if let Some(object) = value.as_object_mut() {
-        if object.len() == 2 && object.contains_key("type") {
+        if object.contains_key("type") {
             if let Some(child) = object.remove("value") {
                 *value = child;
                 return;
