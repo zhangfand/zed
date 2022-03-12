@@ -247,7 +247,7 @@
 			"extends": "{chat_panel.sign_in_prompt}"
 		},
 		"input_editor": {
-			"background": "{surface.300}",
+			"background": "{surface.100}",
 			"corner_radius": "{corner_radius.default}",
 			"placeholder_text": "{text.ui.muted}",
 			"selection": "{host}",
@@ -386,8 +386,8 @@
 		"gutter_background": "{surface.500}",
 		"gutter_padding_factor": 2.5,
 		"highlighted_line_background": "{editor.line.highlighted}",
-		"line_number": "{text.editor.minimal.color}",
-		"line_number_active": "{text.editor.primary.color}",
+		"line_number": "{text_color.muted}",
+		"line_number_active": "{text_color.primary}",
 		"selection": "{host}",
 		"color": "{text.editor.primary}",
 		"autocomplete": {
@@ -564,6 +564,7 @@
 		}
 	},
 	"panel": {
+		"background": "{surface.300}",
 		"padding": {
 			"bottom": 12,
 			"left": 12,
@@ -572,7 +573,7 @@
 		}
 	},
 	"project_diagnostics": {
-		"background": "{surface.300}",
+		"background": "{surface.500}",
 		"tab_icon_spacing": 4,
 		"tab_icon_width": 13,
 		"tab_summary_spacing": 10,
@@ -758,9 +759,9 @@
 		"shadow": "{shadow.300}"
 	},
 	"workspace": {
-		"background": "{surface.100}",
+		"background": "{surface.300}",
 		"active_tab": {
-			"background": "{surface.300}",
+			"background": "{surface.500}",
 			"extends": "{workspace.tab}",
 			"text": "{text.ui.primary}",
 			"border": {
@@ -789,6 +790,7 @@
 		},
 		"sidebar": {
 			"width": 30,
+			"background": "{surface.300}",
 			"active_item": {
 				"extends": "{workspace.sidebar.item}",
 				"icon_color": "{icon_color.active}"
@@ -811,6 +813,7 @@
 			}
 		},
 		"status_bar": {
+			"background": "{surface.300}",
 			"cursor_position": "{text.ui.muted}",
 			"diagnostic_message": "{text.ui.muted}",
 			"height": 24,
@@ -823,16 +826,16 @@
 		},
 		"tab": {
 			"height": 34,
-			"icon_close": "{icon.muted.color}",
-			"icon_close_active": "{icon.active.color}",
-			"icon_conflict": "{icon.warning.color}",
-			"icon_dirty": "{icon.info.color}",
+			"icon_close": "{icon_color.secondary}",
+			"icon_close_active": "{icon_color.active}",
+			"icon_conflict": "{icon_color.warning}",
+			"icon_dirty": "{icon_color.info}",
 			"icon_width": 8,
 			"spacing": 10,
 			"text": "{text.ui.muted}",
 			"border": {
 				"bottom": true,
-				"color": "{border.primary.color}",
+				"color": "{border_color.primary}",
 				"left": true,
 				"overlay": true,
 				"width": 1
@@ -845,6 +848,7 @@
 		"titlebar": {
 			"avatar_width": 18,
 			"height": 32,
+			"background": "{surface.100}",
 			"share_icon_active_color": "{icon_color.active}",
 			"share_icon_color": "{icon_color.secondary}",
 			"title": "{text.ui.primary}",
