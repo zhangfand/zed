@@ -352,6 +352,7 @@
 		"document_highlight_read_background": "#99999920",
 		"document_highlight_write_background": "#99999916",
 		"error_color": "{text_color.negative}",
+		"text_color": "{text_color.primary}",
 		"guest_selections": [
 			{
 				"cursor": "{player.color.2}",
@@ -393,10 +394,7 @@
 			"background": "{surface.300}",
 			"corner_radius": "{corner_radius.default}",
 			"padding": 6,
-			"border": {
-				"color": "{border.secondary}",
-				"width": 2
-			},
+			"border": "{border.secondary}",
 			"hovered_item": {
 				"background": "{surface.hover}",
 				"extends": "{editor.autocomplete.item}"
@@ -476,13 +474,12 @@
 			},
 			"message": {
 				"highlight_text": {
-					"color": "{text.editor.negative.color}",
+					"color": "{editor.highlight.selection}",
 					"extends": "{text.ui.secondary}",
 					"size": 14,
 					"weight": "bold"
 				},
 				"text": {
-					"color": "{text.editor.negative.color}",
 					"extends": "{text.ui.secondary}",
 					"size": 14
 				}
@@ -492,10 +489,10 @@
 			"extends": "{editor.error_diagnostic}",
 			"message": {
 				"highlight_text": {
-					"color": "{text.editor.info.color}"
+					"color": "{text_color.info}"
 				},
 				"text": {
-					"color": "{text.editor.info.color}"
+					"color": "{text_color.info}"
 				}
 			}
 		},
@@ -503,10 +500,10 @@
 			"extends": "{editor.error_diagnostic}",
 			"message": {
 				"highlight_text": {
-					"color": "{text.editor.info.color}"
+					"color": "{text_color.info}"
 				},
 				"text": {
-					"color": "{text.editor.info.color}"
+					"color": "{text_color.info}"
 				}
 			}
 		},
@@ -514,10 +511,10 @@
 			"extends": "{editor.error_diagnostic}",
 			"message": {
 				"highlight_text": {
-					"color": "{text.editor.muted}"
+					"color": "{text_color.muted}"
 				},
 				"text": {
-					"color": "{text.editor.muted}"
+					"color": "{text_color.muted}"
 				}
 			}
 		},
@@ -525,10 +522,10 @@
 			"extends": "{editor.hint_diagnostic}",
 			"message": {
 				"highlight_text": {
-					"color": "{text.editor.muted}"
+					"color": "{text_color.muted}"
 				},
 				"text": {
-					"color": "{text.editor.muted}"
+					"color": "{text_color.muted}"
 				}
 			}
 		},
@@ -536,10 +533,10 @@
 			"extends": "{editor.information_diagnostic}",
 			"message": {
 				"highlight_text": {
-					"color": "{text.editor.muted}"
+					"color": "{text_color.muted}"
 				},
 				"text": {
-					"color": "{text.editor.muted}"
+					"color": "{text_color.muted}"
 				}
 			}
 		},
@@ -547,10 +544,10 @@
 			"extends": "{editor.warning_diagnostic}",
 			"message": {
 				"highlight_text": {
-					"color": "{text.editor.muted}"
+					"color": "{text_color.muted}"
 				},
 				"text": {
-					"color": "{text.editor.muted}"
+					"color": "{text_color.muted}"
 				}
 			}
 		},
@@ -558,10 +555,10 @@
 			"extends": "{editor.error_diagnostic}",
 			"message": {
 				"highlight_text": {
-					"color": "{text.editor.warning}"
+					"color": "{text_color.warning}"
 				},
 				"text": {
-					"color": "{text.editor.warning}"
+					"color": "{text_color.warning}"
 				}
 			}
 		}
@@ -594,7 +591,7 @@
 		"extends": "{panel}",
 		"entry": {
 			"height": 22,
-			"icon_color": "{text.editor.muted}",
+			"icon_color": "{icon_color.secondary}",
 			"icon_size": 8,
 			"icon_spacing": 8,
 			"text": "{text.ui.secondary}"
@@ -637,7 +634,7 @@
 			"corner_radius": "{corner_radius.default}",
 			"max_width": 400,
 			"placeholder_text": "{text.editor.muted}",
-			"selection": "{player.selection.1}",
+			"selection": "{host}",
 			"text": "{text.ui.primary}",
 			"border": {
 				"color": "{border.primary.color}",
@@ -727,7 +724,7 @@
 			"background": "{surface.300}",
 			"corner_radius": "{corner_radius.default}",
 			"placeholder_text": "{text.editor.muted}",
-			"selection": "{player.selection.1}",
+			"selection": "{host}",
 			"text": "{text.ui.primary}",
 			"border": {
 				"color": "{border.primary.color}",
@@ -794,7 +791,7 @@
 			"width": 30,
 			"active_item": {
 				"extends": "{workspace.sidebar.item}",
-				"icon_color": "{text.ui.primary.color}"
+				"icon_color": "{icon_color.active}"
 			},
 			"border": {
 				"color": "{border.primary.color}",
@@ -803,11 +800,11 @@
 			},
 			"item": {
 				"height": "{workspace.tab.height}",
-				"icon_color": "{icon.secondary}",
+				"icon_color": "{icon_color.secondary}",
 				"icon_size": 18
 			},
 			"resize_handle": {
-				"background": "{border.primary.color}",
+				"background": "{border_color.primary}",
 				"padding": {
 					"left": 1
 				}
@@ -848,8 +845,8 @@
 		"titlebar": {
 			"avatar_width": 18,
 			"height": 32,
-			"share_icon_active_color": "{icon.active}",
-			"share_icon_color": "{icon.muted}",
+			"share_icon_active_color": "{icon_color.active}",
+			"share_icon_color": "{icon_color.secondary}",
 			"title": "{text.ui.primary}",
 			"avatar": {
 				"corner_radius": 10,
@@ -894,6 +891,10 @@
 		},
 		"toolbar": {
 			"height": 44
+		},
+		"disconnected_overlay": {
+			"color": "#00000033",
+			"extends": "{text.ui.secondary}"
 		}
 	}
 }
