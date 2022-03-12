@@ -385,8 +385,8 @@
 		"gutter_background": "{surface.500}",
 		"gutter_padding_factor": 2.5,
 		"highlighted_line_background": "{editor.line.highlighted}",
-		"line_number": "{text.editor.minimal}",
-		"line_number_active": "{text.editor.primary}",
+		"line_number": "{text.editor.minimal.color}",
+		"line_number_active": "{text.editor.primary.color}",
 		"selection": "{host}",
 		"color": "{text.editor.primary}",
 		"autocomplete": {
