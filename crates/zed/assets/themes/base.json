@@ -187,6 +187,40 @@
 			"color": "{shadow_color.300}"
 		}
 	},
+	"player": {
+		"1":{
+			"cursor": "{player.color.1}",
+			"selection": "{player.selection.1}"
+		},
+		"2":{
+			"cursor": "{player.color.2}",
+			"selection": "{player.selection.2}"
+		},
+		"3":{
+			"cursor": "{player.color.3}",
+			"selection": "{player.selection.3}"
+		},
+		"4":{
+			"cursor": "{player.color.4}",
+			"selection": "{player.selection.4}"
+		},
+		"5":{
+			"cursor": "{player.color.5}",
+			"selection": "{player.selection.5}"
+		},
+		"6":{
+			"cursor": "{player.color.6}",
+			"selection": "{player.selection.6}"
+		},
+		"7":{
+			"cursor": "{player.color.7}",
+			"selection": "{player.selection.7}"
+		},
+		"8":{
+			"cursor": "{player.color.8}",
+			"selection": "{player.selection.8}"
+		}
+	},
 	"chat_panel": {
 		"extends": "{panel}",
 		"channel_name": {
@@ -246,7 +280,7 @@
 			"background": "{surface.300}",
 			"corner_radius": "{corner_radius.default}",
 			"placeholder_text": "{text.ui.muted}",
-			"selection": "{player.selection.1}",
+			"selection": "{player.1}",
 			"text": "{text.ui.primary}",
 			"border": "{border.primary}",
 			"padding": {
@@ -348,7 +382,7 @@
 		"document_highlight_read_background": "#99999920",
 		"document_highlight_write_background": "#99999916",
 		"error_color": "{text_color.negative}",
-		"guest_selections": "{player.selection}",
+		"guest_selections": "{player}",
 		"gutter_background": "{surface.500}",
 		"gutter_padding_factor": 2.5,
 		"highlighted_line_background": "{editor.line.highlighted}",
