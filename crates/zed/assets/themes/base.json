@@ -2,29 +2,25 @@
 	"text": {
 		"ui": {
 			"base": {
-				"font_size": "{font_size.sm}",
-				"font_family": [
-					"Zed Sans",
-					"zed-sans",
-					"San Francisco"
-				],
+				"size": "{font_size.sm}",
+				"family": "Zed Sans",
 				"weight": "normal"
 			},
 			"xs": {
 				"extends": "{text.ui.base}",
-				"font_size": "{font_size.2xs}"
+				"size": "{font_size.2xs}"
 			},
 			"sm": {
 				"extends": "{text.ui.base}",
-				"font_size": "{font_size.xs}"
+				"size": "{font_size.xs}"
 			},
 			"lg": {
 				"extends": "{text.ui.base}",
-				"font_size": "{font_size.default}"
+				"size": "{font_size.default}"
 			},
 			"xl": {
 				"extends": "{text.ui.base}",
-				"font_size": "{font_size.lg}"
+				"size": "{font_size.lg}"
 			},
 			"primary": {
 				"extends": "{text.ui.base}",
@@ -46,9 +42,9 @@
 				"extends": "{text.ui.base}",
 				"color": "{text_color.active}"
 			},
-			"posititve": {
+			"positive": {
 				"extends": "{text.ui.base}",
-				"color": "{text_color.posititve}"
+				"color": "{text_color.positive}"
 			},
 			"negative": {
 				"extends": "{text.ui.base}",
@@ -65,48 +61,44 @@
 		},
 		"editor": {
 			"base": {
-				"font_size": "{font_size.default}",
-				"font_family": [
-					"Zed Mono",
-					"zed-mono",
-					"SF Mono"
-				],
+				"size": "{font_size.default}",
+				"family": "Zed Mono",
 				"weight": "normal"
 			},
 			"primary": {
-				"extends": "{text.editor.default}",
+				"extends": "{text.editor.base}",
 				"color": "{text_color.primary}"
 			},
 			"secondary": {
-				"extends": "{text.editor.default}",
+				"extends": "{text.editor.base}",
 				"color": "{text_color.secondary}"
 			},
 			"muted": {
-				"extends": "{text.editor.default}",
+				"extends": "{text.editor.base}",
 				"color": "{text_color.muted}"
 			},
 			"minimal": {
-				"extends": "{text.editor.default}",
+				"extends": "{text.editor.base}",
 				"color": "{text_color.minimal}"
 			},
 			"active": {
-				"extends": "{text.editor.default}",
+				"extends": "{text.editor.base}",
 				"color": "{text_color.active}"
 			},
-			"posititve": {
-				"extends": "{text.editor.default}",
-				"color": "{text_color.posititve}"
+			"positive": {
+				"extends": "{text.editor.base}",
+				"color": "{text_color.positive}"
 			},
 			"negative": {
-				"extends": "{text.editor.default}",
+				"extends": "{text.editor.base}",
 				"color": "{text_color.negative}"
 			},
 			"warning": {
-				"extends": "{text.editor.default}",
+				"extends": "{text.editor.base}",
 				"color": "{text_color.warning}"
 			},
 			"info": {
-				"extends": "{text.editor.default}",
+				"extends": "{text.editor.base}",
 				"color": "{text_color.info}"
 			}
 		}
@@ -123,6 +115,10 @@
 		"secondary": {
 			"extends": "{icon.base}",
 			"color": "{icon_color.secondary}"
+		},
+		"muted": {
+			"extends": "{icon.base}",
+			"color": "{icon_color.muted}"
 		},
 		"active": {
 			"extends": "{icon.base}",
@@ -151,8 +147,7 @@
 	},
 	"border": {
 		"base": {
-			"width": 1,
-			"border_style": "{border.style.default}"
+			"width": 1
 		},
 		"primary": {
 			"extends": "{border.base}",
@@ -189,7 +184,7 @@
 		},
 		"300": {
 			"extends": "{shadow.base}",
-			"color": "{elevation.300.color}"
+			"color": "{shadow_color.300}"
 		}
 	},
 	"chat_panel": {
@@ -222,7 +217,7 @@
 			},
 			"hovered_item": {
 				"background": "{surface.hover}",
-				"corner_radius": "{corner_radius.base}",
+				"corner_radius": "{corner_radius.default}",
 				"extends": "{chat_panel.channel_select.item}"
 			},
 			"item": {
@@ -237,19 +232,19 @@
 			},
 			"menu": {
 				"background": "{surface.300}",
-				"corner_radius": "{corner_radius.base}",
+				"corner_radius": "{corner_radius.default}",
 				"padding": 4,
 				"border": "{border.primary}",
 				"shadow": "{shadow.300}"
 			}
 		},
 		"hovered_sign_in_prompt": {
-			"color": "{text.ui.secondary.text_color}",
+			"color": "{text.ui.secondary.color}",
 			"extends": "{chat_panel.sign_in_prompt}"
 		},
 		"input_editor": {
 			"background": "{surface.300}",
-			"corner_radius": "{corner_radius.base}",
+			"corner_radius": "{corner_radius.default}",
 			"placeholder_text": "{text.ui.muted}",
 			"selection": "{player.selection.1}",
 			"text": "{text.ui.primary}",
@@ -309,12 +304,12 @@
 		},
 		"hovered_shared_project": {
 			"background": "{surface.hover}",
-			"corner_radius": "{corner_radius.base}",
+			"corner_radius": "{corner_radius.default}",
 			"extends": "{contacts_panel.shared_project}"
 		},
 		"hovered_unshared_project": {
 			"background": "{surface.hover}",
-			"corner_radius": "{corner_radius.base}",
+			"corner_radius": "{corner_radius.default}",
 			"extends": "{contacts_panel.unshared_project}"
 		},
 		"project": {
@@ -337,7 +332,7 @@
 		"shared_project": {
 			"extends": "{contacts_panel.project}",
 			"name": {
-				"color": "{text.primary.text_color}"
+				"color": "{text.ui.primary.color}"
 			}
 		},
 		"unshared_project": {
@@ -363,7 +358,7 @@
 		"color": "{text.editor.primary}",
 		"autocomplete": {
 			"background": "{surface.300}",
-			"corner_radius": "{corner_radius.base}",
+			"corner_radius": "{corner_radius.default}",
 			"padding": 6,
 			"border": {
 				"color": "{border.secondary}",
@@ -374,7 +369,7 @@
 				"extends": "{editor.autocomplete.item}"
 			},
 			"item": {
-				"corner_radius": "{corner_radius.base}",
+				"corner_radius": "{corner_radius.default}",
 				"padding": {
 					"bottom": 2,
 					"left": 6,
@@ -386,8 +381,7 @@
 				"left": -14
 			},
 			"match_highlight": {
-				"color": "{editor.syntax.keyword.color}",
-				"weight": "{editor.syntax.keyword.weight}"
+				"color": "{editor.syntax.keyword}"
 			},
 			"selected_item": {
 				"background": "{editor.highlight.selection}",
@@ -405,7 +399,7 @@
 				"width": 1
 			},
 			"code": {
-				"extends": "{text.muted}",
+				"extends": "{text.editor.muted}",
 				"size": 14,
 				"margin": {
 					"left": 10
@@ -431,7 +425,7 @@
 				"size": 14
 			},
 			"path": {
-				"extends": "{text.muted}",
+				"extends": "{text.editor.muted}",
 				"size": 14,
 				"margin": {
 					"left": 12
@@ -557,7 +551,7 @@
 			"size": 18
 		},
 		"status_bar_item": {
-			"extends": "{text.muted}",
+			"extends": "{text.editor.muted}",
 			"margin": {
 				"right": 10
 			}
@@ -607,10 +601,10 @@
 		},
 		"editor": {
 			"background": "{surface.100}",
-			"corner_radius": "{corner_radius.base}",
+			"corner_radius": "{corner_radius.default}",
 			"max_width": 400,
-			"placeholder_text": "{text.muted}",
-			"selection": "{selection.host}",
+			"placeholder_text": "{text.editor.muted}",
+			"selection": "{player.selection.1}",
 			"text": "{text.ui.primary}",
 			"border": {
 				"color": "{border.primary.color}",
@@ -646,7 +640,7 @@
 		},
 		"option_button": {
 			"background": "{surface.300}",
-			"corner_radius": "{corner_radius.base}",
+			"corner_radius": "{corner_radius.default}",
 			"extends": "{text.ui.secondary}",
 			"border": {
 				"color": "{border.primary.color}",
@@ -676,7 +670,7 @@
 	},
 	"selector": {
 		"background": "{surface.100}",
-		"corner_radius": "{corner_radius.base}",
+		"corner_radius": "{corner_radius.default}",
 		"padding": 8,
 		"active_item": {
 			"background": "{surface.hover}",
@@ -688,7 +682,7 @@
 			"width": 1
 		},
 		"empty": {
-			"text": "{text.muted}",
+			"text": "{text.editor.muted}",
 			"padding": {
 				"bottom": 4,
 				"left": 16,
@@ -698,8 +692,8 @@
 		},
 		"input_editor": {
 			"background": "{surface.300}",
-			"corner_radius": "{corner_radius.base}",
-			"placeholder_text": "{text.muted}",
+			"corner_radius": "{corner_radius.default}",
+			"placeholder_text": "{text.editor.muted}",
 			"selection": "{player.selection.1}",
 			"text": "{text.ui.primary}",
 			"border": {
@@ -714,12 +708,11 @@
 			}
 		},
 		"item": {
-			"corner_radius": "{corner_radius.base}",
+			"corner_radius": "{corner_radius.default}",
 			"text": "{text.ui.secondary}",
 			"highlight_text": {
-				"color": "{editor.syntax.keyword.color}",
-				"extends": "{text.editor.base}",
-				"weight": "{editor.syntax.keyword.weight}"
+				"color": "{editor.syntax.keyword}",
+				"extends": "{text.editor.base}"
 			},
 			"padding": {
 				"bottom": 4,
@@ -768,7 +761,7 @@
 			"width": 30,
 			"active_item": {
 				"extends": "{workspace.sidebar.item}",
-				"icon_color": "{text.primary.text_color}"
+				"icon_color": "{text.ui.primary.color}"
 			},
 			"border": {
 				"color": "{border.primary.color}",
