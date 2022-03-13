@@ -319,13 +319,14 @@ impl LanguageRegistry {
 
             let server_binary_path = server_binary_path.await?;
             let server_args = adapter.server_args();
-            lsp::LanguageServer::new(
+            let server = lsp::LanguageServer::new(
                 &server_binary_path,
                 server_args,
                 &root_path,
                 adapter.initialization_options(),
                 background,
-            )
+            )?;
+            Ok(server)
         }))
     }
 
@@ -515,7 +516,7 @@ impl Language {
             for chunk in BufferChunks::new(text, range, Some(&tree), self.grammar.as_ref(), vec![])
             {
                 let end_offset = offset + chunk.text.len();
-                if let Some(highlight_id) = chunk.highlight_id {
+                if let Some(highlight_id) = chunk.syntax_highlight_id {
                     result.push((offset..end_offset, highlight_id));
                 }
                 offset = end_offset;

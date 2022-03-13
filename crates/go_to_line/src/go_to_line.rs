@@ -3,7 +3,6 @@ use gpui::{
     action, elements::*, geometry::vector::Vector2F, keymap::Binding, Axis, Entity,
     MutableAppContext, RenderContext, View, ViewContext, ViewHandle,
 };
-use postage::watch;
 use text::{Bias, Point};
 use workspace::{Settings, Workspace};
 
@@ -21,7 +20,6 @@ pub fn init(cx: &mut MutableAppContext) {
 }
 
 pub struct GoToLine {
-    settings: watch::Receiver<Settings>,
     line_editor: ViewHandle<Editor>,
     active_editor: ViewHandle<Editor>,
     prev_scroll_position: Option<Vector2F>,
@@ -34,17 +32,9 @@ pub enum Event {
 }
 
 impl GoToLine {
-    pub fn new(
-        active_editor: ViewHandle<Editor>,
-        settings: watch::Receiver<Settings>,
-        cx: &mut ViewContext<Self>,
-    ) -> Self {
+    pub fn new(active_editor: ViewHandle<Editor>, cx: &mut ViewContext<Self>) -> Self {
         let line_editor = cx.add_view(|cx| {
-            Editor::single_line(
-                settings.clone(),
-                Some(|theme| theme.selector.input_editor.clone()),
-                cx,
-            )
+            Editor::single_line(Some(|theme| theme.selector.input_editor.clone()), cx)
         });
         cx.subscribe(&line_editor, Self::on_line_editor_event)
             .detach();
@@ -60,7 +50,6 @@ impl GoToLine {
         });
 
         Self {
-            settings: settings.clone(),
             line_editor,
             active_editor,
             prev_scroll_position: scroll_position,
@@ -71,8 +60,8 @@ impl GoToLine {
 
     fn toggle(workspace: &mut Workspace, _: &Toggle, cx: &mut ViewContext<Workspace>) {
         if let Some(editor) = workspace.active_item(cx).unwrap().downcast::<Editor>() {
-            workspace.toggle_modal(cx, |cx, workspace| {
-                let view = cx.add_view(|cx| GoToLine::new(editor, workspace.settings.clone(), cx));
+            workspace.toggle_modal(cx, |cx, _| {
+                let view = cx.add_view(|cx| GoToLine::new(editor, cx));
                 cx.subscribe(&view, Self::on_event).detach();
                 view
             });
@@ -126,7 +115,7 @@ impl GoToLine {
                         let point = snapshot.buffer_snapshot.clip_point(point, Bias::Left);
                         let display_point = point.to_display_point(&snapshot);
                         let row = display_point.row();
-                        active_editor.set_highlighted_rows(Some(row..row + 1));
+                        active_editor.highlight_rows(Some(row..row + 1));
                         active_editor.request_autoscroll(Autoscroll::Center, cx);
                     });
                     cx.notify();
@@ -143,7 +132,7 @@ impl Entity for GoToLine {
     fn release(&mut self, cx: &mut MutableAppContext) {
         let scroll_position = self.prev_scroll_position.take();
         self.active_editor.update(cx, |editor, cx| {
-            editor.set_highlighted_rows(None);
+            editor.highlight_rows(None);
             if let Some(scroll_position) = scroll_position {
                 editor.set_scroll_position(scroll_position, cx);
             }
@@ -156,8 +145,8 @@ impl View for GoToLine {
         "GoToLine"
     }
 
-    fn render(&mut self, _: &mut RenderContext<Self>) -> ElementBox {
-        let theme = &self.settings.borrow().theme.selector;
+    fn render(&mut self, cx: &mut RenderContext<Self>) -> ElementBox {
+        let theme = &cx.app_state::<Settings>().theme.selector;
 
         let label = format!(
             "{},{} of {} lines",

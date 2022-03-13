@@ -40,7 +40,6 @@ pub use multi_buffer::{
     Anchor, AnchorRangeExt, ExcerptId, MultiBuffer, MultiBufferSnapshot, ToOffset, ToPoint,
 };
 use ordered_float::OrderedFloat;
-use postage::watch;
 use project::{Project, ProjectTransaction};
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
@@ -133,6 +132,9 @@ action!(ToggleCodeActions, bool);
 action!(ConfirmCompletion, Option<usize>);
 action!(ConfirmCodeAction, Option<usize>);
 action!(OpenExcerpts);
+
+enum DocumentHighlightRead {}
+enum DocumentHighlightWrite {}
 
 pub fn init(cx: &mut MutableAppContext, path_openers: &mut Vec<Box<dyn PathOpener>>) {
     path_openers.push(Box::new(items::BufferOpener));
@@ -409,6 +411,8 @@ type CompletionId = usize;
 
 pub type GetFieldEditorTheme = fn(&theme::Theme) -> theme::FieldEditor;
 
+type OverrideTextStyle = dyn Fn(&EditorStyle) -> Option<HighlightStyle>;
+
 pub struct Editor {
     handle: WeakViewHandle<Self>,
     buffer: ModelHandle<MultiBuffer>,
@@ -428,19 +432,20 @@ pub struct Editor {
     scroll_position: Vector2F,
     scroll_top_anchor: Option<Anchor>,
     autoscroll_request: Option<Autoscroll>,
-    settings: watch::Receiver<Settings>,
     soft_wrap_mode_override: Option<settings::SoftWrap>,
     get_field_editor_theme: Option<GetFieldEditorTheme>,
+    override_text_style: Option<Box<OverrideTextStyle>>,
     project: Option<ModelHandle<Project>>,
     focused: bool,
     show_local_cursors: bool,
+    show_local_selections: bool,
     blink_epoch: usize,
     blinking_paused: bool,
     mode: EditorMode,
     vertical_scroll_margin: f32,
     placeholder_text: Option<Arc<str>>,
     highlighted_rows: Option<Range<u32>>,
-    highlighted_ranges: BTreeMap<TypeId, (Color, Vec<Range<Anchor>>)>,
+    background_highlights: BTreeMap<TypeId, (Color, Vec<Range<Anchor>>)>,
     nav_history: Option<ItemNavHistory>,
     context_menu: Option<ContextMenu>,
     completion_tasks: Vec<(CompletionId, Task<Option<()>>)>,
@@ -796,25 +801,16 @@ pub struct NavigationData {
 
 impl Editor {
     pub fn single_line(
-        settings: watch::Receiver<Settings>,
         field_editor_style: Option<GetFieldEditorTheme>,
         cx: &mut ViewContext<Self>,
     ) -> Self {
         let buffer = cx.add_model(|cx| Buffer::new(0, String::new(), cx));
         let buffer = cx.add_model(|cx| MultiBuffer::singleton(buffer, cx));
-        Self::new(
-            EditorMode::SingleLine,
-            buffer,
-            None,
-            settings,
-            field_editor_style,
-            cx,
-        )
+        Self::new(EditorMode::SingleLine, buffer, None, field_editor_style, cx)
     }
 
     pub fn auto_height(
         max_lines: usize,
-        settings: watch::Receiver<Settings>,
         field_editor_style: Option<GetFieldEditorTheme>,
         cx: &mut ViewContext<Self>,
     ) -> Self {
@@ -824,7 +820,6 @@ impl Editor {
             EditorMode::AutoHeight { max_lines },
             buffer,
             None,
-            settings,
             field_editor_style,
             cx,
         )
@@ -833,10 +828,9 @@ impl Editor {
     pub fn for_buffer(
         buffer: ModelHandle<MultiBuffer>,
         project: Option<ModelHandle<Project>>,
-        settings: watch::Receiver<Settings>,
         cx: &mut ViewContext<Self>,
     ) -> Self {
-        Self::new(EditorMode::Full, buffer, project, settings, None, cx)
+        Self::new(EditorMode::Full, buffer, project, None, cx)
     }
 
     pub fn clone(&self, nav_history: ItemNavHistory, cx: &mut ViewContext<Self>) -> Self {
@@ -844,7 +838,6 @@ impl Editor {
             self.mode,
             self.buffer.clone(),
             self.project.clone(),
-            self.settings.clone(),
             self.get_field_editor_theme,
             cx,
         );
@@ -859,13 +852,12 @@ impl Editor {
         mode: EditorMode,
         buffer: ModelHandle<MultiBuffer>,
         project: Option<ModelHandle<Project>>,
-        settings: watch::Receiver<Settings>,
         get_field_editor_theme: Option<GetFieldEditorTheme>,
         cx: &mut ViewContext<Self>,
     ) -> Self {
         let display_map = cx.add_model(|cx| {
-            let settings = settings.borrow();
-            let style = build_style(&*settings, get_field_editor_theme, cx);
+            let settings = cx.app_state::<Settings>();
+            let style = build_style(&*settings, get_field_editor_theme, None, cx);
             DisplayMap::new(
                 buffer.clone(),
                 settings.tab_size,
@@ -906,7 +898,6 @@ impl Editor {
             snippet_stack: Default::default(),
             select_larger_syntax_node_stack: Vec::new(),
             active_diagnostics: None,
-            settings,
             soft_wrap_mode_override: None,
             get_field_editor_theme,
             project,
@@ -915,13 +906,14 @@ impl Editor {
             autoscroll_request: None,
             focused: false,
             show_local_cursors: false,
+            show_local_selections: true,
             blink_epoch: 0,
             blinking_paused: false,
             mode,
             vertical_scroll_margin: 3.0,
             placeholder_text: None,
             highlighted_rows: None,
-            highlighted_ranges: Default::default(),
+            background_highlights: Default::default(),
             nav_history: None,
             context_menu: None,
             completion_tasks: Default::default(),
@@ -931,6 +923,7 @@ impl Editor {
             document_highlights_task: Default::default(),
             pending_rename: Default::default(),
             searchable: true,
+            override_text_style: None,
             cursor_shape: Default::default(),
         };
         this.end_selection(cx);
@@ -984,7 +977,12 @@ impl Editor {
     }
 
     fn style(&self, cx: &AppContext) -> EditorStyle {
-        build_style(&*self.settings.borrow(), self.get_field_editor_theme, cx)
+        build_style(
+            cx.app_state::<Settings>(),
+            self.get_field_editor_theme,
+            self.override_text_style.as_deref(),
+            cx,
+        )
     }
 
     pub fn set_placeholder_text(
@@ -1501,7 +1499,7 @@ impl Editor {
     }
 
     pub fn cancel(&mut self, _: &Cancel, cx: &mut ViewContext<Self>) {
-        if self.take_rename(cx).is_some() {
+        if self.take_rename(false, cx).is_some() {
             return;
         }
 
@@ -2357,7 +2355,7 @@ impl Editor {
             if let Some(editor) = editor.act_as::<Self>(cx) {
                 editor.update(cx, |editor, cx| {
                     let color = editor.style(cx).highlighted_line_background;
-                    editor.highlight_ranges::<Self>(ranges_to_highlight, color, cx);
+                    editor.highlight_background::<Self>(ranges_to_highlight, color, cx);
                 });
             }
         });
@@ -2397,6 +2395,10 @@ impl Editor {
     }
 
     fn refresh_document_highlights(&mut self, cx: &mut ViewContext<Self>) -> Option<()> {
+        if self.pending_rename.is_some() {
+            return None;
+        }
+
         let project = self.project.as_ref()?;
         let buffer = self.buffer.read(cx);
         let newest_selection = self.newest_anchor_selection().clone();
@@ -2412,13 +2414,14 @@ impl Editor {
             project.document_highlights(&cursor_buffer, cursor_buffer_position, cx)
         });
 
-        enum DocumentHighlightRead {}
-        enum DocumentHighlightWrite {}
-
         self.document_highlights_task = Some(cx.spawn_weak(|this, mut cx| async move {
             let highlights = highlights.log_err().await;
             if let Some((this, highlights)) = this.upgrade(&cx).zip(highlights) {
                 this.update(&mut cx, |this, cx| {
+                    if this.pending_rename.is_some() {
+                        return;
+                    }
+
                     let buffer_id = cursor_position.buffer_id;
                     let excerpt_id = cursor_position.excerpt_id.clone();
                     let style = this.style(cx);
@@ -2451,12 +2454,12 @@ impl Editor {
                         }
                     }
 
-                    this.highlight_ranges::<DocumentHighlightRead>(
+                    this.highlight_background::<DocumentHighlightRead>(
                         read_ranges,
                         read_background,
                         cx,
                     );
-                    this.highlight_ranges::<DocumentHighlightWrite>(
+                    this.highlight_background::<DocumentHighlightWrite>(
                         write_ranges,
                         write_background,
                         cx,
@@ -2698,7 +2701,7 @@ impl Editor {
         }
 
         self.start_transaction(cx);
-        let tab_size = self.settings.borrow().tab_size;
+        let tab_size = cx.app_state::<Settings>().tab_size;
         let mut selections = self.local_selections::<Point>(cx);
         let mut last_indent = None;
         self.buffer.update(cx, |buffer, cx| {
@@ -2775,7 +2778,7 @@ impl Editor {
         }
 
         self.start_transaction(cx);
-        let tab_size = self.settings.borrow().tab_size;
+        let tab_size = cx.app_state::<Settings>().tab_size;
         let selections = self.local_selections::<Point>(cx);
         let display_map = self.display_map.update(cx, |map, cx| map.snapshot(cx));
         let mut deletion_ranges = Vec::new();
@@ -3363,7 +3366,7 @@ impl Editor {
     }
 
     pub fn move_up(&mut self, _: &MoveUp, cx: &mut ViewContext<Self>) {
-        if self.take_rename(cx).is_some() {
+        if self.take_rename(true, cx).is_some() {
             return;
         }
 
@@ -3411,7 +3414,7 @@ impl Editor {
     }
 
     pub fn move_down(&mut self, _: &MoveDown, cx: &mut ViewContext<Self>) {
-        self.take_rename(cx);
+        self.take_rename(true, cx);
 
         if let Some(context_menu) = self.context_menu.as_mut() {
             if context_menu.select_next(cx) {
@@ -4355,7 +4358,7 @@ impl Editor {
                 if let Some(editor) = editor.act_as::<Self>(cx) {
                     editor.update(cx, |editor, cx| {
                         let color = editor.style(cx).highlighted_line_background;
-                        editor.highlight_ranges::<Self>(ranges_to_highlight, color, cx);
+                        editor.highlight_background::<Self>(ranges_to_highlight, color, cx);
                     });
                 }
             });
@@ -4373,7 +4376,7 @@ impl Editor {
             .buffer
             .read(cx)
             .text_anchor_for_position(selection.head(), cx)?;
-        let (tail_buffer, tail_buffer_position) = self
+        let (tail_buffer, _) = self
             .buffer
             .read(cx)
             .text_anchor_for_position(selection.tail(), cx)?;
@@ -4383,7 +4386,6 @@ impl Editor {
 
         let snapshot = cursor_buffer.read(cx).snapshot();
         let cursor_buffer_offset = cursor_buffer_position.to_offset(&snapshot);
-        let tail_buffer_offset = tail_buffer_position.to_offset(&snapshot);
         let prepare_rename = project.update(cx, |project, cx| {
             project.prepare_rename(cursor_buffer, cursor_buffer_offset, cx)
         });
@@ -4393,54 +4395,59 @@ impl Editor {
                 let rename_buffer_range = rename_range.to_offset(&snapshot);
                 let cursor_offset_in_rename_range =
                     cursor_buffer_offset.saturating_sub(rename_buffer_range.start);
-                let tail_offset_in_rename_range =
-                    tail_buffer_offset.saturating_sub(rename_buffer_range.start);
 
                 this.update(&mut cx, |this, cx| {
-                    this.take_rename(cx);
+                    this.take_rename(false, cx);
                     let style = this.style(cx);
                     let buffer = this.buffer.read(cx).read(cx);
                     let cursor_offset = selection.head().to_offset(&buffer);
                     let rename_start = cursor_offset.saturating_sub(cursor_offset_in_rename_range);
                     let rename_end = rename_start + rename_buffer_range.len();
                     let range = buffer.anchor_before(rename_start)..buffer.anchor_after(rename_end);
+                    let mut old_highlight_id = None;
                     let old_name = buffer
-                        .text_for_range(rename_start..rename_end)
-                        .collect::<String>();
+                        .chunks(rename_start..rename_end, true)
+                        .map(|chunk| {
+                            if old_highlight_id.is_none() {
+                                old_highlight_id = chunk.syntax_highlight_id;
+                            }
+                            chunk.text
+                        })
+                        .collect();
+
                     drop(buffer);
 
                     // Position the selection in the rename editor so that it matches the current selection.
+                    this.show_local_selections = false;
                     let rename_editor = cx.add_view(|cx| {
-                        let mut editor = Editor::single_line(this.settings.clone(), None, cx);
+                        let mut editor = Editor::single_line(None, cx);
+                        if let Some(old_highlight_id) = old_highlight_id {
+                            editor.override_text_style =
+                                Some(Box::new(move |style| old_highlight_id.style(&style.syntax)));
+                        }
                         editor
                             .buffer
                             .update(cx, |buffer, cx| buffer.edit([0..0], &old_name, cx));
-                        editor.select_ranges(
-                            [tail_offset_in_rename_range..cursor_offset_in_rename_range],
-                            None,
-                            cx,
-                        );
-                        editor.highlight_ranges::<Rename>(
-                            vec![Anchor::min()..Anchor::max()],
-                            style.diff_background_inserted,
-                            cx,
-                        );
+                        editor.select_all(&SelectAll, cx);
                         editor
                     });
-                    this.highlight_ranges::<Rename>(
-                        vec![range.clone()],
-                        style.diff_background_deleted,
-                        cx,
-                    );
-                    this.update_selections(
-                        vec![Selection {
-                            id: selection.id,
-                            start: rename_end,
-                            end: rename_end,
-                            reversed: false,
-                            goal: SelectionGoal::None,
-                        }],
-                        None,
+
+                    let ranges = this
+                        .clear_background_highlights::<DocumentHighlightWrite>(cx)
+                        .into_iter()
+                        .flat_map(|(_, ranges)| ranges)
+                        .chain(
+                            this.clear_background_highlights::<DocumentHighlightRead>(cx)
+                                .into_iter()
+                                .flat_map(|(_, ranges)| ranges),
+                        )
+                        .collect();
+                    this.highlight_text::<Rename>(
+                        ranges,
+                        HighlightStyle {
+                            fade_out: Some(style.rename_fade),
+                            ..Default::default()
+                        },
                         cx,
                     );
                     cx.focus(&rename_editor);
@@ -4482,7 +4489,7 @@ impl Editor {
         let editor = workspace.active_item(cx)?.act_as::<Editor>(cx)?;
 
         let (buffer, range, old_name, new_name) = editor.update(cx, |editor, cx| {
-            let rename = editor.take_rename(cx)?;
+            let rename = editor.take_rename(false, cx)?;
             let buffer = editor.buffer.read(cx);
             let (start_buffer, start) =
                 buffer.text_anchor_for_position(rename.range.start.clone(), cx)?;
@@ -4506,48 +4513,59 @@ impl Editor {
             )
         });
 
-        Some(cx.spawn(|workspace, cx| async move {
+        Some(cx.spawn(|workspace, mut cx| async move {
             let project_transaction = rename.await?;
             Self::open_project_transaction(
-                editor,
+                editor.clone(),
                 workspace,
                 project_transaction,
                 format!("Rename: {} → {}", old_name, new_name),
-                cx,
+                cx.clone(),
             )
-            .await
+            .await?;
+
+            editor.update(&mut cx, |editor, cx| {
+                editor.refresh_document_highlights(cx);
+            });
+            Ok(())
         }))
     }
 
-    fn take_rename(&mut self, cx: &mut ViewContext<Self>) -> Option<RenameState> {
+    fn take_rename(
+        &mut self,
+        moving_cursor: bool,
+        cx: &mut ViewContext<Self>,
+    ) -> Option<RenameState> {
         let rename = self.pending_rename.take()?;
         self.remove_blocks([rename.block_id].into_iter().collect(), cx);
-        self.clear_highlighted_ranges::<Rename>(cx);
+        self.clear_text_highlights::<Rename>(cx);
+        self.show_local_selections = true;
 
-        let editor = rename.editor.read(cx);
-        let snapshot = self.buffer.read(cx).snapshot(cx);
-        let selection = editor.newest_selection_with_snapshot::<usize>(&snapshot);
+        if moving_cursor {
+            let cursor_in_rename_editor =
+                rename.editor.read(cx).newest_selection::<usize>(cx).head();
 
-        // Update the selection to match the position of the selection inside
-        // the rename editor.
-        let rename_range = rename.range.to_offset(&snapshot);
-        let start = snapshot
-            .clip_offset(rename_range.start + selection.start, Bias::Left)
-            .min(rename_range.end);
-        let end = snapshot
-            .clip_offset(rename_range.start + selection.end, Bias::Left)
-            .min(rename_range.end);
-        self.update_selections(
-            vec![Selection {
-                id: self.newest_anchor_selection().id,
-                start,
-                end,
-                reversed: selection.reversed,
-                goal: SelectionGoal::None,
-            }],
-            None,
-            cx,
-        );
+            // Update the selection to match the position of the selection inside
+            // the rename editor.
+            let snapshot = self.buffer.read(cx).read(cx);
+            let rename_range = rename.range.to_offset(&snapshot);
+            let cursor_in_editor = snapshot
+                .clip_offset(rename_range.start + cursor_in_rename_editor, Bias::Left)
+                .min(rename_range.end);
+            drop(snapshot);
+
+            self.update_selections(
+                vec![Selection {
+                    id: self.newest_anchor_selection().id,
+                    start: cursor_in_editor,
+                    end: cursor_in_editor,
+                    reversed: false,
+                    goal: SelectionGoal::None,
+                }],
+                None,
+                cx,
+            );
+        }
 
         Some(rename)
     }
@@ -4567,7 +4585,7 @@ impl Editor {
             }
             let rename = self.pending_rename.take().unwrap();
             self.remove_blocks([rename.block_id].into_iter().collect(), cx);
-            self.clear_highlighted_ranges::<Rename>(cx);
+            self.clear_background_highlights::<Rename>(cx);
         }
     }
 
@@ -4595,11 +4613,7 @@ impl Editor {
                 for (block_id, diagnostic) in &active_diagnostics.blocks {
                     new_styles.insert(
                         *block_id,
-                        diagnostic_block_renderer(
-                            diagnostic.clone(),
-                            is_valid,
-                            self.settings.clone(),
-                        ),
+                        diagnostic_block_renderer(diagnostic.clone(), is_valid),
                     );
                 }
                 self.display_map
@@ -4642,11 +4656,7 @@ impl Editor {
                         BlockProperties {
                             position: buffer.anchor_after(entry.range.start),
                             height: message_height,
-                            render: diagnostic_block_renderer(
-                                diagnostic,
-                                true,
-                                self.settings.clone(),
-                            ),
+                            render: diagnostic_block_renderer(diagnostic, true),
                             disposition: BlockDisposition::Below,
                         }
                     }),
@@ -5264,7 +5274,7 @@ impl Editor {
 
     pub fn soft_wrap_mode(&self, cx: &AppContext) -> SoftWrap {
         let language = self.language(cx);
-        let settings = self.settings.borrow();
+        let settings = cx.app_state::<Settings>();
         let mode = self
             .soft_wrap_mode_override
             .unwrap_or_else(|| settings.soft_wrap(language));
@@ -5287,7 +5297,7 @@ impl Editor {
             .update(cx, |map, cx| map.set_wrap_width(width, cx))
     }
 
-    pub fn set_highlighted_rows(&mut self, rows: Option<Range<u32>>) {
+    pub fn highlight_rows(&mut self, rows: Option<Range<u32>>) {
         self.highlighted_rows = rows;
     }
 
@@ -5295,27 +5305,27 @@ impl Editor {
         self.highlighted_rows.clone()
     }
 
-    pub fn highlight_ranges<T: 'static>(
+    pub fn highlight_background<T: 'static>(
         &mut self,
         ranges: Vec<Range<Anchor>>,
         color: Color,
         cx: &mut ViewContext<Self>,
     ) {
-        self.highlighted_ranges
+        self.background_highlights
             .insert(TypeId::of::<T>(), (color, ranges));
         cx.notify();
     }
 
-    pub fn clear_highlighted_ranges<T: 'static>(
+    pub fn clear_background_highlights<T: 'static>(
         &mut self,
         cx: &mut ViewContext<Self>,
     ) -> Option<(Color, Vec<Range<Anchor>>)> {
         cx.notify();
-        self.highlighted_ranges.remove(&TypeId::of::<T>())
+        self.background_highlights.remove(&TypeId::of::<T>())
     }
 
     #[cfg(feature = "test-support")]
-    pub fn all_highlighted_ranges(
+    pub fn all_background_highlights(
         &mut self,
         cx: &mut ViewContext<Self>,
     ) -> Vec<(Range<DisplayPoint>, Color)> {
@@ -5323,23 +5333,23 @@ impl Editor {
         let buffer = &snapshot.buffer_snapshot;
         let start = buffer.anchor_before(0);
         let end = buffer.anchor_after(buffer.len());
-        self.highlighted_ranges_in_range(start..end, &snapshot)
+        self.background_highlights_in_range(start..end, &snapshot)
     }
 
-    pub fn highlighted_ranges_for_type<T: 'static>(&self) -> Option<(Color, &[Range<Anchor>])> {
-        self.highlighted_ranges
+    pub fn background_highlights_for_type<T: 'static>(&self) -> Option<(Color, &[Range<Anchor>])> {
+        self.background_highlights
             .get(&TypeId::of::<T>())
             .map(|(color, ranges)| (*color, ranges.as_slice()))
     }
 
-    pub fn highlighted_ranges_in_range(
+    pub fn background_highlights_in_range(
         &self,
         search_range: Range<Anchor>,
         display_snapshot: &DisplaySnapshot,
     ) -> Vec<(Range<DisplayPoint>, Color)> {
         let mut results = Vec::new();
         let buffer = &display_snapshot.buffer_snapshot;
-        for (color, ranges) in self.highlighted_ranges.values() {
+        for (color, ranges) in self.background_highlights.values() {
             let start_ix = match ranges.binary_search_by(|probe| {
                 let cmp = probe.end.cmp(&search_range.start, &buffer).unwrap();
                 if cmp.is_gt() {
@@ -5366,6 +5376,27 @@ impl Editor {
             }
         }
         results
+    }
+
+    pub fn highlight_text<T: 'static>(
+        &mut self,
+        ranges: Vec<Range<Anchor>>,
+        style: HighlightStyle,
+        cx: &mut ViewContext<Self>,
+    ) {
+        self.display_map.update(cx, |map, _| {
+            map.highlight_text(TypeId::of::<T>(), ranges, style)
+        });
+        cx.notify();
+    }
+
+    pub fn clear_text_highlights<T: 'static>(
+        &mut self,
+        cx: &mut ViewContext<Self>,
+    ) -> Option<Arc<(HighlightStyle, Vec<Range<Anchor>>)>> {
+        cx.notify();
+        self.display_map
+            .update(cx, |map, _| map.clear_text_highlights(TypeId::of::<T>()))
     }
 
     fn next_blink_epoch(&mut self) -> usize {
@@ -5599,17 +5630,20 @@ impl View for Editor {
     }
 
     fn on_focus(&mut self, cx: &mut ViewContext<Self>) {
-        self.focused = true;
-        self.blink_cursors(self.blink_epoch, cx);
-        self.buffer.update(cx, |buffer, cx| {
-            buffer.finalize_last_transaction(cx);
-            buffer.set_active_selections(&self.selections, cx)
-        });
+        if let Some(rename) = self.pending_rename.as_ref() {
+            cx.focus(&rename.editor);
+        } else {
+            self.focused = true;
+            self.blink_cursors(self.blink_epoch, cx);
+            self.buffer.update(cx, |buffer, cx| {
+                buffer.finalize_last_transaction(cx);
+                buffer.set_active_selections(&self.selections, cx)
+            });
+        }
     }
 
     fn on_blur(&mut self, cx: &mut ViewContext<Self>) {
         self.focused = false;
-        self.show_local_cursors = false;
         self.buffer
             .update(cx, |buffer, cx| buffer.remove_active_selections(cx));
         self.hide_context_menu(cx);
@@ -5644,14 +5678,14 @@ impl View for Editor {
 fn build_style(
     settings: &Settings,
     get_field_editor_theme: Option<GetFieldEditorTheme>,
+    override_text_style: Option<&OverrideTextStyle>,
     cx: &AppContext,
 ) -> EditorStyle {
+    let font_cache = cx.font_cache();
+
     let mut theme = settings.theme.editor.clone();
-    if let Some(get_field_editor_theme) = get_field_editor_theme {
+    let mut style = if let Some(get_field_editor_theme) = get_field_editor_theme {
         let field_editor_theme = get_field_editor_theme(&settings.theme);
-        if let Some(background) = field_editor_theme.container.background_color {
-            theme.background = background;
-        }
         theme.text_color = field_editor_theme.text.color;
         theme.selection = field_editor_theme.selection;
         EditorStyle {
@@ -5660,7 +5694,6 @@ fn build_style(
             theme,
         }
     } else {
-        let font_cache = cx.font_cache();
         let font_family_id = settings.buffer_font_family;
         let font_family_name = cx.font_cache().family_name(font_family_id).unwrap();
         let font_properties = Default::default();
@@ -5681,7 +5714,20 @@ fn build_style(
             placeholder_text: None,
             theme,
         }
+    };
+
+    if let Some(highlight_style) = override_text_style.and_then(|build_style| build_style(&style)) {
+        if let Some(highlighted) = style
+            .text
+            .clone()
+            .highlight(highlight_style, font_cache)
+            .log_err()
+        {
+            style.text = highlighted;
+        }
     }
+
+    style
 }
 
 impl<T: ToPoint + ToOffset> SelectionExt for Selection<T> {
@@ -5806,18 +5852,14 @@ impl Deref for EditorStyle {
     }
 }
 
-pub fn diagnostic_block_renderer(
-    diagnostic: Diagnostic,
-    is_valid: bool,
-    settings: watch::Receiver<Settings>,
-) -> RenderBlock {
+pub fn diagnostic_block_renderer(diagnostic: Diagnostic, is_valid: bool) -> RenderBlock {
     let mut highlighted_lines = Vec::new();
     for line in diagnostic.message.lines() {
         highlighted_lines.push(highlight_diagnostic_message(line));
     }
 
     Arc::new(move |cx: &BlockContext| {
-        let settings = settings.borrow();
+        let settings = cx.app_state::<Settings>();
         let theme = &settings.theme.editor;
         let style = diagnostic_style(diagnostic.severity, is_valid, theme);
         let font_size = (style.text_scale_factor * settings.buffer_font_size).round();
@@ -6012,14 +6054,12 @@ mod tests {
 
     #[gpui::test]
     fn test_undo_redo_with_selection_restoration(cx: &mut MutableAppContext) {
+        populate_settings(cx);
         let mut now = Instant::now();
         let buffer = cx.add_model(|cx| language::Buffer::new(0, "123456", cx));
         let group_interval = buffer.read(cx).transaction_group_interval();
         let buffer = cx.add_model(|cx| MultiBuffer::singleton(buffer, cx));
-        let settings = Settings::test(cx);
-        let (_, editor) = cx.add_window(Default::default(), |cx| {
-            build_editor(buffer.clone(), settings, cx)
-        });
+        let (_, editor) = cx.add_window(Default::default(), |cx| build_editor(buffer.clone(), cx));
 
         editor.update(cx, |editor, cx| {
             editor.start_transaction_at(now, cx);
@@ -6083,10 +6123,9 @@ mod tests {
 
     #[gpui::test]
     fn test_selection_with_mouse(cx: &mut gpui::MutableAppContext) {
+        populate_settings(cx);
         let buffer = MultiBuffer::build_simple("aaaaaa\nbbbbbb\ncccccc\ndddddd\n", cx);
-        let settings = Settings::test(cx);
-        let (_, editor) =
-            cx.add_window(Default::default(), |cx| build_editor(buffer, settings, cx));
+        let (_, editor) = cx.add_window(Default::default(), |cx| build_editor(buffer, cx));
 
         editor.update(cx, |view, cx| {
             view.begin_selection(DisplayPoint::new(2, 2), false, 1, cx);
@@ -6150,9 +6189,9 @@ mod tests {
 
     #[gpui::test]
     fn test_canceling_pending_selection(cx: &mut gpui::MutableAppContext) {
+        populate_settings(cx);
         let buffer = MultiBuffer::build_simple("aaaaaa\nbbbbbb\ncccccc\ndddddd\n", cx);
-        let settings = Settings::test(cx);
-        let (_, view) = cx.add_window(Default::default(), |cx| build_editor(buffer, settings, cx));
+        let (_, view) = cx.add_window(Default::default(), |cx| build_editor(buffer, cx));
 
         view.update(cx, |view, cx| {
             view.begin_selection(DisplayPoint::new(2, 2), false, 1, cx);
@@ -6182,12 +6221,13 @@ mod tests {
 
     #[gpui::test]
     fn test_navigation_history(cx: &mut gpui::MutableAppContext) {
+        populate_settings(cx);
+        use workspace::ItemView;
+        let nav_history = Rc::new(RefCell::new(workspace::NavHistory::default()));
+        let buffer = MultiBuffer::build_simple(&sample_text(30, 5, 'a'), cx);
+
         cx.add_window(Default::default(), |cx| {
-            use workspace::ItemView;
-            let nav_history = Rc::new(RefCell::new(workspace::NavHistory::default()));
-            let settings = Settings::test(&cx);
-            let buffer = MultiBuffer::build_simple(&sample_text(30, 5, 'a'), cx);
-            let mut editor = build_editor(buffer.clone(), settings, cx);
+            let mut editor = build_editor(buffer.clone(), cx);
             editor.nav_history = Some(ItemNavHistory::new(nav_history.clone(), &cx.handle()));
 
             // Move the cursor a small distance.
@@ -6239,9 +6279,9 @@ mod tests {
 
     #[gpui::test]
     fn test_cancel(cx: &mut gpui::MutableAppContext) {
+        populate_settings(cx);
         let buffer = MultiBuffer::build_simple("aaaaaa\nbbbbbb\ncccccc\ndddddd\n", cx);
-        let settings = Settings::test(cx);
-        let (_, view) = cx.add_window(Default::default(), |cx| build_editor(buffer, settings, cx));
+        let (_, view) = cx.add_window(Default::default(), |cx| build_editor(buffer, cx));
 
         view.update(cx, |view, cx| {
             view.begin_selection(DisplayPoint::new(3, 4), false, 1, cx);
@@ -6279,6 +6319,7 @@ mod tests {
 
     #[gpui::test]
     fn test_fold(cx: &mut gpui::MutableAppContext) {
+        populate_settings(cx);
         let buffer = MultiBuffer::build_simple(
             &"
                 impl Foo {
@@ -6300,10 +6341,7 @@ mod tests {
             .unindent(),
             cx,
         );
-        let settings = Settings::test(&cx);
-        let (_, view) = cx.add_window(Default::default(), |cx| {
-            build_editor(buffer.clone(), settings, cx)
-        });
+        let (_, view) = cx.add_window(Default::default(), |cx| build_editor(buffer.clone(), cx));
 
         view.update(cx, |view, cx| {
             view.select_display_ranges(&[DisplayPoint::new(8, 0)..DisplayPoint::new(12, 0)], cx);
@@ -6366,11 +6404,9 @@ mod tests {
 
     #[gpui::test]
     fn test_move_cursor(cx: &mut gpui::MutableAppContext) {
+        populate_settings(cx);
         let buffer = MultiBuffer::build_simple(&sample_text(6, 6, 'a'), cx);
-        let settings = Settings::test(&cx);
-        let (_, view) = cx.add_window(Default::default(), |cx| {
-            build_editor(buffer.clone(), settings, cx)
-        });
+        let (_, view) = cx.add_window(Default::default(), |cx| build_editor(buffer.clone(), cx));
 
         buffer.update(cx, |buffer, cx| {
             buffer.edit(
@@ -6442,11 +6478,9 @@ mod tests {
 
     #[gpui::test]
     fn test_move_cursor_multibyte(cx: &mut gpui::MutableAppContext) {
+        populate_settings(cx);
         let buffer = MultiBuffer::build_simple("ⓐⓑⓒⓓⓔ\nabcde\nαβγδε\n", cx);
-        let settings = Settings::test(&cx);
-        let (_, view) = cx.add_window(Default::default(), |cx| {
-            build_editor(buffer.clone(), settings, cx)
-        });
+        let (_, view) = cx.add_window(Default::default(), |cx| build_editor(buffer.clone(), cx));
 
         assert_eq!('ⓐ'.len_utf8(), 3);
         assert_eq!('α'.len_utf8(), 2);
@@ -6545,11 +6579,9 @@ mod tests {
 
     #[gpui::test]
     fn test_move_cursor_different_line_lengths(cx: &mut gpui::MutableAppContext) {
+        populate_settings(cx);
         let buffer = MultiBuffer::build_simple("ⓐⓑⓒⓓⓔ\nabcd\nαβγ\nabcd\nⓐⓑⓒⓓⓔ\n", cx);
-        let settings = Settings::test(&cx);
-        let (_, view) = cx.add_window(Default::default(), |cx| {
-            build_editor(buffer.clone(), settings, cx)
-        });
+        let (_, view) = cx.add_window(Default::default(), |cx| build_editor(buffer.clone(), cx));
         view.update(cx, |view, cx| {
             view.select_display_ranges(&[empty_range(0, "ⓐⓑⓒⓓⓔ".len())], cx);
             view.move_down(&MoveDown, cx);
@@ -6592,9 +6624,9 @@ mod tests {
 
     #[gpui::test]
     fn test_beginning_end_of_line(cx: &mut gpui::MutableAppContext) {
+        populate_settings(cx);
         let buffer = MultiBuffer::build_simple("abc\n  def", cx);
-        let settings = Settings::test(&cx);
-        let (_, view) = cx.add_window(Default::default(), |cx| build_editor(buffer, settings, cx));
+        let (_, view) = cx.add_window(Default::default(), |cx| build_editor(buffer, cx));
         view.update(cx, |view, cx| {
             view.select_display_ranges(
                 &[
@@ -6733,9 +6765,9 @@ mod tests {
 
     #[gpui::test]
     fn test_prev_next_word_boundary(cx: &mut gpui::MutableAppContext) {
+        populate_settings(cx);
         let buffer = MultiBuffer::build_simple("use std::str::{foo, bar}\n\n  {baz.qux()}", cx);
-        let settings = Settings::test(&cx);
-        let (_, view) = cx.add_window(Default::default(), |cx| build_editor(buffer, settings, cx));
+        let (_, view) = cx.add_window(Default::default(), |cx| build_editor(buffer, cx));
         view.update(cx, |view, cx| {
             view.select_display_ranges(
                 &[
@@ -6871,9 +6903,9 @@ mod tests {
 
     #[gpui::test]
     fn test_prev_next_word_bounds_with_soft_wrap(cx: &mut gpui::MutableAppContext) {
+        populate_settings(cx);
         let buffer = MultiBuffer::build_simple("use one::{\n    two::three::four::five\n};", cx);
-        let settings = Settings::test(&cx);
-        let (_, view) = cx.add_window(Default::default(), |cx| build_editor(buffer, settings, cx));
+        let (_, view) = cx.add_window(Default::default(), |cx| build_editor(buffer, cx));
 
         view.update(cx, |view, cx| {
             view.set_wrap_width(Some(140.), cx);
@@ -6924,11 +6956,9 @@ mod tests {
 
     #[gpui::test]
     fn test_delete_to_word_boundary(cx: &mut gpui::MutableAppContext) {
+        populate_settings(cx);
         let buffer = MultiBuffer::build_simple("one two three four", cx);
-        let settings = Settings::test(&cx);
-        let (_, view) = cx.add_window(Default::default(), |cx| {
-            build_editor(buffer.clone(), settings, cx)
-        });
+        let (_, view) = cx.add_window(Default::default(), |cx| build_editor(buffer.clone(), cx));
 
         view.update(cx, |view, cx| {
             view.select_display_ranges(
@@ -6963,11 +6993,9 @@ mod tests {
 
     #[gpui::test]
     fn test_newline(cx: &mut gpui::MutableAppContext) {
+        populate_settings(cx);
         let buffer = MultiBuffer::build_simple("aaaa\n    bbbb\n", cx);
-        let settings = Settings::test(&cx);
-        let (_, view) = cx.add_window(Default::default(), |cx| {
-            build_editor(buffer.clone(), settings, cx)
-        });
+        let (_, view) = cx.add_window(Default::default(), |cx| build_editor(buffer.clone(), cx));
 
         view.update(cx, |view, cx| {
             view.select_display_ranges(
@@ -6986,6 +7014,7 @@ mod tests {
 
     #[gpui::test]
     fn test_newline_with_old_selections(cx: &mut gpui::MutableAppContext) {
+        populate_settings(cx);
         let buffer = MultiBuffer::build_simple(
             "
                 a
@@ -7001,9 +7030,8 @@ mod tests {
             cx,
         );
 
-        let settings = Settings::test(&cx);
         let (_, editor) = cx.add_window(Default::default(), |cx| {
-            let mut editor = build_editor(buffer.clone(), settings, cx);
+            let mut editor = build_editor(buffer.clone(), cx);
             editor.select_ranges(
                 [
                     Point::new(2, 4)..Point::new(2, 5),
@@ -7071,11 +7099,10 @@ mod tests {
 
     #[gpui::test]
     fn test_insert_with_old_selections(cx: &mut gpui::MutableAppContext) {
+        populate_settings(cx);
         let buffer = MultiBuffer::build_simple("a( X ), b( Y ), c( Z )", cx);
-
-        let settings = Settings::test(&cx);
         let (_, editor) = cx.add_window(Default::default(), |cx| {
-            let mut editor = build_editor(buffer.clone(), settings, cx);
+            let mut editor = build_editor(buffer.clone(), cx);
             editor.select_ranges([3..4, 11..12, 19..20], None, cx);
             editor
         });
@@ -7099,11 +7126,9 @@ mod tests {
 
     #[gpui::test]
     fn test_indent_outdent(cx: &mut gpui::MutableAppContext) {
+        populate_settings(cx);
         let buffer = MultiBuffer::build_simple("  one two\nthree\n four", cx);
-        let settings = Settings::test(&cx);
-        let (_, view) = cx.add_window(Default::default(), |cx| {
-            build_editor(buffer.clone(), settings, cx)
-        });
+        let (_, view) = cx.add_window(Default::default(), |cx| build_editor(buffer.clone(), cx));
 
         view.update(cx, |view, cx| {
             // two selections on the same line
@@ -7175,9 +7200,9 @@ mod tests {
 
     #[gpui::test]
     fn test_backspace(cx: &mut gpui::MutableAppContext) {
-        let settings = Settings::test(&cx);
+        populate_settings(cx);
         let (_, view) = cx.add_window(Default::default(), |cx| {
-            build_editor(MultiBuffer::build_simple("", cx), settings, cx)
+            build_editor(MultiBuffer::build_simple("", cx), cx)
         });
 
         view.update(cx, |view, cx| {
@@ -7220,12 +7245,10 @@ mod tests {
 
     #[gpui::test]
     fn test_delete(cx: &mut gpui::MutableAppContext) {
+        populate_settings(cx);
         let buffer =
             MultiBuffer::build_simple("one two three\nfour five six\nseven eight nine\nten\n", cx);
-        let settings = Settings::test(&cx);
-        let (_, view) = cx.add_window(Default::default(), |cx| {
-            build_editor(buffer.clone(), settings, cx)
-        });
+        let (_, view) = cx.add_window(Default::default(), |cx| build_editor(buffer.clone(), cx));
 
         view.update(cx, |view, cx| {
             view.select_display_ranges(
@@ -7250,9 +7273,9 @@ mod tests {
 
     #[gpui::test]
     fn test_delete_line(cx: &mut gpui::MutableAppContext) {
-        let settings = Settings::test(&cx);
+        populate_settings(cx);
         let buffer = MultiBuffer::build_simple("abc\ndef\nghi\n", cx);
-        let (_, view) = cx.add_window(Default::default(), |cx| build_editor(buffer, settings, cx));
+        let (_, view) = cx.add_window(Default::default(), |cx| build_editor(buffer, cx));
         view.update(cx, |view, cx| {
             view.select_display_ranges(
                 &[
@@ -7273,9 +7296,9 @@ mod tests {
             );
         });
 
-        let settings = Settings::test(&cx);
+        populate_settings(cx);
         let buffer = MultiBuffer::build_simple("abc\ndef\nghi\n", cx);
-        let (_, view) = cx.add_window(Default::default(), |cx| build_editor(buffer, settings, cx));
+        let (_, view) = cx.add_window(Default::default(), |cx| build_editor(buffer, cx));
         view.update(cx, |view, cx| {
             view.select_display_ranges(&[DisplayPoint::new(2, 0)..DisplayPoint::new(0, 1)], cx);
             view.delete_line(&DeleteLine, cx);
@@ -7289,9 +7312,9 @@ mod tests {
 
     #[gpui::test]
     fn test_duplicate_line(cx: &mut gpui::MutableAppContext) {
-        let settings = Settings::test(&cx);
+        populate_settings(cx);
         let buffer = MultiBuffer::build_simple("abc\ndef\nghi\n", cx);
-        let (_, view) = cx.add_window(Default::default(), |cx| build_editor(buffer, settings, cx));
+        let (_, view) = cx.add_window(Default::default(), |cx| build_editor(buffer, cx));
         view.update(cx, |view, cx| {
             view.select_display_ranges(
                 &[
@@ -7315,9 +7338,8 @@ mod tests {
             );
         });
 
-        let settings = Settings::test(&cx);
         let buffer = MultiBuffer::build_simple("abc\ndef\nghi\n", cx);
-        let (_, view) = cx.add_window(Default::default(), |cx| build_editor(buffer, settings, cx));
+        let (_, view) = cx.add_window(Default::default(), |cx| build_editor(buffer, cx));
         view.update(cx, |view, cx| {
             view.select_display_ranges(
                 &[
@@ -7340,9 +7362,9 @@ mod tests {
 
     #[gpui::test]
     fn test_move_line_up_down(cx: &mut gpui::MutableAppContext) {
-        let settings = Settings::test(&cx);
+        populate_settings(cx);
         let buffer = MultiBuffer::build_simple(&sample_text(10, 5, 'a'), cx);
-        let (_, view) = cx.add_window(Default::default(), |cx| build_editor(buffer, settings, cx));
+        let (_, view) = cx.add_window(Default::default(), |cx| build_editor(buffer, cx));
         view.update(cx, |view, cx| {
             view.fold_ranges(
                 vec![
@@ -7436,11 +7458,10 @@ mod tests {
 
     #[gpui::test]
     fn test_move_line_up_down_with_blocks(cx: &mut gpui::MutableAppContext) {
-        let settings = Settings::test(&cx);
+        populate_settings(cx);
         let buffer = MultiBuffer::build_simple(&sample_text(10, 5, 'a'), cx);
         let snapshot = buffer.read(cx).snapshot(cx);
-        let (_, editor) =
-            cx.add_window(Default::default(), |cx| build_editor(buffer, settings, cx));
+        let (_, editor) = cx.add_window(Default::default(), |cx| build_editor(buffer, cx));
         editor.update(cx, |editor, cx| {
             editor.insert_blocks(
                 [BlockProperties {
@@ -7458,12 +7479,10 @@ mod tests {
 
     #[gpui::test]
     fn test_clipboard(cx: &mut gpui::MutableAppContext) {
+        populate_settings(cx);
         let buffer = MultiBuffer::build_simple("one✅ two three four five six ", cx);
-        let settings = Settings::test(&cx);
         let view = cx
-            .add_window(Default::default(), |cx| {
-                build_editor(buffer.clone(), settings, cx)
-            })
+            .add_window(Default::default(), |cx| build_editor(buffer.clone(), cx))
             .1;
 
         // Cut with three selections. Clipboard text is divided into three slices.
@@ -7589,9 +7608,9 @@ mod tests {
 
     #[gpui::test]
     fn test_select_all(cx: &mut gpui::MutableAppContext) {
+        populate_settings(cx);
         let buffer = MultiBuffer::build_simple("abc\nde\nfgh", cx);
-        let settings = Settings::test(&cx);
-        let (_, view) = cx.add_window(Default::default(), |cx| build_editor(buffer, settings, cx));
+        let (_, view) = cx.add_window(Default::default(), |cx| build_editor(buffer, cx));
         view.update(cx, |view, cx| {
             view.select_all(&SelectAll, cx);
             assert_eq!(
@@ -7603,9 +7622,9 @@ mod tests {
 
     #[gpui::test]
     fn test_select_line(cx: &mut gpui::MutableAppContext) {
-        let settings = Settings::test(&cx);
+        populate_settings(cx);
         let buffer = MultiBuffer::build_simple(&sample_text(6, 5, 'a'), cx);
-        let (_, view) = cx.add_window(Default::default(), |cx| build_editor(buffer, settings, cx));
+        let (_, view) = cx.add_window(Default::default(), |cx| build_editor(buffer, cx));
         view.update(cx, |view, cx| {
             view.select_display_ranges(
                 &[
@@ -7648,9 +7667,9 @@ mod tests {
 
     #[gpui::test]
     fn test_split_selection_into_lines(cx: &mut gpui::MutableAppContext) {
-        let settings = Settings::test(&cx);
+        populate_settings(cx);
         let buffer = MultiBuffer::build_simple(&sample_text(9, 5, 'a'), cx);
-        let (_, view) = cx.add_window(Default::default(), |cx| build_editor(buffer, settings, cx));
+        let (_, view) = cx.add_window(Default::default(), |cx| build_editor(buffer, cx));
         view.update(cx, |view, cx| {
             view.fold_ranges(
                 vec![
@@ -7714,9 +7733,9 @@ mod tests {
 
     #[gpui::test]
     fn test_add_selection_above_below(cx: &mut gpui::MutableAppContext) {
-        let settings = Settings::test(&cx);
+        populate_settings(cx);
         let buffer = MultiBuffer::build_simple("abc\ndefghi\n\njk\nlmno\n", cx);
-        let (_, view) = cx.add_window(Default::default(), |cx| build_editor(buffer, settings, cx));
+        let (_, view) = cx.add_window(Default::default(), |cx| build_editor(buffer, cx));
 
         view.update(cx, |view, cx| {
             view.select_display_ranges(&[DisplayPoint::new(1, 3)..DisplayPoint::new(1, 3)], cx);
@@ -7883,7 +7902,7 @@ mod tests {
 
     #[gpui::test]
     async fn test_select_larger_smaller_syntax_node(cx: &mut gpui::TestAppContext) {
-        let settings = cx.read(Settings::test);
+        cx.update(populate_settings);
         let language = Arc::new(Language::new(
             LanguageConfig::default(),
             Some(tree_sitter_rust::language()),
@@ -7900,7 +7919,7 @@ mod tests {
 
         let buffer = cx.add_model(|cx| Buffer::new(0, text, cx).with_language(language, cx));
         let buffer = cx.add_model(|cx| MultiBuffer::singleton(buffer, cx));
-        let (_, view) = cx.add_window(|cx| build_editor(buffer, settings, cx));
+        let (_, view) = cx.add_window(|cx| build_editor(buffer, cx));
         view.condition(&cx, |view, cx| !view.buffer.read(cx).is_parsing(cx))
             .await;
 
@@ -8024,7 +8043,7 @@ mod tests {
 
     #[gpui::test]
     async fn test_autoindent_selections(cx: &mut gpui::TestAppContext) {
-        let settings = cx.read(Settings::test);
+        cx.update(populate_settings);
         let language = Arc::new(
             Language::new(
                 LanguageConfig {
@@ -8059,7 +8078,7 @@ mod tests {
 
         let buffer = cx.add_model(|cx| Buffer::new(0, text, cx).with_language(language, cx));
         let buffer = cx.add_model(|cx| MultiBuffer::singleton(buffer, cx));
-        let (_, editor) = cx.add_window(|cx| build_editor(buffer, settings, cx));
+        let (_, editor) = cx.add_window(|cx| build_editor(buffer, cx));
         editor
             .condition(&cx, |editor, cx| !editor.buffer.read(cx).is_parsing(cx))
             .await;
@@ -8081,7 +8100,7 @@ mod tests {
 
     #[gpui::test]
     async fn test_autoclose_pairs(cx: &mut gpui::TestAppContext) {
-        let settings = cx.read(Settings::test);
+        cx.update(populate_settings);
         let language = Arc::new(Language::new(
             LanguageConfig {
                 brackets: vec![
@@ -8113,7 +8132,7 @@ mod tests {
 
         let buffer = cx.add_model(|cx| Buffer::new(0, text, cx).with_language(language, cx));
         let buffer = cx.add_model(|cx| MultiBuffer::singleton(buffer, cx));
-        let (_, view) = cx.add_window(|cx| build_editor(buffer, settings, cx));
+        let (_, view) = cx.add_window(|cx| build_editor(buffer, cx));
         view.condition(&cx, |view, cx| !view.buffer.read(cx).is_parsing(cx))
             .await;
 
@@ -8224,7 +8243,7 @@ mod tests {
 
     #[gpui::test]
     async fn test_snippets(cx: &mut gpui::TestAppContext) {
-        let settings = cx.read(Settings::test);
+        cx.update(populate_settings);
 
         let text = "
             a. b
@@ -8233,7 +8252,7 @@ mod tests {
         "
         .unindent();
         let buffer = cx.update(|cx| MultiBuffer::build_simple(&text, cx));
-        let (_, editor) = cx.add_window(|cx| build_editor(buffer, settings, cx));
+        let (_, editor) = cx.add_window(|cx| build_editor(buffer, cx));
 
         editor.update(cx, |editor, cx| {
             let buffer = &editor.snapshot(cx).buffer_snapshot;
@@ -8331,7 +8350,7 @@ mod tests {
 
     #[gpui::test]
     async fn test_completion(cx: &mut gpui::TestAppContext) {
-        let settings = cx.read(Settings::test);
+        cx.update(populate_settings);
 
         let (mut language_server_config, mut fake_servers) = LanguageServerConfig::fake();
         language_server_config.set_fake_capabilities(lsp::ServerCapabilities {
@@ -8379,7 +8398,7 @@ mod tests {
         let mut fake_server = fake_servers.next().await.unwrap();
 
         let buffer = cx.add_model(|cx| MultiBuffer::singleton(buffer, cx));
-        let (_, editor) = cx.add_window(|cx| build_editor(buffer, settings, cx));
+        let (_, editor) = cx.add_window(|cx| build_editor(buffer, cx));
 
         editor.update(cx, |editor, cx| {
             editor.project = Some(project);
@@ -8565,7 +8584,7 @@ mod tests {
 
     #[gpui::test]
     async fn test_toggle_comment(cx: &mut gpui::TestAppContext) {
-        let settings = cx.read(Settings::test);
+        cx.update(populate_settings);
         let language = Arc::new(Language::new(
             LanguageConfig {
                 line_comment: Some("// ".to_string()),
@@ -8585,7 +8604,7 @@ mod tests {
 
         let buffer = cx.add_model(|cx| Buffer::new(0, text, cx).with_language(language, cx));
         let buffer = cx.add_model(|cx| MultiBuffer::singleton(buffer, cx));
-        let (_, view) = cx.add_window(|cx| build_editor(buffer, settings, cx));
+        let (_, view) = cx.add_window(|cx| build_editor(buffer, cx));
 
         view.update(cx, |editor, cx| {
             // If multiple selections intersect a line, the line is only
@@ -8645,7 +8664,7 @@ mod tests {
 
     #[gpui::test]
     fn test_editing_disjoint_excerpts(cx: &mut gpui::MutableAppContext) {
-        let settings = Settings::test(cx);
+        populate_settings(cx);
         let buffer = cx.add_model(|cx| Buffer::new(0, sample_text(3, 4, 'a'), cx));
         let multibuffer = cx.add_model(|cx| {
             let mut multibuffer = MultiBuffer::new(0);
@@ -8662,9 +8681,7 @@ mod tests {
 
         assert_eq!(multibuffer.read(cx).read(cx).text(), "aaaa\nbbbb");
 
-        let (_, view) = cx.add_window(Default::default(), |cx| {
-            build_editor(multibuffer, settings, cx)
-        });
+        let (_, view) = cx.add_window(Default::default(), |cx| build_editor(multibuffer, cx));
         view.update(cx, |view, cx| {
             assert_eq!(view.text(cx), "aaaa\nbbbb");
             view.select_ranges(
@@ -8690,7 +8707,7 @@ mod tests {
 
     #[gpui::test]
     fn test_editing_overlapping_excerpts(cx: &mut gpui::MutableAppContext) {
-        let settings = Settings::test(cx);
+        populate_settings(cx);
         let buffer = cx.add_model(|cx| Buffer::new(0, sample_text(3, 4, 'a'), cx));
         let multibuffer = cx.add_model(|cx| {
             let mut multibuffer = MultiBuffer::new(0);
@@ -8710,9 +8727,7 @@ mod tests {
             "aaaa\nbbbb\nbbbb\ncccc"
         );
 
-        let (_, view) = cx.add_window(Default::default(), |cx| {
-            build_editor(multibuffer, settings, cx)
-        });
+        let (_, view) = cx.add_window(Default::default(), |cx| build_editor(multibuffer, cx));
         view.update(cx, |view, cx| {
             view.select_ranges(
                 [
@@ -8747,7 +8762,7 @@ mod tests {
 
     #[gpui::test]
     fn test_refresh_selections(cx: &mut gpui::MutableAppContext) {
-        let settings = Settings::test(cx);
+        populate_settings(cx);
         let buffer = cx.add_model(|cx| Buffer::new(0, sample_text(3, 4, 'a'), cx));
         let mut excerpt1_id = None;
         let multibuffer = cx.add_model(|cx| {
@@ -8770,7 +8785,7 @@ mod tests {
             "aaaa\nbbbb\nbbbb\ncccc"
         );
         let (_, editor) = cx.add_window(Default::default(), |cx| {
-            let mut editor = build_editor(multibuffer.clone(), settings, cx);
+            let mut editor = build_editor(multibuffer.clone(), cx);
             editor.select_ranges(
                 [
                     Point::new(1, 3)..Point::new(1, 3),
@@ -8822,7 +8837,7 @@ mod tests {
 
     #[gpui::test]
     async fn test_extra_newline_insertion(cx: &mut gpui::TestAppContext) {
-        let settings = cx.read(Settings::test);
+        cx.update(populate_settings);
         let language = Arc::new(Language::new(
             LanguageConfig {
                 brackets: vec![
@@ -8854,7 +8869,7 @@ mod tests {
 
         let buffer = cx.add_model(|cx| Buffer::new(0, text, cx).with_language(language, cx));
         let buffer = cx.add_model(|cx| MultiBuffer::singleton(buffer, cx));
-        let (_, view) = cx.add_window(|cx| build_editor(buffer, settings, cx));
+        let (_, view) = cx.add_window(|cx| build_editor(buffer, cx));
         view.condition(&cx, |view, cx| !view.buffer.read(cx).is_parsing(cx))
             .await;
 
@@ -8890,10 +8905,8 @@ mod tests {
     #[gpui::test]
     fn test_highlighted_ranges(cx: &mut gpui::MutableAppContext) {
         let buffer = MultiBuffer::build_simple(&sample_text(16, 8, 'a'), cx);
-        let settings = Settings::test(&cx);
-        let (_, editor) = cx.add_window(Default::default(), |cx| {
-            build_editor(buffer.clone(), settings, cx)
-        });
+        populate_settings(cx);
+        let (_, editor) = cx.add_window(Default::default(), |cx| build_editor(buffer.clone(), cx));
 
         editor.update(cx, |editor, cx| {
             struct Type1;
@@ -8905,7 +8918,7 @@ mod tests {
                 buffer.anchor_after(range.start)..buffer.anchor_after(range.end)
             };
 
-            editor.highlight_ranges::<Type1>(
+            editor.highlight_background::<Type1>(
                 vec![
                     anchor_range(Point::new(2, 1)..Point::new(2, 3)),
                     anchor_range(Point::new(4, 2)..Point::new(4, 4)),
@@ -8915,7 +8928,7 @@ mod tests {
                 Color::red(),
                 cx,
             );
-            editor.highlight_ranges::<Type2>(
+            editor.highlight_background::<Type2>(
                 vec![
                     anchor_range(Point::new(3, 2)..Point::new(3, 5)),
                     anchor_range(Point::new(5, 3)..Point::new(5, 6)),
@@ -8927,7 +8940,7 @@ mod tests {
             );
 
             let snapshot = editor.snapshot(cx);
-            let mut highlighted_ranges = editor.highlighted_ranges_in_range(
+            let mut highlighted_ranges = editor.background_highlights_in_range(
                 anchor_range(Point::new(3, 4)..Point::new(7, 4)),
                 &snapshot,
             );
@@ -8956,7 +8969,7 @@ mod tests {
                 ]
             );
             assert_eq!(
-                editor.highlighted_ranges_in_range(
+                editor.background_highlights_in_range(
                     anchor_range(Point::new(5, 6)..Point::new(6, 4)),
                     &snapshot,
                 ),
@@ -9043,13 +9056,13 @@ mod tests {
         point..point
     }
 
-    fn build_editor(
-        buffer: ModelHandle<MultiBuffer>,
-        settings: Settings,
-        cx: &mut ViewContext<Editor>,
-    ) -> Editor {
-        let settings = watch::channel_with(settings);
-        Editor::new(EditorMode::Full, buffer, None, settings.1, None, cx)
+    fn build_editor(buffer: ModelHandle<MultiBuffer>, cx: &mut ViewContext<Editor>) -> Editor {
+        Editor::new(EditorMode::Full, buffer, None, None, cx)
+    }
+
+    fn populate_settings(cx: &mut gpui::MutableAppContext) {
+        let settings = Settings::test(cx);
+        cx.add_app_state(settings);
     }
 }
 
