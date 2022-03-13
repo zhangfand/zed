@@ -350,6 +350,7 @@
     "document_highlight_write_background": "#99999916",
     "error_color": "{text_color.negative}",
     "text_color": "{text_color.primary}",
+    "rename_fade": 0.6,
     "guest_selections": [
       {
         "cursor": "{player.color.2}",
