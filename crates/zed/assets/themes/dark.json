@@ -1,0 +1,16 @@
+{
+	"text_color": {
+		"primary": {
+			"value": "{color.neutral.150}",
+			"type": "color"
+		},
+		"secondary": {
+			"value": "{color.neutral.350}",
+			"type": "color"
+		},
+		"muted": {
+			"value": "{color.neutral.550}",
+			"type": "color"
+		},
+	}
+}
