@@ -285,6 +285,14 @@ impl LspAdapter for RustLspAdapter {
             filter_range,
         })
     }
+
+    fn initialization_options(&self) -> Option<serde_json::Value> {
+        Some(json!({
+            "cargo": {
+                "runBuildScripts": true,
+            }
+        }))
+    }
 }
 
 impl LspAdapter for CLspAdapter {
