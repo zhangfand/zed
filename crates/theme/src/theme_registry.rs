@@ -1,8 +1,8 @@
-use crate::{resolution::resolve_references, Theme};
+use crate::Theme;
 use anyhow::{Context, Result};
 use gpui::{fonts, AssetSource, FontCache};
 use parking_lot::Mutex;
-use serde_json::{Map, Value};
+use serde_json::Value;
 use std::{collections::HashMap, sync::Arc};
 
 pub struct ThemeRegistry {
@@ -25,7 +25,7 @@ impl ThemeRegistry {
     pub fn list(&self) -> impl Iterator<Item = String> {
         self.assets.list("themes/").into_iter().filter_map(|path| {
             let filename = path.strip_prefix("themes/")?;
-            let theme_name = filename.strip_suffix(".toml")?;
+            let theme_name = filename.strip_suffix(".json")?;
             if theme_name.starts_with('_') {
                 None
             } else {
@@ -44,76 +44,21 @@ impl ThemeRegistry {
             return Ok(theme.clone());
         }
 
-        let theme_data = self.load(name, true)?;
+        let asset_path = format!("themes/{}.json", name);
+        let source_code = self
+            .assets
+            .load(&asset_path)
+            .with_context(|| format!("failed to load theme file {}", asset_path))?;
         let mut theme: Theme = fonts::with_font_cache(self.font_cache.clone(), || {
-            serde_path_to_error::deserialize(theme_data.as_ref())
+            serde_path_to_error::deserialize(&mut serde_json::Deserializer::from_slice(
+                source_code.as_ref(),
+            ))
         })?;
 
         theme.name = name.into();
         let theme = Arc::new(theme);
         self.themes.lock().insert(name.to_string(), theme.clone());
         Ok(theme)
-    }
-
-    fn load(&self, name: &str, evaluate_references: bool) -> Result<Arc<Value>> {
-        if let Some(data) = self.theme_data.lock().get(name) {
-            return Ok(data.clone());
-        }
-
-        let asset_path = format!("themes/{}.toml", name);
-        let source_code = self
-            .assets
-            .load(&asset_path)
-            .with_context(|| format!("failed to load theme file {}", asset_path))?;
-
-        let mut theme_data: Map<String, Value> = toml::from_slice(source_code.as_ref())
-            .with_context(|| format!("failed to parse {}.toml", name))?;
-
-        // If this theme extends another base theme, deeply merge it into the base theme's data
-        if let Some(base_name) = theme_data
-            .get("extends")
-            .and_then(|name| name.as_str())
-            .map(str::to_string)
-        {
-            let base_theme_data = self
-                .load(&base_name, false)
-                .with_context(|| format!("failed to load base theme {}", base_name))?
-                .as_ref()
-                .clone();
-            if let Value::Object(mut base_theme_object) = base_theme_data {
-                deep_merge_json(&mut base_theme_object, theme_data);
-                theme_data = base_theme_object;
-            }
-        }
-
-        let mut theme_data = Value::Object(theme_data);
-
-        // Find all of the key path references in the object, and then sort them according
-        // to their dependencies.
-        if evaluate_references {
-            theme_data = resolve_references(theme_data)?;
-        }
-
-        let result = Arc::new(theme_data);
-        self.theme_data
-            .lock()
-            .insert(name.to_string(), result.clone());
-
-        Ok(result)
-    }
-}
-
-fn deep_merge_json(base: &mut Map<String, Value>, extension: Map<String, Value>) {
-    for (key, extension_value) in extension {
-        if let Value::Object(extension_object) = extension_value {
-            if let Some(base_object) = base.get_mut(&key).and_then(|value| value.as_object_mut()) {
-                deep_merge_json(base_object, extension_object);
-            } else {
-                base.insert(key, Value::Object(extension_object));
-            }
-        } else {
-            base.insert(key, extension_value);
-        }
     }
 }
 
@@ -164,7 +109,7 @@ mod tests {
         ]);
 
         let registry = ThemeRegistry::new(assets, cx.font_cache().clone());
-        let theme_data = registry.load("light", true).unwrap();
+        let theme_data = registry.load("light").unwrap();
 
         assert_eq!(
             theme_data.as_ref(),
@@ -229,7 +174,7 @@ mod tests {
         )]);
 
         let registry = ThemeRegistry::new(assets, cx.font_cache().clone());
-        let theme_data = registry.load("theme", true).unwrap();
+        let theme_data = registry.load("theme").unwrap();
         assert_eq!(
             theme_data
                 .get("b")
