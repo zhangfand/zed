@@ -7,17 +7,17 @@
       "corner_radius": 6,
       "text": {
         "type": "typography",
-        "fontFamily": "Zed Mono",
-        "fontWeight": "normal",
-        "fontSize": 14,
-        "fontStyle": "normal",
+        "family": "Zed Mono",
+        "weight": "normal",
+        "size": 14,
+        "style": "normal",
         "color": "#E1E1E1FF"
       },
       "highlight_text": {
-        "fontFamily": "Zed Sans",
-        "fontWeight": "400",
-        "fontSize": 16,
-        "fontStyle": "normal",
+        "family": "Zed Sans",
+        "weight": "normal",
+        "size": 16,
+        "style": "normal",
         "color": "#38BDF8FF"
       },
       "padding": {
@@ -35,10 +35,10 @@
     "empty": {
       "text": {
         "type": "typography",
-        "fontFamily": "Zed Mono",
-        "fontWeight": "normal",
-        "fontSize": 14,
-        "fontStyle": "normal",
+        "family": "Zed Mono",
+        "weight": "normal",
+        "size": 14,
+        "style": "normal",
         "color": "#696969FF"
       },
       "padding": {
@@ -53,22 +53,22 @@
       "corner_radius": 6,
       "placeholder_text": {
         "type": "typography",
-        "fontFamily": "Zed Mono",
-        "fontWeight": "normal",
-        "fontSize": 14,
-        "fontStyle": "normal",
+        "family": "Zed Mono",
+        "weight": "normal",
+        "size": 14,
+        "style": "normal",
         "color": "#696969FF"
       },
       "selection": {
-        "cursor": "#6366F1FF",
+        "cursor": "#3B82F6FF",
         "selection": "#6366F133"
       },
       "text": {
         "type": "typography",
-        "fontFamily": "Zed Mono",
-        "fontWeight": "normal",
-        "fontSize": 14,
-        "fontStyle": "normal",
+        "family": "Zed Mono",
+        "weight": "normal",
+        "size": 14,
+        "style": "normal",
         "color": "#E1E1E1FF"
       },
       "border": {
@@ -86,17 +86,17 @@
       "corner_radius": 6,
       "text": {
         "type": "typography",
-        "fontFamily": "Zed Mono",
-        "fontWeight": "normal",
-        "fontSize": 14,
-        "fontStyle": "normal",
+        "family": "Zed Mono",
+        "weight": "normal",
+        "size": 14,
+        "style": "normal",
         "color": "#A5A5A5FF"
       },
       "highlight_text": {
-        "fontFamily": "Zed Sans",
-        "fontWeight": "400",
-        "fontSize": 16,
-        "fontStyle": "normal",
+        "family": "Zed Sans",
+        "weight": "normal",
+        "size": 16,
+        "style": "normal",
         "color": "#38BDF8FF"
       },
       "padding": {
@@ -127,10 +127,10 @@
       "height": 34,
       "text": {
         "type": "typography",
-        "fontFamily": "Zed Mono",
-        "fontWeight": "normal",
-        "fontSize": 14,
-        "fontStyle": "normal",
+        "family": "Zed Mono",
+        "weight": "normal",
+        "size": 14,
+        "style": "normal",
         "color": "#E1E1E1FF"
       },
       "border": {
@@ -161,10 +161,10 @@
       "height": 34,
       "text": {
         "type": "typography",
-        "fontFamily": "Zed Mono",
-        "fontWeight": "normal",
-        "fontSize": 14,
-        "fontStyle": "normal",
+        "family": "Zed Mono",
+        "weight": "normal",
+        "size": 14,
+        "style": "normal",
         "color": "#696969FF"
       },
       "border": {
@@ -185,6 +185,8 @@
       "icon_width": 8,
       "spacing": 10
     },
+    "leader_border_opacity": 0.7,
+    "leader_border_width": 2,
     "sidebar": {
       "width": 30,
       "background": "#1E1E1EFF",
@@ -274,26 +276,26 @@
       "item_spacing": 8,
       "cursor_position": {
         "type": "typography",
-        "fontFamily": "Zed Mono",
-        "fontWeight": "normal",
-        "fontSize": 14,
-        "fontStyle": "normal",
+        "family": "Zed Mono",
+        "weight": "normal",
+        "size": 14,
+        "style": "normal",
         "color": "#696969FF"
       },
       "diagnostic_message": {
         "type": "typography",
-        "fontFamily": "Zed Mono",
-        "fontWeight": "normal",
-        "fontSize": 14,
-        "fontStyle": "normal",
+        "family": "Zed Mono",
+        "weight": "normal",
+        "size": 14,
+        "style": "normal",
         "color": "#696969FF"
       },
       "lsp_message": {
         "type": "typography",
-        "fontFamily": "Zed Mono",
-        "fontWeight": "normal",
-        "fontSize": 14,
-        "fontStyle": "normal",
+        "family": "Zed Mono",
+        "weight": "normal",
+        "size": 14,
+        "style": "normal",
         "color": "#696969FF"
       }
     },
@@ -305,10 +307,10 @@
       "share_icon_color": "#A5A5A5FF",
       "title": {
         "type": "typography",
-        "fontFamily": "Zed Mono",
-        "fontWeight": "normal",
-        "fontSize": 14,
-        "fontStyle": "normal",
+        "family": "Zed Mono",
+        "weight": "normal",
+        "size": 14,
+        "style": "normal",
         "color": "#E1E1E1FF"
       },
       "avatar": {
@@ -331,12 +333,11 @@
       },
       "sign_in_prompt": {
         "type": "typography",
-        "fontFamily": "Zed Mono",
-        "fontWeight": "normal",
-        "fontSize": 14,
-        "fontStyle": "normal",
-        "color": "#696969FF",
+        "family": "Zed Mono",
+        "weight": "normal",
         "size": 13,
+        "style": "normal",
+        "color": "#696969FF",
         "underline": true,
         "padding": {
           "right": 8
@@ -344,12 +345,11 @@
       },
       "hovered_sign_in_prompt": {
         "type": "typography",
-        "fontFamily": "Zed Mono",
-        "fontWeight": "normal",
-        "fontSize": 14,
-        "fontStyle": "normal",
-        "color": "#FFFFFFFF",
+        "family": "Zed Mono",
+        "weight": "normal",
         "size": 13,
+        "style": "normal",
+        "color": "#FFFFFFFF",
         "underline": true,
         "padding": {
           "right": 8
@@ -364,12 +364,11 @@
       },
       "outdated_warning": {
         "type": "typography",
-        "fontFamily": "Zed Mono",
-        "fontWeight": "normal",
-        "fontSize": 14,
-        "fontStyle": "normal",
-        "color": "#696969FF",
-        "size": 13
+        "family": "Zed Mono",
+        "weight": "normal",
+        "size": 13,
+        "style": "normal",
+        "color": "#696969FF"
       }
     },
     "toolbar": {
@@ -377,10 +376,10 @@
     },
     "disconnected_overlay": {
       "type": "typography",
-      "fontFamily": "Zed Mono",
-      "fontWeight": "normal",
-      "fontSize": 14,
-      "fontStyle": "normal",
+      "family": "Zed Mono",
+      "weight": "normal",
+      "size": 14,
+      "style": "normal",
       "color": "#A5A5A5FF"
     }
   },
@@ -391,19 +390,18 @@
     "tab_summary_spacing": 10,
     "empty_message": {
       "type": "typography",
-      "fontFamily": "Zed Mono",
-      "fontWeight": "normal",
-      "fontSize": 14,
-      "fontStyle": "normal",
-      "color": "#E1E1E1FF",
-      "size": 18
+      "family": "Zed Mono",
+      "weight": "normal",
+      "size": 18,
+      "style": "normal",
+      "color": "#E1E1E1FF"
     },
     "status_bar_item": {
       "type": "typography",
-      "fontFamily": "Zed Mono",
-      "fontWeight": "normal",
-      "fontSize": 14,
-      "fontStyle": "normal",
+      "family": "Zed Mono",
+      "weight": "normal",
+      "size": 14,
+      "style": "normal",
       "color": "#696969FF",
       "margin": {
         "right": 10
@@ -461,15 +459,20 @@
     "line_number": "#696969FF",
     "line_number_active": "#E1E1E1FF",
     "selection": {
-      "cursor": "#6366F1FF",
+      "cursor": "#3B82F6FF",
       "selection": "#6366F133"
     },
     "color": "#E1E1E1FF",
+    "unnecessary_code_fade": 0.5,
     "autocomplete": {
       "background": "#1E1E1EFF",
       "corner_radius": 6,
       "padding": 6,
-      "border": "#3C3C3CFF",
+      "border": {
+        "width": 1,
+        "style": "solid",
+        "color": "#3C3C3CFF"
+      },
       "hovered_item": {
         "corner_radius": 6,
         "padding": {
@@ -518,12 +521,11 @@
       },
       "code": {
         "type": "typography",
-        "fontFamily": "Zed Mono",
-        "fontWeight": "normal",
-        "fontSize": 14,
-        "fontStyle": "normal",
-        "color": "#696969FF",
+        "family": "Zed Mono",
+        "weight": "normal",
         "size": 14,
+        "style": "normal",
+        "color": "#696969FF",
         "margin": {
           "left": 10
         }
@@ -531,22 +533,19 @@
       "message": {
         "highlight_text": {
           "type": "typography",
-          "fontFamily": "Zed Mono",
-          "fontWeight": "normal",
-          "fontSize": 14,
-          "fontStyle": "normal",
-          "color": "#E1E1E1FF",
+          "family": "Zed Mono",
+          "weight": "bold",
           "size": 14,
-          "weight": "bold"
+          "style": "normal",
+          "color": "#E1E1E1FF"
         },
         "text": {
           "type": "typography",
-          "fontFamily": "Zed Mono",
-          "fontWeight": "normal",
-          "fontSize": 14,
-          "fontStyle": "normal",
-          "color": "#A5A5A5FF",
-          "size": 14
+          "family": "Zed Mono",
+          "weight": "normal",
+          "size": 14,
+          "style": "normal",
+          "color": "#A5A5A5FF"
         }
       }
     },
@@ -555,21 +554,19 @@
       "text_scale_factor": 0.857,
       "filename": {
         "type": "typography",
-        "fontFamily": "Zed Mono",
-        "fontWeight": "normal",
-        "fontSize": 14,
-        "fontStyle": "normal",
-        "color": "#E1E1E1FF",
-        "size": 14
+        "family": "Zed Mono",
+        "weight": "normal",
+        "size": 14,
+        "style": "normal",
+        "color": "#E1E1E1FF"
       },
       "path": {
         "type": "typography",
-        "fontFamily": "Zed Mono",
-        "fontWeight": "normal",
-        "fontSize": 14,
-        "fontStyle": "normal",
-        "color": "#696969FF",
+        "family": "Zed Mono",
+        "weight": "normal",
         "size": 14,
+        "style": "normal",
+        "color": "#696969FF",
         "margin": {
           "left": 12
         }
@@ -587,22 +584,19 @@
       "message": {
         "highlight_text": {
           "type": "typography",
-          "fontFamily": "Zed Mono",
-          "fontWeight": "normal",
-          "fontSize": 14,
-          "fontStyle": "normal",
-          "color": "#6366F133",
+          "family": "Zed Mono",
+          "weight": "bold",
           "size": 14,
-          "weight": "bold"
+          "style": "normal",
+          "color": "#6366F133"
         },
         "text": {
           "type": "typography",
-          "fontFamily": "Zed Mono",
-          "fontWeight": "normal",
-          "fontSize": 14,
-          "fontStyle": "normal",
-          "color": "#A5A5A5FF",
-          "size": 14
+          "family": "Zed Mono",
+          "weight": "normal",
+          "size": 14,
+          "style": "normal",
+          "color": "#A5A5A5FF"
         }
       }
     },
@@ -618,22 +612,19 @@
       "message": {
         "highlight_text": {
           "type": "typography",
-          "fontFamily": "Zed Mono",
-          "fontWeight": "normal",
-          "fontSize": 14,
-          "fontStyle": "normal",
-          "color": "#3B82F6FF",
+          "family": "Zed Mono",
+          "weight": "bold",
           "size": 14,
-          "weight": "bold"
+          "style": "normal",
+          "color": "#3B82F6FF"
         },
         "text": {
           "type": "typography",
-          "fontFamily": "Zed Mono",
-          "fontWeight": "normal",
-          "fontSize": 14,
-          "fontStyle": "normal",
-          "color": "#3B82F6FF",
-          "size": 14
+          "family": "Zed Mono",
+          "weight": "normal",
+          "size": 14,
+          "style": "normal",
+          "color": "#3B82F6FF"
         }
       }
     },
@@ -649,22 +640,19 @@
       "message": {
         "highlight_text": {
           "type": "typography",
-          "fontFamily": "Zed Mono",
-          "fontWeight": "normal",
-          "fontSize": 14,
-          "fontStyle": "normal",
-          "color": "#3B82F6FF",
+          "family": "Zed Mono",
+          "weight": "bold",
           "size": 14,
-          "weight": "bold"
+          "style": "normal",
+          "color": "#3B82F6FF"
         },
         "text": {
           "type": "typography",
-          "fontFamily": "Zed Mono",
-          "fontWeight": "normal",
-          "fontSize": 14,
-          "fontStyle": "normal",
-          "color": "#3B82F6FF",
-          "size": 14
+          "family": "Zed Mono",
+          "weight": "normal",
+          "size": 14,
+          "style": "normal",
+          "color": "#3B82F6FF"
         }
       }
     },
@@ -680,22 +668,19 @@
       "message": {
         "highlight_text": {
           "type": "typography",
-          "fontFamily": "Zed Mono",
-          "fontWeight": "normal",
-          "fontSize": 14,
-          "fontStyle": "normal",
-          "color": "#696969FF",
+          "family": "Zed Mono",
+          "weight": "bold",
           "size": 14,
-          "weight": "bold"
+          "style": "normal",
+          "color": "#696969FF"
         },
         "text": {
           "type": "typography",
-          "fontFamily": "Zed Mono",
-          "fontWeight": "normal",
-          "fontSize": 14,
-          "fontStyle": "normal",
-          "color": "#696969FF",
-          "size": 14
+          "family": "Zed Mono",
+          "weight": "normal",
+          "size": 14,
+          "style": "normal",
+          "color": "#696969FF"
         }
       }
     },
@@ -711,22 +696,19 @@
       "message": {
         "highlight_text": {
           "type": "typography",
-          "fontFamily": "Zed Mono",
-          "fontWeight": "normal",
-          "fontSize": 14,
-          "fontStyle": "normal",
-          "color": "#696969FF",
+          "family": "Zed Mono",
+          "weight": "bold",
           "size": 14,
-          "weight": "bold"
+          "style": "normal",
+          "color": "#696969FF"
         },
         "text": {
           "type": "typography",
-          "fontFamily": "Zed Mono",
-          "fontWeight": "normal",
-          "fontSize": 14,
-          "fontStyle": "normal",
-          "color": "#696969FF",
-          "size": 14
+          "family": "Zed Mono",
+          "weight": "normal",
+          "size": 14,
+          "style": "normal",
+          "color": "#696969FF"
         }
       }
     },
@@ -742,22 +724,19 @@
       "message": {
         "highlight_text": {
           "type": "typography",
-          "fontFamily": "Zed Mono",
-          "fontWeight": "normal",
-          "fontSize": 14,
-          "fontStyle": "normal",
-          "color": "#696969FF",
+          "family": "Zed Mono",
+          "weight": "bold",
           "size": 14,
-          "weight": "bold"
+          "style": "normal",
+          "color": "#696969FF"
         },
         "text": {
           "type": "typography",
-          "fontFamily": "Zed Mono",
-          "fontWeight": "normal",
-          "fontSize": 14,
-          "fontStyle": "normal",
-          "color": "#696969FF",
-          "size": 14
+          "family": "Zed Mono",
+          "weight": "normal",
+          "size": 14,
+          "style": "normal",
+          "color": "#696969FF"
         }
       }
     },
@@ -773,22 +752,19 @@
       "message": {
         "highlight_text": {
           "type": "typography",
-          "fontFamily": "Zed Mono",
-          "fontWeight": "normal",
-          "fontSize": 14,
-          "fontStyle": "normal",
-          "color": "#696969FF",
+          "family": "Zed Mono",
+          "weight": "bold",
           "size": 14,
-          "weight": "bold"
+          "style": "normal",
+          "color": "#696969FF"
         },
         "text": {
           "type": "typography",
-          "fontFamily": "Zed Mono",
-          "fontWeight": "normal",
-          "fontSize": 14,
-          "fontStyle": "normal",
-          "color": "#696969FF",
-          "size": 14
+          "family": "Zed Mono",
+          "weight": "normal",
+          "size": 14,
+          "style": "normal",
+          "color": "#696969FF"
         }
       }
     },
@@ -838,22 +814,19 @@
       "message": {
         "highlight_text": {
           "type": "typography",
-          "fontFamily": "Zed Mono",
-          "fontWeight": "normal",
-          "fontSize": 14,
-          "fontStyle": "normal",
-          "color": "#FCD34DFF",
+          "family": "Zed Mono",
+          "weight": "bold",
           "size": 14,
-          "weight": "bold"
+          "style": "normal",
+          "color": "#FCD34DFF"
         },
         "text": {
           "type": "typography",
-          "fontFamily": "Zed Mono",
-          "fontWeight": "normal",
-          "fontSize": 14,
-          "fontStyle": "normal",
-          "color": "#FCD34DFF",
-          "size": 14
+          "family": "Zed Mono",
+          "weight": "normal",
+          "size": 14,
+          "style": "normal",
+          "color": "#FCD34DFF"
         }
       }
     },
@@ -912,10 +885,10 @@
     "channel_name_hash": {
       "text": {
         "type": "typography",
-        "fontFamily": "Zed Mono",
-        "fontWeight": "normal",
-        "fontSize": 14,
-        "fontStyle": "normal",
+        "family": "Zed Mono",
+        "weight": "normal",
+        "size": 14,
+        "style": "normal",
         "color": "#696969FF"
       },
       "padding": {
@@ -926,19 +899,19 @@
       "active_item": {
         "name": {
           "type": "typography",
-          "fontFamily": "Zed Mono",
-          "fontWeight": "normal",
-          "fontSize": 14,
-          "fontStyle": "normal",
+          "family": "Zed Mono",
+          "weight": "normal",
+          "size": 14,
+          "style": "normal",
           "color": "#E1E1E1FF"
         },
         "padding": 4,
         "hash": {
           "type": "typography",
-          "fontFamily": "Zed Mono",
-          "fontWeight": "normal",
-          "fontSize": 14,
-          "fontStyle": "normal",
+          "family": "Zed Mono",
+          "weight": "normal",
+          "size": 14,
+          "style": "normal",
           "color": "#696969FF",
           "margin": {
             "right": 8
@@ -948,10 +921,10 @@
       "header": {
         "name": {
           "type": "typography",
-          "fontFamily": "Zed Mono",
-          "fontWeight": "normal",
-          "fontSize": 14,
-          "fontStyle": "normal",
+          "family": "Zed Mono",
+          "weight": "normal",
+          "size": 14,
+          "style": "normal",
           "color": "#E1E1E1FF"
         },
         "padding": {
@@ -960,10 +933,10 @@
         },
         "hash": {
           "type": "typography",
-          "fontFamily": "Zed Mono",
-          "fontWeight": "normal",
-          "fontSize": 14,
-          "fontStyle": "normal",
+          "family": "Zed Mono",
+          "weight": "normal",
+          "size": 14,
+          "style": "normal",
           "color": "#696969FF",
           "margin": {
             "right": 8
@@ -973,19 +946,19 @@
       "hovered_active_item": {
         "name": {
           "type": "typography",
-          "fontFamily": "Zed Mono",
-          "fontWeight": "normal",
-          "fontSize": 14,
-          "fontStyle": "normal",
+          "family": "Zed Mono",
+          "weight": "normal",
+          "size": 14,
+          "style": "normal",
           "color": "#E1E1E1FF"
         },
         "padding": 4,
         "hash": {
           "type": "typography",
-          "fontFamily": "Zed Mono",
-          "fontWeight": "normal",
-          "fontSize": 14,
-          "fontStyle": "normal",
+          "family": "Zed Mono",
+          "weight": "normal",
+          "size": 14,
+          "style": "normal",
           "color": "#696969FF",
           "margin": {
             "right": 8
@@ -997,19 +970,19 @@
       "hovered_item": {
         "name": {
           "type": "typography",
-          "fontFamily": "Zed Mono",
-          "fontWeight": "normal",
-          "fontSize": 14,
-          "fontStyle": "normal",
+          "family": "Zed Mono",
+          "weight": "normal",
+          "size": 14,
+          "style": "normal",
           "color": "#A5A5A5FF"
         },
         "padding": 4,
         "hash": {
           "type": "typography",
-          "fontFamily": "Zed Mono",
-          "fontWeight": "normal",
-          "fontSize": 14,
-          "fontStyle": "normal",
+          "family": "Zed Mono",
+          "weight": "normal",
+          "size": 14,
+          "style": "normal",
           "color": "#696969FF",
           "margin": {
             "right": 8
@@ -1021,19 +994,19 @@
       "item": {
         "name": {
           "type": "typography",
-          "fontFamily": "Zed Mono",
-          "fontWeight": "normal",
-          "fontSize": 14,
-          "fontStyle": "normal",
+          "family": "Zed Mono",
+          "weight": "normal",
+          "size": 14,
+          "style": "normal",
           "color": "#A5A5A5FF"
         },
         "padding": 4,
         "hash": {
           "type": "typography",
-          "fontFamily": "Zed Mono",
-          "fontWeight": "normal",
-          "fontSize": 14,
-          "fontStyle": "normal",
+          "family": "Zed Mono",
+          "weight": "normal",
+          "size": 14,
+          "style": "normal",
           "color": "#696969FF",
           "margin": {
             "right": 8
@@ -1044,7 +1017,11 @@
         "background": "#1E1E1EFF",
         "corner_radius": 6,
         "padding": 4,
-        "border": "#0F0F0FFF",
+        "border": {
+          "width": 1,
+          "style": "solid",
+          "color": "#0F0F0FFF"
+        },
         "shadow": {
           "offset": [
             0,
@@ -1057,27 +1034,41 @@
     },
     "hovered_sign_in_prompt": {
       "type": "typography",
-      "fontFamily": "Zed Mono",
-      "fontWeight": "normal",
-      "fontSize": 14,
-      "fontStyle": "normal",
+      "family": "Zed Mono",
+      "weight": "normal",
+      "size": 14,
+      "style": "normal",
       "color": "#A5A5A5FF",
       "underline": true
     },
     "input_editor": {
       "background": "#262626FF",
       "corner_radius": 6,
-      "placeholder_text": "#696969FF",
-      "selection": {},
+      "placeholder_text": {
+        "type": "typography",
+        "family": "Zed Mono",
+        "weight": "normal",
+        "size": 14,
+        "style": "normal",
+        "color": "#696969FF"
+      },
+      "selection": {
+        "cursor": "#3B82F6FF",
+        "selection": "#6366F133"
+      },
       "text": {
         "type": "typography",
-        "fontFamily": "Zed Mono",
-        "fontWeight": "normal",
-        "fontSize": 14,
-        "fontStyle": "normal",
+        "family": "Zed Mono",
+        "weight": "normal",
+        "size": 14,
+        "style": "normal",
         "color": "#E1E1E1FF"
       },
-      "border": "#0F0F0FFF",
+      "border": {
+        "width": 1,
+        "style": "solid",
+        "color": "#0F0F0FFF"
+      },
       "padding": {
         "bottom": 7,
         "left": 8,
@@ -1088,18 +1079,18 @@
     "message": {
       "body": {
         "type": "typography",
-        "fontFamily": "Zed Mono",
-        "fontWeight": "normal",
-        "fontSize": 14,
-        "fontStyle": "normal",
+        "family": "Zed Mono",
+        "weight": "normal",
+        "size": 14,
+        "style": "normal",
         "color": "#E1E1E1FF"
       },
       "timestamp": {
         "type": "typography",
-        "fontFamily": "Zed Mono",
-        "fontWeight": "normal",
-        "fontSize": 14,
-        "fontStyle": "normal",
+        "family": "Zed Mono",
+        "weight": "normal",
+        "size": 14,
+        "style": "normal",
         "color": "#696969FF"
       },
       "padding": {
@@ -1107,12 +1098,11 @@
       },
       "sender": {
         "type": "typography",
-        "fontFamily": "Zed Mono",
-        "fontWeight": "normal",
-        "fontSize": 14,
-        "fontStyle": "normal",
-        "color": "#E1E1E1FF",
+        "family": "Zed Mono",
         "weight": "bold",
+        "size": 14,
+        "style": "normal",
+        "color": "#E1E1E1FF",
         "margin": {
           "right": 8
         }
@@ -1120,9 +1110,19 @@
     },
     "pending_message": {
       "body": {
+        "type": "typography",
+        "family": "Zed Mono",
+        "weight": "normal",
+        "size": 14,
+        "style": "normal",
         "color": "#696969FF"
       },
       "timestamp": {
+        "type": "typography",
+        "family": "Zed Mono",
+        "weight": "normal",
+        "size": 14,
+        "style": "normal",
         "color": "#696969FF"
       },
       "padding": {
@@ -1130,12 +1130,11 @@
       },
       "sender": {
         "type": "typography",
-        "fontFamily": "Zed Mono",
-        "fontWeight": "normal",
-        "fontSize": 14,
-        "fontStyle": "normal",
-        "color": "#696969FF",
+        "family": "Zed Mono",
         "weight": "bold",
+        "size": 14,
+        "style": "normal",
+        "color": "#696969FF",
         "margin": {
           "right": 8
         }
@@ -1143,10 +1142,10 @@
     },
     "sign_in_prompt": {
       "type": "typography",
-      "fontFamily": "Zed Mono",
-      "fontWeight": "normal",
-      "fontSize": 14,
-      "fontStyle": "normal",
+      "family": "Zed Mono",
+      "weight": "normal",
+      "size": 14,
+      "style": "normal",
       "color": "#E1E1E1FF",
       "underline": true
     }
@@ -1177,10 +1176,10 @@
     },
     "host_username": {
       "type": "typography",
-      "fontFamily": "Zed Mono",
-      "fontWeight": "normal",
-      "fontSize": 14,
-      "fontStyle": "normal",
+      "family": "Zed Mono",
+      "weight": "normal",
+      "size": 14,
+      "style": "normal",
       "color": "#E1E1E1FF",
       "padding": {
         "left": 8
@@ -1195,10 +1194,10 @@
       },
       "name": {
         "type": "typography",
-        "fontFamily": "Zed Mono",
-        "fontWeight": "normal",
-        "fontSize": 14,
-        "fontStyle": "normal",
+        "family": "Zed Mono",
+        "weight": "normal",
+        "size": 14,
+        "style": "normal",
         "color": "#E1E1E1FF",
         "margin": {
           "right": 6
@@ -1219,10 +1218,10 @@
       },
       "name": {
         "type": "typography",
-        "fontFamily": "Zed Mono",
-        "fontWeight": "normal",
-        "fontSize": 14,
-        "fontStyle": "normal",
+        "family": "Zed Mono",
+        "weight": "normal",
+        "size": 14,
+        "style": "normal",
         "color": "#A5A5A5FF",
         "margin": {
           "right": 6
@@ -1243,10 +1242,10 @@
       },
       "name": {
         "type": "typography",
-        "fontFamily": "Zed Mono",
-        "fontWeight": "normal",
-        "fontSize": 14,
-        "fontStyle": "normal",
+        "family": "Zed Mono",
+        "weight": "normal",
+        "size": 14,
+        "style": "normal",
         "color": "#A5A5A5FF",
         "margin": {
           "right": 6
@@ -1265,10 +1264,10 @@
       },
       "name": {
         "type": "typography",
-        "fontFamily": "Zed Mono",
-        "fontWeight": "normal",
-        "fontSize": 14,
-        "fontStyle": "normal",
+        "family": "Zed Mono",
+        "weight": "normal",
+        "size": 14,
+        "style": "normal",
         "color": "#E1E1E1FF",
         "margin": {
           "right": 6
@@ -1287,10 +1286,10 @@
       },
       "name": {
         "type": "typography",
-        "fontFamily": "Zed Mono",
-        "fontWeight": "normal",
-        "fontSize": 14,
-        "fontStyle": "normal",
+        "family": "Zed Mono",
+        "weight": "normal",
+        "size": 14,
+        "style": "normal",
         "color": "#A5A5A5FF",
         "margin": {
           "right": 6
@@ -1313,21 +1312,59 @@
       "height": 22,
       "text": {
         "type": "typography",
-        "fontFamily": "Zed Mono",
-        "fontWeight": "normal",
-        "fontSize": 14,
-        "fontStyle": "normal",
+        "family": "Zed Mono",
+        "weight": "normal",
+        "size": 14,
+        "style": "normal",
         "color": "#A5A5A5FF"
       },
       "icon_color": "#A5A5A5FF",
       "icon_size": 8,
       "icon_spacing": 8
-    }
-  },
-  "player": {
-    "host": {
-      "cursor": "#6366F1FF",
-      "selection": "#6366F133"
+    },
+    "hovered_entry": {
+      "height": 22,
+      "text": {
+        "type": "typography",
+        "family": "Zed Mono",
+        "weight": "normal",
+        "size": 14,
+        "style": "normal",
+        "color": "#A5A5A5FF"
+      },
+      "icon_color": "#A5A5A5FF",
+      "icon_size": 8,
+      "icon_spacing": 8,
+      "background": "#FFFFFF1A"
+    },
+    "selected_entry": {
+      "height": 22,
+      "text": {
+        "type": "typography",
+        "family": "Zed Mono",
+        "weight": "normal",
+        "size": 14,
+        "style": "normal",
+        "color": "#E1E1E1FF"
+      },
+      "icon_color": "#A5A5A5FF",
+      "icon_size": 8,
+      "icon_spacing": 8
+    },
+    "hovered_selected_entry": {
+      "height": 22,
+      "text": {
+        "type": "typography",
+        "family": "Zed Mono",
+        "weight": "normal",
+        "size": 14,
+        "style": "normal",
+        "color": "#E1E1E1FF"
+      },
+      "icon_color": "#A5A5A5FF",
+      "icon_size": 8,
+      "icon_spacing": 8,
+      "background": "#FFFFFF1A"
     }
   },
   "search": {
@@ -1337,10 +1374,10 @@
     "tab_icon_width": 14,
     "active_hovered_option_button": {
       "type": "typography",
-      "fontFamily": "Zed Mono",
-      "fontWeight": "normal",
-      "fontSize": 14,
-      "fontStyle": "normal",
+      "family": "Zed Mono",
+      "weight": "normal",
+      "size": 14,
+      "style": "normal",
       "color": "#A5A5A5FF",
       "background": "#1E1E1EFF",
       "corner_radius": 6,
@@ -1361,10 +1398,10 @@
     },
     "active_option_button": {
       "type": "typography",
-      "fontFamily": "Zed Mono",
-      "fontWeight": "normal",
-      "fontSize": 14,
-      "fontStyle": "normal",
+      "family": "Zed Mono",
+      "weight": "normal",
+      "size": 14,
+      "style": "normal",
       "color": "#A5A5A5FF",
       "background": "#1E1E1EFF",
       "corner_radius": 6,
@@ -1389,22 +1426,22 @@
       "max_width": 400,
       "placeholder_text": {
         "type": "typography",
-        "fontFamily": "Zed Mono",
-        "fontWeight": "normal",
-        "fontSize": 14,
-        "fontStyle": "normal",
+        "family": "Zed Mono",
+        "weight": "normal",
+        "size": 14,
+        "style": "normal",
         "color": "#696969FF"
       },
       "selection": {
-        "cursor": "#6366F1FF",
+        "cursor": "#3B82F6FF",
         "selection": "#6366F133"
       },
       "text": {
         "type": "typography",
-        "fontFamily": "Zed Mono",
-        "fontWeight": "normal",
-        "fontSize": 14,
-        "fontStyle": "normal",
+        "family": "Zed Mono",
+        "weight": "normal",
+        "size": 14,
+        "style": "normal",
         "color": "#E1E1E1FF"
       },
       "border": {
@@ -1426,10 +1463,10 @@
     },
     "hovered_option_button": {
       "type": "typography",
-      "fontFamily": "Zed Mono",
-      "fontWeight": "normal",
-      "fontSize": 14,
-      "fontStyle": "normal",
+      "family": "Zed Mono",
+      "weight": "normal",
+      "size": 14,
+      "style": "normal",
       "color": "#A5A5A5FF",
       "background": "#1E1E1EFF",
       "corner_radius": 6,
@@ -1454,22 +1491,22 @@
       "max_width": 400,
       "placeholder_text": {
         "type": "typography",
-        "fontFamily": "Zed Mono",
-        "fontWeight": "normal",
-        "fontSize": 14,
-        "fontStyle": "normal",
+        "family": "Zed Mono",
+        "weight": "normal",
+        "size": 14,
+        "style": "normal",
         "color": "#696969FF"
       },
       "selection": {
-        "cursor": "#6366F1FF",
+        "cursor": "#3B82F6FF",
         "selection": "#6366F133"
       },
       "text": {
         "type": "typography",
-        "fontFamily": "Zed Mono",
-        "fontWeight": "normal",
-        "fontSize": 14,
-        "fontStyle": "normal",
+        "family": "Zed Mono",
+        "weight": "normal",
+        "size": 14,
+        "style": "normal",
         "color": "#E1E1E1FF"
       },
       "border": {
@@ -1491,19 +1528,19 @@
     },
     "match_index": {
       "type": "typography",
-      "fontFamily": "Zed Mono",
-      "fontWeight": "normal",
-      "fontSize": 14,
-      "fontStyle": "normal",
+      "family": "Zed Mono",
+      "weight": "normal",
+      "size": 14,
+      "style": "normal",
       "color": "#A5A5A5FF",
       "padding": 6
     },
     "option_button": {
       "type": "typography",
-      "fontFamily": "Zed Mono",
-      "fontWeight": "normal",
-      "fontSize": 14,
-      "fontStyle": "normal",
+      "family": "Zed Mono",
+      "weight": "normal",
+      "size": 14,
+      "style": "normal",
       "color": "#A5A5A5FF",
       "background": "#1E1E1EFF",
       "corner_radius": 6,
@@ -1530,12 +1567,11 @@
     },
     "results_status": {
       "type": "typography",
-      "fontFamily": "Zed Mono",
-      "fontWeight": "normal",
-      "fontSize": 14,
-      "fontStyle": "normal",
-      "color": "#E1E1E1FF",
-      "size": 18
+      "family": "Zed Mono",
+      "weight": "normal",
+      "size": 18,
+      "style": "normal",
+      "color": "#E1E1E1FF"
     }
   },
   "left_sidebar": {
@@ -1616,22 +1652,20 @@
       }
     }
   },
-  "cornerRadius": {
-    "xs": 2,
-    "sm": 4,
-    "base": 6,
-    "lg": 8,
-    "xl": 10
-  },
   "border": {
     "_base": {
       "width": 1,
       "style": "solid"
     },
-    "default": {
+    "primary": {
       "width": 1,
       "style": "solid",
       "color": "#0F0F0FFF"
+    },
+    "secondary": {
+      "width": 1,
+      "style": "solid",
+      "color": "#3C3C3CFF"
     },
     "width": {
       "hairline": 0.5,
@@ -1660,6 +1694,13 @@
       "warning": "#FCD34DFF",
       "info": "#3B82F6FF"
     }
+  },
+  "cornerRadius": {
+    "xs": 2,
+    "sm": 4,
+    "base": 6,
+    "lg": 8,
+    "xl": 10
   },
   "shadow": {
     "300": {
@@ -2001,40 +2042,6 @@
       "800": "#9D174DFF",
       "900": "#831843FF"
     },
-    "player": [
-      {
-        "cursor": "#3B82F6FF",
-        "selection": "#6366F133"
-      },
-      {
-        "cursor": "#6366F1FF",
-        "selection": "#6366F133"
-      },
-      {
-        "cursor": "#22C55EFF",
-        "selection": "#22C55E33"
-      },
-      {
-        "cursor": "#F97316FF",
-        "selection": "#F9731633"
-      },
-      {
-        "cursor": "#A855F7FF",
-        "selection": "#A855F733"
-      },
-      {
-        "cursor": "#14B8A6FF",
-        "selection": "#2DD4BF33"
-      },
-      {
-        "cursor": "#EC4899FF",
-        "selection": "#F472B633"
-      },
-      {
-        "cursor": "#EAB308FF",
-        "selection": "#FACC1533"
-      }
-    ],
     "surface": {
       "100": "#262626FF",
       "300": "#1E1E1EFF",
@@ -2057,168 +2064,168 @@
     "editor": {
       "_base": {
         "type": "typography",
-        "fontFamily": "Zed Sans",
-        "fontWeight": "normal",
-        "fontSize": 16,
-        "fontStyle": "normal"
+        "family": "Zed Sans",
+        "weight": "normal",
+        "size": 16,
+        "style": "normal"
       },
       "primary": {
         "type": "typography",
-        "fontFamily": "Zed Mono",
-        "fontWeight": "normal",
-        "fontSize": 14,
-        "fontStyle": "normal",
+        "family": "Zed Mono",
+        "weight": "normal",
+        "size": 14,
+        "style": "normal",
         "color": "#E1E1E1FF"
       },
       "secondary": {
         "type": "typography",
-        "fontFamily": "Zed Mono",
-        "fontWeight": "normal",
-        "fontSize": 14,
-        "fontStyle": "normal",
+        "family": "Zed Mono",
+        "weight": "normal",
+        "size": 14,
+        "style": "normal",
         "color": "#A5A5A5FF"
       },
       "muted": {
         "type": "typography",
-        "fontFamily": "Zed Mono",
-        "fontWeight": "normal",
-        "fontSize": 14,
-        "fontStyle": "normal",
+        "family": "Zed Mono",
+        "weight": "normal",
+        "size": 14,
+        "style": "normal",
         "color": "#696969FF"
       },
       "active": {
         "type": "typography",
-        "fontFamily": "Zed Mono",
-        "fontWeight": "normal",
-        "fontSize": 14,
-        "fontStyle": "normal",
+        "family": "Zed Mono",
+        "weight": "normal",
+        "size": 14,
+        "style": "normal",
         "color": "#FFFFFFFF"
       },
       "disabled": {
         "type": "typography",
-        "fontFamily": "Zed Mono",
-        "fontWeight": "normal",
-        "fontSize": 14,
-        "fontStyle": "normal",
+        "family": "Zed Mono",
+        "weight": "normal",
+        "size": 14,
+        "style": "normal",
         "color": "#4B4B4BFF"
       },
       "positive": {
         "type": "typography",
-        "fontFamily": "Zed Mono",
-        "fontWeight": "normal",
-        "fontSize": 14,
-        "fontStyle": "normal",
+        "family": "Zed Mono",
+        "weight": "normal",
+        "size": 14,
+        "style": "normal",
         "color": "#16A34AFF"
       },
       "negative": {
         "type": "typography",
-        "fontFamily": "Zed Mono",
-        "fontWeight": "normal",
-        "fontSize": 14,
-        "fontStyle": "normal",
+        "family": "Zed Mono",
+        "weight": "normal",
+        "size": 14,
+        "style": "normal",
         "color": "#F87171FF"
       },
       "warning": {
         "type": "typography",
-        "fontFamily": "Zed Mono",
-        "fontWeight": "normal",
-        "fontSize": 14,
-        "fontStyle": "normal",
+        "family": "Zed Mono",
+        "weight": "normal",
+        "size": 14,
+        "style": "normal",
         "color": "#FCD34DFF"
       },
       "info": {
         "type": "typography",
-        "fontFamily": "Zed Mono",
-        "fontWeight": "normal",
-        "fontSize": 14,
-        "fontStyle": "normal",
+        "family": "Zed Mono",
+        "weight": "normal",
+        "size": 14,
+        "style": "normal",
         "color": "#3B82F6FF"
       },
       "base": {
-        "fontFamily": "Zed Sans",
-        "fontWeight": "400",
-        "fontSize": 16,
-        "fontStyle": "normal"
+        "family": "Zed Sans",
+        "weight": "normal",
+        "size": 16,
+        "style": "normal"
       }
     },
     "ui": {
       "_base": {
         "type": "typography",
-        "fontFamily": "Zed Mono",
-        "fontWeight": "normal",
-        "fontSize": 14,
-        "fontStyle": "normal"
+        "family": "Zed Mono",
+        "weight": "normal",
+        "size": 14,
+        "style": "normal"
       },
       "primary": {
         "type": "typography",
-        "fontFamily": "Zed Mono",
-        "fontWeight": "normal",
-        "fontSize": 14,
-        "fontStyle": "normal",
+        "family": "Zed Mono",
+        "weight": "normal",
+        "size": 14,
+        "style": "normal",
         "color": "#E1E1E1FF"
       },
       "secondary": {
         "type": "typography",
-        "fontFamily": "Zed Mono",
-        "fontWeight": "normal",
-        "fontSize": 14,
-        "fontStyle": "normal",
+        "family": "Zed Mono",
+        "weight": "normal",
+        "size": 14,
+        "style": "normal",
         "color": "#A5A5A5FF"
       },
       "muted": {
         "type": "typography",
-        "fontFamily": "Zed Mono",
-        "fontWeight": "normal",
-        "fontSize": 14,
-        "fontStyle": "normal",
+        "family": "Zed Mono",
+        "weight": "normal",
+        "size": 14,
+        "style": "normal",
         "color": "#696969FF"
       },
       "active": {
         "type": "typography",
-        "fontFamily": "Zed Mono",
-        "fontWeight": "normal",
-        "fontSize": 14,
-        "fontStyle": "normal",
+        "family": "Zed Mono",
+        "weight": "normal",
+        "size": 14,
+        "style": "normal",
         "color": "#FFFFFFFF"
       },
       "disabled": {
         "type": "typography",
-        "fontFamily": "Zed Mono",
-        "fontWeight": "normal",
-        "fontSize": 14,
-        "fontStyle": "normal",
+        "family": "Zed Mono",
+        "weight": "normal",
+        "size": 14,
+        "style": "normal",
         "color": "#4B4B4BFF"
       },
       "positive": {
         "type": "typography",
-        "fontFamily": "Zed Mono",
-        "fontWeight": "normal",
-        "fontSize": 14,
-        "fontStyle": "normal",
+        "family": "Zed Mono",
+        "weight": "normal",
+        "size": 14,
+        "style": "normal",
         "color": "#16A34AFF"
       },
       "negative": {
         "type": "typography",
-        "fontFamily": "Zed Mono",
-        "fontWeight": "normal",
-        "fontSize": 14,
-        "fontStyle": "normal",
+        "family": "Zed Mono",
+        "weight": "normal",
+        "size": 14,
+        "style": "normal",
         "color": "#F87171FF"
       },
       "warning": {
         "type": "typography",
-        "fontFamily": "Zed Mono",
-        "fontWeight": "normal",
-        "fontSize": 14,
-        "fontStyle": "normal",
+        "family": "Zed Mono",
+        "weight": "normal",
+        "size": 14,
+        "style": "normal",
         "color": "#FCD34DFF"
       },
       "info": {
         "type": "typography",
-        "fontFamily": "Zed Mono",
-        "fontWeight": "normal",
-        "fontSize": 14,
-        "fontStyle": "normal",
+        "family": "Zed Mono",
+        "weight": "normal",
+        "size": 14,
+        "style": "normal",
         "color": "#3B82F6FF"
       }
     },
@@ -2286,6 +2293,40 @@
     "underline": "Underline",
     "strikethrough": "Strikethrough"
   },
+  "player": [
+    {
+      "cursor": "#3B82F6FF",
+      "selection": "#6366F133"
+    },
+    {
+      "cursor": "#6366F1FF",
+      "selection": "#6366F133"
+    },
+    {
+      "cursor": "#22C55EFF",
+      "selection": "#22C55E33"
+    },
+    {
+      "cursor": "#F97316FF",
+      "selection": "#F9731633"
+    },
+    {
+      "cursor": "#A855F7FF",
+      "selection": "#A855F733"
+    },
+    {
+      "cursor": "#14B8A6FF",
+      "selection": "#2DD4BF33"
+    },
+    {
+      "cursor": "#EC4899FF",
+      "selection": "#F472B633"
+    },
+    {
+      "cursor": "#EAB308FF",
+      "selection": "#FACC1533"
+    }
+  ],
   "effect": {
     "shadow": {
       "300": {
