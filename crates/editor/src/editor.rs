@@ -3,6 +3,7 @@ mod element;
 pub mod items;
 pub mod movement;
 mod multi_buffer;
+pub mod settings;
 
 #[cfg(test)]
 mod test;
@@ -41,6 +42,7 @@ pub use multi_buffer::{
 use ordered_float::OrderedFloat;
 use project::{Project, ProjectTransaction};
 use serde::{Deserialize, Serialize};
+use settings::Settings;
 use smallvec::SmallVec;
 use smol::Timer;
 use snippet::Snippet;
@@ -55,9 +57,9 @@ use std::{
 };
 pub use sum_tree::Bias;
 use text::rope::TextDimension;
-use theme::DiagnosticStyle;
+use theme::{DiagnosticStyle, Theme};
 use util::{post_inc, ResultExt, TryFutureExt};
-use workspace::{settings, ItemNavHistory, Settings, Workspace};
+use workspace::{ItemNavHistory, Workspace};
 
 const CURSOR_BLINK_INTERVAL: Duration = Duration::from_millis(500);
 const MAX_LINE_LEN: usize = 1024;
@@ -1006,10 +1008,10 @@ impl Editor {
     ) -> Self {
         let display_map = cx.add_model(|cx| {
             let settings = cx.global::<Settings>();
-            let style = build_style(&*settings, get_field_editor_theme, None, cx);
+            let theme = cx.global::<Arc<Theme>>();
+            let style = build_style(settings, theme, get_field_editor_theme, None, cx);
             DisplayMap::new(
                 buffer.clone(),
-                settings.tab_size,
                 style.text.font_id,
                 style.text.font_size,
                 None,
@@ -1138,6 +1140,7 @@ impl Editor {
     fn style(&self, cx: &AppContext) -> EditorStyle {
         build_style(
             cx.global::<Settings>(),
+            cx.global::<Arc<Theme>>().as_ref(),
             self.get_field_editor_theme,
             self.override_text_style.as_deref(),
             cx,
@@ -3004,14 +3007,15 @@ impl Editor {
                                         Point::new(selection.start.row, 0)..selection.start,
                                     )
                                     .flat_map(str::chars)
-                                    .count();
+                                    .count()
+                                    as u32;
                                 let chars_to_next_tab_stop = tab_size - (char_column % tab_size);
                                 buffer.edit(
                                     [selection.start..selection.start],
-                                    " ".repeat(chars_to_next_tab_stop),
+                                    " ".repeat(chars_to_next_tab_stop as usize),
                                     cx,
                                 );
-                                selection.start.column += chars_to_next_tab_stop as u32;
+                                selection.start.column += chars_to_next_tab_stop;
                                 selection.end = selection.start;
                             }
                         });
@@ -3054,24 +3058,24 @@ impl Editor {
                     }
 
                     for row in start_row..end_row {
-                        let indent_column = buffer.read(cx).indent_column_for_line(row) as usize;
+                        let indent_column = buffer.read(cx).indent_column_for_line(row);
                         let columns_to_next_tab_stop = tab_size - (indent_column % tab_size);
                         let row_start = Point::new(row, 0);
                         buffer.edit(
                             [row_start..row_start],
-                            " ".repeat(columns_to_next_tab_stop),
+                            " ".repeat(columns_to_next_tab_stop as usize),
                             cx,
                         );
 
                         // Update this selection's endpoints to reflect the indentation.
                         if row == selection.start.row {
-                            selection.start.column += columns_to_next_tab_stop as u32;
+                            selection.start.column += columns_to_next_tab_stop;
                         }
                         if row == selection.end.row {
-                            selection.end.column += columns_to_next_tab_stop as u32;
+                            selection.end.column += columns_to_next_tab_stop;
                         }
 
-                        last_indent = Some((row, columns_to_next_tab_stop as u32));
+                        last_indent = Some((row, columns_to_next_tab_stop));
                     }
                 }
             });
@@ -3102,7 +3106,7 @@ impl Editor {
                 for row in rows {
                     let column = buffer.indent_column_for_line(row) as usize;
                     if column > 0 {
-                        let mut deletion_len = (column % tab_size) as u32;
+                        let mut deletion_len = column as u32 % tab_size;
                         if deletion_len == 0 {
                             deletion_len = tab_size as u32;
                         }
@@ -6089,25 +6093,26 @@ impl View for Editor {
 
 fn build_style(
     settings: &Settings,
+    app_theme: &Theme,
     get_field_editor_theme: Option<GetFieldEditorTheme>,
     override_text_style: Option<&OverrideTextStyle>,
     cx: &AppContext,
 ) -> EditorStyle {
     let font_cache = cx.font_cache();
 
-    let mut theme = settings.theme.editor.clone();
+    let mut editor_theme = app_theme.editor.clone();
     let mut style = if let Some(get_field_editor_theme) = get_field_editor_theme {
-        let field_editor_theme = get_field_editor_theme(&settings.theme);
-        theme.text_color = field_editor_theme.text.color;
-        theme.selection = field_editor_theme.selection;
-        theme.background = field_editor_theme
+        let field_editor_theme = get_field_editor_theme(app_theme);
+        editor_theme.text_color = field_editor_theme.text.color;
+        editor_theme.selection = field_editor_theme.selection;
+        editor_theme.background = field_editor_theme
             .container
             .background_color
             .unwrap_or_default();
         EditorStyle {
             text: field_editor_theme.text,
             placeholder_text: field_editor_theme.placeholder_text,
-            theme,
+            theme: editor_theme,
         }
     } else {
         let font_family_id = settings.buffer_font_family;
@@ -6119,7 +6124,7 @@ fn build_style(
         let font_size = settings.buffer_font_size;
         EditorStyle {
             text: TextStyle {
-                color: settings.theme.editor.text_color,
+                color: editor_theme.text_color,
                 font_family_name,
                 font_family_id,
                 font_id,
@@ -6128,7 +6133,7 @@ fn build_style(
                 underline: Default::default(),
             },
             placeholder_text: None,
-            theme,
+            theme: editor_theme,
         }
     };
 
@@ -6284,8 +6289,8 @@ pub fn diagnostic_block_renderer(diagnostic: Diagnostic, is_valid: bool) -> Rend
 
     Arc::new(move |cx: &BlockContext| {
         let settings = cx.global::<Settings>();
-        let theme = &settings.theme.editor;
-        let style = diagnostic_style(diagnostic.severity, is_valid, theme);
+        let theme = cx.global::<Arc<Theme>>();
+        let style = diagnostic_style(diagnostic.severity, is_valid, &theme.editor);
         let font_size = (style.text_scale_factor * settings.buffer_font_size).round();
         Flex::column()
             .with_children(highlighted_lines.iter().map(|(line, highlights)| {
@@ -9859,8 +9864,11 @@ mod tests {
     }
 
     fn populate_settings(cx: &mut gpui::MutableAppContext) {
-        let settings = Settings::test(cx);
-        cx.set_global(settings);
+        cx.set_global(Settings::test(cx));
+        cx.set_global(Arc::new(gpui::fonts::with_font_cache(
+            cx.font_cache().clone(),
+            || Theme::default(),
+        )));
     }
 
     fn assert_selection_ranges(

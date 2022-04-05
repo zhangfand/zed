@@ -1492,14 +1492,19 @@ mod tests {
     use super::*;
     use crate::{
         display_map::{BlockDisposition, BlockProperties},
+        settings::Settings,
         Editor, MultiBuffer,
     };
+    use theme::Theme;
     use util::test::sample_text;
-    use workspace::Settings;
 
     #[gpui::test]
     fn test_layout_line_numbers(cx: &mut gpui::MutableAppContext) {
-        cx.set_global(Settings::test(cx));
+        gpui::fonts::with_font_cache(cx.font_cache().clone(), || {
+            cx.set_global(Settings::test(cx));
+            cx.set_global(Arc::new(Theme::default()));
+        });
+
         let buffer = MultiBuffer::build_simple(&sample_text(6, 6, 'a'), cx);
         let (window_id, editor) = cx.add_window(Default::default(), |cx| {
             Editor::new(EditorMode::Full, buffer, None, None, cx)
@@ -1521,7 +1526,11 @@ mod tests {
 
     #[gpui::test]
     fn test_layout_with_placeholder_text_and_blocks(cx: &mut gpui::MutableAppContext) {
-        cx.set_global(Settings::test(cx));
+        gpui::fonts::with_font_cache(cx.font_cache().clone(), || {
+            cx.set_global(Settings::test(cx));
+            cx.set_global(Arc::new(Theme::default()));
+        });
+
         let buffer = MultiBuffer::build_simple("", cx);
         let (window_id, editor) = cx.add_window(Default::default(), |cx| {
             Editor::new(EditorMode::Full, buffer, None, None, cx)

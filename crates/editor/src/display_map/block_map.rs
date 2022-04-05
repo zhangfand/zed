@@ -967,6 +967,7 @@ mod tests {
     use super::*;
     use crate::display_map::{fold_map::FoldMap, tab_map::TabMap, wrap_map::WrapMap};
     use crate::multi_buffer::MultiBuffer;
+    use crate::settings::Settings;
     use gpui::{elements::Empty, Element};
     use rand::prelude::*;
     use std::env;
@@ -988,6 +989,7 @@ mod tests {
 
     #[gpui::test]
     fn test_basic_blocks(cx: &mut gpui::MutableAppContext) {
+        populate_settings(4, cx);
         let family_id = cx.font_cache().load_family(&["Helvetica"]).unwrap();
         let font_id = cx
             .font_cache()
@@ -1000,7 +1002,7 @@ mod tests {
         let buffer_snapshot = buffer.read(cx).snapshot(cx);
         let subscription = buffer.update(cx, |buffer, _| buffer.subscribe());
         let (fold_map, folds_snapshot) = FoldMap::new(buffer_snapshot.clone());
-        let (tab_map, tabs_snapshot) = TabMap::new(folds_snapshot.clone(), 1);
+        let (tab_map, tabs_snapshot) = TabMap::new(folds_snapshot.clone(), cx);
         let (wrap_map, wraps_snapshot) = WrapMap::new(tabs_snapshot, font_id, 14.0, None, cx);
         let mut block_map = BlockMap::new(wraps_snapshot.clone(), 1, 1);
 
@@ -1157,7 +1159,7 @@ mod tests {
 
         let (folds_snapshot, fold_edits) =
             fold_map.read(buffer_snapshot, subscription.consume().into_inner());
-        let (tabs_snapshot, tab_edits) = tab_map.sync(folds_snapshot, fold_edits);
+        let (tabs_snapshot, tab_edits) = tab_map.sync(folds_snapshot, fold_edits, cx);
         let (wraps_snapshot, wrap_edits) = wrap_map.update(cx, |wrap_map, cx| {
             wrap_map.sync(tabs_snapshot, tab_edits, cx)
         });
@@ -1167,6 +1169,7 @@ mod tests {
 
     #[gpui::test]
     fn test_blocks_on_wrapped_lines(cx: &mut gpui::MutableAppContext) {
+        populate_settings(4, cx);
         let family_id = cx.font_cache().load_family(&["Helvetica"]).unwrap();
         let font_id = cx
             .font_cache()
@@ -1178,7 +1181,7 @@ mod tests {
         let buffer = MultiBuffer::build_simple(text, cx);
         let buffer_snapshot = buffer.read(cx).snapshot(cx);
         let (_, folds_snapshot) = FoldMap::new(buffer_snapshot.clone());
-        let (_, tabs_snapshot) = TabMap::new(folds_snapshot.clone(), 1);
+        let (_, tabs_snapshot) = TabMap::new(folds_snapshot.clone(), cx);
         let (_, wraps_snapshot) = WrapMap::new(tabs_snapshot, font_id, 14.0, Some(60.), cx);
         let mut block_map = BlockMap::new(wraps_snapshot.clone(), 1, 1);
 
@@ -1218,7 +1221,8 @@ mod tests {
         } else {
             Some(rng.gen_range(0.0..=100.0))
         };
-        let tab_size = 1;
+
+        populate_settings(1, cx);
         let family_id = cx.font_cache().load_family(&["Helvetica"]).unwrap();
         let font_id = cx
             .font_cache()
@@ -1242,7 +1246,7 @@ mod tests {
 
         let mut buffer_snapshot = buffer.read(cx).snapshot(cx);
         let (fold_map, folds_snapshot) = FoldMap::new(buffer_snapshot.clone());
-        let (tab_map, tabs_snapshot) = TabMap::new(folds_snapshot.clone(), tab_size);
+        let (tab_map, tabs_snapshot) = TabMap::new(folds_snapshot.clone(), cx);
         let (wrap_map, wraps_snapshot) =
             WrapMap::new(tabs_snapshot, font_id, font_size, wrap_width, cx);
         let mut block_map = BlockMap::new(
@@ -1296,7 +1300,7 @@ mod tests {
 
                     let (folds_snapshot, fold_edits) =
                         fold_map.read(buffer_snapshot.clone(), vec![]);
-                    let (tabs_snapshot, tab_edits) = tab_map.sync(folds_snapshot, fold_edits);
+                    let (tabs_snapshot, tab_edits) = tab_map.sync(folds_snapshot, fold_edits, cx);
                     let (wraps_snapshot, wrap_edits) = wrap_map.update(cx, |wrap_map, cx| {
                         wrap_map.sync(tabs_snapshot, tab_edits, cx)
                     });
@@ -1318,7 +1322,7 @@ mod tests {
 
                     let (folds_snapshot, fold_edits) =
                         fold_map.read(buffer_snapshot.clone(), vec![]);
-                    let (tabs_snapshot, tab_edits) = tab_map.sync(folds_snapshot, fold_edits);
+                    let (tabs_snapshot, tab_edits) = tab_map.sync(folds_snapshot, fold_edits, cx);
                     let (wraps_snapshot, wrap_edits) = wrap_map.update(cx, |wrap_map, cx| {
                         wrap_map.sync(tabs_snapshot, tab_edits, cx)
                     });
@@ -1338,7 +1342,7 @@ mod tests {
             }
 
             let (folds_snapshot, fold_edits) = fold_map.read(buffer_snapshot.clone(), buffer_edits);
-            let (tabs_snapshot, tab_edits) = tab_map.sync(folds_snapshot, fold_edits);
+            let (tabs_snapshot, tab_edits) = tab_map.sync(folds_snapshot, fold_edits, cx);
             let (wraps_snapshot, wrap_edits) = wrap_map.update(cx, |wrap_map, cx| {
                 wrap_map.sync(tabs_snapshot, tab_edits, cx)
             });
@@ -1613,5 +1617,12 @@ mod tests {
         fn to_point(&self, point: BlockPoint, bias: Bias) -> Point {
             self.wrap_snapshot.to_point(self.to_wrap_point(point), bias)
         }
+    }
+
+    fn populate_settings(tab_size: u32, cx: &mut gpui::MutableAppContext) {
+        cx.set_global(Settings {
+            tab_size,
+            ..Settings::test(cx)
+        })
     }
 }

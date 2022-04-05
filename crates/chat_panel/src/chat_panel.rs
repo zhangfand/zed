@@ -2,7 +2,7 @@ use client::{
     channel::{Channel, ChannelEvent, ChannelList, ChannelMessage},
     Client,
 };
-use editor::Editor;
+use editor::{settings::SoftWrap, Editor};
 use gpui::{
     action,
     elements::*,
@@ -16,7 +16,7 @@ use postage::prelude::Stream;
 use std::sync::Arc;
 use time::{OffsetDateTime, UtcOffset};
 use util::{ResultExt, TryFutureExt};
-use workspace::{settings::SoftWrap, Settings};
+use workspace::Settings;
 
 const MESSAGE_LOADING_THRESHOLD: usize = 50;
 

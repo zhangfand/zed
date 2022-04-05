@@ -2,7 +2,8 @@ use super::{
     fold_map::{self, FoldEdit, FoldPoint, FoldSnapshot},
     TextHighlights,
 };
-use crate::MultiBufferSnapshot;
+use crate::{settings::Settings, MultiBufferSnapshot};
+use gpui::MutableAppContext;
 use language::{rope, Chunk};
 use parking_lot::Mutex;
 use std::{cmp, mem, ops::Range};
@@ -12,24 +13,32 @@ use text::Point;
 pub struct TabMap(Mutex<TabSnapshot>);
 
 impl TabMap {
-    pub fn new(input: FoldSnapshot, tab_size: usize) -> (Self, TabSnapshot) {
+    pub fn new(input: FoldSnapshot, cx: &mut MutableAppContext) -> (Self, TabSnapshot) {
         let snapshot = TabSnapshot {
+            tab_size: Self::tab_size(input.buffer_snapshot(), cx),
             fold_snapshot: input,
-            tab_size,
         };
         (Self(Mutex::new(snapshot.clone())), snapshot)
+    }
+
+    fn tab_size(buffer_snapshot: &MultiBufferSnapshot, cx: &mut MutableAppContext) -> u32 {
+        let language = buffer_snapshot
+            .as_singleton()
+            .and_then(|(_, _, buffer)| buffer.language());
+        cx.global::<Settings>().tab_size(language)
     }
 
     pub fn sync(
         &self,
         fold_snapshot: FoldSnapshot,
         mut fold_edits: Vec<FoldEdit>,
+        cx: &mut MutableAppContext,
     ) -> (TabSnapshot, Vec<TabEdit>) {
         let mut old_snapshot = self.0.lock();
         let max_offset = old_snapshot.fold_snapshot.len();
         let new_snapshot = TabSnapshot {
+            tab_size: Self::tab_size(fold_snapshot.buffer_snapshot(), cx),
             fold_snapshot,
-            tab_size: old_snapshot.tab_size,
         };
 
         let mut tab_edits = Vec::with_capacity(fold_edits.len());
@@ -87,7 +96,7 @@ impl TabMap {
 #[derive(Clone)]
 pub struct TabSnapshot {
     pub fold_snapshot: FoldSnapshot,
-    pub tab_size: usize,
+    pub tab_size: u32,
 }
 
 impl TabSnapshot {
@@ -160,10 +169,10 @@ impl TabSnapshot {
             .to_fold_point(range.end, Bias::Right)
             .0
             .to_offset(&self.fold_snapshot);
-        let to_next_stop = if range.start.0 + Point::new(0, to_next_stop as u32) > range.end.0 {
+        let to_next_stop = if range.start.0 + Point::new(0, to_next_stop) > range.end.0 {
             (range.end.column() - range.start.column()) as usize
         } else {
-            to_next_stop
+            to_next_stop as usize
         };
 
         TabChunks {
@@ -208,13 +217,13 @@ impl TabSnapshot {
 
     pub fn to_tab_point(&self, input: FoldPoint) -> TabPoint {
         let chars = self.fold_snapshot.chars_at(FoldPoint::new(input.row(), 0));
-        let expanded = Self::expand_tabs(chars, input.column() as usize, self.tab_size);
+        let expanded = Self::expand_tabs(chars, input.column(), self.tab_size);
         TabPoint::new(input.row(), expanded as u32)
     }
 
-    pub fn to_fold_point(&self, output: TabPoint, bias: Bias) -> (FoldPoint, usize, usize) {
+    pub fn to_fold_point(&self, output: TabPoint, bias: Bias) -> (FoldPoint, u32, u32) {
         let chars = self.fold_snapshot.chars_at(FoldPoint::new(output.row(), 0));
-        let expanded = output.column() as usize;
+        let expanded = output.column();
         let (collapsed, expanded_char_column, to_next_stop) =
             Self::collapse_tabs(chars, expanded, bias, self.tab_size);
         (
@@ -234,7 +243,7 @@ impl TabSnapshot {
             .to_buffer_point(&self.fold_snapshot)
     }
 
-    fn expand_tabs(chars: impl Iterator<Item = char>, column: usize, tab_size: usize) -> usize {
+    fn expand_tabs(chars: impl Iterator<Item = char>, column: u32, tab_size: u32) -> u32 {
         let mut expanded_chars = 0;
         let mut expanded_bytes = 0;
         let mut collapsed_bytes = 0;
@@ -247,20 +256,20 @@ impl TabSnapshot {
                 expanded_bytes += tab_len;
                 expanded_chars += tab_len;
             } else {
-                expanded_bytes += c.len_utf8();
+                expanded_bytes += c.len_utf8() as u32;
                 expanded_chars += 1;
             }
-            collapsed_bytes += c.len_utf8();
+            collapsed_bytes += c.len_utf8() as u32;
         }
         expanded_bytes
     }
 
     fn collapse_tabs(
         mut chars: impl Iterator<Item = char>,
-        column: usize,
+        column: u32,
         bias: Bias,
-        tab_size: usize,
-    ) -> (usize, usize, usize) {
+        tab_size: u32,
+    ) -> (u32, u32, u32) {
         let mut expanded_bytes = 0;
         let mut expanded_chars = 0;
         let mut collapsed_bytes = 0;
@@ -282,7 +291,7 @@ impl TabSnapshot {
                 }
             } else {
                 expanded_chars += 1;
-                expanded_bytes += c.len_utf8();
+                expanded_bytes += c.len_utf8() as u32;
             }
 
             if expanded_bytes > column && matches!(bias, Bias::Left) {
@@ -290,7 +299,7 @@ impl TabSnapshot {
                 break;
             }
 
-            collapsed_bytes += c.len_utf8();
+            collapsed_bytes += c.len_utf8() as u32;
         }
         (collapsed_bytes, expanded_chars, 0)
     }
@@ -380,10 +389,10 @@ const SPACES: &'static str = "                ";
 pub struct TabChunks<'a> {
     fold_chunks: fold_map::FoldChunks<'a>,
     chunk: Chunk<'a>,
-    column: usize,
+    column: u32,
     output_position: Point,
     max_output_position: Point,
-    tab_size: usize,
+    tab_size: u32,
     skip_leading_tab: bool,
 }
 
@@ -420,11 +429,11 @@ impl<'a> Iterator for TabChunks<'a> {
                             self.output_position + Point::new(0, len as u32),
                             self.max_output_position,
                         );
-                        len = (next_output_position.column - self.output_position.column) as usize;
+                        len = next_output_position.column - self.output_position.column;
                         self.column += len;
                         self.output_position = next_output_position;
                         return Some(Chunk {
-                            text: &SPACES[0..len],
+                            text: &SPACES[0..len as usize],
                             ..self.chunk
                         });
                     }
@@ -461,6 +470,11 @@ mod tests {
     #[gpui::test(iterations = 100)]
     fn test_random_tabs(cx: &mut gpui::MutableAppContext, mut rng: StdRng) {
         let tab_size = rng.gen_range(1..=4);
+        cx.set_global(Settings {
+            tab_size,
+            ..Settings::test(cx)
+        });
+
         let len = rng.gen_range(0..30);
         let buffer = if rng.gen() {
             let text = RandomCharIter::new(&mut rng).take(len).collect::<String>();
@@ -476,7 +490,7 @@ mod tests {
         let (folds_snapshot, _) = fold_map.read(buffer_snapshot.clone(), vec![]);
         log::info!("FoldMap text: {:?}", folds_snapshot.text());
 
-        let (_, tabs_snapshot) = TabMap::new(folds_snapshot.clone(), tab_size);
+        let (_, tabs_snapshot) = TabMap::new(folds_snapshot.clone(), cx);
         let text = Rope::from(tabs_snapshot.text().as_str());
         log::info!(
             "TabMap text (tab size: {}): {:?}",

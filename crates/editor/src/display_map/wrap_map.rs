@@ -1009,6 +1009,7 @@ mod tests {
     use super::*;
     use crate::{
         display_map::{fold_map::FoldMap, tab_map::TabMap},
+        settings::Settings,
         MultiBuffer,
     };
     use gpui::test::observe;
@@ -1039,6 +1040,12 @@ mod tests {
             .select_font(family_id, &Default::default())
             .unwrap();
         let font_size = 14.0;
+        cx.update(|cx| {
+            cx.set_global(Settings {
+                tab_size,
+                ..Settings::test(cx)
+            })
+        });
 
         log::info!("Tab size: {}", tab_size);
         log::info!("Wrap width: {:?}", wrap_width);
@@ -1054,7 +1061,7 @@ mod tests {
         });
         let mut buffer_snapshot = buffer.read_with(cx, |buffer, cx| buffer.snapshot(cx));
         let (mut fold_map, folds_snapshot) = FoldMap::new(buffer_snapshot.clone());
-        let (tab_map, tabs_snapshot) = TabMap::new(folds_snapshot.clone(), tab_size);
+        let (tab_map, tabs_snapshot) = cx.update(|cx| TabMap::new(folds_snapshot.clone(), cx));
         log::info!("Unwrapped text (no folds): {:?}", buffer_snapshot.text());
         log::info!(
             "Unwrapped text (unexpanded tabs): {:?}",
@@ -1104,7 +1111,8 @@ mod tests {
                 }
                 20..=39 => {
                     for (folds_snapshot, fold_edits) in fold_map.randomly_mutate(&mut rng) {
-                        let (tabs_snapshot, tab_edits) = tab_map.sync(folds_snapshot, fold_edits);
+                        let (tabs_snapshot, tab_edits) =
+                            cx.update(|cx| tab_map.sync(folds_snapshot, fold_edits, cx));
                         let (mut snapshot, wrap_edits) =
                             wrap_map.update(cx, |map, cx| map.sync(tabs_snapshot, tab_edits, cx));
                         snapshot.check_invariants();
@@ -1129,7 +1137,8 @@ mod tests {
                 "Unwrapped text (unexpanded tabs): {:?}",
                 folds_snapshot.text()
             );
-            let (tabs_snapshot, tab_edits) = tab_map.sync(folds_snapshot, fold_edits);
+            let (tabs_snapshot, tab_edits) =
+                cx.update(|cx| tab_map.sync(folds_snapshot, fold_edits, cx));
             log::info!("Unwrapped text (expanded tabs): {:?}", tabs_snapshot.text());
 
             let unwrapped_text = tabs_snapshot.text();
