@@ -39,6 +39,7 @@ use std::{
     ops::Range,
     path::{Component, Path, PathBuf},
     rc::Rc,
+    str::FromStr,
     sync::{
         atomic::{AtomicBool, AtomicUsize, Ordering::SeqCst},
         Arc,
@@ -3435,6 +3436,35 @@ impl Project {
                                 })
                                 .log_err();
                         }
+
+                        if new_file.path != old_file.path {
+                            if let Some((_, server)) = self.language_server_for_buffer(buffer, cx) {
+                                server
+                                    .notify::<lsp::notification::DidCloseTextDocument>(
+                                        lsp::DidCloseTextDocumentParams {
+                                            text_document: lsp::TextDocumentIdentifier::new(
+                                                lsp::Url::from_file_path(&old_file.abs_path(cx))
+                                                    .unwrap(),
+                                            ),
+                                        },
+                                    )
+                                    .log_err();
+                                let buffer_id = bufer.remote_id();
+                                let (last_snapshot,  = self.buffer_snapshots.get(buffer_id)
+                                server
+                                    .notify::<lsp::notification::DidCloseTextDocument>(
+                                        lsp::DidOpenTextDocumentParams {
+                                            text_document: lsp::TextDocumentIdentifier::new(
+                                                lsp::Url::from_file_path(&old_file.abs_path(cx))
+                                                    .unwrap(),
+                                                
+                                            ),
+                                        },
+                                    )
+                                    .log_err();
+                            }
+                        }
+
                         buffer.file_updated(Box::new(new_file), cx).detach();
                     }
                 });
