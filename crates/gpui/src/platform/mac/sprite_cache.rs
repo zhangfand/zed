@@ -55,7 +55,7 @@ impl SpriteCache {
         fonts: Arc<dyn platform::FontSystem>,
     ) -> Self {
         let descriptor = TextureDescriptor::new();
-        descriptor.set_pixel_format(MTLPixelFormat::BGRA8Unorm);
+        descriptor.set_pixel_format(MTLPixelFormat::RGBA8Unorm);
         descriptor.set_width(size.x() as u64);
         descriptor.set_height(size.y() as u64);
         Self {
