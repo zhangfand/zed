@@ -17,7 +17,11 @@ use core_foundation::{
     string::CFString,
 };
 use core_graphics::{
-    base::CGGlyph, color_space::CGColorSpace, context::CGContext, geometry::CGAffineTransform,
+    base::{kCGImageAlphaPremultipliedLast, CGGlyph},
+    color::CGColor,
+    color_space::CGColorSpace,
+    context::CGContext,
+    geometry::CGAffineTransform,
 };
 use core_text::{line::CTLine, string_attributes::kCTFontAttributeName};
 use font_kit::{
@@ -26,9 +30,6 @@ use font_kit::{
 };
 use parking_lot::RwLock;
 use std::{cell::RefCell, char, cmp, convert::TryFrom, ffi::c_void, sync::Arc};
-
-#[allow(non_upper_case_globals)]
-const kCGImageAlphaOnly: u32 = 7;
 
 pub struct FontSystem(RwLock<FontSystemState>);
 
@@ -174,15 +175,15 @@ impl FontSystemState {
         } else {
             // Make room for subpixel variants.
             let bounds = RectI::new(bounds.origin(), bounds.size() + vec2i(1, 1));
-            let mut pixels = vec![0; bounds.width() as usize * bounds.height() as usize];
+            let mut pixels = vec![0; bounds.width() as usize * bounds.height() as usize * 4];
             let cx = CGContext::create_bitmap_context(
                 Some(pixels.as_mut_ptr() as *mut _),
                 bounds.width() as usize,
                 bounds.height() as usize,
                 8,
-                bounds.width() as usize,
-                &CGColorSpace::create_device_gray(),
-                kCGImageAlphaOnly,
+                bounds.width() as usize * 4,
+                &CGColorSpace::create_device_rgb(),
+                kCGImageAlphaPremultipliedLast,
             );
 
             // Move the origin to bottom left and account for scaling, this
@@ -200,6 +201,7 @@ impl FontSystemState {
 
             cx.set_should_subpixel_position_fonts(true);
             cx.set_should_subpixel_quantize_fonts(false);
+            cx.set_fill_color(&CGColor::rgb(1.0, 1.0, 1.0, 1.0));
             font.native_font()
                 .clone_with_font_size(font_size as CGFloat)
                 .draw_glyphs(

@@ -210,13 +210,11 @@ fragment float4 sprite_fragment(
     constexpr sampler atlas_sampler(mag_filter::linear, min_filter::linear);
     float4 color = input.color;
     float4 sample = atlas.sample(atlas_sampler, input.atlas_position);
-    float mask;
     if (input.compute_winding) {
-        mask = 1. - abs(1. - fmod(sample.r, 2.));
+        color.a *= 1. - abs(1. - fmod(sample.r, 2.));
     } else {
-        mask = sample.a;
+        color *= sample;
     }
-    color.a *= mask;
     return color;
 }
 
