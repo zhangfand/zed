@@ -171,7 +171,7 @@ impl FontSystemState {
     ) -> Option<(RectI, Vec<u8>)> {
         let font = &self.fonts[font_id.0];
         let scale = Transform2F::from_scale(scale_factor);
-        let bounds = font
+        let raster_bounds = font
             .raster_bounds(
                 glyph_id,
                 font_size,
@@ -181,26 +181,26 @@ impl FontSystemState {
             )
             .ok()?;
 
-        if bounds.width() == 0 || bounds.height() == 0 {
+        if raster_bounds.width() == 0 || raster_bounds.height() == 0 {
             None
         } else {
             // Make room for subpixel variants.
-            let bounds = RectI::new(bounds.origin(), bounds.size() + vec2i(1, 1));
-            let mut pixels = vec![0; bounds.width() as usize * bounds.height() as usize];
+            let canvas_size = raster_bounds.size() + vec2i(1, 1);
+            let mut pixels = vec![0; canvas_size.x() as usize * canvas_size.y() as usize];
             let cx = CGContext::create_bitmap_context(
                 Some(pixels.as_mut_ptr() as *mut _),
-                bounds.width() as usize,
-                bounds.height() as usize,
+                canvas_size.x() as usize,
+                canvas_size.y() as usize,
                 8,
-                bounds.width() as usize,
+                canvas_size.x() as usize,
                 &CGColorSpace::create_device_gray(),
                 kCGImageAlphaOnly,
             );
 
             // Move the origin to bottom left and account for scaling, this
             // makes drawing text consistent with the font-kit's raster_bounds.
-            cx.translate(0.0, bounds.height() as CGFloat);
-            let transform = scale.translate(-bounds.origin().to_f32());
+            cx.translate(0.0, (raster_bounds.height()) as CGFloat);
+            let transform = scale.translate(-raster_bounds.origin().to_f32());
             cx.set_text_matrix(&CGAffineTransform {
                 a: transform.matrix.m11() as CGFloat,
                 b: -transform.matrix.m21() as CGFloat,
@@ -223,7 +223,7 @@ impl FontSystemState {
                     cx,
                 );
 
-            Some((bounds, pixels))
+            Some((RectI::new(raster_bounds.origin(), canvas_size), pixels))
         }
     }
 
