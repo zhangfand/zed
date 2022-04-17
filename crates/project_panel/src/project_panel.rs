@@ -610,7 +610,6 @@ mod tests {
             Project::local(
                 params.client.clone(),
                 params.user_store.clone(),
-                params.languages.clone(),
                 params.fs.clone(),
                 cx,
             )

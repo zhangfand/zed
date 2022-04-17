@@ -14,6 +14,7 @@ use futures::{
     FutureExt, SinkExt, StreamExt,
 };
 use gpui::{App, AssetSource, AsyncAppContext, Task};
+use language::LanguageRegistry;
 use log::LevelFilter;
 use parking_lot::Mutex;
 use project::Fs;
@@ -109,7 +110,11 @@ fn main() {
     app.run(move |cx| {
         let http = http::client();
         let client = client::Client::new(http.clone());
-        let mut languages = languages::build_language_registry(login_shell_env_loaded);
+        languages::init(
+            Arc::from(zed::ROOT_PATH.clone()),
+            login_shell_env_loaded,
+            cx,
+        );
         let user_store = cx.add_model(|cx| UserStore::new(client.clone(), http.clone(), cx));
         let channel_list =
             cx.add_model(|cx| ChannelList::new(user_store.clone(), client.clone(), cx));
@@ -167,12 +172,12 @@ fn main() {
         })
         .detach();
 
-        languages.set_language_server_download_dir(zed::ROOT_PATH.clone());
+        let languages = LanguageRegistry::global(cx).clone();
         languages.set_theme(&settings.theme.editor.syntax);
+
         cx.set_global(settings);
 
         let app_state = Arc::new(AppState {
-            languages: Arc::new(languages),
             themes,
             channel_list,
             client,

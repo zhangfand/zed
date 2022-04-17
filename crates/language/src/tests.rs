@@ -23,8 +23,9 @@ fn init_logger() {
 }
 
 #[gpui::test]
-fn test_select_language() {
-    let registry = LanguageRegistry::test();
+fn test_select_language(cx: &mut gpui::MutableAppContext) {
+    LanguageRegistry::init_global(None, Task::ready(()), cx);
+    let registry = LanguageRegistry::global(cx).clone();
     registry.add(Arc::new(Language::new(
         LanguageConfig {
             name: "Rust".into(),

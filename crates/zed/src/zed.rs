@@ -18,6 +18,7 @@ use gpui::{
     platform::{WindowBounds, WindowOptions},
     AsyncAppContext, ModelHandle, ViewContext,
 };
+use language::LanguageRegistry;
 use lazy_static::lazy_static;
 pub use lsp;
 use project::Project;
@@ -96,7 +97,6 @@ pub fn init(app_state: &Arc<AppState>, cx: &mut gpui::MutableAppContext) {
                                     let project = Project::local(
                                         app_state.client.clone(),
                                         app_state.user_store.clone(),
-                                        app_state.languages.clone(),
                                         app_state.fs.clone(),
                                         cx,
                                     );
@@ -117,7 +117,7 @@ pub fn init(app_state: &Arc<AppState>, cx: &mut gpui::MutableAppContext) {
         |workspace: &mut Workspace, _: &DebugElements, cx: &mut ViewContext<Workspace>| {
             let content = to_string_pretty(&cx.debug_elements()).unwrap();
             let project = workspace.project().clone();
-            let json_language = project.read(cx).languages().get_language("JSON").unwrap();
+            let json_language = LanguageRegistry::global(cx).get_language("JSON").unwrap();
             if project.read(cx).is_remote() {
                 cx.propagate_action();
             } else if let Some(buffer) = project
@@ -168,7 +168,6 @@ pub fn build_workspace(
         project,
         client: app_state.client.clone(),
         fs: app_state.fs.clone(),
-        languages: app_state.languages.clone(),
         themes: app_state.themes.clone(),
         user_store: app_state.user_store.clone(),
         channel_list: app_state.channel_list.clone(),
@@ -177,7 +176,7 @@ pub fn build_workspace(
     let project = workspace.project().clone();
 
     let theme_names = app_state.themes.list().collect();
-    let language_names = app_state.languages.language_names();
+    let language_names = LanguageRegistry::global(cx).language_names();
 
     project.update(cx, |project, _| {
         project.set_language_server_settings(serde_json::json!({
@@ -212,9 +211,8 @@ pub fn build_workspace(
     let diagnostic_message = cx.add_view(|_| editor::items::DiagnosticMessage::new());
     let diagnostic_summary =
         cx.add_view(|cx| diagnostics::items::DiagnosticSummary::new(workspace.project(), cx));
-    let lsp_status = cx.add_view(|cx| {
-        workspace::lsp_status::LspStatus::new(workspace.project(), app_state.languages.clone(), cx)
-    });
+    let lsp_status =
+        cx.add_view(|cx| workspace::lsp_status::LspStatus::new(workspace.project(), cx));
     let cursor_position = cx.add_view(|_| editor::items::CursorPosition::new());
     workspace.status_bar().update(cx, |status_bar, cx| {
         status_bar.add_left_item(diagnostic_summary, cx);
@@ -308,6 +306,7 @@ mod tests {
 
     #[gpui::test]
     async fn test_open_paths_action(cx: &mut TestAppContext) {
+        language::init_test(cx);
         let app_state = cx.update(test_app_state);
         let dir = temp_tree(json!({
             "a": {
@@ -361,6 +360,7 @@ mod tests {
 
     #[gpui::test]
     async fn test_new_empty_workspace(cx: &mut TestAppContext) {
+        language::init_test(cx);
         let app_state = cx.update(test_app_state);
         cx.update(|cx| {
             workspace::init(&app_state.client, cx);
@@ -392,6 +392,7 @@ mod tests {
 
     #[gpui::test]
     async fn test_open_entry(cx: &mut TestAppContext) {
+        language::init_test(cx);
         let app_state = cx.update(test_app_state);
         app_state
             .fs
@@ -513,6 +514,7 @@ mod tests {
 
     #[gpui::test]
     async fn test_open_paths(cx: &mut TestAppContext) {
+        language::init_test(cx);
         let app_state = cx.update(test_app_state);
         let fs = app_state.fs.as_fake();
         fs.insert_dir("/dir1").await;
@@ -591,6 +593,8 @@ mod tests {
 
     #[gpui::test]
     async fn test_save_conflicting_item(cx: &mut TestAppContext) {
+        language::init_test(cx);
+
         let app_state = cx.update(test_app_state);
         let fs = app_state.fs.as_fake();
         fs.insert_tree("/root", json!({ "a.txt": "" })).await;
@@ -640,6 +644,7 @@ mod tests {
 
     #[gpui::test]
     async fn test_open_and_save_new_file(cx: &mut TestAppContext) {
+        language::init_test(cx);
         let app_state = cx.update(test_app_state);
         app_state.fs.as_fake().insert_dir("/root").await;
         let params = cx.update(|cx| WorkspaceParams::local(&app_state, cx));
@@ -740,6 +745,7 @@ mod tests {
 
     #[gpui::test]
     async fn test_setting_language_when_saving_as_single_file_worktree(cx: &mut TestAppContext) {
+        language::init_test(cx);
         let app_state = cx.update(test_app_state);
         app_state.fs.as_fake().insert_dir("/root").await;
         let params = cx.update(|cx| WorkspaceParams::local(&app_state, cx));
@@ -777,6 +783,7 @@ mod tests {
 
     #[gpui::test]
     async fn test_pane_actions(cx: &mut TestAppContext) {
+        language::init_test(cx);
         cx.foreground().forbid_parking();
 
         cx.update(|cx| pane::init(cx));
@@ -861,6 +868,7 @@ mod tests {
 
     #[gpui::test]
     async fn test_navigation(cx: &mut TestAppContext) {
+        language::init_test(cx);
         let app_state = cx.update(test_app_state);
         app_state
             .fs

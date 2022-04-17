@@ -13,7 +13,7 @@ use futures::{
     future::{BoxFuture, Shared},
     FutureExt, TryFutureExt,
 };
-use gpui::{MutableAppContext, Task};
+use gpui::{AppContext, MutableAppContext, Task};
 use highlight_map::HighlightMap;
 use lazy_static::lazy_static;
 use parking_lot::{Mutex, RwLock};
@@ -195,21 +195,24 @@ pub struct LanguageRegistry {
 }
 
 impl LanguageRegistry {
-    pub fn new(login_shell_env_loaded: Task<()>) -> Self {
+    pub fn init_global(
+        language_server_download_dir: Option<Arc<Path>>,
+        login_shell_env_loaded: Task<()>,
+        cx: &mut MutableAppContext,
+    ) {
         let (lsp_binary_statuses_tx, lsp_binary_statuses_rx) = async_broadcast::broadcast(16);
-        Self {
-            language_server_download_dir: None,
+        cx.set_global(Arc::new(Self {
             languages: Default::default(),
+            language_server_download_dir,
             lsp_binary_statuses_tx,
             lsp_binary_statuses_rx,
             login_shell_env_loaded: login_shell_env_loaded.shared(),
             lsp_binary_paths: Default::default(),
-        }
+        }))
     }
 
-    #[cfg(any(test, feature = "test-support"))]
-    pub fn test() -> Self {
-        Self::new(Task::ready(()))
+    pub fn global(cx: &AppContext) -> &Arc<Self> {
+        cx.global::<Arc<Self>>()
     }
 
     pub fn add(&self, language: Arc<Language>) {
@@ -683,4 +686,9 @@ pub fn range_to_lsp(range: Range<PointUtf16>) -> lsp::Range {
 
 pub fn range_from_lsp(range: lsp::Range) -> Range<PointUtf16> {
     point_from_lsp(range.start)..point_from_lsp(range.end)
+}
+
+#[cfg(any(test, feature = "test-support"))]
+pub fn init_test(cx: &mut gpui::TestAppContext) {
+    cx.update(|cx| LanguageRegistry::init_global(None, Task::ready(()), cx))
 }

@@ -826,6 +826,7 @@ mod tests {
 
     #[gpui::test]
     async fn test_project_search(cx: &mut TestAppContext) {
+        language::init_test(cx);
         let fonts = cx.font_cache();
         let mut theme = gpui::fonts::with_font_cache(fonts.clone(), || theme::Theme::default());
         theme.search.match_background = Color::red();

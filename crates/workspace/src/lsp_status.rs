@@ -11,7 +11,6 @@ use settings::Settings;
 use smallvec::SmallVec;
 use std::cmp::Reverse;
 use std::fmt::Write;
-use std::sync::Arc;
 
 actions!(lsp_status, [DismissErrorMessage]);
 
@@ -27,12 +26,8 @@ pub fn init(cx: &mut MutableAppContext) {
 }
 
 impl LspStatus {
-    pub fn new(
-        project: &ModelHandle<Project>,
-        languages: Arc<LanguageRegistry>,
-        cx: &mut ViewContext<Self>,
-    ) -> Self {
-        let mut status_events = languages.language_server_binary_statuses();
+    pub fn new(project: &ModelHandle<Project>, cx: &mut ViewContext<Self>) -> Self {
+        let mut status_events = LanguageRegistry::global(cx).language_server_binary_statuses();
         cx.spawn_weak(|this, mut cx| async move {
             while let Some((language, event)) = status_events.next().await {
                 if let Some(this) = this.upgrade(&cx) {

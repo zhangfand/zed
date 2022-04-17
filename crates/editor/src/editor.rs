@@ -6405,7 +6405,7 @@ mod tests {
         platform::{WindowBounds, WindowOptions},
     };
     use indoc::indoc;
-    use language::{FakeLspAdapter, LanguageConfig};
+    use language::{FakeLspAdapter, LanguageConfig, LanguageRegistry};
     use lsp::FakeLanguageServer;
     use project::FakeFs;
     use settings::LanguageOverride;
@@ -9041,6 +9041,7 @@ mod tests {
     #[gpui::test]
     async fn test_format_during_save(cx: &mut gpui::TestAppContext) {
         cx.foreground().forbid_parking();
+        language::init_test(cx);
         cx.update(|cx| cx.set_global(Settings::test(cx)));
 
         let mut language = Language::new(
@@ -9062,9 +9063,9 @@ mod tests {
         let fs = FakeFs::new(cx.background().clone());
         fs.insert_file("/file.rs", Default::default()).await;
 
-        let project = Project::test(fs, cx);
-        project.update(cx, |project, _| project.languages().add(Arc::new(language)));
+        cx.read(|cx| LanguageRegistry::global(cx).add(Arc::new(language)));
 
+        let project = Project::test(fs, cx);
         let worktree_id = project
             .update(cx, |project, cx| {
                 project.find_or_create_local_worktree("/file.rs", true, cx)
@@ -9163,6 +9164,7 @@ mod tests {
     #[gpui::test]
     async fn test_completion(cx: &mut gpui::TestAppContext) {
         cx.update(|cx| cx.set_global(Settings::test(cx)));
+        language::init_test(cx);
 
         let mut language = Language::new(
             LanguageConfig {
@@ -9182,6 +9184,7 @@ mod tests {
             },
             ..Default::default()
         });
+        cx.read(|cx| LanguageRegistry::global(cx).add(Arc::new(language)));
 
         let text = "
             one
@@ -9194,8 +9197,6 @@ mod tests {
         fs.insert_file("/file.rs", text).await;
 
         let project = Project::test(fs, cx);
-        project.update(cx, |project, _| project.languages().add(Arc::new(language)));
-
         let worktree_id = project
             .update(cx, |project, cx| {
                 project.find_or_create_local_worktree("/file.rs", true, cx)

@@ -707,6 +707,7 @@ mod tests {
 
     #[gpui::test]
     async fn test_diagnostics(cx: &mut TestAppContext) {
+        language::init_test(cx);
         let params = cx.update(WorkspaceParams::test);
         let project = params.project.clone();
         let workspace = cx.add_view(0, |cx| Workspace::new(&params, cx));

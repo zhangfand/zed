@@ -20,6 +20,7 @@ impl<'a> VimTestContext<'a> {
         enabled: bool,
         initial_editor_text: &str,
     ) -> VimTestContext<'a> {
+        language::init_test(cx);
         cx.update(|cx| {
             editor::init(cx);
             crate::init(cx);

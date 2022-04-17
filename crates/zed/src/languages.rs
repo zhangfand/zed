@@ -1,7 +1,7 @@
-use gpui::Task;
+use gpui::{MutableAppContext, Task};
 pub use language::*;
 use rust_embed::RustEmbed;
-use std::{borrow::Cow, str, sync::Arc};
+use std::{borrow::Cow, path::Path, str, sync::Arc};
 
 mod c;
 mod installation;
@@ -14,8 +14,16 @@ mod typescript;
 #[exclude = "*.rs"]
 struct LanguageDir;
 
-pub fn build_language_registry(login_shell_env_loaded: Task<()>) -> LanguageRegistry {
-    let languages = LanguageRegistry::new(login_shell_env_loaded);
+pub fn init(
+    language_server_download_dir: Arc<Path>,
+    login_shell_env_loaded: Task<()>,
+    cx: &mut MutableAppContext,
+) {
+    let languages = LanguageRegistry::init_global(
+        Some(language_server_download_dir),
+        login_shell_env_loaded,
+        cx,
+    );
     for (name, grammar, lsp_adapter) in [
         (
             "c",
@@ -53,7 +61,7 @@ pub fn build_language_registry(login_shell_env_loaded: Task<()>) -> LanguageRegi
             Some(Arc::new(typescript::TypeScriptLspAdapter)),
         ),
     ] {
-        languages.add(Arc::new(language(name, grammar, lsp_adapter)));
+        LanguageRegistry::global(cx).add(Arc::new(language(name, grammar, lsp_adapter)));
     }
     languages
 }

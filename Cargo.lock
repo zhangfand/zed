@@ -1949,6 +1949,7 @@ dependencies = [
  "env_logger 0.8.3",
  "fuzzy",
  "gpui",
+ "language",
  "picker",
  "postage",
  "project",

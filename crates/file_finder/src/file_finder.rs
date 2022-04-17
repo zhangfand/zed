@@ -269,6 +269,7 @@ mod tests {
 
     #[gpui::test]
     async fn test_matching_paths(cx: &mut gpui::TestAppContext) {
+        language::init_test(cx);
         cx.update(|cx| {
             super::init(cx);
             editor::init(cx);

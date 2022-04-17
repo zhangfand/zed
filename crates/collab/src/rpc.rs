@@ -1240,8 +1240,9 @@ mod tests {
 
     #[gpui::test(iterations = 10)]
     async fn test_share_project(cx_a: &mut TestAppContext, cx_b: &mut TestAppContext) {
+        language::init_test(cx_a);
+        language::init_test(cx_b);
         let (window_b, _) = cx_b.add_window(|_| EmptyView);
-        let lang_registry = Arc::new(LanguageRegistry::test());
         let fs = FakeFs::new(cx_a.background());
         cx_a.foreground().forbid_parking();
 
@@ -1264,7 +1265,6 @@ mod tests {
             Project::local(
                 client_a.clone(),
                 client_a.user_store.clone(),
-                lang_registry.clone(),
                 fs.clone(),
                 cx,
             )
@@ -1287,7 +1287,6 @@ mod tests {
             project_id,
             client_b.clone(),
             client_b.user_store.clone(),
-            lang_registry.clone(),
             fs.clone(),
             &mut cx_b.to_async(),
         )
@@ -1363,7 +1362,8 @@ mod tests {
 
     #[gpui::test(iterations = 10)]
     async fn test_unshare_project(cx_a: &mut TestAppContext, cx_b: &mut TestAppContext) {
-        let lang_registry = Arc::new(LanguageRegistry::test());
+        language::init_test(cx_a);
+        language::init_test(cx_b);
         let fs = FakeFs::new(cx_a.background());
         cx_a.foreground().forbid_parking();
 
@@ -1386,7 +1386,6 @@ mod tests {
             Project::local(
                 client_a.clone(),
                 client_a.user_store.clone(),
-                lang_registry.clone(),
                 fs.clone(),
                 cx,
             )
@@ -1410,7 +1409,6 @@ mod tests {
             project_id,
             client_b.clone(),
             client_b.user_store.clone(),
-            lang_registry.clone(),
             fs.clone(),
             &mut cx_b.to_async(),
         )
@@ -1442,7 +1440,6 @@ mod tests {
             project_id,
             client_b.clone(),
             client_b.user_store.clone(),
-            lang_registry.clone(),
             fs.clone(),
             &mut cx_b.to_async(),
         )
@@ -1456,7 +1453,9 @@ mod tests {
 
     #[gpui::test(iterations = 10)]
     async fn test_host_disconnect(cx_a: &mut TestAppContext, cx_b: &mut TestAppContext) {
-        let lang_registry = Arc::new(LanguageRegistry::test());
+        language::init_test(cx_a);
+        language::init_test(cx_b);
+
         let fs = FakeFs::new(cx_a.background());
         cx_a.foreground().forbid_parking();
 
@@ -1479,7 +1478,6 @@ mod tests {
             Project::local(
                 client_a.clone(),
                 client_a.user_store.clone(),
-                lang_registry.clone(),
                 fs.clone(),
                 cx,
             )
@@ -1503,7 +1501,6 @@ mod tests {
             project_id,
             client_b.clone(),
             client_b.user_store.clone(),
-            lang_registry.clone(),
             fs.clone(),
             &mut cx_b.to_async(),
         )
@@ -1543,7 +1540,6 @@ mod tests {
             project_id,
             client_b.clone(),
             client_b.user_store.clone(),
-            lang_registry.clone(),
             fs.clone(),
             &mut cx_b.to_async(),
         )
@@ -1561,7 +1557,9 @@ mod tests {
         cx_b: &mut TestAppContext,
         cx_c: &mut TestAppContext,
     ) {
-        let lang_registry = Arc::new(LanguageRegistry::test());
+        language::init_test(cx_a);
+        language::init_test(cx_b);
+        language::init_test(cx_c);
         let fs = FakeFs::new(cx_a.background());
         cx_a.foreground().forbid_parking();
 
@@ -1585,7 +1583,6 @@ mod tests {
             Project::local(
                 client_a.clone(),
                 client_a.user_store.clone(),
-                lang_registry.clone(),
                 fs.clone(),
                 cx,
             )
@@ -1608,7 +1605,6 @@ mod tests {
             project_id,
             client_b.clone(),
             client_b.user_store.clone(),
-            lang_registry.clone(),
             fs.clone(),
             &mut cx_b.to_async(),
         )
@@ -1618,7 +1614,6 @@ mod tests {
             project_id,
             client_c.clone(),
             client_c.user_store.clone(),
-            lang_registry.clone(),
             fs.clone(),
             &mut cx_c.to_async(),
         )
@@ -1737,7 +1732,8 @@ mod tests {
     #[gpui::test(iterations = 10)]
     async fn test_buffer_conflict_after_save(cx_a: &mut TestAppContext, cx_b: &mut TestAppContext) {
         cx_a.foreground().forbid_parking();
-        let lang_registry = Arc::new(LanguageRegistry::test());
+        language::init_test(cx_a);
+        language::init_test(cx_b);
         let fs = FakeFs::new(cx_a.background());
 
         // Connect to a server as 2 clients.
@@ -1759,7 +1755,6 @@ mod tests {
             Project::local(
                 client_a.clone(),
                 client_a.user_store.clone(),
-                lang_registry.clone(),
                 fs.clone(),
                 cx,
             )
@@ -1782,7 +1777,6 @@ mod tests {
             project_id,
             client_b.clone(),
             client_b.user_store.clone(),
-            lang_registry.clone(),
             fs.clone(),
             &mut cx_b.to_async(),
         )
@@ -1819,7 +1813,9 @@ mod tests {
     #[gpui::test(iterations = 10)]
     async fn test_buffer_reloading(cx_a: &mut TestAppContext, cx_b: &mut TestAppContext) {
         cx_a.foreground().forbid_parking();
-        let lang_registry = Arc::new(LanguageRegistry::test());
+        language::init_test(cx_a);
+        language::init_test(cx_b);
+
         let fs = FakeFs::new(cx_a.background());
 
         // Connect to a server as 2 clients.
@@ -1841,7 +1837,6 @@ mod tests {
             Project::local(
                 client_a.clone(),
                 client_a.user_store.clone(),
-                lang_registry.clone(),
                 fs.clone(),
                 cx,
             )
@@ -1864,7 +1859,6 @@ mod tests {
             project_id,
             client_b.clone(),
             client_b.user_store.clone(),
-            lang_registry.clone(),
             fs.clone(),
             &mut cx_b.to_async(),
         )
@@ -1901,7 +1895,9 @@ mod tests {
         cx_b: &mut TestAppContext,
     ) {
         cx_a.foreground().forbid_parking();
-        let lang_registry = Arc::new(LanguageRegistry::test());
+        language::init_test(cx_a);
+        language::init_test(cx_b);
+
         let fs = FakeFs::new(cx_a.background());
 
         // Connect to a server as 2 clients.
@@ -1922,7 +1918,6 @@ mod tests {
             Project::local(
                 client_a.clone(),
                 client_a.user_store.clone(),
-                lang_registry.clone(),
                 fs.clone(),
                 cx,
             )
@@ -1945,7 +1940,6 @@ mod tests {
             project_id,
             client_b.clone(),
             client_b.user_store.clone(),
-            lang_registry.clone(),
             fs.clone(),
             &mut cx_b.to_async(),
         )
@@ -1980,7 +1974,9 @@ mod tests {
         cx_b: &mut TestAppContext,
     ) {
         cx_a.foreground().forbid_parking();
-        let lang_registry = Arc::new(LanguageRegistry::test());
+        language::init_test(cx_a);
+        language::init_test(cx_b);
+
         let fs = FakeFs::new(cx_a.background());
 
         // Connect to a server as 2 clients.
@@ -2001,7 +1997,6 @@ mod tests {
             Project::local(
                 client_a.clone(),
                 client_a.user_store.clone(),
-                lang_registry.clone(),
                 fs.clone(),
                 cx,
             )
@@ -2024,7 +2019,6 @@ mod tests {
             project_id,
             client_b.clone(),
             client_b.user_store.clone(),
-            lang_registry.clone(),
             fs.clone(),
             &mut cx_b.to_async(),
         )
@@ -2052,7 +2046,8 @@ mod tests {
     #[gpui::test(iterations = 10)]
     async fn test_leaving_project(cx_a: &mut TestAppContext, cx_b: &mut TestAppContext) {
         cx_a.foreground().forbid_parking();
-        let lang_registry = Arc::new(LanguageRegistry::test());
+        language::init_test(cx_a);
+        language::init_test(cx_b);
         let fs = FakeFs::new(cx_a.background());
 
         // Connect to a server as 2 clients.
@@ -2074,7 +2069,6 @@ mod tests {
             Project::local(
                 client_a.clone(),
                 client_a.user_store.clone(),
-                lang_registry.clone(),
                 fs.clone(),
                 cx,
             )
@@ -2101,7 +2095,6 @@ mod tests {
             project_id,
             client_b.clone(),
             client_b.user_store.clone(),
-            lang_registry.clone(),
             fs.clone(),
             &mut cx_b.to_async(),
         )
@@ -2124,7 +2117,6 @@ mod tests {
             project_id,
             client_b.clone(),
             client_b.user_store.clone(),
-            lang_registry.clone(),
             fs.clone(),
             &mut cx_b.to_async(),
         )
@@ -2151,7 +2143,9 @@ mod tests {
         cx_b: &mut TestAppContext,
     ) {
         cx_a.foreground().forbid_parking();
-        let lang_registry = Arc::new(LanguageRegistry::test());
+        language::init_test(cx_a);
+        language::init_test(cx_b);
+
         let fs = FakeFs::new(cx_a.background());
 
         // Set up a fake language server.
@@ -2164,7 +2158,9 @@ mod tests {
             Some(tree_sitter_rust::language()),
         );
         let mut fake_language_servers = language.set_fake_lsp_adapter(Default::default());
-        lang_registry.add(Arc::new(language));
+        let language = Arc::new(language);
+        cx_a.read(|cx| LanguageRegistry::global(cx).add(language.clone()));
+        cx_b.read(|cx| LanguageRegistry::global(cx).add(language.clone()));
 
         // Connect to a server as 2 clients.
         let mut server = TestServer::start(cx_a.foreground(), cx_a.background()).await;
@@ -2185,7 +2181,6 @@ mod tests {
             Project::local(
                 client_a.clone(),
                 client_a.user_store.clone(),
-                lang_registry.clone(),
                 fs.clone(),
                 cx,
             )
@@ -2258,7 +2253,6 @@ mod tests {
             project_id,
             client_b.clone(),
             client_b.user_store.clone(),
-            lang_registry.clone(),
             fs.clone(),
             &mut cx_b.to_async(),
         )
@@ -2390,7 +2384,8 @@ mod tests {
         cx_b: &mut TestAppContext,
     ) {
         cx_a.foreground().forbid_parking();
-        let lang_registry = Arc::new(LanguageRegistry::test());
+        language::init_test(cx_a);
+        language::init_test(cx_b);
         let fs = FakeFs::new(cx_a.background());
 
         // Set up a fake language server.
@@ -2412,7 +2407,9 @@ mod tests {
             },
             ..Default::default()
         });
-        lang_registry.add(Arc::new(language));
+        let language = Arc::new(language);
+        cx_a.read(|cx| LanguageRegistry::global(cx).add(language.clone()));
+        cx_b.read(|cx| LanguageRegistry::global(cx).add(language.clone()));
 
         // Connect to a server as 2 clients.
         let mut server = TestServer::start(cx_a.foreground(), cx_a.background()).await;
@@ -2433,7 +2430,6 @@ mod tests {
             Project::local(
                 client_a.clone(),
                 client_a.user_store.clone(),
-                lang_registry.clone(),
                 fs.clone(),
                 cx,
             )
@@ -2456,7 +2452,6 @@ mod tests {
             project_id,
             client_b.clone(),
             client_b.user_store.clone(),
-            lang_registry.clone(),
             fs.clone(),
             &mut cx_b.to_async(),
         )
@@ -2592,7 +2587,9 @@ mod tests {
     #[gpui::test(iterations = 10)]
     async fn test_reloading_buffer_manually(cx_a: &mut TestAppContext, cx_b: &mut TestAppContext) {
         cx_a.foreground().forbid_parking();
-        let lang_registry = Arc::new(LanguageRegistry::test());
+        language::init_test(cx_a);
+        language::init_test(cx_b);
+
         let fs = FakeFs::new(cx_a.background());
 
         // Connect to a server as 2 clients.
@@ -2613,7 +2610,6 @@ mod tests {
             Project::local(
                 client_a.clone(),
                 client_a.user_store.clone(),
-                lang_registry.clone(),
                 fs.clone(),
                 cx,
             )
@@ -2640,7 +2636,6 @@ mod tests {
             project_id,
             client_b.clone(),
             client_b.user_store.clone(),
-            lang_registry.clone(),
             fs.clone(),
             &mut cx_b.to_async(),
         )
@@ -2709,7 +2704,8 @@ mod tests {
     #[gpui::test(iterations = 10)]
     async fn test_formatting_buffer(cx_a: &mut TestAppContext, cx_b: &mut TestAppContext) {
         cx_a.foreground().forbid_parking();
-        let lang_registry = Arc::new(LanguageRegistry::test());
+        language::init_test(cx_a);
+        language::init_test(cx_b);
         let fs = FakeFs::new(cx_a.background());
 
         // Set up a fake language server.
@@ -2722,7 +2718,9 @@ mod tests {
             Some(tree_sitter_rust::language()),
         );
         let mut fake_language_servers = language.set_fake_lsp_adapter(Default::default());
-        lang_registry.add(Arc::new(language));
+        let language = Arc::new(language);
+        cx_a.read(|cx| LanguageRegistry::global(cx).add(language.clone()));
+        cx_b.read(|cx| LanguageRegistry::global(cx).add(language.clone()));
 
         // Connect to a server as 2 clients.
         let mut server = TestServer::start(cx_a.foreground(), cx_a.background()).await;
@@ -2742,7 +2740,6 @@ mod tests {
             Project::local(
                 client_a.clone(),
                 client_a.user_store.clone(),
-                lang_registry.clone(),
                 fs.clone(),
                 cx,
             )
@@ -2765,7 +2762,6 @@ mod tests {
             project_id,
             client_b.clone(),
             client_b.user_store.clone(),
-            lang_registry.clone(),
             fs.clone(),
             &mut cx_b.to_async(),
         )
@@ -2807,7 +2803,8 @@ mod tests {
     #[gpui::test(iterations = 10)]
     async fn test_definition(cx_a: &mut TestAppContext, cx_b: &mut TestAppContext) {
         cx_a.foreground().forbid_parking();
-        let lang_registry = Arc::new(LanguageRegistry::test());
+        language::init_test(cx_a);
+        language::init_test(cx_b);
         let fs = FakeFs::new(cx_a.background());
         fs.insert_tree(
             "/root-1",
@@ -2835,7 +2832,9 @@ mod tests {
             Some(tree_sitter_rust::language()),
         );
         let mut fake_language_servers = language.set_fake_lsp_adapter(Default::default());
-        lang_registry.add(Arc::new(language));
+        let language = Arc::new(language);
+        cx_a.read(|cx| LanguageRegistry::global(cx).add(language.clone()));
+        cx_b.read(|cx| LanguageRegistry::global(cx).add(language.clone()));
 
         // Connect to a server as 2 clients.
         let mut server = TestServer::start(cx_a.foreground(), cx_a.background()).await;
@@ -2847,7 +2846,6 @@ mod tests {
             Project::local(
                 client_a.clone(),
                 client_a.user_store.clone(),
-                lang_registry.clone(),
                 fs.clone(),
                 cx,
             )
@@ -2870,7 +2868,6 @@ mod tests {
             project_id,
             client_b.clone(),
             client_b.user_store.clone(),
-            lang_registry.clone(),
             fs.clone(),
             &mut cx_b.to_async(),
         )
@@ -2951,7 +2948,8 @@ mod tests {
     #[gpui::test(iterations = 10)]
     async fn test_references(cx_a: &mut TestAppContext, cx_b: &mut TestAppContext) {
         cx_a.foreground().forbid_parking();
-        let lang_registry = Arc::new(LanguageRegistry::test());
+        language::init_test(cx_a);
+        language::init_test(cx_b);
         let fs = FakeFs::new(cx_a.background());
         fs.insert_tree(
             "/root-1",
@@ -2980,7 +2978,9 @@ mod tests {
             Some(tree_sitter_rust::language()),
         );
         let mut fake_language_servers = language.set_fake_lsp_adapter(Default::default());
-        lang_registry.add(Arc::new(language));
+        let language = Arc::new(language);
+        cx_a.read(|cx| LanguageRegistry::global(cx).add(language.clone()));
+        cx_b.read(|cx| LanguageRegistry::global(cx).add(language.clone()));
 
         // Connect to a server as 2 clients.
         let mut server = TestServer::start(cx_a.foreground(), cx_a.background()).await;
@@ -2992,7 +2992,6 @@ mod tests {
             Project::local(
                 client_a.clone(),
                 client_a.user_store.clone(),
-                lang_registry.clone(),
                 fs.clone(),
                 cx,
             )
@@ -3015,7 +3014,6 @@ mod tests {
             project_id,
             client_b.clone(),
             client_b.user_store.clone(),
-            lang_registry.clone(),
             fs.clone(),
             &mut cx_b.to_async(),
         )
@@ -3092,7 +3090,8 @@ mod tests {
     #[gpui::test(iterations = 10)]
     async fn test_project_search(cx_a: &mut TestAppContext, cx_b: &mut TestAppContext) {
         cx_a.foreground().forbid_parking();
-        let lang_registry = Arc::new(LanguageRegistry::test());
+        language::init_test(cx_a);
+        language::init_test(cx_b);
         let fs = FakeFs::new(cx_a.background());
         fs.insert_tree(
             "/root-1",
@@ -3123,7 +3122,6 @@ mod tests {
             Project::local(
                 client_a.clone(),
                 client_a.user_store.clone(),
-                lang_registry.clone(),
                 fs.clone(),
                 cx,
             )
@@ -3156,7 +3154,6 @@ mod tests {
             project_id,
             client_b.clone(),
             client_b.user_store.clone(),
-            lang_registry.clone(),
             fs.clone(),
             &mut cx_b.to_async(),
         )
@@ -3199,7 +3196,8 @@ mod tests {
     #[gpui::test(iterations = 10)]
     async fn test_document_highlights(cx_a: &mut TestAppContext, cx_b: &mut TestAppContext) {
         cx_a.foreground().forbid_parking();
-        let lang_registry = Arc::new(LanguageRegistry::test());
+        language::init_test(cx_a);
+        language::init_test(cx_b);
         let fs = FakeFs::new(cx_a.background());
         fs.insert_tree(
             "/root-1",
@@ -3220,7 +3218,9 @@ mod tests {
             Some(tree_sitter_rust::language()),
         );
         let mut fake_language_servers = language.set_fake_lsp_adapter(Default::default());
-        lang_registry.add(Arc::new(language));
+        let language = Arc::new(language);
+        cx_a.read(|cx| LanguageRegistry::global(cx).add(language.clone()));
+        cx_b.read(|cx| LanguageRegistry::global(cx).add(language.clone()));
 
         // Connect to a server as 2 clients.
         let mut server = TestServer::start(cx_a.foreground(), cx_a.background()).await;
@@ -3232,7 +3232,6 @@ mod tests {
             Project::local(
                 client_a.clone(),
                 client_a.user_store.clone(),
-                lang_registry.clone(),
                 fs.clone(),
                 cx,
             )
@@ -3255,7 +3254,6 @@ mod tests {
             project_id,
             client_b.clone(),
             client_b.user_store.clone(),
-            lang_registry.clone(),
             fs.clone(),
             &mut cx_b.to_async(),
         )
@@ -3336,7 +3334,8 @@ mod tests {
     #[gpui::test(iterations = 10)]
     async fn test_project_symbols(cx_a: &mut TestAppContext, cx_b: &mut TestAppContext) {
         cx_a.foreground().forbid_parking();
-        let lang_registry = Arc::new(LanguageRegistry::test());
+        language::init_test(cx_a);
+        language::init_test(cx_b);
         let fs = FakeFs::new(cx_a.background());
         fs.insert_tree(
             "/code",
@@ -3365,7 +3364,9 @@ mod tests {
             Some(tree_sitter_rust::language()),
         );
         let mut fake_language_servers = language.set_fake_lsp_adapter(Default::default());
-        lang_registry.add(Arc::new(language));
+        let language = Arc::new(language);
+        cx_a.read(|cx| LanguageRegistry::global(cx).add(language.clone()));
+        cx_b.read(|cx| LanguageRegistry::global(cx).add(language.clone()));
 
         // Connect to a server as 2 clients.
         let mut server = TestServer::start(cx_a.foreground(), cx_a.background()).await;
@@ -3377,7 +3378,6 @@ mod tests {
             Project::local(
                 client_a.clone(),
                 client_a.user_store.clone(),
-                lang_registry.clone(),
                 fs.clone(),
                 cx,
             )
@@ -3400,7 +3400,6 @@ mod tests {
             project_id,
             client_b.clone(),
             client_b.user_store.clone(),
-            lang_registry.clone(),
             fs.clone(),
             &mut cx_b.to_async(),
         )
@@ -3473,7 +3472,8 @@ mod tests {
         mut rng: StdRng,
     ) {
         cx_a.foreground().forbid_parking();
-        let lang_registry = Arc::new(LanguageRegistry::test());
+        language::init_test(cx_a);
+        language::init_test(cx_b);
         let fs = FakeFs::new(cx_a.background());
         fs.insert_tree(
             "/root",
@@ -3495,7 +3495,9 @@ mod tests {
             Some(tree_sitter_rust::language()),
         );
         let mut fake_language_servers = language.set_fake_lsp_adapter(Default::default());
-        lang_registry.add(Arc::new(language));
+        let language = Arc::new(language);
+        cx_a.read(|cx| LanguageRegistry::global(cx).add(language.clone()));
+        cx_b.read(|cx| LanguageRegistry::global(cx).add(language.clone()));
 
         // Connect to a server as 2 clients.
         let mut server = TestServer::start(cx_a.foreground(), cx_a.background()).await;
@@ -3507,7 +3509,6 @@ mod tests {
             Project::local(
                 client_a.clone(),
                 client_a.user_store.clone(),
-                lang_registry.clone(),
                 fs.clone(),
                 cx,
             )
@@ -3531,7 +3532,6 @@ mod tests {
             project_id,
             client_b.clone(),
             client_b.user_store.clone(),
-            lang_registry.clone(),
             fs.clone(),
             &mut cx_b.to_async(),
         )
@@ -3578,7 +3578,8 @@ mod tests {
         cx_b: &mut TestAppContext,
     ) {
         cx_a.foreground().forbid_parking();
-        let lang_registry = Arc::new(LanguageRegistry::test());
+        language::init_test(cx_a);
+        language::init_test(cx_b);
         let fs = FakeFs::new(cx_a.background());
         cx_b.update(|cx| editor::init(cx));
 
@@ -3592,7 +3593,9 @@ mod tests {
             Some(tree_sitter_rust::language()),
         );
         let mut fake_language_servers = language.set_fake_lsp_adapter(Default::default());
-        lang_registry.add(Arc::new(language));
+        let language = Arc::new(language);
+        cx_a.read(|cx| LanguageRegistry::global(cx).add(language.clone()));
+        cx_b.read(|cx| LanguageRegistry::global(cx).add(language.clone()));
 
         // Connect to a server as 2 clients.
         let mut server = TestServer::start(cx_a.foreground(), cx_a.background()).await;
@@ -3613,7 +3616,6 @@ mod tests {
             Project::local(
                 client_a.clone(),
                 client_a.user_store.clone(),
-                lang_registry.clone(),
                 fs.clone(),
                 cx,
             )
@@ -3636,14 +3638,12 @@ mod tests {
             project_id,
             client_b.clone(),
             client_b.user_store.clone(),
-            lang_registry.clone(),
             fs.clone(),
             &mut cx_b.to_async(),
         )
         .await
         .unwrap();
         let mut params = cx_b.update(WorkspaceParams::test);
-        params.languages = lang_registry.clone();
         params.client = client_b.client.clone();
         params.user_store = client_b.user_store.clone();
         params.project = project_b;
@@ -3817,7 +3817,8 @@ mod tests {
     #[gpui::test(iterations = 10)]
     async fn test_collaborating_with_renames(cx_a: &mut TestAppContext, cx_b: &mut TestAppContext) {
         cx_a.foreground().forbid_parking();
-        let lang_registry = Arc::new(LanguageRegistry::test());
+        language::init_test(cx_a);
+        language::init_test(cx_b);
         let fs = FakeFs::new(cx_a.background());
         cx_b.update(|cx| editor::init(cx));
 
@@ -3831,7 +3832,9 @@ mod tests {
             Some(tree_sitter_rust::language()),
         );
         let mut fake_language_servers = language.set_fake_lsp_adapter(Default::default());
-        lang_registry.add(Arc::new(language));
+        let language = Arc::new(language);
+        cx_a.read(|cx| LanguageRegistry::global(cx).add(language.clone()));
+        cx_b.read(|cx| LanguageRegistry::global(cx).add(language.clone()));
 
         // Connect to a server as 2 clients.
         let mut server = TestServer::start(cx_a.foreground(), cx_a.background()).await;
@@ -3852,7 +3855,6 @@ mod tests {
             Project::local(
                 client_a.clone(),
                 client_a.user_store.clone(),
-                lang_registry.clone(),
                 fs.clone(),
                 cx,
             )
@@ -3875,14 +3877,12 @@ mod tests {
             project_id,
             client_b.clone(),
             client_b.user_store.clone(),
-            lang_registry.clone(),
             fs.clone(),
             &mut cx_b.to_async(),
         )
         .await
         .unwrap();
         let mut params = cx_b.update(WorkspaceParams::test);
-        params.languages = lang_registry.clone();
         params.client = client_b.client.clone();
         params.user_store = client_b.user_store.clone();
         params.project = project_b;
@@ -4444,7 +4444,9 @@ mod tests {
         cx_c: &mut TestAppContext,
     ) {
         cx_a.foreground().forbid_parking();
-        let lang_registry = Arc::new(LanguageRegistry::test());
+        language::init_test(cx_a);
+        language::init_test(cx_b);
+        language::init_test(cx_c);
         let fs = FakeFs::new(cx_a.background());
 
         // Connect to a server as 3 clients.
@@ -4466,7 +4468,6 @@ mod tests {
             Project::local(
                 client_a.clone(),
                 client_a.user_store.clone(),
-                lang_registry.clone(),
                 fs.clone(),
                 cx,
             )
@@ -4530,7 +4531,6 @@ mod tests {
             project_id,
             client_b.clone(),
             client_b.user_store.clone(),
-            lang_registry.clone(),
             fs.clone(),
             &mut cx_b.to_async(),
         )
@@ -4601,6 +4601,8 @@ mod tests {
     #[gpui::test(iterations = 10)]
     async fn test_following(cx_a: &mut TestAppContext, cx_b: &mut TestAppContext) {
         cx_a.foreground().forbid_parking();
+        language::init_test(cx_a);
+        language::init_test(cx_b);
         let fs = FakeFs::new(cx_a.background());
 
         // 2 clients connect to a server.
@@ -4812,6 +4814,8 @@ mod tests {
     #[gpui::test(iterations = 10)]
     async fn test_peers_following_each_other(cx_a: &mut TestAppContext, cx_b: &mut TestAppContext) {
         cx_a.foreground().forbid_parking();
+        language::init_test(cx_a);
+        language::init_test(cx_b);
         let fs = FakeFs::new(cx_a.background());
 
         // 2 clients connect to a server.
@@ -4958,6 +4962,8 @@ mod tests {
     #[gpui::test(iterations = 10)]
     async fn test_auto_unfollowing(cx_a: &mut TestAppContext, cx_b: &mut TestAppContext) {
         cx_a.foreground().forbid_parking();
+        language::init_test(cx_a);
+        language::init_test(cx_b);
         let fs = FakeFs::new(cx_a.background());
 
         // 2 clients connect to a server.
@@ -5139,9 +5145,6 @@ mod tests {
 
         let rng = Arc::new(Mutex::new(rng));
 
-        let guest_lang_registry = Arc::new(LanguageRegistry::test());
-        let host_language_registry = Arc::new(LanguageRegistry::test());
-
         let fs = FakeFs::new(cx.background());
         fs.insert_tree(
             "/_collab",
@@ -5167,15 +5170,10 @@ mod tests {
             cx.leak_detector(),
             next_entity_id,
         );
+        language::init_test(&mut host_cx);
         let host = server.create_client(&mut host_cx, "host").await;
         let host_project = host_cx.update(|cx| {
-            Project::local(
-                host.client.clone(),
-                host.user_store.clone(),
-                host_language_registry.clone(),
-                fs.clone(),
-                cx,
-            )
+            Project::local(host.client.clone(), host.user_store.clone(), fs.clone(), cx)
         });
         let host_project_id = host_project
             .update(&mut host_cx, |p, _| p.next_remote_id())
@@ -5320,7 +5318,7 @@ mod tests {
             })),
             ..Default::default()
         });
-        host_language_registry.add(Arc::new(language));
+        host_cx.read(|cx| LanguageRegistry::global(cx).add(Arc::new(language)));
 
         let op_start_signal = futures::channel::mpsc::unbounded();
         user_ids.push(host.current_user_id(&host_cx));
@@ -5402,12 +5400,12 @@ mod tests {
                         cx.leak_detector(),
                         next_entity_id,
                     );
+                    language::init_test(&mut guest_cx);
                     let guest = server.create_client(&mut guest_cx, &guest_username).await;
                     let guest_project = Project::remote(
                         host_project_id,
                         guest.client.clone(),
                         guest.user_store.clone(),
-                        guest_lang_registry.clone(),
                         FakeFs::new(cx.background()),
                         &mut guest_cx.to_async(),
                     )
@@ -5703,7 +5701,6 @@ mod tests {
                 peer_id,
                 username: name.to_string(),
                 user_store,
-                language_registry: Arc::new(LanguageRegistry::test()),
                 project: Default::default(),
                 buffers: Default::default(),
             };
@@ -5781,7 +5778,6 @@ mod tests {
         username: String,
         pub peer_id: PeerId,
         pub user_store: ModelHandle<UserStore>,
-        language_registry: Arc<LanguageRegistry>,
         project: Option<ModelHandle<Project>>,
         buffers: HashSet<ModelHandle<language::Buffer>>,
     }
@@ -5815,15 +5811,8 @@ mod tests {
             root_path: impl AsRef<Path>,
             cx: &mut TestAppContext,
         ) -> (ModelHandle<Project>, WorktreeId) {
-            let project = cx.update(|cx| {
-                Project::local(
-                    self.client.clone(),
-                    self.user_store.clone(),
-                    self.language_registry.clone(),
-                    fs,
-                    cx,
-                )
-            });
+            let project = cx
+                .update(|cx| Project::local(self.client.clone(), self.user_store.clone(), fs, cx));
             self.project = Some(project.clone());
             let (worktree, _) = project
                 .update(cx, |p, cx| {
@@ -5849,7 +5838,6 @@ mod tests {
                 project_id,
                 self.client.clone(),
                 self.user_store.clone(),
-                self.language_registry.clone(),
                 FakeFs::new(cx.background()),
                 &mut cx.to_async(),
             )
@@ -5872,7 +5860,6 @@ mod tests {
                         fs,
                         project: project.clone(),
                         user_store: self.user_store.clone(),
-                        languages: self.language_registry.clone(),
                         themes: ThemeRegistry::new((), cx.font_cache().clone()),
                         channel_list: cx.add_model(|cx| {
                             ChannelList::new(self.user_store.clone(), self.client.clone(), cx)

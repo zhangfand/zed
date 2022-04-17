@@ -59,7 +59,6 @@ pub trait Item: Entity {
 pub struct Project {
     worktrees: Vec<WorktreeHandle>,
     active_entry: Option<ProjectEntryId>,
-    languages: Arc<LanguageRegistry>,
     language_servers:
         HashMap<(WorktreeId, LanguageServerName), (Arc<dyn LspAdapter>, Arc<LanguageServer>)>,
     started_language_servers:
@@ -279,7 +278,6 @@ impl Project {
     pub fn local(
         client: Arc<Client>,
         user_store: ModelHandle<UserStore>,
-        languages: Arc<LanguageRegistry>,
         fs: Arc<dyn Fs>,
         cx: &mut MutableAppContext,
     ) -> ModelHandle<Self> {
@@ -323,7 +321,6 @@ impl Project {
                 opened_buffer: (Rc::new(RefCell::new(opened_buffer_tx)), opened_buffer_rx),
                 subscriptions: Vec::new(),
                 active_entry: None,
-                languages,
                 client,
                 user_store,
                 fs,
@@ -343,7 +340,6 @@ impl Project {
         remote_id: u64,
         client: Arc<Client>,
         user_store: ModelHandle<UserStore>,
-        languages: Arc<LanguageRegistry>,
         fs: Arc<dyn Fs>,
         cx: &mut AsyncAppContext,
     ) -> Result<ModelHandle<Self>> {
@@ -375,7 +371,6 @@ impl Project {
                 loading_local_worktrees: Default::default(),
                 active_entry: None,
                 collaborators: Default::default(),
-                languages,
                 user_store: user_store.clone(),
                 fs,
                 next_entry_id: Default::default(),
@@ -453,21 +448,16 @@ impl Project {
 
     #[cfg(any(test, feature = "test-support"))]
     pub fn test(fs: Arc<dyn Fs>, cx: &mut gpui::TestAppContext) -> ModelHandle<Project> {
-        let languages = Arc::new(LanguageRegistry::test());
         let http_client = client::test::FakeHttpClient::with_404_response();
         let client = client::Client::new(http_client.clone());
         let user_store = cx.add_model(|cx| UserStore::new(client.clone(), http_client, cx));
-        cx.update(|cx| Project::local(client, user_store, languages, fs, cx))
+        cx.update(|cx| Project::local(client, user_store, fs, cx))
     }
 
     pub fn buffer_for_id(&self, remote_id: u64, cx: &AppContext) -> Option<ModelHandle<Buffer>> {
         self.opened_buffers
             .get(&remote_id)
             .and_then(|buffer| buffer.upgrade(cx))
-    }
-
-    pub fn languages(&self) -> &Arc<LanguageRegistry> {
-        &self.languages
     }
 
     #[cfg(any(test, feature = "test-support"))]
@@ -1305,7 +1295,7 @@ impl Project {
     ) -> Option<()> {
         // If the buffer has a language, set it and start the language server if we haven't already.
         let full_path = buffer.read(cx).file()?.full_path(cx);
-        let language = self.languages.select_language(&full_path)?;
+        let language = LanguageRegistry::global(cx).select_language(&full_path)?;
         buffer.update(cx, |buffer, cx| {
             buffer.set_language(Some(language.clone()), cx);
         });
@@ -1336,7 +1326,7 @@ impl Project {
             .entry(key.clone())
             .or_insert_with(|| {
                 let server_id = post_inc(&mut self.next_language_server_id);
-                let language_server = self.languages.start_language_server(
+                let language_server = LanguageRegistry::global(cx).clone().start_language_server(
                     server_id,
                     language.clone(),
                     worktree_path,
@@ -1548,7 +1538,7 @@ impl Project {
             })
             .collect();
         for (worktree_id, worktree_abs_path, full_path) in language_server_lookup_info {
-            let language = self.languages.select_language(&full_path)?;
+            let language = LanguageRegistry::global(cx).select_language(&full_path)?;
             self.restart_language_server(worktree_id, worktree_abs_path, language, cx);
         }
 
@@ -2318,8 +2308,7 @@ impl Project {
                                 path = relativize_path(&worktree_abs_path, &abs_path);
                             }
 
-                            let label = this
-                                .languages
+                            let label = LanguageRegistry::global(cx)
                                 .select_language(&path)
                                 .and_then(|language| {
                                     language.label_for_symbol(&lsp_symbol.name, lsp_symbol.kind)
@@ -2352,12 +2341,12 @@ impl Project {
                 let response = request.await?;
                 let mut symbols = Vec::new();
                 if let Some(this) = this.upgrade(&cx) {
-                    this.read_with(&cx, |this, _| {
+                    this.read_with(&cx, |this, cx| {
                         symbols.extend(
                             response
                                 .symbols
                                 .into_iter()
-                                .filter_map(|symbol| this.deserialize_symbol(symbol).log_err()),
+                                .filter_map(|symbol| this.deserialize_symbol(symbol, cx).log_err()),
                         );
                     })
                 }
@@ -4158,8 +4147,8 @@ impl Project {
             .payload
             .symbol
             .ok_or_else(|| anyhow!("invalid symbol"))?;
-        let symbol = this.read_with(&cx, |this, _| {
-            let symbol = this.deserialize_symbol(symbol)?;
+        let symbol = this.read_with(&cx, |this, cx| {
+            let symbol = this.deserialize_symbol(symbol, cx)?;
             let signature = this.symbol_signature(symbol.worktree_id, &symbol.path);
             if signature == symbol.signature {
                 Ok(symbol)
@@ -4364,7 +4353,11 @@ impl Project {
         })
     }
 
-    fn deserialize_symbol(&self, serialized_symbol: proto::Symbol) -> Result<Symbol> {
+    fn deserialize_symbol(
+        &self,
+        serialized_symbol: proto::Symbol,
+        cx: &AppContext,
+    ) -> Result<Symbol> {
         let source_worktree_id = WorktreeId::from_proto(serialized_symbol.source_worktree_id);
         let worktree_id = WorktreeId::from_proto(serialized_symbol.worktree_id);
         let start = serialized_symbol
@@ -4375,7 +4368,7 @@ impl Project {
             .ok_or_else(|| anyhow!("invalid end"))?;
         let kind = unsafe { mem::transmute(serialized_symbol.kind) };
         let path = PathBuf::from(serialized_symbol.path);
-        let language = self.languages.select_language(&path);
+        let language = LanguageRegistry::global(cx).select_language(&path);
         Ok(Symbol {
             source_worktree_id,
             worktree_id,
@@ -4952,6 +4945,7 @@ mod tests {
     #[gpui::test]
     async fn test_managing_language_servers(cx: &mut gpui::TestAppContext) {
         cx.foreground().forbid_parking();
+        language::init_test(cx);
 
         let mut rust_language = Language::new(
             LanguageConfig {
@@ -5005,9 +4999,10 @@ mod tests {
         .await;
 
         let project = Project::test(fs.clone(), cx);
-        project.update(cx, |project, _| {
-            project.languages.add(Arc::new(rust_language));
-            project.languages.add(Arc::new(json_language));
+        cx.read(|cx| {
+            let languages = LanguageRegistry::global(cx);
+            languages.add(Arc::new(rust_language));
+            languages.add(Arc::new(json_language));
         });
 
         let worktree_id = project
@@ -5337,6 +5332,7 @@ mod tests {
     #[gpui::test]
     async fn test_single_file_worktrees_diagnostics(cx: &mut gpui::TestAppContext) {
         cx.foreground().forbid_parking();
+        language::init_test(cx);
 
         let fs = FakeFs::new(cx.background());
         fs.insert_tree(
@@ -5452,6 +5448,7 @@ mod tests {
 
     #[gpui::test]
     async fn test_disk_based_diagnostics_progress(cx: &mut gpui::TestAppContext) {
+        language::init_test(cx);
         cx.foreground().forbid_parking();
 
         let progress_token = "the-progress-token";
@@ -5469,6 +5466,8 @@ mod tests {
             ..Default::default()
         });
 
+        cx.read(|cx| LanguageRegistry::global(cx).add(Arc::new(language)));
+
         let fs = FakeFs::new(cx.background());
         fs.insert_tree(
             "/dir",
@@ -5480,8 +5479,6 @@ mod tests {
         .await;
 
         let project = Project::test(fs, cx);
-        project.update(cx, |project, _| project.languages.add(Arc::new(language)));
-
         let (tree, _) = project
             .update(cx, |project, cx| {
                 project.find_or_create_local_worktree("/dir", true, cx)
@@ -5593,6 +5590,7 @@ mod tests {
 
     #[gpui::test]
     async fn test_restarting_server_with_diagnostics_running(cx: &mut gpui::TestAppContext) {
+        language::init_test(cx);
         cx.foreground().forbid_parking();
 
         let progress_token = "the-progress-token";
@@ -5608,13 +5606,12 @@ mod tests {
             disk_based_diagnostics_progress_token: Some(progress_token),
             ..Default::default()
         });
+        cx.read(|cx| LanguageRegistry::global(cx).add(Arc::new(language)));
 
         let fs = FakeFs::new(cx.background());
         fs.insert_tree("/dir", json!({ "a.rs": "" })).await;
 
         let project = Project::test(fs, cx);
-        project.update(cx, |project, _| project.languages.add(Arc::new(language)));
-
         let worktree_id = project
             .update(cx, |project, cx| {
                 project.find_or_create_local_worktree("/dir", true, cx)
@@ -5667,6 +5664,7 @@ mod tests {
 
     #[gpui::test]
     async fn test_transforming_diagnostics(cx: &mut gpui::TestAppContext) {
+        language::init_test(cx);
         cx.foreground().forbid_parking();
 
         let mut language = Language::new(
@@ -5681,6 +5679,7 @@ mod tests {
             disk_based_diagnostics_sources: &["disk"],
             ..Default::default()
         });
+        cx.read(|cx| LanguageRegistry::global(cx).add(Arc::new(language)));
 
         let text = "
             fn a() { A }
@@ -5693,8 +5692,6 @@ mod tests {
         fs.insert_tree("/dir", json!({ "a.rs": text })).await;
 
         let project = Project::test(fs, cx);
-        project.update(cx, |project, _| project.languages.add(Arc::new(language)));
-
         let worktree_id = project
             .update(cx, |project, cx| {
                 project.find_or_create_local_worktree("/dir", true, cx)
@@ -5962,6 +5959,7 @@ mod tests {
     #[gpui::test]
     async fn test_empty_diagnostic_ranges(cx: &mut gpui::TestAppContext) {
         cx.foreground().forbid_parking();
+        language::init_test(cx);
 
         let text = concat!(
             "let one = ;\n", //
@@ -6040,6 +6038,7 @@ mod tests {
 
     #[gpui::test]
     async fn test_edits_from_lsp_with_past_version(cx: &mut gpui::TestAppContext) {
+        language::init_test(cx);
         cx.foreground().forbid_parking();
 
         let mut language = Language::new(
@@ -6051,6 +6050,7 @@ mod tests {
             Some(tree_sitter_rust::language()),
         );
         let mut fake_servers = language.set_fake_lsp_adapter(Default::default());
+        cx.read(|cx| LanguageRegistry::global(cx).add(Arc::new(language)));
 
         let text = "
             fn a() {
@@ -6075,8 +6075,6 @@ mod tests {
         .await;
 
         let project = Project::test(fs, cx);
-        project.update(cx, |project, _| project.languages.add(Arc::new(language)));
-
         let worktree_id = project
             .update(cx, |project, cx| {
                 project.find_or_create_local_worktree("/dir", true, cx)
@@ -6213,6 +6211,7 @@ mod tests {
     #[gpui::test]
     async fn test_edits_from_lsp_with_edits_on_adjacent_lines(cx: &mut gpui::TestAppContext) {
         cx.foreground().forbid_parking();
+        language::init_test(cx);
 
         let text = "
             use a::b;
@@ -6359,6 +6358,7 @@ mod tests {
 
     #[gpui::test]
     async fn test_search_worktree_without_files(cx: &mut gpui::TestAppContext) {
+        language::init_test(cx);
         let dir = temp_tree(json!({
             "root": {
                 "dir1": {},
@@ -6391,6 +6391,7 @@ mod tests {
 
     #[gpui::test]
     async fn test_definition(cx: &mut gpui::TestAppContext) {
+        language::init_test(cx);
         let mut language = Language::new(
             LanguageConfig {
                 name: "Rust".into(),
@@ -6400,6 +6401,7 @@ mod tests {
             Some(tree_sitter_rust::language()),
         );
         let mut fake_servers = language.set_fake_lsp_adapter(Default::default());
+        cx.read(|cx| LanguageRegistry::global(cx).add(Arc::new(language)));
 
         let fs = FakeFs::new(cx.background());
         fs.insert_tree(
@@ -6412,8 +6414,6 @@ mod tests {
         .await;
 
         let project = Project::test(fs, cx);
-        project.update(cx, |project, _| project.languages.add(Arc::new(language)));
-
         let (tree, _) = project
             .update(cx, |project, cx| {
                 project.find_or_create_local_worktree("/dir/b.rs", true, cx)
@@ -6496,6 +6496,7 @@ mod tests {
 
     #[gpui::test(iterations = 10)]
     async fn test_apply_code_actions_with_commands(cx: &mut gpui::TestAppContext) {
+        language::init_test(cx);
         let mut language = Language::new(
             LanguageConfig {
                 name: "TypeScript".into(),
@@ -6505,6 +6506,7 @@ mod tests {
             None,
         );
         let mut fake_language_servers = language.set_fake_lsp_adapter(Default::default());
+        cx.read(|cx| LanguageRegistry::global(cx).add(Arc::new(language)));
 
         let fs = FakeFs::new(cx.background());
         fs.insert_tree(
@@ -6516,8 +6518,6 @@ mod tests {
         .await;
 
         let project = Project::test(fs, cx);
-        project.update(cx, |project, _| project.languages.add(Arc::new(language)));
-
         let (tree, _) = project
             .update(cx, |project, cx| {
                 project.find_or_create_local_worktree("/dir", true, cx)
@@ -6623,6 +6623,8 @@ mod tests {
 
     #[gpui::test]
     async fn test_save_file(cx: &mut gpui::TestAppContext) {
+        language::init_test(cx);
+
         let fs = FakeFs::new(cx.background());
         fs.insert_tree(
             "/dir",
@@ -6661,6 +6663,8 @@ mod tests {
 
     #[gpui::test]
     async fn test_save_in_single_file_worktree(cx: &mut gpui::TestAppContext) {
+        language::init_test(cx);
+
         let fs = FakeFs::new(cx.background());
         fs.insert_tree(
             "/dir",
@@ -6698,6 +6702,8 @@ mod tests {
 
     #[gpui::test]
     async fn test_save_as(cx: &mut gpui::TestAppContext) {
+        language::init_test(cx);
+
         let fs = FakeFs::new(cx.background());
         fs.insert_tree("/dir", json!({})).await;
 
@@ -6742,6 +6748,8 @@ mod tests {
 
     #[gpui::test(retries = 5)]
     async fn test_rescan_and_remote_updates(cx: &mut gpui::TestAppContext) {
+        language::init_test(cx);
+
         let dir = temp_tree(json!({
             "a": {
                 "file1": "",
@@ -6894,6 +6902,8 @@ mod tests {
 
     #[gpui::test]
     async fn test_buffer_deduping(cx: &mut gpui::TestAppContext) {
+        language::init_test(cx);
+
         let fs = FakeFs::new(cx.background());
         fs.insert_tree(
             "/the-dir",
@@ -6947,6 +6957,7 @@ mod tests {
     #[gpui::test]
     async fn test_buffer_is_dirty(cx: &mut gpui::TestAppContext) {
         use std::fs;
+        language::init_test(cx);
 
         let dir = temp_tree(json!({
             "file1": "abc",
@@ -7087,6 +7098,7 @@ mod tests {
     #[gpui::test]
     async fn test_buffer_file_changes_on_disk(cx: &mut gpui::TestAppContext) {
         use std::fs;
+        language::init_test(cx);
 
         let initial_contents = "aaa\nbbbbb\nc\n";
         let dir = temp_tree(json!({ "the-file": initial_contents }));
@@ -7185,6 +7197,7 @@ mod tests {
     #[gpui::test]
     async fn test_grouped_diagnostics(cx: &mut gpui::TestAppContext) {
         cx.foreground().forbid_parking();
+        language::init_test(cx);
 
         let fs = FakeFs::new(cx.background());
         fs.insert_tree(
@@ -7443,6 +7456,7 @@ mod tests {
 
     #[gpui::test]
     async fn test_rename(cx: &mut gpui::TestAppContext) {
+        language::init_test(cx);
         cx.foreground().forbid_parking();
 
         let mut language = Language::new(
@@ -7454,6 +7468,7 @@ mod tests {
             Some(tree_sitter_rust::language()),
         );
         let mut fake_servers = language.set_fake_lsp_adapter(Default::default());
+        cx.read(|cx| LanguageRegistry::global(cx).add(Arc::new(language)));
 
         let fs = FakeFs::new(cx.background());
         fs.insert_tree(
@@ -7466,8 +7481,6 @@ mod tests {
         .await;
 
         let project = Project::test(fs.clone(), cx);
-        project.update(cx, |project, _| project.languages.add(Arc::new(language)));
-
         let (tree, _) = project
             .update(cx, |project, cx| {
                 project.find_or_create_local_worktree("/dir", true, cx)
@@ -7584,6 +7597,8 @@ mod tests {
 
     #[gpui::test]
     async fn test_search(cx: &mut gpui::TestAppContext) {
+        language::init_test(cx);
+
         let fs = FakeFs::new(cx.background());
         fs.insert_tree(
             "/dir",

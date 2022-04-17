@@ -24,7 +24,6 @@ use gpui::{
     ModelHandle, MutableAppContext, PathPromptOptions, PromptLevel, RenderContext, Task, View,
     ViewContext, ViewHandle, WeakViewHandle,
 };
-use language::LanguageRegistry;
 use log::error;
 pub use pane::*;
 pub use pane_group::*;
@@ -176,7 +175,6 @@ pub fn register_followable_item<I: FollowableItem>(cx: &mut MutableAppContext) {
 }
 
 pub struct AppState {
-    pub languages: Arc<LanguageRegistry>,
     pub themes: Arc<ThemeRegistry>,
     pub client: Arc<client::Client>,
     pub user_store: ModelHandle<client::UserStore>,
@@ -612,7 +610,6 @@ pub struct WorkspaceParams {
     pub project: ModelHandle<Project>,
     pub client: Arc<Client>,
     pub fs: Arc<dyn Fs>,
-    pub languages: Arc<LanguageRegistry>,
     pub themes: Arc<ThemeRegistry>,
     pub user_store: ModelHandle<UserStore>,
     pub channel_list: ModelHandle<ChannelList>,
@@ -625,19 +622,12 @@ impl WorkspaceParams {
         cx.set_global(settings);
 
         let fs = project::FakeFs::new(cx.background().clone());
-        let languages = Arc::new(LanguageRegistry::test());
         let http_client = client::test::FakeHttpClient::new(|_| async move {
             Ok(client::http::ServerResponse::new(404))
         });
         let client = Client::new(http_client.clone());
         let user_store = cx.add_model(|cx| UserStore::new(client.clone(), http_client, cx));
-        let project = Project::local(
-            client.clone(),
-            user_store.clone(),
-            languages.clone(),
-            fs.clone(),
-            cx,
-        );
+        let project = Project::local(client.clone(), user_store.clone(), fs.clone(), cx);
         Self {
             project,
             channel_list: cx
@@ -645,7 +635,6 @@ impl WorkspaceParams {
             client,
             themes: ThemeRegistry::new((), cx.font_cache().clone()),
             fs,
-            languages,
             user_store,
         }
     }
@@ -656,14 +645,12 @@ impl WorkspaceParams {
             project: Project::local(
                 app_state.client.clone(),
                 app_state.user_store.clone(),
-                app_state.languages.clone(),
                 app_state.fs.clone(),
                 cx,
             ),
             client: app_state.client.clone(),
             fs: app_state.fs.clone(),
             themes: app_state.themes.clone(),
-            languages: app_state.languages.clone(),
             user_store: app_state.user_store.clone(),
             channel_list: app_state.channel_list.clone(),
         }
@@ -2144,7 +2131,6 @@ pub fn open_paths(
             let project = Project::local(
                 app_state.client.clone(),
                 app_state.user_store.clone(),
-                app_state.languages.clone(),
                 app_state.fs.clone(),
                 cx,
             );
@@ -2179,7 +2165,6 @@ pub fn join_project(
             project_id,
             app_state.client.clone(),
             app_state.user_store.clone(),
-            app_state.languages.clone(),
             app_state.fs.clone(),
             &mut cx,
         )
@@ -2198,7 +2183,6 @@ fn open_new(app_state: &Arc<AppState>, cx: &mut MutableAppContext) {
         let project = Project::local(
             app_state.client.clone(),
             app_state.user_store.clone(),
-            app_state.languages.clone(),
             app_state.fs.clone(),
             cx,
         );
