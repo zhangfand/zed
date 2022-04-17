@@ -125,10 +125,11 @@ impl platform::FontSystem for FontSystem {
         glyph_id: GlyphId,
         subpixel_shift: Vector2F,
         scale_factor: f32,
+        options: RasterizationOptions,
     ) -> Option<(RectI, Vec<u8>)> {
         self.0
             .write()
-            .rasterize_glyph(font_id, font_size, glyph_id, subpixel_shift, scale_factor)
+            .rasterize_glyph(font_id, font_size, glyph_id, subpixel_shift, scale_factor, options)
     }
 
     fn layout_line(&self, text: &str, font_size: f32, runs: &[(usize, RunStyle)]) -> LineLayout {

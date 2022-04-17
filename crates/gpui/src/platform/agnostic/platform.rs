@@ -1,7 +1,7 @@
 use crate::{
     clipboard::ClipboardItem,
     platform::{self, CursorStyle},
-    executor, AnyAction, Menu,
+    executor, Action, Menu,
 };
 use super::{window::Window, Dispatcher, FontSystem};
 use anyhow::Result;
@@ -41,7 +41,7 @@ impl platform::ForegroundPlatform for WindowsForegroundPlatform {
         unimplemented!()
     }
 
-    fn on_menu_command(&self, callback: Box<dyn FnMut(&dyn AnyAction)>) {
+    fn on_menu_command(&self, callback: Box<dyn FnMut(&dyn Action)>) {
         unimplemented!()
     }
 
