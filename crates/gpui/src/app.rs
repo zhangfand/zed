@@ -323,6 +323,10 @@ impl App {
         self.0.borrow().cx.font_cache.clone()
     }
 
+    pub fn set_global<T: 'static>(&mut self, state: T) {
+        self.0.borrow_mut().set_global(state);
+    }
+
     fn update<T, F: FnOnce(&mut MutableAppContext) -> T>(&mut self, callback: F) -> T {
         let mut state = self.0.borrow_mut();
         let result = state.update(callback);

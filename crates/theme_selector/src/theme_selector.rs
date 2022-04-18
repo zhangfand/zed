@@ -10,7 +10,6 @@ use theme::{Theme, ThemeRegistry};
 use workspace::Workspace;
 
 pub struct ThemeSelector {
-    registry: Arc<ThemeRegistry>,
     theme_names: Vec<String>,
     matches: Vec<StringMatch>,
     original_theme: Arc<Theme>,
@@ -32,11 +31,11 @@ pub enum Event {
 }
 
 impl ThemeSelector {
-    fn new(registry: Arc<ThemeRegistry>, cx: &mut ViewContext<Self>) -> Self {
+    fn new(cx: &mut ViewContext<Self>) -> Self {
         let handle = cx.weak_handle();
         let picker = cx.add_view(|cx| Picker::new(handle, cx));
         let original_theme = cx.global::<Settings>().theme.clone();
-        let theme_names = registry.list().collect::<Vec<_>>();
+        let theme_names = ThemeRegistry::global(cx).list().collect::<Vec<_>>();
         let matches = theme_names
             .iter()
             .map(|name| StringMatch {
@@ -47,7 +46,6 @@ impl ThemeSelector {
             })
             .collect();
         let mut this = Self {
-            registry,
             theme_names,
             matches,
             picker,
@@ -60,17 +58,16 @@ impl ThemeSelector {
     }
 
     fn toggle(workspace: &mut Workspace, _: &Toggle, cx: &mut ViewContext<Workspace>) {
-        let themes = workspace.themes();
         workspace.toggle_modal(cx, |cx, _| {
-            let this = cx.add_view(|cx| Self::new(themes, cx));
+            let this = cx.add_view(|cx| Self::new(cx));
             cx.subscribe(&this, Self::on_event).detach();
             this
         });
     }
 
-    fn reload(workspace: &mut Workspace, _: &Reload, cx: &mut ViewContext<Workspace>) {
+    fn reload(_: &mut Workspace, _: &Reload, cx: &mut ViewContext<Workspace>) {
         let current_theme_name = cx.global::<Settings>().theme.name.clone();
-        let themes = workspace.themes();
+        let themes = ThemeRegistry::global(cx);
         themes.clear();
         match themes.get(&current_theme_name) {
             Ok(theme) => {
@@ -85,7 +82,7 @@ impl ThemeSelector {
 
     fn show_selected_theme(&mut self, cx: &mut ViewContext<Self>) {
         if let Some(mat) = self.matches.get(self.selected_index) {
-            match self.registry.get(&mat.string) {
+            match ThemeRegistry::global(cx).get(&mat.string) {
                 Ok(theme) => Self::set_theme(theme, cx),
                 Err(error) => {
                     log::error!("error loading theme {}: {}", mat.string, error)

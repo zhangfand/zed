@@ -31,6 +31,7 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
+use theme::ThemeRegistry;
 use util::ResultExt;
 pub use workspace;
 use workspace::{AppState, Workspace, WorkspaceParams};
@@ -168,14 +169,13 @@ pub fn build_workspace(
         project,
         client: app_state.client.clone(),
         fs: app_state.fs.clone(),
-        themes: app_state.themes.clone(),
         user_store: app_state.user_store.clone(),
         channel_list: app_state.channel_list.clone(),
     };
     let mut workspace = Workspace::new(&workspace_params, cx);
     let project = workspace.project().clone();
 
-    let theme_names = app_state.themes.list().collect();
+    let theme_names = ThemeRegistry::global(cx).list().collect();
     let language_names = LanguageRegistry::global(cx).language_names();
 
     project.update(cx, |project, _| {

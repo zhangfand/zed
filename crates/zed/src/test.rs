@@ -20,7 +20,7 @@ pub fn test_app_state(cx: &mut MutableAppContext) -> Arc<AppState> {
     let settings = Settings::test(cx);
     editor::init(cx);
     cx.set_global(settings);
-    let themes = ThemeRegistry::new(Assets, cx.font_cache().clone());
+    cx.set_global(ThemeRegistry::new(Assets, cx.font_cache().clone()));
     let http = FakeHttpClient::with_404_response();
     let client = Client::new(http.clone());
     let user_store = cx.add_model(|cx| UserStore::new(client.clone(), http, cx));
@@ -34,7 +34,6 @@ pub fn test_app_state(cx: &mut MutableAppContext) -> Arc<AppState> {
     )));
 
     Arc::new(AppState {
-        themes,
         channel_list: cx.add_model(|cx| ChannelList::new(user_store.clone(), client.clone(), cx)),
         client,
         user_store,

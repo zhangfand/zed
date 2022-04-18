@@ -1227,7 +1227,6 @@ mod tests {
         },
         time::Duration,
     };
-    use theme::ThemeRegistry;
     use workspace::{Item, SplitDirection, ToggleFollow, Workspace, WorkspaceParams};
 
     #[cfg(test)]
@@ -5860,7 +5859,6 @@ mod tests {
                         fs,
                         project: project.clone(),
                         user_store: self.user_store.clone(),
-                        themes: ThemeRegistry::new((), cx.font_cache().clone()),
                         channel_list: cx.add_model(|cx| {
                             ChannelList::new(self.user_store.clone(), self.client.clone(), cx)
                         }),

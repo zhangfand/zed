@@ -1,6 +1,6 @@
 use crate::Theme;
 use anyhow::{Context, Result};
-use gpui::{fonts, AssetSource, FontCache};
+use gpui::{fonts, AppContext, AssetSource, FontCache};
 use parking_lot::Mutex;
 use serde_json::Value;
 use std::{collections::HashMap, sync::Arc};
@@ -20,6 +20,10 @@ impl ThemeRegistry {
             theme_data: Default::default(),
             font_cache,
         })
+    }
+
+    pub fn global(cx: &AppContext) -> &Arc<Self> {
+        cx.global()
     }
 
     pub fn list(&self) -> impl Iterator<Item = String> {

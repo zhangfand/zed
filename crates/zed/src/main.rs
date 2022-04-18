@@ -40,6 +40,8 @@ fn main() {
     let fs = Arc::new(RealFs);
     let themes = ThemeRegistry::new(Assets, app.font_cache());
     let theme = themes.get(DEFAULT_THEME_NAME).unwrap();
+    app.set_global(themes.clone());
+
     let default_settings = Settings::new("Zed Mono", &app.font_cache(), theme)
         .unwrap()
         .with_overrides(
@@ -155,7 +157,7 @@ fn main() {
         let mut settings_rx = settings_from_files(
             default_settings,
             vec![settings_file],
-            themes.clone(),
+            ThemeRegistry::global(cx).clone(),
             cx.font_cache().clone(),
         );
 
@@ -178,7 +180,6 @@ fn main() {
         cx.set_global(settings);
 
         let app_state = Arc::new(AppState {
-            themes,
             channel_list,
             client,
             user_store,

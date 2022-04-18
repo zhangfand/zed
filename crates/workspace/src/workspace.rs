@@ -45,7 +45,7 @@ use std::{
         Arc,
     },
 };
-use theme::{Theme, ThemeRegistry};
+use theme::Theme;
 pub use toolbar::{ToolbarItemLocation, ToolbarItemView};
 use util::ResultExt;
 
@@ -175,7 +175,6 @@ pub fn register_followable_item<I: FollowableItem>(cx: &mut MutableAppContext) {
 }
 
 pub struct AppState {
-    pub themes: Arc<ThemeRegistry>,
     pub client: Arc<client::Client>,
     pub user_store: ModelHandle<client::UserStore>,
     pub fs: Arc<dyn fs::Fs>,
@@ -610,7 +609,6 @@ pub struct WorkspaceParams {
     pub project: ModelHandle<Project>,
     pub client: Arc<Client>,
     pub fs: Arc<dyn Fs>,
-    pub themes: Arc<ThemeRegistry>,
     pub user_store: ModelHandle<UserStore>,
     pub channel_list: ModelHandle<ChannelList>,
 }
@@ -633,7 +631,6 @@ impl WorkspaceParams {
             channel_list: cx
                 .add_model(|cx| ChannelList::new(user_store.clone(), client.clone(), cx)),
             client,
-            themes: ThemeRegistry::new((), cx.font_cache().clone()),
             fs,
             user_store,
         }
@@ -650,7 +647,6 @@ impl WorkspaceParams {
             ),
             client: app_state.client.clone(),
             fs: app_state.fs.clone(),
-            themes: app_state.themes.clone(),
             user_store: app_state.user_store.clone(),
             channel_list: app_state.channel_list.clone(),
         }
@@ -667,7 +663,6 @@ pub struct Workspace {
     user_store: ModelHandle<client::UserStore>,
     remote_entity_subscription: Option<Subscription>,
     fs: Arc<dyn Fs>,
-    themes: Arc<ThemeRegistry>,
     modal: Option<AnyViewHandle>,
     center: PaneGroup,
     left_sidebar: Sidebar,
@@ -776,7 +771,6 @@ impl Workspace {
             remote_entity_subscription: None,
             user_store: params.user_store.clone(),
             fs: params.fs.clone(),
-            themes: params.themes.clone(),
             left_sidebar: Sidebar::new(Side::Left),
             right_sidebar: Sidebar::new(Side::Right),
             project: params.project.clone(),
@@ -807,10 +801,6 @@ impl Workspace {
 
     pub fn project(&self) -> &ModelHandle<Project> {
         &self.project
-    }
-
-    pub fn themes(&self) -> Arc<ThemeRegistry> {
-        self.themes.clone()
     }
 
     pub fn worktrees<'a>(
