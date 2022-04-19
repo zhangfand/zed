@@ -5627,12 +5627,12 @@ mod tests {
             cx.update(|cx| {
                 let settings = Settings::test(cx);
                 cx.set_global(settings);
+                cx.set_global(FakeHttpClient::with_404_response());
             });
 
-            let http = FakeHttpClient::with_404_response();
             let user_id = self.app_state.db.create_user(name, false).await.unwrap();
             let client_name = name.to_string();
-            let mut client = Client::new(http.clone());
+            let mut client = Client::new();
             let server = self.server.clone();
             let connection_killers = self.connection_killers.clone();
             let forbid_connections = self.forbid_connections.clone();
@@ -5693,7 +5693,7 @@ mod tests {
             });
 
             let peer_id = PeerId(connection_id_rx.next().await.unwrap().0);
-            let user_store = cx.add_model(|cx| UserStore::new(client.clone(), http, cx));
+            let user_store = cx.add_model(|cx| UserStore::new(client.clone(), cx));
 
             let client = TestClient {
                 client,

@@ -448,9 +448,8 @@ impl Project {
 
     #[cfg(any(test, feature = "test-support"))]
     pub fn test(fs: Arc<dyn Fs>, cx: &mut gpui::TestAppContext) -> ModelHandle<Project> {
-        let http_client = client::test::FakeHttpClient::with_404_response();
-        let client = client::Client::new(http_client.clone());
-        let user_store = cx.add_model(|cx| UserStore::new(client.clone(), http_client, cx));
+        let client = client::Client::new();
+        let user_store = cx.add_model(|cx| UserStore::new(client.clone(), cx));
         cx.update(|cx| Project::local(client, user_store, fs, cx))
     }
 
@@ -1330,7 +1329,6 @@ impl Project {
                     server_id,
                     language.clone(),
                     worktree_path,
-                    self.client.http_client(),
                     cx,
                 );
                 cx.spawn_weak(|this, mut cx| async move {

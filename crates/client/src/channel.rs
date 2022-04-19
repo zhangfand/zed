@@ -594,19 +594,18 @@ mod tests {
     use super::*;
     use crate::test::{FakeHttpClient, FakeServer};
     use gpui::TestAppContext;
-    use surf::http::Response;
 
     #[gpui::test]
     async fn test_channel_messages(cx: &mut TestAppContext) {
         cx.foreground().forbid_parking();
+        cx.update(|cx| cx.set_global(FakeHttpClient::with_404_response()));
 
         let user_id = 5;
-        let http_client = FakeHttpClient::new(|_| async move { Ok(Response::new(404)) });
-        let mut client = Client::new(http_client.clone());
+        let mut client = Client::new();
         let server = FakeServer::for_client(user_id, &mut client, &cx).await;
 
         Channel::init(&client);
-        let user_store = cx.add_model(|cx| UserStore::new(client.clone(), http_client, cx));
+        let user_store = cx.add_model(|cx| UserStore::new(client.clone(), cx));
 
         let channel_list = cx.add_model(|cx| ChannelList::new(user_store, client.clone(), cx));
         channel_list.read_with(cx, |list, _| assert_eq!(list.available_channels(), None));

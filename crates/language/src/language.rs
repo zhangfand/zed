@@ -7,7 +7,7 @@ pub mod proto;
 mod tests;
 
 use anyhow::{anyhow, Context, Result};
-use client::http::HttpClient;
+use client::http::{self, HttpClient};
 use collections::HashMap;
 use futures::{
     future::{BoxFuture, Shared},
@@ -268,7 +268,6 @@ impl LanguageRegistry {
         server_id: usize,
         language: Arc<Language>,
         root_path: Arc<Path>,
-        http_client: Arc<dyn HttpClient>,
         cx: &mut MutableAppContext,
     ) -> Option<Task<Result<lsp::LanguageServer>>> {
         #[cfg(any(test, feature = "test-support"))]
@@ -308,6 +307,7 @@ impl LanguageRegistry {
         let adapter = language.adapter.clone()?;
         let lsp_binary_statuses = self.lsp_binary_statuses_tx.clone();
         let login_shell_env_loaded = self.login_shell_env_loaded.clone();
+        let http_client = http::global(cx).clone();
         Some(cx.spawn(|cx| async move {
             login_shell_env_loaded.await;
             let server_binary_path = this

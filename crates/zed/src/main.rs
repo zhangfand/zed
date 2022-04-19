@@ -110,14 +110,14 @@ fn main() {
     });
 
     app.run(move |cx| {
-        let http = http::client();
-        let client = client::Client::new(http.clone());
+        cx.set_global(http::client());
+        let client = client::Client::new();
         languages::init(
             Arc::from(zed::ROOT_PATH.clone()),
             login_shell_env_loaded,
             cx,
         );
-        let user_store = cx.add_model(|cx| UserStore::new(client.clone(), http.clone(), cx));
+        let user_store = cx.add_model(|cx| UserStore::new(client.clone(), cx));
         let channel_list =
             cx.add_model(|cx| ChannelList::new(user_store.clone(), client.clone(), cx));
 

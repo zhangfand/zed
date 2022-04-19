@@ -2426,6 +2426,8 @@ mod tests {
 
     #[gpui::test]
     async fn test_traversal(cx: &mut gpui::TestAppContext) {
+        cx.update(|cx| cx.set_global(FakeHttpClient::with_404_response()));
+
         let fs = FakeFs::new(cx.background());
         fs.insert_tree(
             "/root",
@@ -2439,8 +2441,7 @@ mod tests {
         )
         .await;
 
-        let http_client = FakeHttpClient::with_404_response();
-        let client = Client::new(http_client);
+        let client = Client::new();
 
         let tree = Worktree::local(
             client,
@@ -2472,6 +2473,8 @@ mod tests {
 
     #[gpui::test]
     async fn test_rescan_with_gitignore(cx: &mut gpui::TestAppContext) {
+        cx.update(|cx| cx.set_global(FakeHttpClient::with_404_response()));
+
         let dir = temp_tree(json!({
             ".git": {},
             ".gitignore": "ignored-dir\n",
@@ -2483,8 +2486,7 @@ mod tests {
             }
         }));
 
-        let http_client = FakeHttpClient::with_404_response();
-        let client = Client::new(http_client.clone());
+        let client = Client::new();
 
         let tree = Worktree::local(
             client,

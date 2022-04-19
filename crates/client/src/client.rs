@@ -16,7 +16,6 @@ use gpui::{
     actions, AnyModelHandle, AnyViewHandle, AnyWeakModelHandle, AnyWeakViewHandle, AsyncAppContext,
     Entity, ModelContext, ModelHandle, MutableAppContext, Task, View, ViewContext, ViewHandle,
 };
-use http::HttpClient;
 use lazy_static::lazy_static;
 use parking_lot::RwLock;
 use postage::watch;
@@ -63,7 +62,6 @@ pub fn init(rpc: Arc<Client>, cx: &mut MutableAppContext) {
 pub struct Client {
     id: usize,
     peer: Arc<Peer>,
-    http: Arc<dyn HttpClient>,
     state: RwLock<ClientState>,
     authenticate:
         Option<Box<dyn 'static + Send + Sync + Fn(&AsyncAppContext) -> Task<Result<Credentials>>>>,
@@ -221,7 +219,7 @@ impl Drop for Subscription {
 }
 
 impl Client {
-    pub fn new(http: Arc<dyn HttpClient>) -> Arc<Self> {
+    pub fn new() -> Arc<Self> {
         lazy_static! {
             static ref NEXT_CLIENT_ID: AtomicUsize = AtomicUsize::default();
         }
@@ -229,7 +227,6 @@ impl Client {
         Arc::new(Self {
             id: NEXT_CLIENT_ID.fetch_add(1, Ordering::SeqCst),
             peer: Peer::new(),
-            http,
             state: Default::default(),
             authenticate: None,
             establish_connection: None,
@@ -238,10 +235,6 @@ impl Client {
 
     pub fn id(&self) -> usize {
         self.id
-    }
-
-    pub fn http_client(&self) -> Arc<dyn HttpClient> {
-        self.http.clone()
     }
 
     #[cfg(any(test, feature = "test-support"))]
@@ -776,7 +769,7 @@ impl Client {
             )
             .header("X-Zed-Protocol-Version", rpc::PROTOCOL_VERSION);
 
-        let http = self.http.clone();
+        let http = cx.read(|cx| http::global(cx).clone());
         cx.background().spawn(async move {
             let mut rpc_url = format!("{}/rpc", *ZED_SERVER_URL);
             let rpc_request = surf::Request::new(
@@ -1037,9 +1030,10 @@ mod tests {
     #[gpui::test(iterations = 10)]
     async fn test_reconnection(cx: &mut TestAppContext) {
         cx.foreground().forbid_parking();
+        cx.update(|cx| cx.set_global(FakeHttpClient::with_404_response()));
 
         let user_id = 5;
-        let mut client = Client::new(FakeHttpClient::with_404_response());
+        let mut client = Client::new();
         let server = FakeServer::for_client(user_id, &mut client, &cx).await;
         let mut status = client.status();
         assert!(matches!(
@@ -1083,9 +1077,10 @@ mod tests {
     #[gpui::test]
     async fn test_subscribing_to_entity(cx: &mut TestAppContext) {
         cx.foreground().forbid_parking();
+        cx.update(|cx| cx.set_global(FakeHttpClient::with_404_response()));
 
         let user_id = 5;
-        let mut client = Client::new(FakeHttpClient::with_404_response());
+        let mut client = Client::new();
         let server = FakeServer::for_client(user_id, &mut client, &cx).await;
 
         let (done_tx1, mut done_rx1) = smol::channel::unbounded();
@@ -1129,9 +1124,10 @@ mod tests {
     #[gpui::test]
     async fn test_subscribing_after_dropping_subscription(cx: &mut TestAppContext) {
         cx.foreground().forbid_parking();
+        cx.update(|cx| cx.set_global(FakeHttpClient::with_404_response()));
 
         let user_id = 5;
-        let mut client = Client::new(FakeHttpClient::with_404_response());
+        let mut client = Client::new();
         let server = FakeServer::for_client(user_id, &mut client, &cx).await;
 
         let model = cx.add_model(|_| Model::default());
@@ -1157,9 +1153,10 @@ mod tests {
     #[gpui::test]
     async fn test_dropping_subscription_in_handler(cx: &mut TestAppContext) {
         cx.foreground().forbid_parking();
+        cx.update(|cx| cx.set_global(FakeHttpClient::with_404_response()));
 
         let user_id = 5;
-        let mut client = Client::new(FakeHttpClient::with_404_response());
+        let mut client = Client::new();
         let server = FakeServer::for_client(user_id, &mut client, &cx).await;
 
         let model = cx.add_model(|_| Model::default());

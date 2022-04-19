@@ -1,3 +1,5 @@
+use crate::http;
+
 use super::{
     http::{HttpClient, Method, Request, Url},
     proto, Client, Status, TypedEnvelope,
@@ -39,7 +41,6 @@ pub struct UserStore {
     current_user: watch::Receiver<Option<Arc<User>>>,
     contacts: Arc<[Contact]>,
     client: Weak<Client>,
-    http: Arc<dyn HttpClient>,
     _maintain_contacts: Task<()>,
     _maintain_current_user: Task<()>,
 }
@@ -51,11 +52,7 @@ impl Entity for UserStore {
 }
 
 impl UserStore {
-    pub fn new(
-        client: Arc<Client>,
-        http: Arc<dyn HttpClient>,
-        cx: &mut ModelContext<Self>,
-    ) -> Self {
+    pub fn new(client: Arc<Client>, cx: &mut ModelContext<Self>) -> Self {
         let (mut current_user_tx, current_user_rx) = watch::channel();
         let (update_contacts_tx, mut update_contacts_rx) =
             watch::channel::<Option<proto::UpdateContacts>>();
@@ -67,7 +64,6 @@ impl UserStore {
             contacts: Arc::from([]),
             client: Arc::downgrade(&client),
             update_contacts_tx,
-            http,
             _maintain_contacts: cx.spawn_weak(|this, mut cx| async move {
                 let _subscription = rpc_subscription;
                 while let Some(message) = update_contacts_rx.recv().await {
@@ -153,7 +149,7 @@ impl UserStore {
         cx: &mut ModelContext<Self>,
     ) -> Task<Result<()>> {
         let rpc = self.client.clone();
-        let http = self.http.clone();
+        let http = http::global(cx).clone();
         user_ids.retain(|id| !self.users.contains_key(id));
         cx.spawn_weak(|this, mut cx| async move {
             if let Some(rpc) = rpc.upgrade() {

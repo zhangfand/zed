@@ -21,9 +21,9 @@ pub fn test_app_state(cx: &mut MutableAppContext) -> Arc<AppState> {
     editor::init(cx);
     cx.set_global(settings);
     cx.set_global(ThemeRegistry::new(Assets, cx.font_cache().clone()));
-    let http = FakeHttpClient::with_404_response();
-    let client = Client::new(http.clone());
-    let user_store = cx.add_model(|cx| UserStore::new(client.clone(), http, cx));
+    cx.set_global(FakeHttpClient::with_404_response());
+    let client = Client::new();
+    let user_store = cx.add_model(|cx| UserStore::new(client.clone(), cx));
     LanguageRegistry::global(cx).add(Arc::new(language::Language::new(
         language::LanguageConfig {
             name: "Rust".into(),

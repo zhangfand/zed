@@ -616,15 +616,15 @@ pub struct WorkspaceParams {
 impl WorkspaceParams {
     #[cfg(any(test, feature = "test-support"))]
     pub fn test(cx: &mut MutableAppContext) -> Self {
+        use client::test::FakeHttpClient;
+
         let settings = Settings::test(cx);
         cx.set_global(settings);
+        cx.update(|cx| cx.set_global(FakeHttpClient::with_404_response()));
 
         let fs = project::FakeFs::new(cx.background().clone());
-        let http_client = client::test::FakeHttpClient::new(|_| async move {
-            Ok(client::http::ServerResponse::new(404))
-        });
-        let client = Client::new(http_client.clone());
-        let user_store = cx.add_model(|cx| UserStore::new(client.clone(), http_client, cx));
+        let client = Client::new();
+        let user_store = cx.add_model(|cx| UserStore::new(client.clone(), cx));
         let project = Project::local(client.clone(), user_store.clone(), fs.clone(), cx);
         Self {
             project,

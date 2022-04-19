@@ -1,10 +1,15 @@
 pub use anyhow::{anyhow, Result};
 use futures::future::BoxFuture;
+use gpui::AppContext;
 use std::sync::Arc;
 pub use surf::{
     http::{Method, Response as ServerResponse},
     Request, Response, Url,
 };
+
+pub fn global(cx: &AppContext) -> &Arc<dyn HttpClient> {
+    cx.global::<Arc<dyn HttpClient>>()
+}
 
 pub trait HttpClient: Send + Sync {
     fn send<'a>(&'a self, req: Request) -> BoxFuture<'a, Result<Response>>;
