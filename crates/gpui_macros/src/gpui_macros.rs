@@ -122,6 +122,8 @@ pub fn test(args: TokenStream, function: TokenStream) -> TokenStream {
                             cx_teardowns.extend(quote!(
                                 #cx_varname.update(|cx| cx.remove_all_windows());
                                 deterministic.run_until_parked();
+                                #cx_varname.update(|cx| cx.clear_globals());
+                                deterministic.run_until_parked();
                                 #cx_varname.update(|_| {}); // flush effects
                             ));
                             inner_fn_args.extend(quote!(&mut #cx_varname,));

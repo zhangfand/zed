@@ -1527,6 +1527,13 @@ impl MutableAppContext {
         });
     }
 
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn clear_globals(&mut self) {
+        self.update(|this| {
+            this.cx.globals.clear();
+        })
+    }
+
     pub fn update_default_global<T, F, U>(&mut self, update: F) -> U
     where
         T: 'static + Default,
