@@ -625,11 +625,15 @@ impl WorkspaceParams {
         let fs = project::FakeFs::new(cx.background().clone());
         let client = Client::new();
         let user_store = cx.add_model(|cx| UserStore::new(client.clone(), cx));
+
+        cx.update(|cx| {
+            cx.set_global(user_store.clone());
+        });
+
         let project = Project::local(client.clone(), user_store.clone(), fs.clone(), cx);
         Self {
             project,
-            channel_list: cx
-                .add_model(|cx| ChannelList::new(user_store.clone(), client.clone(), cx)),
+            channel_list: cx.add_model(|cx| ChannelList::new(client.clone(), cx)),
             client,
             fs,
             user_store,

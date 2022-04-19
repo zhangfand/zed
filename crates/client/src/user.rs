@@ -6,7 +6,7 @@ use super::{
 };
 use anyhow::{anyhow, Context, Result};
 use futures::future;
-use gpui::{AsyncAppContext, Entity, ImageData, ModelContext, ModelHandle, Task};
+use gpui::{AppContext, AsyncAppContext, Entity, ImageData, ModelContext, ModelHandle, Task};
 use postage::{prelude::Stream, sink::Sink, watch};
 use std::{
     collections::{HashMap, HashSet},
@@ -52,6 +52,10 @@ impl Entity for UserStore {
 }
 
 impl UserStore {
+    pub fn global(cx: &AppContext) -> &ModelHandle<Self> {
+        cx.global()
+    }
+
     pub fn new(client: Arc<Client>, cx: &mut ModelContext<Self>) -> Self {
         let (mut current_user_tx, current_user_rx) = watch::channel();
         let (update_contacts_tx, mut update_contacts_rx) =

@@ -24,7 +24,6 @@ pub struct ChannelList {
     available_channels: Option<Vec<ChannelDetails>>,
     channels: HashMap<u64, WeakModelHandle<Channel>>,
     client: Arc<Client>,
-    user_store: ModelHandle<UserStore>,
     _task: Task<Option<()>>,
 }
 
@@ -39,7 +38,6 @@ pub struct Channel {
     messages: SumTree<ChannelMessage>,
     loaded_all_messages: bool,
     next_pending_message_id: usize,
-    user_store: ModelHandle<UserStore>,
     rpc: Arc<Client>,
     outgoing_messages_lock: Arc<Mutex<()>>,
     rng: StdRng,
@@ -85,11 +83,7 @@ impl Entity for ChannelList {
 }
 
 impl ChannelList {
-    pub fn new(
-        user_store: ModelHandle<UserStore>,
-        rpc: Arc<Client>,
-        cx: &mut ModelContext<Self>,
-    ) -> Self {
+    pub fn new(rpc: Arc<Client>, cx: &mut ModelContext<Self>) -> Self {
         let _task = cx.spawn_weak(|this, mut cx| {
             let rpc = rpc.clone();
             async move {
@@ -138,7 +132,6 @@ impl ChannelList {
         Self {
             available_channels: None,
             channels: Default::default(),
-            user_store,
             client: rpc,
             _task,
         }
@@ -159,9 +152,7 @@ impl ChannelList {
 
         let channels = self.available_channels.as_ref()?;
         let details = channels.iter().find(|details| details.id == id)?.clone();
-        let channel = cx.add_model(|cx| {
-            Channel::new(details, self.user_store.clone(), self.client.clone(), cx)
-        });
+        let channel = cx.add_model(|cx| Channel::new(details, self.client.clone(), cx));
         self.channels.insert(id, channel.downgrade());
         Some(channel)
     }
@@ -184,16 +175,11 @@ impl Channel {
         rpc.add_model_message_handler(Self::handle_message_sent);
     }
 
-    pub fn new(
-        details: ChannelDetails,
-        user_store: ModelHandle<UserStore>,
-        rpc: Arc<Client>,
-        cx: &mut ModelContext<Self>,
-    ) -> Self {
+    pub fn new(details: ChannelDetails, rpc: Arc<Client>, cx: &mut ModelContext<Self>) -> Self {
         let _subscription = rpc.add_model_for_remote_entity(details.id, cx);
 
         {
-            let user_store = user_store.clone();
+            let user_store = UserStore::global(cx).clone();
             let rpc = rpc.clone();
             let channel_id = details.id;
             cx.spawn(|channel, mut cx| {
@@ -217,7 +203,6 @@ impl Channel {
 
         Self {
             details,
-            user_store,
             rpc,
             outgoing_messages_lock: Default::default(),
             messages: Default::default(),
@@ -241,8 +226,7 @@ impl Channel {
             Err(anyhow!("message body can't be empty"))?;
         }
 
-        let current_user = self
-            .user_store
+        let current_user = UserStore::global(cx)
             .read(cx)
             .current_user()
             .ok_or_else(|| anyhow!("current_user is not present"))?;
@@ -263,7 +247,7 @@ impl Channel {
             ),
             cx,
         );
-        let user_store = self.user_store.clone();
+        let user_store = UserStore::global(cx).clone();
         let rpc = self.rpc.clone();
         let outgoing_messages_lock = self.outgoing_messages_lock.clone();
         Ok(cx.spawn(|this, mut cx| async move {
@@ -291,7 +275,7 @@ impl Channel {
     pub fn load_more_messages(&mut self, cx: &mut ModelContext<Self>) -> bool {
         if !self.loaded_all_messages {
             let rpc = self.rpc.clone();
-            let user_store = self.user_store.clone();
+            let user_store = UserStore::global(cx).clone();
             let channel_id = self.details.id;
             if let Some(before_message_id) =
                 self.messages.first().and_then(|message| match message.id {
@@ -326,7 +310,7 @@ impl Channel {
     }
 
     pub fn rejoin(&mut self, cx: &mut ModelContext<Self>) {
-        let user_store = self.user_store.clone();
+        let user_store = UserStore::global(cx).clone();
         let rpc = self.rpc.clone();
         let channel_id = self.details.id;
         cx.spawn(|this, mut cx| {
@@ -414,7 +398,7 @@ impl Channel {
         _: Arc<Client>,
         mut cx: AsyncAppContext,
     ) -> Result<()> {
-        let user_store = this.read_with(&cx, |this, _| this.user_store.clone());
+        let user_store = cx.read(|cx| UserStore::global(cx).clone());
         let message = message
             .payload
             .message
@@ -598,16 +582,22 @@ mod tests {
     #[gpui::test]
     async fn test_channel_messages(cx: &mut TestAppContext) {
         cx.foreground().forbid_parking();
-        cx.update(|cx| cx.set_global(FakeHttpClient::with_404_response()));
+        cx.update(|cx| {
+            cx.set_global(FakeHttpClient::with_404_response());
+        });
 
         let user_id = 5;
         let mut client = Client::new();
         let server = FakeServer::for_client(user_id, &mut client, &cx).await;
 
-        Channel::init(&client);
-        let user_store = cx.add_model(|cx| UserStore::new(client.clone(), cx));
+        cx.update(|cx| {
+            let store = cx.add_model(|cx| UserStore::new(client.clone(), cx));
+            cx.set_global(store);
+        });
 
-        let channel_list = cx.add_model(|cx| ChannelList::new(user_store, client.clone(), cx));
+        Channel::init(&client);
+
+        let channel_list = cx.add_model(|cx| ChannelList::new(client.clone(), cx));
         channel_list.read_with(cx, |list, _| assert_eq!(list.available_channels(), None));
 
         // Get the available channels.

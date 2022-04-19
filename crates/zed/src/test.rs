@@ -24,6 +24,7 @@ pub fn test_app_state(cx: &mut MutableAppContext) -> Arc<AppState> {
     cx.set_global(FakeHttpClient::with_404_response());
     let client = Client::new();
     let user_store = cx.add_model(|cx| UserStore::new(client.clone(), cx));
+    cx.set_global(user_store.clone());
     LanguageRegistry::global(cx).add(Arc::new(language::Language::new(
         language::LanguageConfig {
             name: "Rust".into(),
@@ -34,7 +35,7 @@ pub fn test_app_state(cx: &mut MutableAppContext) -> Arc<AppState> {
     )));
 
     Arc::new(AppState {
-        channel_list: cx.add_model(|cx| ChannelList::new(user_store.clone(), client.clone(), cx)),
+        channel_list: cx.add_model(|cx| ChannelList::new(client.clone(), cx)),
         client,
         user_store,
         fs: FakeFs::new(cx.background().clone()),

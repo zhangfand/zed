@@ -4060,8 +4060,7 @@ mod tests {
         .await
         .unwrap();
 
-        let channels_a = cx_a
-            .add_model(|cx| ChannelList::new(client_a.user_store.clone(), client_a.clone(), cx));
+        let channels_a = cx_a.add_model(|cx| ChannelList::new(client_a.clone(), cx));
         channels_a
             .condition(cx_a, |list, _| list.available_channels().is_some())
             .await;
@@ -4085,8 +4084,7 @@ mod tests {
             })
             .await;
 
-        let channels_b = cx_b
-            .add_model(|cx| ChannelList::new(client_b.user_store.clone(), client_b.clone(), cx));
+        let channels_b = cx_b.add_model(|cx| ChannelList::new(client_b.clone(), cx));
         channels_b
             .condition(cx_b, |list, _| list.available_channels().is_some())
             .await;
@@ -4180,8 +4178,7 @@ mod tests {
             .await
             .unwrap();
 
-        let channels_a = cx_a
-            .add_model(|cx| ChannelList::new(client_a.user_store.clone(), client_a.clone(), cx));
+        let channels_a = cx_a.add_model(|cx| ChannelList::new(client_a.clone(), cx));
         channels_a
             .condition(cx_a, |list, _| list.available_channels().is_some())
             .await;
@@ -4261,8 +4258,7 @@ mod tests {
         .await
         .unwrap();
 
-        let channels_a = cx_a
-            .add_model(|cx| ChannelList::new(client_a.user_store.clone(), client_a.clone(), cx));
+        let channels_a = cx_a.add_model(|cx| ChannelList::new(client_a.clone(), cx));
         channels_a
             .condition(cx_a, |list, _| list.available_channels().is_some())
             .await;
@@ -4287,8 +4283,7 @@ mod tests {
             })
             .await;
 
-        let channels_b = cx_b
-            .add_model(|cx| ChannelList::new(client_b.user_store.clone(), client_b.clone(), cx));
+        let channels_b = cx_b.add_model(|cx| ChannelList::new(client_b.clone(), cx));
         channels_b
             .condition(cx_b, |list, _| list.available_channels().is_some())
             .await;
@@ -5376,9 +5371,15 @@ mod tests {
                         .as_ref()
                         .unwrap()
                         .read_with(&guest_cx, |project, _| assert!(project.is_read_only()));
-                    guest_cx.update(|_| drop(guest));
+                    guest_cx.update(|cx| {
+                        drop(guest);
+                        cx.clear_globals();
+                    });
                 }
-                host_cx.update(|_| drop(host));
+                host_cx.update(|cx| {
+                    drop(host);
+                    cx.clear_globals();
+                });
 
                 return;
             }
@@ -5460,7 +5461,10 @@ mod tests {
 
                     log::info!("{} removed", guest.username);
                     available_guests.push(guest.username.clone());
-                    guest_cx.update(|_| drop(guest));
+                    guest_cx.update(|cx| {
+                        drop(guest);
+                        cx.clear_globals();
+                    });
 
                     operations += 1;
                 }
@@ -5584,10 +5588,18 @@ mod tests {
                 );
             }
 
-            guest_cx.update(|_| drop(guest_client));
+            guest_cx.update(|cx| {
+                drop(guest_client);
+                cx.clear_globals();
+            });
         }
 
-        host_cx.update(|_| drop(host_client));
+        host_cx.update(|cx| {
+            drop(host_client);
+            cx.clear_globals();
+        });
+
+        host_cx.foreground().run_until_parked();
     }
 
     struct TestServer {
@@ -5694,6 +5706,7 @@ mod tests {
 
             let peer_id = PeerId(connection_id_rx.next().await.unwrap().0);
             let user_store = cx.add_model(|cx| UserStore::new(client.clone(), cx));
+            cx.update(|cx| cx.set_global(user_store.clone()));
 
             let client = TestClient {
                 client,
@@ -5859,9 +5872,7 @@ mod tests {
                         fs,
                         project: project.clone(),
                         user_store: self.user_store.clone(),
-                        channel_list: cx.add_model(|cx| {
-                            ChannelList::new(self.user_store.clone(), self.client.clone(), cx)
-                        }),
+                        channel_list: cx.add_model(|cx| ChannelList::new(self.client.clone(), cx)),
                         client: self.client.clone(),
                     },
                     cx,
@@ -6009,7 +6020,7 @@ mod tests {
                 &mut cx,
             )
             .await;
-            log::info!("Host done");
+            log::info!("host: done");
             self.project = Some(project);
             (self, cx, result.err())
         }

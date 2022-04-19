@@ -118,8 +118,8 @@ fn main() {
             cx,
         );
         let user_store = cx.add_model(|cx| UserStore::new(client.clone(), cx));
-        let channel_list =
-            cx.add_model(|cx| ChannelList::new(user_store.clone(), client.clone(), cx));
+        cx.set_global(user_store.clone());
+        let channel_list = cx.add_model(|cx| ChannelList::new(client.clone(), cx));
 
         project::Project::init(&client);
         client::Channel::init(&client);
