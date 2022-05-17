@@ -45,7 +45,7 @@ pub trait Db: Send + Sync {
         &self,
         user_id: UserId,
         code: &str,
-        allowed_usage_count: usize,
+        allowed_usage_count: u32,
     ) -> Result<()>;
     async fn redeem_invite_code(
         &self,
@@ -53,7 +53,8 @@ pub trait Db: Send + Sync {
         user_github_login: &str,
         timestamp: OffsetDateTime,
     ) -> Result<UserId>;
-    async fn get_invite_code(&self, user_id: UserId) -> Result<Option<InviteCode>>;
+    async fn get_invite_codes(&self, user_id: UserId) -> Result<Vec<InviteCode>>;
+    async fn update_invite_code(&self, code: &str, remaining_count: u32) -> Result<()>;
 
     #[cfg(any(test, feature = "seed-support"))]
     async fn find_org_by_slug(&self, slug: &str) -> Result<Option<Org>>;
@@ -464,25 +465,11 @@ impl Db for PostgresDb {
 
     // invite codes
 
-    async fn get_invite_code(&self, user_id: UserId) -> Result<Option<InviteCode>> {
-        let query = "
-            SELECT (id, code, remaining_count)
-            FROM invite_codes
-            WHERE owner_id = $1 AND remaining_count > 0
-            ORDER BY id DESC
-            LIMIT 1
-        ";
-        Ok(sqlx::query_as(query)
-            .bind(user_id)
-            .fetch_optional(&self.pool)
-            .await?)
-    }
-
     async fn create_invite_code(
         &self,
         user_id: UserId,
         code: &str,
-        max_usage_count: usize,
+        max_usage_count: u32,
     ) -> Result<()> {
         let query = "
             INSERT INTO invite_codes
@@ -494,7 +481,7 @@ impl Db for PostgresDb {
         sqlx::query_scalar(query)
             .bind(user_id)
             .bind(code)
-            .bind(max_usage_count as i32)
+            .bind(max_usage_count)
             .fetch_one(&self.pool)
             .await?;
         Ok(())
@@ -549,6 +536,34 @@ impl Db for PostgresDb {
 
         tx.commit().await?;
         Ok(user_id)
+    }
+
+    async fn get_invite_codes(&self, user_id: UserId) -> Result<Vec<InviteCode>> {
+        let query = "
+            SELECT (code, remaining_count)
+            FROM invite_codes
+            WHERE owner_id = $1
+            ORDER BY id DESC
+        ";
+        Ok(sqlx::query_as(query)
+            .bind(user_id)
+            .fetch_all(&self.pool)
+            .await?)
+    }
+
+    async fn update_invite_code(&self, code: &str, remaining_count: u32) -> Result<()> {
+        let query = "
+            UPDATE invite_codes SET remaining_count = $1 WHERE code = $2
+        ";
+        let result = sqlx::query(query)
+            .bind(remaining_count)
+            .bind(code)
+            .execute(&self.pool)
+            .await?;
+        if result.rows_affected() != 1 {
+            Err(anyhow!("invite code not found"))?;
+        }
+        Ok(())
     }
 
     // orgs
@@ -797,7 +812,7 @@ macro_rules! id_type {
 }
 
 id_type!(InviteCodeId);
-#[derive(Clone, Debug, FromRow)]
+#[derive(Clone, Debug, FromRow, Serialize)]
 pub struct InviteCode {
     pub code: String,
     pub remaining_count: i32,
@@ -1607,7 +1622,7 @@ pub mod tests {
             unimplemented!()
         }
 
-        async fn get_invite_code(&self, _user_id: UserId) -> Result<Option<InviteCode>> {
+        async fn get_invite_codes(&self, _user_id: UserId) -> Result<Vec<InviteCode>> {
             unimplemented!()
         }
 
@@ -1615,7 +1630,7 @@ pub mod tests {
             &self,
             _user_id: UserId,
             _code: &str,
-            _max_usage_count: usize,
+            _max_usage_count: u32,
         ) -> Result<()> {
             unimplemented!()
         }
@@ -1626,6 +1641,10 @@ pub mod tests {
             _user_github_login: &str,
             _timestamp: OffsetDateTime,
         ) -> Result<UserId> {
+            unimplemented!()
+        }
+
+        async fn update_invite_code(&self, _code: &str, _remaining_count: u32) -> Result<()> {
             unimplemented!()
         }
 

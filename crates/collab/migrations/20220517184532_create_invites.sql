@@ -13,4 +13,4 @@ CREATE TABLE invite_code_usages (
 );
 
 CREATE INDEX index_invite_codes_owner_id ON invite_codes (owner_id);
-CREATE INDEX index_invite_codes_code ON invite_codes (code);
+CREATE UNIQUE INDEX index_invite_codes_code ON invite_codes (code);

@@ -1,6 +1,6 @@
 use crate::{
     auth,
-    db::{User, UserId},
+    db::{InviteCode, User, UserId},
     AppState, Error, Result,
 };
 use anyhow::anyhow;
@@ -13,6 +13,7 @@ use axum::{
     routing::{get, post, put},
     Extension, Json, Router,
 };
+use nanoid::nanoid;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tower::ServiceBuilder;
@@ -23,16 +24,20 @@ pub fn routes(state: Arc<AppState>) -> Router<Body> {
         .route("/users", get(get_users).post(create_user))
         .route(
             "/users/:id",
-            put(update_user).delete(destroy_user).get(get_user),
+            get(get_user).put(update_user).delete(destroy_user),
         )
         .route("/users/:id/access_tokens", post(create_access_token))
+        .route(
+            "/users/:id/invite_codes",
+            get(get_invite_codes).post(create_invite_code),
+        )
+        .route("/invite_codes/:code", put(update_invite_code))
         .route("/panic", post(trace_panic))
         .layer(
             ServiceBuilder::new()
                 .layer(Extension(state))
                 .layer(middleware::from_fn(validate_api_token)),
         )
-    // TODO: Compression on API routes?
 }
 
 pub async fn validate_api_token<B>(req: Request<B>, next: Next<B>) -> impl IntoResponse {
@@ -129,6 +134,45 @@ async fn get_user(
         .await?
         .ok_or_else(|| anyhow!("user not found"))?;
     Ok(Json(user))
+}
+
+#[derive(Deserialize)]
+struct CreateInviteCodeParams {
+    allowed_usage_count: u32,
+}
+
+async fn get_invite_codes(
+    Path(user_id): Path<i32>,
+    Extension(app): Extension<Arc<AppState>>,
+) -> Result<Json<Vec<InviteCode>>> {
+    Ok(Json(app.db.get_invite_codes(UserId(user_id)).await?))
+}
+
+async fn create_invite_code(
+    Path(user_id): Path<i32>,
+    Json(params): Json<CreateInviteCodeParams>,
+    Extension(app): Extension<Arc<AppState>>,
+) -> Result<()> {
+    app.db
+        .create_invite_code(UserId(user_id), &nanoid!(16), params.allowed_usage_count)
+        .await?;
+    Ok(())
+}
+
+#[derive(Deserialize)]
+struct UpdateInviteCodeParams {
+    remaining_count: u32,
+}
+
+async fn update_invite_code(
+    Path(code): Path<String>,
+    Json(params): Json<UpdateInviteCodeParams>,
+    Extension(app): Extension<Arc<AppState>>,
+) -> Result<()> {
+    app.db
+        .update_invite_code(&code, params.remaining_count)
+        .await?;
+    Ok(())
 }
 
 #[derive(Debug, Deserialize)]
