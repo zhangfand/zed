@@ -40,8 +40,22 @@ pub trait Db: Send + Sync {
         max_access_token_count: usize,
     ) -> Result<()>;
     async fn get_access_token_hashes(&self, user_id: UserId) -> Result<Vec<String>>;
-    #[cfg(any(test, feature = "seed-support"))]
 
+    async fn create_invite_code(
+        &self,
+        user_id: UserId,
+        code: &str,
+        allowed_usage_count: usize,
+    ) -> Result<()>;
+    async fn redeem_invite_code(
+        &self,
+        code: &str,
+        user_github_login: &str,
+        timestamp: OffsetDateTime,
+    ) -> Result<UserId>;
+    async fn get_invite_code(&self, user_id: UserId) -> Result<Option<InviteCode>>;
+
+    #[cfg(any(test, feature = "seed-support"))]
     async fn find_org_by_slug(&self, slug: &str) -> Result<Option<Org>>;
     #[cfg(any(test, feature = "seed-support"))]
     async fn create_org(&self, name: &str, slug: &str) -> Result<OrgId>;
@@ -448,6 +462,95 @@ impl Db for PostgresDb {
             .await?)
     }
 
+    // invite codes
+
+    async fn get_invite_code(&self, user_id: UserId) -> Result<Option<InviteCode>> {
+        let query = "
+            SELECT (id, code, remaining_count)
+            FROM invite_codes
+            WHERE owner_id = $1 AND remaining_count > 0
+            ORDER BY id DESC
+            LIMIT 1
+        ";
+        Ok(sqlx::query_as(query)
+            .bind(user_id)
+            .fetch_optional(&self.pool)
+            .await?)
+    }
+
+    async fn create_invite_code(
+        &self,
+        user_id: UserId,
+        code: &str,
+        max_usage_count: usize,
+    ) -> Result<()> {
+        let query = "
+            INSERT INTO invite_codes
+            (user_id, code, remaining_count)
+            VALUES
+            ($1, $2, $3)
+        ";
+
+        sqlx::query_scalar(query)
+            .bind(user_id)
+            .bind(code)
+            .bind(max_usage_count as i32)
+            .fetch_one(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    async fn redeem_invite_code(
+        &self,
+        code: &str,
+        user_github_login: &str,
+        timestamp: OffsetDateTime,
+    ) -> Result<UserId> {
+        let decrement_remaining_count_query = "
+            UPDATE invite_codes
+            SET remaining_count = remaining_count - 1
+            WHERE
+                code = $1 AND
+                remaining_count > 0
+            RETURNING id
+        ";
+        let create_user_query = "
+            INSERT INTO users
+            (github_login, admin)
+            VALUES
+            ($1, 'f')
+            RETURNING id
+        ";
+        let insert_usage_query = "
+            INSERT INTO invite_code_usages
+            (invite_code_id, invitee_id, usage_time)
+        ";
+
+        let mut tx = self.pool.begin().await?;
+        let code_id = sqlx::query_scalar(decrement_remaining_count_query)
+            .bind(code)
+            .fetch_optional(&mut tx)
+            .await?
+            .map(InviteCodeId)
+            .ok_or_else(|| anyhow!("invite code not found"))?;
+
+        let user_id = sqlx::query_scalar(create_user_query)
+            .bind(user_github_login)
+            .fetch_one(&mut tx)
+            .await
+            .map(UserId)?;
+
+        sqlx::query(insert_usage_query)
+            .bind(code_id)
+            .bind(user_id)
+            .bind(timestamp)
+            .execute(&mut tx)
+            .await?;
+
+        tx.commit().await?;
+        Ok(user_id)
+    }
+
     // orgs
 
     #[allow(unused)] // Help rust-analyzer
@@ -691,6 +794,13 @@ macro_rules! id_type {
             }
         }
     };
+}
+
+id_type!(InviteCodeId);
+#[derive(Clone, Debug, FromRow)]
+pub struct InviteCode {
+    pub code: String,
+    pub remaining_count: i32,
 }
 
 id_type!(UserId);
@@ -1494,6 +1604,28 @@ pub mod tests {
         }
 
         async fn get_access_token_hashes(&self, _user_id: UserId) -> Result<Vec<String>> {
+            unimplemented!()
+        }
+
+        async fn get_invite_code(&self, _user_id: UserId) -> Result<Option<InviteCode>> {
+            unimplemented!()
+        }
+
+        async fn create_invite_code(
+            &self,
+            _user_id: UserId,
+            _code: &str,
+            _max_usage_count: usize,
+        ) -> Result<()> {
+            unimplemented!()
+        }
+
+        async fn redeem_invite_code(
+            &self,
+            _code: &str,
+            _user_github_login: &str,
+            _timestamp: OffsetDateTime,
+        ) -> Result<UserId> {
             unimplemented!()
         }
 
