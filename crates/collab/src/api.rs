@@ -23,10 +23,10 @@ pub fn routes(state: Arc<AppState>) -> Router<Body> {
     Router::new()
         .route("/users", get(get_users).post(create_user))
         .route(
-            "/users/:id",
+            "/users/:login",
             get(get_user).put(update_user).delete(destroy_user),
         )
-        .route("/users/:id/access_tokens", post(create_access_token))
+        .route("/users/:login/access_tokens", post(create_access_token))
         .route(
             "/users/:id/invite_codes",
             get(get_invite_codes).post(create_invite_code),
@@ -134,6 +134,13 @@ async fn get_user(
         .await?
         .ok_or_else(|| anyhow!("user not found"))?;
     Ok(Json(user))
+}
+
+#[derive(Serialize)]
+struct UserWithInviteCodes {
+    #[serde(flatten)]
+    user: User,
+    invite_codes: Vec<InviteCode>,
 }
 
 #[derive(Deserialize)]

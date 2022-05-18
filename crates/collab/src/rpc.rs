@@ -1518,14 +1518,15 @@ impl Header for ProtocolVersion {
 
 pub fn routes(app_state: Arc<AppState>) -> Router<Body> {
     let server = Server::new(app_state.clone(), None);
-    Router::new()
-        .route("/rpc", get(handle_websocket_request))
-        .layer(
+    Router::new().route(
+        "/rpc",
+        get(handle_websocket_request).layer(
             ServiceBuilder::new()
                 .layer(Extension(app_state))
                 .layer(middleware::from_fn(auth::validate_header))
                 .layer(Extension(server)),
-        )
+        ),
+    )
 }
 
 pub async fn handle_websocket_request(
