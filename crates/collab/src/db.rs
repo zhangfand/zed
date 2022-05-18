@@ -473,16 +473,16 @@ impl Db for PostgresDb {
     ) -> Result<()> {
         let query = "
             INSERT INTO invite_codes
-            (user_id, code, remaining_count)
+                (owner_id, code, remaining_count)
             VALUES
-            ($1, $2, $3)
+                ($1, $2, $3)
         ";
 
-        sqlx::query_scalar(query)
+        sqlx::query(query)
             .bind(user_id)
             .bind(code)
             .bind(max_usage_count)
-            .fetch_one(&self.pool)
+            .execute(&self.pool)
             .await?;
         Ok(())
     }
@@ -493,54 +493,68 @@ impl Db for PostgresDb {
         user_github_login: &str,
         timestamp: OffsetDateTime,
     ) -> Result<UserId> {
+        let create_user_query = "
+            INSERT INTO users
+                (github_login, admin)
+            VALUES
+                ($1, 'f')
+            RETURNING id
+        ";
         let decrement_remaining_count_query = "
             UPDATE invite_codes
             SET remaining_count = remaining_count - 1
             WHERE
                 code = $1 AND
                 remaining_count > 0
-            RETURNING id
-        ";
-        let create_user_query = "
-            INSERT INTO users
-            (github_login, admin)
-            VALUES
-            ($1, 'f')
-            RETURNING id
+            RETURNING id, owner_id, code, remaining_count
         ";
         let insert_usage_query = "
-            INSERT INTO invite_code_usages
-            (invite_code_id, invitee_id, usage_time)
+            INSERT INTO invite_code_usages 
+                (invite_code_id, invitee_id, usage_time)
+            VALUES 
+                ($1, $2, $3)
+        ";
+        let add_contacts = "
+            INSERT INTO contacts
+                (user_id_a, user_id_b, a_to_b, should_notify, accepted)
+            VALUES
+                ($1, $2, 't', 't', 't')
         ";
 
         let mut tx = self.pool.begin().await?;
-        let code_id = sqlx::query_scalar(decrement_remaining_count_query)
-            .bind(code)
-            .fetch_optional(&mut tx)
-            .await?
-            .map(InviteCodeId)
-            .ok_or_else(|| anyhow!("invite code not found"))?;
-
-        let user_id = sqlx::query_scalar(create_user_query)
+        let invitee_id = sqlx::query_scalar(create_user_query)
             .bind(user_github_login)
             .fetch_one(&mut tx)
             .await
             .map(UserId)?;
 
+        let invite_code: InviteCode = sqlx::query_as(decrement_remaining_count_query)
+            .bind(code)
+            .fetch_optional(&mut tx)
+            .await?
+            .ok_or_else(|| anyhow!("invite code not found"))?;
+
         sqlx::query(insert_usage_query)
-            .bind(code_id)
-            .bind(user_id)
+            .bind(invite_code.id)
+            .bind(invitee_id)
+            .bind(timestamp)
+            .execute(&mut tx)
+            .await?;
+
+        sqlx::query(add_contacts)
+            .bind(invite_code.owner_id)
+            .bind(invitee_id)
             .bind(timestamp)
             .execute(&mut tx)
             .await?;
 
         tx.commit().await?;
-        Ok(user_id)
+        Ok(invitee_id)
     }
 
     async fn get_invite_codes(&self, user_id: UserId) -> Result<Vec<InviteCode>> {
         let query = "
-            SELECT (code, remaining_count)
+            SELECT id, owner_id, code, remaining_count
             FROM invite_codes
             WHERE owner_id = $1
             ORDER BY id DESC
@@ -814,6 +828,8 @@ macro_rules! id_type {
 id_type!(InviteCodeId);
 #[derive(Clone, Debug, FromRow, Serialize)]
 pub struct InviteCode {
+    pub id: InviteCodeId,
+    pub owner_id: UserId,
     pub code: String,
     pub remaining_count: i32,
 }
@@ -1321,6 +1337,155 @@ pub mod tests {
                 ],
             );
         }
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_invite_codes() {
+        let postgres = TestDb::postgres().await;
+        let db = postgres.db();
+        let user1 = db.create_user("user-1", false).await.unwrap();
+
+        // User 1 creates an invite code that can be used twice.
+        db.create_invite_code(user1, "code-1", 2).await.unwrap();
+        let invite_codes = db.get_invite_codes(user1).await.unwrap();
+        assert_eq!(invite_codes.len(), 1);
+        assert_eq!(invite_codes[0].remaining_count, 2);
+
+        // User 2 redeems the invite code and becomes a contact of user 1.
+        let user2 = db
+            .redeem_invite_code("code-1", "user-2", OffsetDateTime::now_utc())
+            .await
+            .unwrap();
+        let invite_codes = db.get_invite_codes(user1).await.unwrap();
+        assert_eq!(invite_codes.len(), 1);
+        assert_eq!(invite_codes[0].remaining_count, 1);
+        assert_eq!(
+            db.get_contacts(user1).await.unwrap(),
+            [
+                Contact::Accepted {
+                    user_id: user1,
+                    should_notify: false
+                },
+                Contact::Accepted {
+                    user_id: user2,
+                    should_notify: true
+                }
+            ]
+        );
+        assert_eq!(
+            db.get_contacts(user2).await.unwrap(),
+            [
+                Contact::Accepted {
+                    user_id: user1,
+                    should_notify: false
+                },
+                Contact::Accepted {
+                    user_id: user2,
+                    should_notify: false
+                }
+            ]
+        );
+
+        // User 3 redeems the invite code and becomes a contact of user 1.
+        let user3 = db
+            .redeem_invite_code("code-1", "user-3", OffsetDateTime::now_utc())
+            .await
+            .unwrap();
+        let invite_codes = db.get_invite_codes(user1).await.unwrap();
+        assert_eq!(invite_codes.len(), 1);
+        assert_eq!(invite_codes[0].remaining_count, 0);
+        assert_eq!(
+            db.get_contacts(user1).await.unwrap(),
+            [
+                Contact::Accepted {
+                    user_id: user1,
+                    should_notify: false
+                },
+                Contact::Accepted {
+                    user_id: user2,
+                    should_notify: true
+                },
+                Contact::Accepted {
+                    user_id: user3,
+                    should_notify: true
+                }
+            ]
+        );
+        assert_eq!(
+            db.get_contacts(user3).await.unwrap(),
+            [
+                Contact::Accepted {
+                    user_id: user1,
+                    should_notify: false
+                },
+                Contact::Accepted {
+                    user_id: user3,
+                    should_notify: false
+                },
+            ]
+        );
+
+        // Trying to reedem the code for the third time results in an error.
+        db.redeem_invite_code("code-1", "user-4", OffsetDateTime::now_utc())
+            .await
+            .unwrap_err();
+
+        // Allowed usage count can be mutated after the code has been created.
+        db.update_invite_code("code-1", 2).await.unwrap();
+        let invite_codes = db.get_invite_codes(user1).await.unwrap();
+        assert_eq!(invite_codes.len(), 1);
+        assert_eq!(invite_codes[0].remaining_count, 2);
+
+        // User 4 can now redeem the invite code and becomes a contact of user 1.
+        let user4 = db
+            .redeem_invite_code("code-1", "user-4", OffsetDateTime::now_utc())
+            .await
+            .unwrap();
+        let invite_codes = db.get_invite_codes(user1).await.unwrap();
+        assert_eq!(invite_codes.len(), 1);
+        assert_eq!(invite_codes[0].remaining_count, 1);
+        assert_eq!(
+            db.get_contacts(user1).await.unwrap(),
+            [
+                Contact::Accepted {
+                    user_id: user1,
+                    should_notify: false
+                },
+                Contact::Accepted {
+                    user_id: user2,
+                    should_notify: true
+                },
+                Contact::Accepted {
+                    user_id: user3,
+                    should_notify: true
+                },
+                Contact::Accepted {
+                    user_id: user4,
+                    should_notify: true
+                }
+            ]
+        );
+        assert_eq!(
+            db.get_contacts(user4).await.unwrap(),
+            [
+                Contact::Accepted {
+                    user_id: user1,
+                    should_notify: false
+                },
+                Contact::Accepted {
+                    user_id: user4,
+                    should_notify: false
+                },
+            ]
+        );
+
+        // An existing user cannot redeem invite codes.
+        db.redeem_invite_code("code-1", "user-2", OffsetDateTime::now_utc())
+            .await
+            .unwrap_err();
+        let invite_codes = db.get_invite_codes(user1).await.unwrap();
+        assert_eq!(invite_codes.len(), 1);
+        assert_eq!(invite_codes[0].remaining_count, 1);
     }
 
     pub struct TestDb {
