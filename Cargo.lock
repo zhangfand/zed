@@ -4786,6 +4786,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "terminal"
+version = "0.1.0"
+dependencies = [
+ "editor",
+ "gpui",
+ "menu",
+ "project",
+ "settings",
+ "smallvec",
+ "text",
+ "theme",
+ "util",
+ "workspace",
+]
+
+[[package]]
 name = "text"
 version = "0.1.0"
 dependencies = [
@@ -6070,6 +6086,7 @@ dependencies = [
  "smol",
  "sum_tree",
  "tempdir",
+ "terminal",
  "text",
  "theme",
  "theme_selector",

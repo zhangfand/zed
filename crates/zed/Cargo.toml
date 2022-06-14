@@ -44,6 +44,7 @@ project_symbols = { path = "../project_symbols" }
 rpc = { path = "../rpc" }
 settings = { path = "../settings" }
 sum_tree = { path = "../sum_tree" }
+terminal = { path = "../terminal" }
 text = { path = "../text" }
 theme = { path = "../theme" }
 theme_selector = { path = "../theme_selector" }

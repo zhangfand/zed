@@ -1,0 +1,20 @@
+[package]
+name = "terminal"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+path = "src/terminal.rs"
+doctest = false
+
+[dependencies]
+editor = { path = "../editor" }
+util = { path = "../util" }
+gpui = { path = "../gpui" }
+theme = { path = "../theme" }
+menu = { path = "../menu" }
+settings = { path = "../settings" }
+text = { path = "../text" }
+workspace = { path = "../workspace" }
+project = { path = "../project" }
+smallvec = { version = "1.6", features = ["union"] }

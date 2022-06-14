@@ -25,7 +25,7 @@
             "cmd-q": "zed::Quit",
             "cmd-n": "workspace::NewFile",
             "cmd-shift-N": "workspace::NewWindow",
-            "cmd-o": "workspace::Open"
+            "cmd-o": "workspace::Open",
         }
     },
     {
@@ -216,6 +216,7 @@
         "context": "Workspace",
         "bindings": {
             "cmd-shift-F": "project_search::Deploy",
+            "cmd-shift-T": "terminal::Deploy",
             "cmd-k cmd-t": "theme_selector::Toggle",
             "cmd-k cmd-s": "zed::OpenKeymap",
             "cmd-t": "project_symbols::Toggle",
