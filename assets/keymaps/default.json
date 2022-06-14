@@ -25,7 +25,7 @@
             "cmd-q": "zed::Quit",
             "cmd-n": "workspace::NewFile",
             "cmd-shift-N": "workspace::NewWindow",
-            "cmd-o": "workspace::Open",
+            "cmd-o": "workspace::Open"
         }
     },
     {
