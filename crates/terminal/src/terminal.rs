@@ -1,15 +1,20 @@
-use alacritty_terminal::{
-    config::{Config, PtyConfig},
-    grid::Scroll,
-    term::SizeInfo,
-    Term,
+use alacritty_terminal::{config::Config, event::EventListener, term::SizeInfo, Term};
+use gpui::{
+    actions,
+    color::Color,
+    elements::*,
+    fonts::{with_font_cache, TextStyle},
+    geometry::{rect::RectF, vector::vec2f},
+    text_layout::Line,
+    Entity, MutableAppContext, View, ViewContext,
 };
-use gpui::{actions, elements::*, Entity, MutableAppContext, View, ViewContext, ViewHandle};
 use project::{Project, ProjectPath};
 use settings::Settings;
 use smallvec::SmallVec;
 use util::ResultExt;
 use workspace::{Item, Workspace};
+
+mod event_listener;
 
 actions!(terminal, [Deploy]);
 
@@ -26,30 +31,30 @@ impl Entity for Terminal {
 }
 
 impl Terminal {
-    fn init() -> Terminal {
-        //Need to synthesize a config (probably easy)
-        //Size Info (probably easy)
-        //Event_Proxy tho...
+    fn new() -> Terminal {
+        //Basic Alacritty terminal architecture:
+        //- Need to create an alacritty_terminal::event::EventListener impl
+        //  (so the terminal can control title & such)
+        //- Need to use their alacritty::tty::new() stuff to spin up a terminal
+        //  + Details like setting up enviroment variables in sub process
+        //- Need to create and store a logical terminal (alacritty_terminal::term::Term)
+        //- Then when rendering, query the logical terminal and draw the output somehow
+        //-Hints:
+        //- Look at alacritty::WindowContext::new() for how to wire things up together
+        //- Look at display for hints on how to query Terminal
 
-        let terminal_size = SizeInfo::new(10.0, 10.0, 1.0, 1.0, 1.0, 1.0, false);
-        //TODO:
-        //1. See if we need to implement EventListener in Zed, or if they have one
-        //2. See about the rendering of the terminal
-        let t = Term::new(&Config::default(), terminal_size, terminal_size);
-        t.scroll_to_point();
         Terminal {}
     }
 
     fn deploy(workspace: &mut Workspace, _: &Deploy, cx: &mut ViewContext<Workspace>) {
-        dbg!("HERERERER");
         let project = workspace.project().clone();
         if project.read(cx).is_remote() {
             cx.propagate_action();
-        } else if let Some(buffer) = project
+        } else if let Some(_) = project
             .update(cx, |project, cx| project.create_buffer("", None, cx))
             .log_err()
         {
-            workspace.add_item(Box::new(cx.add_view(|_cx| Terminal::init())), cx);
+            workspace.add_item(Box::new(cx.add_view(|_cx| Terminal::new())), cx);
         }
     }
 }
@@ -60,17 +65,128 @@ impl View for Terminal {
     }
 
     fn render(&mut self, cx: &mut gpui::RenderContext<'_, Self>) -> ElementBox {
-        let style = &cx
-            .global::<Settings>()
-            .theme
-            .search
-            .option_button
-            .style_for(Default::default(), true);
+        TerminalEl::new().boxed()
+    }
+}
 
-        Label::new("Hello!".into(), style.text.clone())
-            .contained()
-            .with_style(style.container)
-            .boxed()
+struct TerminalEl {
+    grid_data: String,
+}
+
+impl TerminalEl {
+    fn new() -> TerminalEl {
+        let grid_data = r#"mikayla@Mikaylas-MacBook-Air zed % ls -aslF
+            total 352
+            0 drwxr-xr-x  19 mikayla  staff     608 Jun 13 08:59 ./
+            0 drwxr-xr-x  32 mikayla  staff    1024 Jun 15 10:26 ../
+            8 -rw-r--r--   1 mikayla  staff      35 Jun 13 08:59 .dockerignore
+            0 drwxr-xr-x  15 mikayla  staff     480 Jun 15 11:36 .git/
+            0 drwxr-xr-x   3 mikayla  staff      96 Jun 13 08:59 .github/
+            8 -rw-r--r--   1 mikayla  staff     169 Jun 13 08:59 .gitignore
+            0 drwxr-xr-x   3 mikayla  staff      96 Jun 13 08:59 .vscode/
+            288 -rw-r--r--   1 mikayla  staff  144472 Jun 14 16:53 Cargo.lock
+            8 -rw-r--r--   1 mikayla  staff    1021 Jun 13 08:59 Cargo.toml
+            8 -rw-r--r--   1 mikayla  staff     733 Jun 13 08:59 Dockerfile
+            8 -rw-r--r--   1 mikayla  staff     519 Jun 13 08:59 Dockerfile.migrator
+            8 -rw-r--r--   1 mikayla  staff      83 Jun 13 08:59 Procfile
+            16 -rw-r--r--   1 mikayla  staff    5773 Jun 13 08:59 README.md
+            0 drwxr-xr-x   6 mikayla  staff     192 Jun 13 08:59 assets/
+            0 drwxr-xr-x  44 mikayla  staff    1408 Jun 14 12:52 crates/
+            0 drwxr-xr-x   4 mikayla  staff     128 Jun 13 08:59 docs/
+            0 drwxr-xr-x  13 mikayla  staff     416 Jun 13 08:59 script/
+            0 drwxr-xr-x   9 mikayla  staff     288 Jun 13 09:00 styles/
+            0 drwxr-xr-x@  5 mikayla  staff     160 Jun 13 09:02 target/
+            mikayla@Mikaylas-MacBook-Air zed %"#;
+
+        TerminalEl {
+            grid_data: grid_data.to_string(),
+        }
+    }
+}
+
+struct LayoutState {
+    lines: Vec<Line>,
+    line_height: f32,
+}
+
+impl Element for TerminalEl {
+    type LayoutState = LayoutState;
+    type PaintState = ();
+
+    fn layout(
+        &mut self,
+        constraint: gpui::SizeConstraint,
+        cx: &mut gpui::LayoutContext,
+    ) -> (gpui::geometry::vector::Vector2F, Self::LayoutState) {
+        let chunks = vec![(self.grid_data.as_str(), None)].into_iter();
+
+        let text_style = with_font_cache(cx.font_cache.clone(), || TextStyle {
+            color: Color::white(),
+            ..Default::default()
+        }); //Here it's 14?
+
+        let shaped_lines = layout_highlighted_chunks(
+            chunks,
+            &text_style,
+            cx.text_layout_cache,
+            &cx.font_cache,
+            usize::MAX,
+            self.grid_data.matches('\n').count() + 1,
+        );
+        let line_height = cx.font_cache.line_height(text_style.font_size);
+
+        (
+            constraint.max,
+            LayoutState {
+                lines: shaped_lines,
+                line_height,
+            },
+        )
+    }
+
+    fn paint(
+        &mut self,
+        bounds: gpui::geometry::rect::RectF,
+        visible_bounds: gpui::geometry::rect::RectF,
+        layout: &mut Self::LayoutState,
+        cx: &mut gpui::PaintContext,
+    ) -> Self::PaintState {
+        let mut origin = bounds.origin();
+        dbg!(layout.line_height);
+
+        for line in &layout.lines {
+            let boundaries = RectF::new(origin, vec2f(bounds.width(), layout.line_height));
+            dbg!(origin.y(), boundaries.max_y());
+
+            if boundaries.intersects(visible_bounds) {
+                line.paint(origin, visible_bounds, layout.line_height, cx);
+            }
+
+            origin.set_y(boundaries.max_y());
+        }
+    }
+
+    fn dispatch_event(
+        &mut self,
+        _event: &gpui::Event,
+        _bounds: gpui::geometry::rect::RectF,
+        _visible_bounds: gpui::geometry::rect::RectF,
+        _layout: &mut Self::LayoutState,
+        _paint: &mut Self::PaintState,
+        _cx: &mut gpui::EventContext,
+    ) -> bool {
+        false
+        // unreachable!("Should never be called hopefully")
+    }
+
+    fn debug(
+        &self,
+        _bounds: gpui::geometry::rect::RectF,
+        _layout: &Self::LayoutState,
+        _paint: &Self::PaintState,
+        _cx: &gpui::DebugContext,
+    ) -> gpui::serde_json::Value {
+        unreachable!("Should never be called hopefully")
     }
 }
 
@@ -81,14 +197,6 @@ impl Item for Terminal {
         let settings = cx.global::<Settings>();
         let search_theme = &settings.theme.search;
         Flex::row()
-            .with_child(
-                Svg::new("icons/magnifier.svg")
-                    .with_color(style.label.text.color)
-                    .constrained()
-                    .with_width(search_theme.tab_icon_width)
-                    .aligned()
-                    .boxed(),
-            )
             .with_child(
                 Label::new("Terminal".into(), style.label.clone())
                     .aligned()
