@@ -8,6 +8,7 @@ path = "src/terminal.rs"
 doctest = false
 
 [dependencies]
+alacritty_terminal = "0.16.1"
 editor = { path = "../editor" }
 util = { path = "../util" }
 gpui = { path = "../gpui" }
