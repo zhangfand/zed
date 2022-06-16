@@ -217,6 +217,7 @@
         "bindings": {
             "cmd-shift-F": "project_search::Deploy",
             "cmd-shift-T": "terminal::Deploy",
+            "alt-cmd-z": "terminal::FakeSendToPtyPlsDelete",
             "cmd-k cmd-t": "theme_selector::Toggle",
             "cmd-k cmd-s": "zed::OpenKeymap",
             "cmd-t": "project_symbols::Toggle",

@@ -1,14 +1,15 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use alacritty_terminal::{
     config::{Config, Program, PtyConfig},
-    event_loop::{EventLoop, Msg},
+    event::Notify,
+    event_loop::{EventLoop, Msg, Notifier},
     grid::Dimensions,
     sync::FairMutex,
     term::SizeInfo,
     tty, Term,
 };
-use event_listener::ZedTranslator;
+use event_listener::ZedTerminalHandle;
 use gpui::{
     actions,
     color::Color,
@@ -27,22 +28,25 @@ use workspace::{Item, Workspace};
 
 mod event_listener;
 
-actions!(terminal, [Deploy]);
+//Action steps:
+//Create an action struct with actions!
+//Create an action handler that accepts that struct as an arg
+//Register that handler in `init`
+//If adding to key map file, reference the *struct name*, not the *handler function*
+actions!(terminal, [Deploy, FakeSendToPtyPlsDelete]);
 
 pub fn init(cx: &mut MutableAppContext) {
-    cx.add_action(Terminal::deploy);
+    cx.add_action(ZedTerminal::deploy);
+    cx.add_action(ZedTerminal::fake_send_to_pty);
 }
-pub struct Terminal {
-    loop_tx: Sender<Msg>,
-    term: Arc<FairMutex<Term<ZedTranslator>>>,
-}
-
-impl Entity for Terminal {
-    type Event = ();
+pub struct ZedTerminal {
+    loop_tx: Notifier,
+    term: Arc<FairMutex<Term<ZedTerminalHandle>>>,
+    title: String,
 }
 
-impl Terminal {
-    fn new() -> Terminal {
+impl ZedTerminal {
+    fn new() -> ZedTerminal {
         //Basic Alacritty terminal architecture:
         //- Need to create an alacritty_terminal::event::EventListener impl
         //  (so the terminal can control title & such)
@@ -60,7 +64,7 @@ impl Terminal {
         //Not just a crappy terminal,
         //Full zed features like collaboration, multicursor, etc.
 
-        let zed_proxy = ZedTranslator {};
+        let zed_proxy = ZedTerminalHandle {};
 
         let pty_config = PtyConfig {
             shell: Some(Program::Just("zsh".to_string())),
@@ -88,10 +92,16 @@ impl Terminal {
             false,
         );
 
-        let loop_tx = event_loop.channel();
-        let io_thread = event_loop.spawn();
+        //This variable is how we send stuff to Alacritty
+        //Need to wrap it up in a message, which is done by Notifier
+        let loop_tx = Notifier(event_loop.channel());
+        let _io_thread = event_loop.spawn();
 
-        Terminal { loop_tx, term }
+        ZedTerminal {
+            loop_tx,
+            term,
+            title: "Terminal".to_string(),
+        }
     }
 
     fn deploy(workspace: &mut Workspace, _: &Deploy, cx: &mut ViewContext<Workspace>) {
@@ -102,27 +112,52 @@ impl Terminal {
             .update(cx, |project, cx| project.create_buffer("", None, cx))
             .log_err()
         {
-            workspace.add_item(Box::new(cx.add_view(|_cx| Terminal::new())), cx);
+            let term = Arc::new(Mutex::new(ZedTerminal::new()));
+            cx.set_global(term.clone());
+            workspace.add_item(Box::new(cx.add_view(|_cx| TerminalView { term })), cx);
         }
+    }
+
+    fn fake_send_to_pty(
+        workspace: &mut Workspace,
+        _: &FakeSendToPtyPlsDelete,
+        cx: &mut ViewContext<Workspace>,
+    ) {
+        let term = &cx.global::<Arc<Mutex<ZedTerminal>>>().lock().unwrap();
+        dbg!(&term.title);
+        term.loop_tx.notify("M".as_bytes());
     }
 }
 
-impl View for Terminal {
+struct TerminalView {
+    term: Arc<Mutex<ZedTerminal>>,
+}
+
+impl Entity for TerminalView {
+    type Event = ();
+}
+
+impl View for TerminalView {
     fn ui_name() -> &'static str {
         "TerminalView"
     }
 
-    fn render(&mut self, _cx: &mut gpui::RenderContext<'_, Self>) -> ElementBox {
-        TerminalEl::new(self.term.clone()).boxed()
+    fn render(&mut self, cx: &mut gpui::RenderContext<'_, Self>) -> ElementBox {
+        let theme = cx.global::<Settings>().theme.clone();
+
+        TerminalEl::new(self.term.lock().unwrap().term.clone())
+            .contained()
+            // .with_style(theme.terminal.container)
+            .boxed()
     }
 }
 
 struct TerminalEl {
-    grid_data: Arc<FairMutex<Term<ZedTranslator>>>,
+    grid_data: Arc<FairMutex<Term<ZedTerminalHandle>>>,
 }
 
 impl TerminalEl {
-    fn new(term: Arc<FairMutex<Term<ZedTranslator>>>) -> TerminalEl {
+    fn new(term: Arc<FairMutex<Term<ZedTerminalHandle>>>) -> TerminalEl {
         TerminalEl { grid_data: term }
     }
 }
@@ -148,7 +183,7 @@ impl Element for TerminalEl {
             .display_iter()
             .map(|c| c.c)
             .collect::<String>();
-
+        dbg!(&line);
         let chunks = vec![(&line[..], None)].into_iter();
 
         let text_style = with_font_cache(cx.font_cache.clone(), || TextStyle {
@@ -224,13 +259,13 @@ impl Element for TerminalEl {
 
 ///Item is what workspace uses for deciding what to render in a pane
 ///Often has a file path or somesuch
-impl Item for Terminal {
+impl Item for TerminalView {
     fn tab_content(&self, style: &theme::Tab, cx: &gpui::AppContext) -> ElementBox {
         let settings = cx.global::<Settings>();
         let search_theme = &settings.theme.search;
         Flex::row()
             .with_child(
-                Label::new("Terminal".into(), style.label.clone())
+                Label::new(self.term.lock().unwrap().title.clone(), style.label.clone())
                     .aligned()
                     .contained()
                     .with_margin_left(search_theme.tab_icon_spacing)
