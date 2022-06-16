@@ -4926,6 +4926,7 @@ dependencies = [
  "editor",
  "gpui",
  "menu",
+ "mio-extras",
  "project",
  "settings",
  "smallvec",

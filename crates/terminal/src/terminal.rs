@@ -1,4 +1,14 @@
-use alacritty_terminal::{config::Config, event::EventListener, term::SizeInfo, Term};
+use std::sync::Arc;
+
+use alacritty_terminal::{
+    config::{Config, Program, PtyConfig},
+    event_loop::{EventLoop, Msg},
+    grid::Dimensions,
+    sync::FairMutex,
+    term::SizeInfo,
+    tty, Term,
+};
+use event_listener::ZedTranslator;
 use gpui::{
     actions,
     color::Color,
@@ -8,6 +18,7 @@ use gpui::{
     text_layout::Line,
     Entity, MutableAppContext, View, ViewContext,
 };
+use mio_extras::channel::Sender;
 use project::{Project, ProjectPath};
 use settings::Settings;
 use smallvec::SmallVec;
@@ -21,10 +32,10 @@ actions!(terminal, [Deploy]);
 pub fn init(cx: &mut MutableAppContext) {
     cx.add_action(Terminal::deploy);
 }
-//2 modes to keep track of:
-//Normal command history mode where you're appending to a log
-//Full control mode where the terminal has total control over rendering
-pub struct Terminal {}
+pub struct Terminal {
+    loop_tx: Sender<Msg>,
+    term: Arc<FairMutex<Term<ZedTranslator>>>,
+}
 
 impl Entity for Terminal {
     type Event = ();
@@ -39,11 +50,48 @@ impl Terminal {
         //  + Details like setting up enviroment variables in sub process
         //- Need to create and store a logical terminal (alacritty_terminal::term::Term)
         //- Then when rendering, query the logical terminal and draw the output somehow
+        //- Also need to create an event loop for the PTY I/O, term looks for the same
+        //  PtyConfig as tty::new(), so they're communicating through kernel
         //-Hints:
         //- Look at alacritty::WindowContext::new() for how to wire things up together
         //- Look at display for hints on how to query Terminal
 
-        Terminal {}
+        //Goals:
+        //Not just a crappy terminal,
+        //Full zed features like collaboration, multicursor, etc.
+
+        let zed_proxy = ZedTranslator {};
+
+        let pty_config = PtyConfig {
+            shell: Some(Program::Just("zsh".to_string())),
+            working_directory: None,
+            hold: false,
+        };
+
+        // TODO: Modify settings to populate the alacritty config
+        let config = Config {
+            pty_config: pty_config.clone(),
+            ..Default::default()
+        };
+        let size_info = SizeInfo::new(100., 100., 5., 5., 0., 0., false);
+
+        let term = Term::new(&config, size_info, zed_proxy.clone());
+        let term = Arc::new(FairMutex::new(term));
+
+        let pty = tty::new(&pty_config, &size_info, None).expect("Could not create tty");
+
+        let event_loop = EventLoop::new(
+            Arc::clone(&term),
+            zed_proxy.clone(),
+            pty,
+            pty_config.hold,
+            false,
+        );
+
+        let loop_tx = event_loop.channel();
+        let io_thread = event_loop.spawn();
+
+        Terminal { loop_tx, term }
     }
 
     fn deploy(workspace: &mut Workspace, _: &Deploy, cx: &mut ViewContext<Workspace>) {
@@ -64,43 +112,18 @@ impl View for Terminal {
         "TerminalView"
     }
 
-    fn render(&mut self, cx: &mut gpui::RenderContext<'_, Self>) -> ElementBox {
-        TerminalEl::new().boxed()
+    fn render(&mut self, _cx: &mut gpui::RenderContext<'_, Self>) -> ElementBox {
+        TerminalEl::new(self.term.clone()).boxed()
     }
 }
 
 struct TerminalEl {
-    grid_data: String,
+    grid_data: Arc<FairMutex<Term<ZedTranslator>>>,
 }
 
 impl TerminalEl {
-    fn new() -> TerminalEl {
-        let grid_data = r#"mikayla@Mikaylas-MacBook-Air zed % ls -aslF
-            total 352
-            0 drwxr-xr-x  19 mikayla  staff     608 Jun 13 08:59 ./
-            0 drwxr-xr-x  32 mikayla  staff    1024 Jun 15 10:26 ../
-            8 -rw-r--r--   1 mikayla  staff      35 Jun 13 08:59 .dockerignore
-            0 drwxr-xr-x  15 mikayla  staff     480 Jun 15 11:36 .git/
-            0 drwxr-xr-x   3 mikayla  staff      96 Jun 13 08:59 .github/
-            8 -rw-r--r--   1 mikayla  staff     169 Jun 13 08:59 .gitignore
-            0 drwxr-xr-x   3 mikayla  staff      96 Jun 13 08:59 .vscode/
-            288 -rw-r--r--   1 mikayla  staff  144472 Jun 14 16:53 Cargo.lock
-            8 -rw-r--r--   1 mikayla  staff    1021 Jun 13 08:59 Cargo.toml
-            8 -rw-r--r--   1 mikayla  staff     733 Jun 13 08:59 Dockerfile
-            8 -rw-r--r--   1 mikayla  staff     519 Jun 13 08:59 Dockerfile.migrator
-            8 -rw-r--r--   1 mikayla  staff      83 Jun 13 08:59 Procfile
-            16 -rw-r--r--   1 mikayla  staff    5773 Jun 13 08:59 README.md
-            0 drwxr-xr-x   6 mikayla  staff     192 Jun 13 08:59 assets/
-            0 drwxr-xr-x  44 mikayla  staff    1408 Jun 14 12:52 crates/
-            0 drwxr-xr-x   4 mikayla  staff     128 Jun 13 08:59 docs/
-            0 drwxr-xr-x  13 mikayla  staff     416 Jun 13 08:59 script/
-            0 drwxr-xr-x   9 mikayla  staff     288 Jun 13 09:00 styles/
-            0 drwxr-xr-x@  5 mikayla  staff     160 Jun 13 09:02 target/
-            mikayla@Mikaylas-MacBook-Air zed %"#;
-
-        TerminalEl {
-            grid_data: grid_data.to_string(),
-        }
+    fn new(term: Arc<FairMutex<Term<ZedTranslator>>>) -> TerminalEl {
+        TerminalEl { grid_data: term }
     }
 }
 
@@ -118,20 +141,29 @@ impl Element for TerminalEl {
         constraint: gpui::SizeConstraint,
         cx: &mut gpui::LayoutContext,
     ) -> (gpui::geometry::vector::Vector2F, Self::LayoutState) {
-        let chunks = vec![(self.grid_data.as_str(), None)].into_iter();
+        let line = self
+            .grid_data
+            .lock()
+            .grid()
+            .display_iter()
+            .map(|c| c.c)
+            .collect::<String>();
+
+        let chunks = vec![(&line[..], None)].into_iter();
 
         let text_style = with_font_cache(cx.font_cache.clone(), || TextStyle {
             color: Color::white(),
             ..Default::default()
         }); //Here it's 14?
 
+        //Nescessary to send the
         let shaped_lines = layout_highlighted_chunks(
             chunks,
             &text_style,
             cx.text_layout_cache,
             &cx.font_cache,
             usize::MAX,
-            self.grid_data.matches('\n').count() + 1,
+            line.matches('\n').count() + 1,
         );
         let line_height = cx.font_cache.line_height(text_style.font_size);
 

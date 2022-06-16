@@ -19,3 +19,4 @@ text = { path = "../text" }
 workspace = { path = "../workspace" }
 project = { path = "../project" }
 smallvec = { version = "1.6", features = ["union"] }
+mio-extras = "2.0.6"
