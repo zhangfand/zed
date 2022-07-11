@@ -38,7 +38,7 @@ pub struct LanguageSettings {
     pub hard_tabs: Option<bool>,
     pub soft_wrap: Option<SoftWrap>,
     pub preferred_line_length: Option<u32>,
-    pub format_on_save: Option<FormatOnSave>,
+    pub format_on_save: Option<bool>,
     pub enable_language_server: Option<bool>,
 }
 
@@ -48,17 +48,6 @@ pub enum SoftWrap {
     None,
     EditorWidth,
     PreferredLineLength,
-}
-
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum FormatOnSave {
-    Off,
-    LanguageServer,
-    External {
-        command: String,
-        arguments: Vec<String>,
-    },
 }
 
 #[derive(Copy, Clone, Debug, Deserialize, PartialEq, Eq, JsonSchema)]
@@ -83,7 +72,7 @@ pub struct SettingsFileContent {
     #[serde(default)]
     pub vim_mode: Option<bool>,
     #[serde(default)]
-    pub format_on_save: Option<FormatOnSave>,
+    pub format_on_save: Option<bool>,
     #[serde(default)]
     pub autosave: Option<Autosave>,
     #[serde(default)]
@@ -147,9 +136,9 @@ impl Settings {
             .unwrap_or(80)
     }
 
-    pub fn format_on_save(&self, language: Option<&str>) -> FormatOnSave {
-        self.language_setting(language, |settings| settings.format_on_save.clone())
-            .unwrap_or(FormatOnSave::LanguageServer)
+    pub fn format_on_save(&self, language: Option<&str>) -> bool {
+        self.language_setting(language, |settings| settings.format_on_save)
+            .unwrap_or(true)
     }
 
     pub fn enable_language_server(&self, language: Option<&str>) -> bool {
@@ -226,7 +215,7 @@ impl Settings {
         merge(&mut self.autosave, data.autosave);
         merge_option(
             &mut self.language_settings.format_on_save,
-            data.format_on_save.clone(),
+            data.format_on_save,
         );
         merge_option(
             &mut self.language_settings.enable_language_server,

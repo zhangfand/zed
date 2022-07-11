@@ -3035,9 +3035,8 @@ impl Project {
                     )
                 });
 
-                let transaction = match format_on_save {
-                    settings::FormatOnSave::Off => continue,
-                    settings::FormatOnSave::LanguageServer => Self::format_via_lsp(
+                let transaction = if format_on_save {
+                    Self::format_via_lsp(
                         &this,
                         &buffer,
                         &buffer_abs_path,
@@ -3046,21 +3045,9 @@ impl Project {
                         &mut cx,
                     )
                     .await
-                    .context("failed to format via language server")?,
-                    settings::FormatOnSave::External { command, arguments } => {
-                        Self::format_via_external_command(
-                            &buffer,
-                            &buffer_abs_path,
-                            &command,
-                            &arguments,
-                            &mut cx,
-                        )
-                        .await
-                        .context(format!(
-                            "failed to format via external command {:?}",
-                            command
-                        ))?
-                    }
+                    .context("failed to format via language server")?
+                } else {
+                    continue;
                 };
 
                 if let Some(transaction) = transaction {
@@ -3154,7 +3141,7 @@ impl Project {
         }
     }
 
-    async fn format_via_external_command(
+    async fn _format_via_external_command(
         buffer: &ModelHandle<Buffer>,
         buffer_abs_path: &Path,
         command: &str,

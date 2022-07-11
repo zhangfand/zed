@@ -35,7 +35,7 @@ use project::{
 use rand::prelude::*;
 use rpc::PeerId;
 use serde_json::json;
-use settings::{FormatOnSave, Settings};
+use settings::Settings;
 use sqlx::types::time::OffsetDateTime;
 use std::{
     cell::RefCell,
@@ -1977,10 +1977,12 @@ async fn test_formatting_buffer(cx_a: &mut TestAppContext, cx_b: &mut TestAppCon
     // host's configuration is honored as opposed to using the guest's settings.
     cx_a.update(|cx| {
         cx.update_global(|settings: &mut Settings, _| {
-            settings.language_settings.format_on_save = Some(FormatOnSave::External {
-                command: "awk".to_string(),
-                arguments: vec!["{sub(/two/,\"{buffer_path}\")}1".to_string()],
-            });
+            // TODO: change this to use an external formatter
+            // {
+            //     command: "awk".to_string(),
+            //     arguments: vec!["{sub(/two/,\"{buffer_path}\")}1".to_string()],
+            // }
+            settings.language_settings.format_on_save = Some(true);
         });
     });
     project_b
