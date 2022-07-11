@@ -3141,7 +3141,7 @@ impl Project {
         }
     }
 
-    async fn _format_via_external_command(
+    async fn format_via_external_command(
         buffer: &ModelHandle<Buffer>,
         buffer_abs_path: &Path,
         command: &str,
