@@ -1,5 +1,11 @@
-use context_menu::ContextMenuItem;
-use gpui::{geometry::vector::Vector2F, impl_internal_actions, MutableAppContext, ViewContext};
+use std::any::{Any, TypeId};
+
+use context_menu::{ContextMenu, ContextMenuItem};
+use gpui::{
+    geometry::vector::Vector2F, impl_internal_actions, Action, MutableAppContext, ViewContext,
+    ViewHandle,
+};
+use workspace::GoBack;
 
 use crate::{
     DisplayPoint, Editor, EditorMode, FindAllReferences, GoToDefinition, Rename, SelectMode,
@@ -18,6 +24,50 @@ pub fn init(cx: &mut MutableAppContext) {
     cx.add_action(deploy_context_menu);
 }
 
+pub struct MouseContextMenuState {
+    pub view: ViewHandle<ContextMenu>,
+    pub opened_at: Option<DisplayPoint>,
+}
+
+impl MouseContextMenuState {
+    pub fn new(cx: &mut ViewContext<Editor>) -> Self {
+        let editor_handle = cx.weak_handle();
+        let view = cx.add_view(|cx| {
+            let mut menu = ContextMenu::new(cx);
+            // Move the cursor to the relevant point before dispatching the action
+            menu.on_before_confirm(move |action, cx| {
+                if !Self::should_move_cursor(action) {
+                    return;
+                }
+
+                if let Some(editor_handle) = editor_handle.upgrade(cx) {
+                    editor_handle.update(cx, |editor, cx| {
+                        if let Some(opened_at) = editor.mouse_context_menu_state.opened_at.take() {
+                            editor.change_selections(None, cx, |s| {
+                                s.clear_disjoint();
+                                s.set_pending_display_range(
+                                    opened_at..opened_at,
+                                    SelectMode::Character,
+                                );
+                            });
+                        }
+                    })
+                }
+            });
+            menu
+        });
+
+        Self {
+            view,
+            opened_at: None,
+        }
+    }
+
+    pub fn should_move_cursor(action: &Box<dyn Action>) -> bool {
+        action.type_id() != TypeId::of::<GoBack>()
+    }
+}
+
 pub fn deploy_context_menu(
     editor: &mut Editor,
     &DeployMouseContextMenu { position, point }: &DeployMouseContextMenu,
@@ -33,16 +83,16 @@ pub fn deploy_context_menu(
         return;
     }
 
-    // Move the cursor to the clicked location so that dispatched actions make sense
-    editor.change_selections(None, cx, |s| {
-        s.clear_disjoint();
-        s.set_pending_display_range(point..point, SelectMode::Character);
-    });
+    // Store point in the state so that we can move the cursor to that position
+    // before dispatching an action
+    editor.mouse_context_menu_state.opened_at = Some(point);
 
-    editor.mouse_context_menu.update(cx, |menu, cx| {
+    editor.mouse_context_menu_state.view.update(cx, |menu, cx| {
         menu.show(
             position,
             vec![
+                ContextMenuItem::item("Back", GoBack { pane: None }),
+                ContextMenuItem::Separator,
                 ContextMenuItem::item("Rename Symbol", Rename),
                 ContextMenuItem::item("Go To Definition", GoToDefinition),
                 ContextMenuItem::item("Find All References", FindAllReferences),
@@ -98,6 +148,6 @@ mod tests {
         cx.assert_editor_state(indoc! {"
             fn test()
                 do_w|ork();"});
-        cx.editor(|editor, app| assert!(editor.mouse_context_menu.read(app).visible()));
+        cx.editor(|editor, app| assert!(editor.mouse_context_menu_state.view.read(app).visible()));
     }
 }

@@ -42,6 +42,7 @@ use language::{
     TransactionId,
 };
 use link_go_to_definition::LinkGoToDefinitionState;
+use mouse_context_menu::MouseContextMenuState;
 use multi_buffer::MultiBufferChunks;
 pub use multi_buffer::{
     Anchor, AnchorRangeExt, ExcerptId, ExcerptRange, MultiBuffer, MultiBufferSnapshot, ToOffset,
@@ -427,7 +428,7 @@ pub struct Editor {
     background_highlights: BTreeMap<TypeId, (fn(&Theme) -> Color, Vec<Range<Anchor>>)>,
     nav_history: Option<ItemNavHistory>,
     context_menu: Option<ContextMenu>,
-    mouse_context_menu: ViewHandle<context_menu::ContextMenu>,
+    mouse_context_menu_state: MouseContextMenuState,
     completion_tasks: Vec<(CompletionId, Task<Option<()>>)>,
     next_completion_id: CompletionId,
     available_code_actions: Option<(ModelHandle<Buffer>, Arc<[CodeAction]>)>,
@@ -1013,7 +1014,7 @@ impl Editor {
             background_highlights: Default::default(),
             nav_history: None,
             context_menu: None,
-            mouse_context_menu: cx.add_view(|cx| context_menu::ContextMenu::new(cx)),
+            mouse_context_menu_state: MouseContextMenuState::new(cx),
             completion_tasks: Default::default(),
             next_completion_id: 0,
             available_code_actions: Default::default(),
@@ -4800,6 +4801,12 @@ impl Editor {
             let rename_range = if let Some(range) = prepare_rename.await? {
                 Some(range)
             } else {
+                if let Some(document_highlights_task) =
+                    this.update(&mut cx, |this, _| this.document_highlights_task.take())
+                {
+                    document_highlights_task.await
+                };
+
                 this.read_with(&cx, |this, cx| {
                     let buffer = this.buffer.read(cx).snapshot(cx);
                     let mut buffer_highlights = this
@@ -5787,7 +5794,7 @@ impl View for Editor {
             .with_child(
                 EditorElement::new(self.handle.clone(), style.clone(), self.cursor_shape).boxed(),
             )
-            .with_child(ChildView::new(&self.mouse_context_menu).boxed())
+            .with_child(ChildView::new(&self.mouse_context_menu_state.view).boxed())
             .boxed()
     }
 

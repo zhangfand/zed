@@ -62,6 +62,7 @@ pub struct ContextMenu {
     visible: bool,
     previously_focused_view_id: Option<usize>,
     clicked: bool,
+    on_before_confirm: Option<Box<dyn Fn(&Box<dyn Action>, &mut ViewContext<ContextMenu>)>>,
     _actions_observation: Subscription,
 }
 
@@ -120,12 +121,20 @@ impl ContextMenu {
             visible: Default::default(),
             previously_focused_view_id: Default::default(),
             clicked: false,
+            on_before_confirm: None,
             _actions_observation: cx.observe_actions(Self::action_dispatched),
         }
     }
 
     pub fn visible(&self) -> bool {
         self.visible
+    }
+
+    pub fn on_before_confirm(
+        &mut self,
+        callback: impl 'static + Fn(&Box<dyn Action>, &mut ViewContext<ContextMenu>),
+    ) {
+        self.on_before_confirm = Some(Box::new(callback));
     }
 
     fn action_dispatched(&mut self, action_id: TypeId, cx: &mut ViewContext<Self>) {
@@ -157,6 +166,9 @@ impl ContextMenu {
             if let Some(ContextMenuItem::Item { action, .. }) = self.items.get(ix) {
                 let window_id = cx.window_id();
                 let view_id = cx.view_id();
+                if let Some(on_before_confirm) = self.on_before_confirm.as_mut() {
+                    on_before_confirm(&action, cx);
+                }
                 cx.dispatch_action_at(window_id, view_id, action.as_ref());
                 self.reset(cx);
             }
@@ -310,6 +322,7 @@ impl ContextMenu {
         enum Menu {}
         enum MenuItem {}
         let style = cx.global::<Settings>().theme.context_menu.clone();
+        let handle = cx.handle();
         MouseEventHandler::new::<Menu, _, _>(0, cx, |_, cx| {
             Flex::column()
                 .with_children(self.items.iter().enumerate().map(|(ix, item)| {
@@ -337,9 +350,21 @@ impl ContextMenu {
                                     .boxed()
                             })
                             .with_cursor_style(CursorStyle::PointingHand)
-                            .on_click(move |_, _, cx| {
-                                cx.dispatch_action(Clicked);
-                                cx.dispatch_any_action(action.boxed_clone());
+                            .on_click({
+                                let handle = handle.clone();
+                                move |_, _, cx| {
+                                    if let Some(handle) = handle.upgrade(cx.app) {
+                                        handle.update(cx.app, |this, cx| {
+                                            if let Some(on_before_confirm) =
+                                                this.on_before_confirm.as_mut()
+                                            {
+                                                on_before_confirm(&action, cx)
+                                            }
+                                        })
+                                    }
+                                    cx.dispatch_action(Clicked);
+                                    cx.dispatch_any_action(action.boxed_clone());
+                                }
                             })
                             .boxed()
                         }

@@ -80,7 +80,11 @@ fn show_hover(
     ignore_timeout: bool,
     cx: &mut ViewContext<Editor>,
 ) {
-    if editor.pending_rename.is_some() {
+    // Don't show the hover popover if other affordances are visible and would interfere.
+    if editor.pending_rename.is_some()
+        || editor.context_menu.is_some()
+        || editor.mouse_context_menu_state.view.read(cx).visible()
+    {
         return;
     }
 
