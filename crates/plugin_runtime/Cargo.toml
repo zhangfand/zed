@@ -3,6 +3,9 @@ name = "plugin_runtime"
 version = "0.1.0"
 edition = "2021"
 
+# Note: this crate is a dependency of Zed
+# please do not add a dependency on Zed to this crate
+
 [dependencies]
 wasmtime = "0.38"
 wasmtime-wasi = "0.38"
