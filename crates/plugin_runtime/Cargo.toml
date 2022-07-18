@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+plugin_handles = { path = "../plugin_handles" }
 wasmtime = "0.38"
 wasmtime-wasi = "0.38"
 wasi-common = "0.38"
@@ -12,6 +13,7 @@ serde = "1.0"
 serde_json = "1.0"
 bincode = "1.3"
 pollster = "0.2.5"
+parking_lot = "0.12"
 smol = "1.2.5"
 
 [build-dependencies]

@@ -14,6 +14,12 @@ impl ResourcePool {
         }
     }
 
+    // pub fn register_resource<R: Resource, H: ResourceHandle>(&mut self) {
+    //     let resource_id = TypeId::of::<R>();
+    //     let handle_id = TypeId::of::<H>();
+    //     self.registered.insert(resource_id, handle_id);
+    // }
+
     pub fn clear(&mut self) {
         self.resources.clear();
     }
@@ -37,7 +43,7 @@ impl ResourcePool {
     }
 }
 
-pub trait ResourceHandle: Serialize + DeserializeOwned + From<u32> + Into<u32> {}
+pub trait ResourceHandle: Serialize + DeserializeOwned + From<u32> + Into<u32> + 'static {}
 
 macro_rules! resource_handle {
     ($t:ident) => {

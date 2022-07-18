@@ -5,6 +5,7 @@ pub use plugin::*;
 mod tests {
     use super::*;
     use pollster::FutureExt as _;
+    use smol::process::Command;
 
     #[test]
     pub fn test_plugin() {
@@ -38,7 +39,7 @@ mod tests {
                 .host_function_async("command_async", |command: String| async move {
                     let mut args = command.split(' ');
                     let command = args.next().unwrap();
-                    smol::process::Command::new(command)
+                    Command::new(command)
                         .args(args)
                         .output()
                         .await

@@ -1,13 +1,13 @@
 use std::any::{Any, TypeId};
 
-pub trait Resource: Any {
+pub trait Resource: Any + Send {
     fn as_any(&self) -> &dyn Any;
     fn as_any_mut(&mut self) -> &mut dyn Any;
     fn as_boxed_any(self: Box<Self>) -> Box<dyn Any>;
     fn clone_resource(&self) -> Box<dyn Resource>;
 }
 
-impl<T: Any + Clone> Resource for T {
+impl<T: Any + Clone + Send> Resource for T {
     fn as_any(&self) -> &dyn Any {
         self
     }

@@ -3732,6 +3732,8 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "bincode",
+ "parking_lot 0.12.1",
+ "plugin_handles",
  "pollster",
  "serde",
  "serde_json",

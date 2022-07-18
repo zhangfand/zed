@@ -1,8 +1,9 @@
 use std::future::Future;
-
-use std::{fs::File, marker::PhantomData, path::Path};
+use std::{fs::File, marker::PhantomData, path::Path, sync::Arc};
 
 use anyhow::{anyhow, Error};
+use parking_lot::Mutex;
+use plugin_handles::{Resource, ResourceHandle, ResourcePool};
 use serde::{de::DeserializeOwned, Serialize};
 
 use wasi_common::{dir, file};
@@ -77,6 +78,7 @@ pub struct PluginBuilder {
     engine: Engine,
     linker: Linker<WasiCtxAlloc>,
     metering: Metering,
+    resource_pool: Arc<Mutex<ResourcePool>>,
 }
 
 /// Creates an engine with the default configuration.
@@ -102,6 +104,7 @@ impl PluginBuilder {
             engine,
             linker,
             metering,
+            resource_pool: Arc::new(Mutex::new(ResourcePool::new())),
         })
     }
 
@@ -114,6 +117,28 @@ impl PluginBuilder {
             .build();
         let metering = Metering::default();
         Self::new(default_ctx, metering)
+    }
+
+    pub fn host_method_async<L, H, F, A, R, Fut>(
+        self,
+        name: &str,
+        function: F,
+    ) -> Result<Self, Error>
+    where
+        L: Resource + Clone + 'static,
+        H: ResourceHandle + Send,
+        F: Fn(L, A) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = R> + Send + 'static,
+        A: DeserializeOwned + Send + 'static,
+        R: Serialize + Send + Sync + 'static,
+    {
+        let resource_pool = self.resource_pool.clone();
+        self.host_function_async(name, move |(handle, args): (H, A)| {
+            // TODO: unwrapping for now, should not panic in the future
+            let resource = resource_pool.lock().get(handle).unwrap();
+            let result = function(resource, args);
+            async move { result.await }
+        })
     }
 
     /// Add an `async` host function. See [`host_function`] for details.
@@ -180,6 +205,25 @@ impl PluginBuilder {
             },
         )?;
         Ok(self)
+    }
+
+    pub fn host_method<L, H, A, R>(
+        self,
+        name: &str,
+        function: impl Fn(L, A) -> R + Send + Sync + 'static,
+    ) -> Result<Self, Error>
+    where
+        L: Resource + Clone,
+        H: ResourceHandle + Send,
+        A: DeserializeOwned + Send,
+        R: Serialize + Send + Sync,
+    {
+        let resource_pool = self.resource_pool.clone();
+        self.host_function(name, move |(handle, args): (H, A)| {
+            // TODO: unwrapping for now, should not panic in the future
+            let resource = resource_pool.lock().get(handle).unwrap();
+            function(resource, args)
+        })
     }
 
     /// Add a new host function to the given `PluginBuilder`.
@@ -302,6 +346,7 @@ pub enum PluginBinary<'a> {
 pub struct Plugin {
     store: Store<WasiCtxAlloc>,
     instance: Instance,
+    resource_pool: Arc<Mutex<ResourcePool>>,
 }
 
 impl Plugin {
@@ -362,7 +407,11 @@ impl Plugin {
             free_buffer,
         });
 
-        Ok(Plugin { store, instance })
+        Ok(Plugin {
+            store,
+            instance,
+            resource_pool: plugin.resource_pool,
+        })
     }
 
     /// Attaches a file or directory the the given system path to the runtime.
@@ -545,6 +594,32 @@ impl Plugin {
             function: fun,
             _function_type: PhantomData,
         })
+    }
+
+    pub async fn call_method<L, H, A, R>(
+        &mut self,
+        handle: &WasiFn<(H, A), R>,
+        resource: L,
+        arg: A,
+    ) -> Result<R, Error>
+    where
+        L: Resource + Clone,
+        H: ResourceHandle,
+        A: Serialize,
+        R: DeserializeOwned,
+    {
+        // register the resource
+        let resource_handle: H = {
+            // get rid of existing resources
+            let mut locked = self.resource_pool.lock();
+            locked.clear();
+            locked.add(resource)
+        };
+
+        // call the function with the resource
+        let result = self.call(handle, (resource_handle, arg)).await;
+        self.resource_pool.lock().clear();
+        result
     }
 
     /// Asynchronously calls a function defined Guest-side.
