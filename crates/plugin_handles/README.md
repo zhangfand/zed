@@ -1,0 +1,2 @@
+# Plugin handles
+This crate contains type definitions for handles to resources. This module should not depend on the resources themselves, as this crate is to be imported by both host-side and guest-side crates.
