@@ -55,6 +55,69 @@ impl<A: Serialize, R: DeserializeOwned> Clone for WasiFn<A, R> {
     }
 }
 
+impl<A: Serialize, R: DeserializeOwned> WasiFn<A, R> {
+    fn new(function: TypedFunc<u64, u64>) -> Self {
+        Self {
+            function,
+            _function_type: PhantomData,
+        }
+    }
+}
+
+/// Represents a typed WebAssembly method with a resource.
+pub struct WasiMethod<L, H, A, R>
+where
+    L: Resource,
+    H: ResourceHandle,
+    A: Serialize,
+    R: DeserializeOwned,
+{
+    function: TypedFunc<u64, u64>,
+    _function_type: PhantomData<fn(H, A) -> R>,
+    _resource_type: PhantomData<L>,
+}
+
+impl<L, H, A, R> Copy for WasiMethod<L, H, A, R>
+where
+    L: Resource,
+    H: ResourceHandle,
+    A: Serialize,
+    R: DeserializeOwned,
+{
+}
+
+impl<L, H, A, R> Clone for WasiMethod<L, H, A, R>
+where
+    L: Resource,
+    H: ResourceHandle,
+    A: Serialize,
+    R: DeserializeOwned,
+{
+    fn clone(&self) -> Self {
+        Self {
+            function: self.function,
+            _function_type: PhantomData,
+            _resource_type: PhantomData,
+        }
+    }
+}
+
+impl<L, H, A, R> WasiMethod<L, H, A, R>
+where
+    L: Resource,
+    H: ResourceHandle,
+    A: Serialize,
+    R: DeserializeOwned,
+{
+    fn new(function: TypedFunc<u64, u64>) -> Self {
+        Self {
+            function,
+            _function_type: PhantomData,
+            _resource_type: PhantomData,
+        }
+    }
+}
+
 pub struct Metering {
     initial: u64,
     refill: u64,
@@ -590,15 +653,25 @@ impl Plugin {
         let fun = self
             .instance
             .get_typed_func::<u64, u64, _>(&mut self.store, &fun_name)?;
-        Ok(WasiFn {
-            function: fun,
-            _function_type: PhantomData,
-        })
+        Ok(WasiFn::new(fun))
+    }
+
+    /// Retrieves the handle to a function of a given type.
+    pub fn method<L, H, A, R, T>(&mut self, name: T) -> Result<WasiMethod<L, H, A, R>, Error>
+    where
+        L: Resource + Clone,
+        H: ResourceHandle,
+        A: Serialize,
+        R: DeserializeOwned,
+        T: AsRef<str>,
+    {
+        let wasi_fn: WasiFn<(H, A), R> = self.function(name)?;
+        Ok(WasiMethod::new(wasi_fn.function))
     }
 
     pub async fn call_method<L, H, A, R>(
         &mut self,
-        handle: &WasiFn<(H, A), R>,
+        handle: &WasiMethod<L, H, A, R>,
         resource: L,
         arg: A,
     ) -> Result<R, Error>
@@ -617,7 +690,8 @@ impl Plugin {
         };
 
         // call the function with the resource
-        let result = self.call(handle, (resource_handle, arg)).await;
+        let handle: WasiFn<(H, A), R> = WasiFn::new(handle.function);
+        let result = self.call(&handle, (resource_handle, arg)).await;
         self.resource_pool.lock().clear();
         result
     }
