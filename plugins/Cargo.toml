@@ -1,2 +1,2 @@
 [workspace]
-members = ["./json_language", "./test_plugin"]
+members = ["./installation", "./json_language", "./typescript_language", "./test_plugin"]
