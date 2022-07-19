@@ -49,6 +49,7 @@ use std::{
 };
 
 const WINDOW_STATE_IVAR: &'static str = "windowState";
+const INPUT_CONTEXT_IVAR: &'static str = "zedInputContext";
 
 static mut WINDOW_CLASS: *const Class = ptr::null();
 static mut VIEW_CLASS: *const Class = ptr::null();
@@ -187,6 +188,11 @@ unsafe fn build_classes() {
         );
 
         decl.add_protocol(Protocol::get("NSTextInputClient").unwrap());
+        decl.add_ivar::<*mut c_void>(INPUT_CONTEXT_IVAR);
+        decl.add_method(
+            sel!(inputContext),
+            input_context as extern "C" fn(&Object, Sel) -> id,
+        );
         decl.add_method(
             sel!(validAttributesForMarkedText),
             valid_attributes_for_marked_text as extern "C" fn(&Object, Sel) -> id,
@@ -648,12 +654,14 @@ extern "C" fn dealloc_view(this: &Object, _: Sel) {
 }
 
 extern "C" fn handle_key_equivalent(this: &Object, _: Sel, native_event: id) -> BOOL {
-    unsafe {
-        let input_cx: id = msg_send![this, inputContext];
-        let array: id = msg_send![input_cx, keyboardInputSources];
-        let text = unsafe { CStr::from_ptr(array.objectAtIndex(0).UTF8String() as *mut c_char) };
-        dbg!(text, array.count());
-    }
+    // if active {
+    //     unsafe {
+    //         let input_cx: id = msg_send![this, inputContext];
+    //         let text: id = msg_send![input_cx, handleEvent: native_event];
+    //         let text = unsafe { CStr::from_ptr(text.UTF8String() as *mut c_char) };
+    //         dbg!(text);
+    //     }
+    // }
 
     let window_state = unsafe { get_window_state(this) };
     let mut window_state_borrow = window_state.as_ref().borrow_mut();
