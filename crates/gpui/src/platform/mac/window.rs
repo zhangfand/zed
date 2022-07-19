@@ -16,7 +16,10 @@ use cocoa::{
         NSViewHeightSizable, NSViewWidthSizable, NSWindow, NSWindowButton, NSWindowStyleMask,
     },
     base::{id, nil},
-    foundation::{NSAutoreleasePool, NSInteger, NSPoint, NSRect, NSSize, NSString, NSUInteger},
+    foundation::{
+        NSArray, NSAutoreleasePool, NSInteger, NSNotFound, NSPoint, NSRect, NSSize, NSString,
+        NSUInteger,
+    },
     quartzcore::AutoresizingMask,
 };
 use core_graphics::display::CGRect;
@@ -35,9 +38,10 @@ use std::{
     any::Any,
     cell::{Cell, RefCell},
     convert::TryInto,
-    ffi::c_void,
+    ffi::{c_void, CStr},
     mem,
     ops::Range,
+    os::raw::c_char,
     ptr,
     rc::{Rc, Weak},
     sync::Arc,
@@ -644,6 +648,13 @@ extern "C" fn dealloc_view(this: &Object, _: Sel) {
 }
 
 extern "C" fn handle_key_equivalent(this: &Object, _: Sel, native_event: id) -> BOOL {
+    unsafe {
+        let input_cx: id = msg_send![this, inputContext];
+        let array: id = msg_send![input_cx, keyboardInputSources];
+        let text = unsafe { CStr::from_ptr(array.objectAtIndex(0).UTF8String() as *mut c_char) };
+        dbg!(text, array.count());
+    }
+
     let window_state = unsafe { get_window_state(this) };
     let mut window_state_borrow = window_state.as_ref().borrow_mut();
 
@@ -943,14 +954,17 @@ extern "C" fn display_layer(this: &Object, _: Sel, _: id) {
 }
 
 extern "C" fn valid_attributes_for_marked_text(_: &Object, _: Sel) -> id {
+    println!("valid_attributes_for_marked_text");
     unsafe { msg_send![class!(NSArray), array] }
 }
 
 extern "C" fn has_marked_text(_: &Object, _: Sel) -> BOOL {
+    println!("has_marked_text");
     false as BOOL
 }
 
 extern "C" fn selected_text_range(this: &Object, _: Sel) -> NSRange {
+    println!("selected_text_range");
     unsafe {
         let window_state = get_window_state(this);
         let callback = window_state
@@ -960,10 +974,10 @@ extern "C" fn selected_text_range(this: &Object, _: Sel) -> NSRange {
         if let Some(mut callback) = callback {
             let range = callback();
             window_state.borrow_mut().selected_text_range_callback = Some(callback);
-            dbg!(NSRange {
+            NSRange {
                 location: range.start as NSUInteger,
                 length: range.len() as NSUInteger,
-            })
+            }
         } else {
             NSRange {
                 location: 0,
@@ -974,14 +988,47 @@ extern "C" fn selected_text_range(this: &Object, _: Sel) -> NSRange {
 }
 
 extern "C" fn first_rect_for_character_range(_: &Object, _: Sel, _: NSRange, _: id) -> NSRect {
+    println!("first_rect_for_character_range");
     NSRect::new(NSPoint::new(0., 0.), NSSize::new(20., 20.))
 }
 
-extern "C" fn insert_text(_: &Object, _: Sel, _: id, _: NSRange) {}
+extern "C" fn insert_text(this: &Object, _: Sel, text: id, range: NSRange) {
+    println!("insert_text");
+    let window_state = unsafe { get_window_state(this) };
+    let text = unsafe { CStr::from_ptr(text.UTF8String() as *mut c_char) };
+    if let Ok(text) = text.to_str() {
+        let event_callback = window_state.borrow_mut().event_callback.take();
+        if let Some(mut event_callback) = event_callback {
+            let range = if range.location as NSInteger != NSNotFound
+                && range.length as NSInteger != NSNotFound
+            {
+                Some(range.location as usize..(range.location + range.length) as usize)
+            } else {
+                None
+            };
+            let event = Event::Input {
+                text: text.into(),
+                range,
+            };
+            event_callback(event);
+            window_state.borrow_mut().event_callback = Some(event_callback);
+        }
+    }
+}
 
-extern "C" fn set_marked_text(_: &Object, _: Sel, _: id, _: NSRange, _: NSRange) {}
+extern "C" fn set_marked_text(
+    _: &Object,
+    _: Sel,
+    _text: id,
+    _selected_range: NSRange,
+    _replacement_range: NSRange,
+) {
+    println!("set_marked_text");
+    // let _text = unsafe { CStr::from_ptr(text.UTF8String() as *mut c_char) };
+}
 
 extern "C" fn attributed_substring_for_proposed_range(_: &Object, _: Sel, _: NSRange, _: id) -> id {
+    println!("attributed_substring_for_proposed_range");
     unsafe { msg_send![class!(NSAttributedString), alloc] }
 }
 

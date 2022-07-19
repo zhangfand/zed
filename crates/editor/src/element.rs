@@ -24,7 +24,7 @@ use gpui::{
     json::{self, ToJson},
     platform::CursorStyle,
     text_layout::{self, Line, RunStyle, TextLayoutCache},
-    AppContext, Axis, Border, CursorRegion, Element, ElementBox, Event, EventContext, KeyDownEvent,
+    AppContext, Axis, Border, CursorRegion, Element, ElementBox, Event, EventContext,
     LayoutContext, ModifiersChangedEvent, MouseButton, MouseEvent, MouseMovedEvent,
     MutableAppContext, PaintContext, Quad, Scene, ScrollWheelEvent, SizeConstraint, ViewContext,
     WeakViewHandle,
@@ -278,16 +278,13 @@ impl EditorElement {
         true
     }
 
-    fn key_down(&self, input: Option<&str>, cx: &mut EventContext) -> bool {
+    fn input(&self, text: &str, range: Option<Range<usize>>, cx: &mut EventContext) -> bool {
+        dbg!(range);
         let view = self.view.upgrade(cx.app).unwrap();
 
         if view.is_focused(cx.app) {
-            if let Some(input) = input {
-                cx.dispatch_action(Input(input.to_string()));
-                true
-            } else {
-                false
-            }
+            cx.dispatch_action(Input(text.to_string()));
+            true
         } else {
             false
         }
@@ -1527,7 +1524,7 @@ impl Element for EditorElement {
             Event::MouseMoved(MouseMovedEvent { position, cmd, .. }) => {
                 self.mouse_moved(*position, *cmd, layout, paint, cx)
             }
-
+            Event::Input { text, range } => self.input(text, range.clone(), cx),
             _ => false,
         }
     }

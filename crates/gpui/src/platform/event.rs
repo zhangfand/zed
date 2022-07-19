@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use crate::{geometry::vector::Vector2F, keymap::Keystroke};
 
 #[derive(Clone, Debug)]
@@ -72,6 +74,10 @@ pub enum Event {
     MouseUp(MouseEvent),
     MouseMoved(MouseMovedEvent),
     ScrollWheel(ScrollWheelEvent),
+    Input {
+        text: String,
+        range: Option<Range<usize>>,
+    },
 }
 
 impl Event {
@@ -80,6 +86,7 @@ impl Event {
             Event::KeyDown { .. } => None,
             Event::KeyUp { .. } => None,
             Event::ModifiersChanged { .. } => None,
+            Event::Input { .. } => None,
             Event::MouseDown(event) | Event::MouseUp(event) => Some(event.position),
             Event::MouseMoved(event) => Some(event.position),
             Event::ScrollWheel(event) => Some(event.position),
