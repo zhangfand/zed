@@ -1,5 +1,4 @@
 use installation::{npm_install_packages, npm_package_latest_version};
-use language::{LanguageServerName, LspAdapter};
 use plugin::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -96,7 +95,7 @@ pub fn cached_server_binary(container_dir: PathBuf) -> Option<PathBuf> {
 #[export]
 pub fn label_for_completion(
     item: &lsp::CompletionItem,
-    language: &language::Language,
+    language: &plugin_handles::LanguageHandle,
 ) -> Option<language::CodeLabel> {
     use lsp::CompletionItemKind as Kind;
     let len = item.label.len();

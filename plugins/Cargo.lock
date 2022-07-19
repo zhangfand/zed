@@ -43,6 +43,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "plugin_handles"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "plugin_macros"
 version = "0.1.0"
 dependencies = [
@@ -132,6 +139,7 @@ version = "0.1.0"
 dependencies = [
  "installation",
  "plugin",
+ "plugin_handles",
  "serde",
  "serde_json",
 ]
