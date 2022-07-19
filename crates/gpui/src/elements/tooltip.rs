@@ -12,6 +12,7 @@ use crate::{
 use serde::Deserialize;
 use std::{
     cell::{Cell, RefCell},
+    ops::Range,
     rc::Rc,
     time::Duration,
 };
@@ -194,6 +195,28 @@ impl Element for Tooltip {
         cx: &mut crate::EventContext,
     ) -> bool {
         self.child.dispatch_event(event, cx)
+    }
+
+    fn can_accept_input(
+        &self,
+        _: RectF,
+        _: RectF,
+        _: &Self::LayoutState,
+        _: &Self::PaintState,
+        cx: &mut crate::EventContext,
+    ) -> bool {
+        self.child.can_accept_input(cx)
+    }
+
+    fn selected_text_range(
+        &self,
+        _: RectF,
+        _: RectF,
+        _: &Self::LayoutState,
+        _: &Self::PaintState,
+        cx: &mut crate::EventContext,
+    ) -> Option<Range<usize>> {
+        self.child.selected_text_range(cx)
     }
 
     fn debug(

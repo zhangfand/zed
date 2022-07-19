@@ -41,7 +41,7 @@ use std::{
     borrow::Cow,
     cell::RefCell,
     mem,
-    ops::{Deref, DerefMut},
+    ops::{Deref, DerefMut, Range},
     rc::Rc,
 };
 
@@ -49,6 +49,8 @@ trait AnyElement {
     fn layout(&mut self, constraint: SizeConstraint, cx: &mut LayoutContext) -> Vector2F;
     fn paint(&mut self, origin: Vector2F, visible_bounds: RectF, cx: &mut PaintContext);
     fn dispatch_event(&mut self, event: &Event, cx: &mut EventContext) -> bool;
+    fn can_accept_input(&self, cx: &mut EventContext) -> bool;
+    fn selected_text_range(&self, cx: &mut EventContext) -> Option<Range<usize>>;
     fn debug(&self, cx: &DebugContext) -> serde_json::Value;
 
     fn size(&self) -> Vector2F;
@@ -82,6 +84,24 @@ pub trait Element {
         paint: &mut Self::PaintState,
         cx: &mut EventContext,
     ) -> bool;
+
+    fn can_accept_input(
+        &self,
+        bounds: RectF,
+        visible_bounds: RectF,
+        layout: &Self::LayoutState,
+        paint: &Self::PaintState,
+        cx: &mut EventContext,
+    ) -> bool;
+
+    fn selected_text_range(
+        &self,
+        bounds: RectF,
+        visible_bounds: RectF,
+        layout: &Self::LayoutState,
+        paint: &Self::PaintState,
+        cx: &mut EventContext,
+    ) -> Option<Range<usize>>;
 
     fn metadata(&self) -> Option<&dyn Any> {
         None
@@ -287,6 +307,38 @@ impl<T: Element> AnyElement for Lifecycle<T> {
         }
     }
 
+    fn can_accept_input(&self, cx: &mut EventContext) -> bool {
+        if let Lifecycle::PostPaint {
+            element,
+            bounds,
+            visible_bounds,
+            layout,
+            paint,
+            ..
+        } = self
+        {
+            element.can_accept_input(*bounds, *visible_bounds, layout, paint, cx)
+        } else {
+            panic!("invalid element lifecycle state");
+        }
+    }
+
+    fn selected_text_range(&self, cx: &mut EventContext) -> Option<Range<usize>> {
+        if let Lifecycle::PostPaint {
+            element,
+            bounds,
+            visible_bounds,
+            layout,
+            paint,
+            ..
+        } = self
+        {
+            element.selected_text_range(*bounds, *visible_bounds, layout, paint, cx)
+        } else {
+            panic!("invalid element lifecycle state");
+        }
+    }
+
     fn size(&self) -> Vector2F {
         match self {
             Lifecycle::Empty | Lifecycle::Init { .. } => panic!("invalid element lifecycle state"),
@@ -383,6 +435,14 @@ impl ElementRc {
 
     pub fn dispatch_event(&mut self, event: &Event, cx: &mut EventContext) -> bool {
         self.element.borrow_mut().dispatch_event(event, cx)
+    }
+
+    pub fn can_accept_input(&self, cx: &mut EventContext) -> bool {
+        self.element.borrow().can_accept_input(cx)
+    }
+
+    pub fn selected_text_range(&self, cx: &mut EventContext) -> Option<Range<usize>> {
+        self.element.borrow().selected_text_range(cx)
     }
 
     pub fn size(&self) -> Vector2F {

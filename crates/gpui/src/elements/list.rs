@@ -328,6 +328,69 @@ impl Element for List {
         handled
     }
 
+    fn can_accept_input(
+        &self,
+        bounds: RectF,
+        _: RectF,
+        scroll_top: &ListOffset,
+        _: &Self::PaintState,
+        cx: &mut EventContext,
+    ) -> bool {
+        let mut can_accept_input = false;
+
+        let state = self.state.0.borrow();
+        let mut item_origin = bounds.origin() - vec2f(0., scroll_top.offset_in_item);
+        let mut cursor = state.items.cursor::<Count>();
+        cursor.seek(&Count(scroll_top.item_ix), Bias::Right, &());
+        while let Some(item) = cursor.item() {
+            if item_origin.y() > bounds.max_y() {
+                break;
+            }
+
+            if let ListItem::Rendered(element) = item {
+                can_accept_input = element.can_accept_input(cx) || can_accept_input;
+                item_origin.set_y(item_origin.y() + element.size().y());
+                cursor.next(&());
+            } else {
+                unreachable!();
+            }
+        }
+
+        can_accept_input
+    }
+
+    fn selected_text_range(
+        &self,
+        bounds: RectF,
+        _: RectF,
+        scroll_top: &ListOffset,
+        _: &Self::PaintState,
+        cx: &mut EventContext,
+    ) -> Option<Range<usize>> {
+        let state = self.state.0.borrow();
+        let mut item_origin = bounds.origin() - vec2f(0., scroll_top.offset_in_item);
+        let mut cursor = state.items.cursor::<Count>();
+        cursor.seek(&Count(scroll_top.item_ix), Bias::Right, &());
+        while let Some(item) = cursor.item() {
+            if item_origin.y() > bounds.max_y() {
+                break;
+            }
+
+            if let ListItem::Rendered(element) = item {
+                if let Some(range) = element.selected_text_range(cx) {
+                    return Some(range);
+                }
+
+                item_origin.set_y(item_origin.y() + element.size().y());
+                cursor.next(&());
+            } else {
+                unreachable!();
+            }
+        }
+
+        None
+    }
+
     fn debug(
         &self,
         bounds: RectF,
@@ -936,6 +999,28 @@ mod tests {
             _: &mut (),
             _: &mut EventContext,
         ) -> bool {
+            todo!()
+        }
+
+        fn can_accept_input(
+            &self,
+            _: RectF,
+            _: RectF,
+            _: &Self::LayoutState,
+            _: &Self::PaintState,
+            _: &mut EventContext,
+        ) -> bool {
+            todo!()
+        }
+
+        fn selected_text_range(
+            &self,
+            _: RectF,
+            _: RectF,
+            _: &Self::LayoutState,
+            _: &Self::PaintState,
+            _: &mut EventContext,
+        ) -> Option<Range<usize>> {
             todo!()
         }
 

@@ -5,7 +5,7 @@ use crate::{
 };
 use pathfinder_geometry::rect::RectF;
 use serde_json::json;
-use std::{any::TypeId, rc::Rc};
+use std::{any::TypeId, ops::Range, rc::Rc};
 
 pub struct EventHandler {
     child: ElementBox,
@@ -155,6 +155,38 @@ impl Element for EventHandler {
                 }
                 _ => false,
             }
+        }
+    }
+
+    fn can_accept_input(
+        &self,
+        _: RectF,
+        _: RectF,
+        _: &Self::LayoutState,
+        _: &Self::PaintState,
+        cx: &mut EventContext,
+    ) -> bool {
+        if self.capture_all.is_some() {
+            false
+        } else if self.child.can_accept_input(cx) {
+            true
+        } else {
+            false
+        }
+    }
+
+    fn selected_text_range(
+        &self,
+        _: RectF,
+        _: RectF,
+        _: &Self::LayoutState,
+        _: &Self::PaintState,
+        cx: &mut EventContext,
+    ) -> Option<Range<usize>> {
+        if self.capture_all.is_some() {
+            None
+        } else {
+            self.child.selected_text_range(cx)
         }
     }
 

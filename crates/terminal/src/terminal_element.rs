@@ -395,6 +395,28 @@ impl Element for TerminalEl {
         }
     }
 
+    fn can_accept_input(
+        &self,
+        _: RectF,
+        _: RectF,
+        _: &Self::LayoutState,
+        _: &Self::PaintState,
+        _: &mut gpui::EventContext,
+    ) -> bool {
+        false
+    }
+
+    fn selected_text_range(
+        &self,
+        _: RectF,
+        _: RectF,
+        _: &Self::LayoutState,
+        _: &Self::PaintState,
+        _: &mut gpui::EventContext,
+    ) -> Option<Range<usize>> {
+        None
+    }
+
     fn debug(
         &self,
         _bounds: gpui::geometry::rect::RectF,

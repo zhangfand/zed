@@ -1,7 +1,3 @@
-use std::borrow::Cow;
-
-use serde_json::json;
-
 use crate::{
     color::Color,
     geometry::{
@@ -10,6 +6,8 @@ use crate::{
     },
     scene, DebugContext, Element, Event, EventContext, LayoutContext, PaintContext, SizeConstraint,
 };
+use serde_json::json;
+use std::borrow::Cow;
 
 pub struct Svg {
     path: Cow<'static, str>,
@@ -82,6 +80,28 @@ impl Element for Svg {
         _: &mut EventContext,
     ) -> bool {
         false
+    }
+
+    fn can_accept_input(
+        &self,
+        _: RectF,
+        _: RectF,
+        _: &Self::LayoutState,
+        _: &Self::PaintState,
+        _: &mut EventContext,
+    ) -> bool {
+        false
+    }
+
+    fn selected_text_range(
+        &self,
+        _: RectF,
+        _: RectF,
+        _: &Self::LayoutState,
+        _: &Self::PaintState,
+        _: &mut EventContext,
+    ) -> Option<std::ops::Range<usize>> {
+        None
     }
 
     fn debug(

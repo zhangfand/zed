@@ -6,7 +6,7 @@ use crate::{
         vector::{vec2f, Vector2F},
     },
     keymap::Keystroke,
-    platform::{self, Event, WindowBounds, WindowContext},
+    platform::{self, Event, WindowBounds, WindowContext, WindowEventResult},
     KeyDownEvent, ModifiersChangedEvent, MouseButton, MouseEvent, MouseMovedEvent, Scene,
 };
 use block::ConcreteBlock;
@@ -36,7 +36,9 @@ use std::{
     cell::{Cell, RefCell},
     convert::TryInto,
     ffi::c_void,
-    mem, ptr,
+    mem,
+    ops::Range,
+    ptr,
     rc::{Rc, Weak},
     sync::Arc,
     time::Duration,
@@ -48,7 +50,7 @@ static mut WINDOW_CLASS: *const Class = ptr::null();
 static mut VIEW_CLASS: *const Class = ptr::null();
 
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 struct NSRange {
     pub location: NSUInteger,
     pub length: NSUInteger,
@@ -191,7 +193,7 @@ unsafe fn build_classes() {
         );
         decl.add_method(
             sel!(selectedRange),
-            selected_range as extern "C" fn(&Object, Sel) -> NSRange,
+            selected_text_range as extern "C" fn(&Object, Sel) -> NSRange,
         );
         decl.add_method(
             sel!(firstRectForCharacterRange:actualRange:),
@@ -220,11 +222,12 @@ pub struct Window(Rc<RefCell<WindowState>>);
 struct WindowState {
     id: usize,
     native_window: id,
-    event_callback: Option<Box<dyn FnMut(Event) -> bool>>,
+    event_callback: Option<Box<dyn FnMut(Event) -> WindowEventResult>>,
     activate_callback: Option<Box<dyn FnMut(bool)>>,
     resize_callback: Option<Box<dyn FnMut()>>,
     should_close_callback: Option<Box<dyn FnMut() -> bool>>,
     close_callback: Option<Box<dyn FnOnce()>>,
+    selected_text_range_callback: Option<Box<dyn FnMut() -> Range<usize>>>,
     synthetic_drag_counter: usize,
     executor: Rc<executor::Foreground>,
     scene_to_render: Option<Scene>,
@@ -311,6 +314,7 @@ impl Window {
                 should_close_callback: None,
                 close_callback: None,
                 activate_callback: None,
+                selected_text_range_callback: None,
                 synthetic_drag_counter: 0,
                 executor,
                 scene_to_render: Default::default(),
@@ -399,7 +403,7 @@ impl platform::Window for Window {
         self
     }
 
-    fn on_event(&mut self, callback: Box<dyn FnMut(Event) -> bool>) {
+    fn on_event(&mut self, callback: Box<dyn FnMut(Event) -> WindowEventResult>) {
         self.0.as_ref().borrow_mut().event_callback = Some(callback);
     }
 
@@ -417,6 +421,10 @@ impl platform::Window for Window {
 
     fn on_active_status_change(&mut self, callback: Box<dyn FnMut(bool)>) {
         self.0.as_ref().borrow_mut().activate_callback = Some(callback);
+    }
+
+    fn on_selected_text_range(&mut self, callback: Box<dyn FnMut() -> Range<usize>>) {
+        self.0.as_ref().borrow_mut().selected_text_range_callback = Some(callback);
     }
 
     fn prompt(
@@ -663,9 +671,21 @@ extern "C" fn handle_key_equivalent(this: &Object, _: Sel, native_event: id) -> 
 
         if let Some(mut callback) = window_state_borrow.event_callback.take() {
             drop(window_state_borrow);
-            let handled = callback(event);
+            let result = callback(event);
             window_state.borrow_mut().event_callback = Some(callback);
-            handled as BOOL
+            match result {
+                WindowEventResult::Handled => YES,
+                WindowEventResult::Unhandled {
+                    can_accept_input: true,
+                } => unsafe {
+                    let input_cx: id = msg_send![this, inputContext];
+                    let handled: BOOL = msg_send![input_cx, handleEvent: native_event];
+                    handled
+                },
+                WindowEventResult::Unhandled {
+                    can_accept_input: false,
+                } => NO,
+            }
         } else {
             NO
         }
@@ -930,10 +950,26 @@ extern "C" fn has_marked_text(_: &Object, _: Sel) -> BOOL {
     false as BOOL
 }
 
-extern "C" fn selected_range(_: &Object, _: Sel) -> NSRange {
-    NSRange {
-        location: 0,
-        length: 0,
+extern "C" fn selected_text_range(this: &Object, _: Sel) -> NSRange {
+    unsafe {
+        let window_state = get_window_state(this);
+        let callback = window_state
+            .borrow_mut()
+            .selected_text_range_callback
+            .take();
+        if let Some(mut callback) = callback {
+            let range = callback();
+            window_state.borrow_mut().selected_text_range_callback = Some(callback);
+            dbg!(NSRange {
+                location: range.start as NSUInteger,
+                length: range.len() as NSUInteger,
+            })
+        } else {
+            NSRange {
+                location: 0,
+                length: 0,
+            }
+        }
     }
 }
 

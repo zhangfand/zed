@@ -1,5 +1,3 @@
-use std::{any::Any, f32::INFINITY};
-
 use crate::{
     json::{self, ToJson, Value},
     Axis, DebugContext, Element, ElementBox, ElementStateHandle, Event, EventContext,
@@ -11,6 +9,7 @@ use pathfinder_geometry::{
     vector::{vec2f, Vector2F},
 };
 use serde_json::json;
+use std::{any::Any, f32::INFINITY, ops::Range};
 
 #[derive(Default)]
 struct ScrollState {
@@ -334,6 +333,34 @@ impl Element for Flex {
         handled
     }
 
+    fn can_accept_input(
+        &self,
+        _: RectF,
+        _: RectF,
+        _: &Self::LayoutState,
+        _: &Self::PaintState,
+        cx: &mut EventContext,
+    ) -> bool {
+        let mut can_accept_input = false;
+        for child in &self.children {
+            can_accept_input = child.can_accept_input(cx) || can_accept_input;
+        }
+        can_accept_input
+    }
+
+    fn selected_text_range(
+        &self,
+        _: RectF,
+        _: RectF,
+        _: &Self::LayoutState,
+        _: &Self::PaintState,
+        cx: &mut EventContext,
+    ) -> Option<Range<usize>> {
+        self.children
+            .iter()
+            .find_map(|child| child.selected_text_range(cx))
+    }
+
     fn debug(
         &self,
         bounds: RectF,
@@ -415,6 +442,28 @@ impl Element for FlexItem {
         cx: &mut EventContext,
     ) -> bool {
         self.child.dispatch_event(event, cx)
+    }
+
+    fn can_accept_input(
+        &self,
+        _: RectF,
+        _: RectF,
+        _: &Self::LayoutState,
+        _: &Self::PaintState,
+        cx: &mut EventContext,
+    ) -> bool {
+        self.child.can_accept_input(cx)
+    }
+
+    fn selected_text_range(
+        &self,
+        _: RectF,
+        _: RectF,
+        _: &Self::LayoutState,
+        _: &Self::PaintState,
+        cx: &mut EventContext,
+    ) -> Option<Range<usize>> {
+        self.child.selected_text_range(cx)
     }
 
     fn metadata(&self) -> Option<&dyn Any> {

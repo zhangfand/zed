@@ -9,7 +9,7 @@ use crate::{
     PaintContext, SizeConstraint,
 };
 use serde::Deserialize;
-use std::sync::Arc;
+use std::{ops::Range, sync::Arc};
 
 pub struct Image {
     data: Arc<ImageData>,
@@ -87,6 +87,28 @@ impl Element for Image {
         _: &mut EventContext,
     ) -> bool {
         false
+    }
+
+    fn can_accept_input(
+        &self,
+        _: RectF,
+        _: RectF,
+        _: &Self::LayoutState,
+        _: &Self::PaintState,
+        _: &mut EventContext,
+    ) -> bool {
+        false
+    }
+
+    fn selected_text_range(
+        &self,
+        _: RectF,
+        _: RectF,
+        _: &Self::LayoutState,
+        _: &Self::PaintState,
+        _: &mut EventContext,
+    ) -> Option<Range<usize>> {
+        None
     }
 
     fn debug(

@@ -1,7 +1,7 @@
 use super::{AppVersion, CursorStyle, WindowBounds};
 use crate::{
     geometry::vector::{vec2f, Vector2F},
-    keymap, Action, ClipboardItem,
+    keymap, Action, ClipboardItem, WindowEventResult,
 };
 use anyhow::{anyhow, Result};
 use collections::VecDeque;
@@ -10,6 +10,7 @@ use postage::oneshot;
 use std::{
     any::Any,
     cell::RefCell,
+    ops::Range,
     path::{Path, PathBuf},
     rc::Rc,
     sync::Arc,
@@ -34,7 +35,7 @@ pub struct Window {
     size: Vector2F,
     scale_factor: f32,
     current_scene: Option<crate::Scene>,
-    event_handlers: Vec<Box<dyn FnMut(super::Event) -> bool>>,
+    event_handlers: Vec<Box<dyn FnMut(super::Event) -> WindowEventResult>>,
     resize_handlers: Vec<Box<dyn FnMut()>>,
     close_handlers: Vec<Box<dyn FnOnce()>>,
     pub(crate) active_status_change_handlers: Vec<Box<dyn FnMut(bool)>>,
@@ -239,7 +240,7 @@ impl super::Window for Window {
         self
     }
 
-    fn on_event(&mut self, callback: Box<dyn FnMut(crate::Event) -> bool>) {
+    fn on_event(&mut self, callback: Box<dyn FnMut(crate::Event) -> WindowEventResult>) {
         self.event_handlers.push(callback);
     }
 
@@ -253,6 +254,10 @@ impl super::Window for Window {
 
     fn on_close(&mut self, callback: Box<dyn FnOnce()>) {
         self.close_handlers.push(callback);
+    }
+
+    fn on_selected_text_range(&mut self, _callback: Box<dyn FnMut() -> Range<usize>>) {
+        todo!()
     }
 
     fn prompt(&self, _: crate::PromptLevel, _: &str, _: &[&str]) -> oneshot::Receiver<usize> {

@@ -76,6 +76,28 @@ impl Element for KeystrokeLabel {
         element.dispatch_event(event, cx)
     }
 
+    fn can_accept_input(
+        &self,
+        _: RectF,
+        _: RectF,
+        _: &Self::LayoutState,
+        _: &Self::PaintState,
+        _: &mut EventContext,
+    ) -> bool {
+        false
+    }
+
+    fn selected_text_range(
+        &self,
+        _: RectF,
+        _: RectF,
+        _: &Self::LayoutState,
+        _: &Self::PaintState,
+        _: &mut EventContext,
+    ) -> Option<Range<usize>> {
+        None
+    }
+
     fn debug(
         &self,
         _: RectF,

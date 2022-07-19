@@ -8,6 +8,7 @@ use pathfinder_geometry::{
     rect::RectF,
     vector::{vec2f, Vector2F},
 };
+use std::ops::Range;
 
 pub struct Canvas<F>(F);
 
@@ -65,6 +66,28 @@ where
         _: &mut crate::EventContext,
     ) -> bool {
         false
+    }
+
+    fn can_accept_input(
+        &self,
+        _: RectF,
+        _: RectF,
+        _: &Self::LayoutState,
+        _: &Self::PaintState,
+        _: &mut crate::EventContext,
+    ) -> bool {
+        false
+    }
+
+    fn selected_text_range(
+        &self,
+        _: RectF,
+        _: RectF,
+        _: &Self::LayoutState,
+        _: &Self::PaintState,
+        _: &mut crate::EventContext,
+    ) -> Option<Range<usize>> {
+        None
     }
 
     fn debug(

@@ -8,7 +8,7 @@ use crate::{
     presenter::Presenter,
     util::post_inc,
     AssetCache, AssetSource, ClipboardItem, FontCache, MouseRegionId, PathPromptOptions,
-    TextLayoutCache,
+    TextLayoutCache, WindowEventResult,
 };
 pub use action::*;
 use anyhow::{anyhow, Context, Result};
@@ -1855,14 +1855,29 @@ impl MutableAppContext {
                                 presenter.borrow().dispatch_path(cx.as_ref()),
                                 keystroke,
                             ) {
-                                return true;
+                                return WindowEventResult::Handled;
                             }
                         }
 
                         presenter.borrow_mut().dispatch_event(event, cx)
                     } else {
-                        false
+                        WindowEventResult::Unhandled {
+                            can_accept_input: false,
+                        }
                     }
+                })
+            }));
+        }
+
+        {
+            let mut app = self.upgrade();
+            let presenter = Rc::downgrade(&presenter);
+            window.on_selected_text_range(Box::new(move || {
+                app.update(|cx| {
+                    presenter
+                        .upgrade()
+                        .and_then(|presenter| presenter.borrow_mut().selected_text_range(cx))
+                        .unwrap_or(0..0)
                 })
             }));
         }

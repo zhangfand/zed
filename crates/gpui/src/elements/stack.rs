@@ -4,6 +4,7 @@ use crate::{
     DebugContext, Element, ElementBox, Event, EventContext, LayoutContext, PaintContext,
     SizeConstraint,
 };
+use std::ops::Range;
 
 pub struct Stack {
     children: Vec<ElementBox>,
@@ -62,6 +63,36 @@ impl Element for Stack {
             }
         }
         false
+    }
+
+    fn can_accept_input(
+        &self,
+        _: RectF,
+        _: RectF,
+        _: &Self::LayoutState,
+        _: &Self::PaintState,
+        cx: &mut EventContext,
+    ) -> bool {
+        for child in self.children.iter().rev() {
+            if child.can_accept_input(cx) {
+                return true;
+            }
+        }
+        false
+    }
+
+    fn selected_text_range(
+        &self,
+        _: RectF,
+        _: RectF,
+        _: &Self::LayoutState,
+        _: &Self::PaintState,
+        cx: &mut EventContext,
+    ) -> Option<Range<usize>> {
+        self.children
+            .iter()
+            .rev()
+            .find_map(|child| child.selected_text_range(cx))
     }
 
     fn debug(

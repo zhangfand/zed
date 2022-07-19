@@ -1521,7 +1521,6 @@ impl Element for EditorElement {
                 delta,
                 precise,
             }) => self.scroll(*position, *delta, *precise, layout, paint, cx),
-            Event::KeyDown(KeyDownEvent { input, .. }) => self.key_down(input.as_deref(), cx),
             Event::ModifiersChanged(ModifiersChangedEvent { cmd, .. }) => {
                 self.modifiers_changed(*cmd, cx)
             }
@@ -1531,6 +1530,30 @@ impl Element for EditorElement {
 
             _ => false,
         }
+    }
+
+    fn can_accept_input(
+        &self,
+        _: RectF,
+        _: RectF,
+        _: &Self::LayoutState,
+        _: &Self::PaintState,
+        cx: &mut EventContext,
+    ) -> bool {
+        let view = self.view.upgrade(cx.app).unwrap();
+        view.is_focused(cx.app)
+    }
+
+    fn selected_text_range(
+        &self,
+        _: RectF,
+        _: RectF,
+        _: &Self::LayoutState,
+        _: &Self::PaintState,
+        cx: &mut EventContext,
+    ) -> Option<Range<usize>> {
+        let view = self.view.upgrade(cx.app).unwrap();
+        Some(view.read(cx.app).selections.newest::<usize>(cx).range())
     }
 
     fn debug(

@@ -11,6 +11,7 @@ use crate::{
 use serde::Deserialize;
 use serde_json::json;
 use smallvec::{smallvec, SmallVec};
+use std::ops::Range;
 
 pub struct Label {
     text: String,
@@ -172,6 +173,28 @@ impl Element for Label {
         _: &mut EventContext,
     ) -> bool {
         false
+    }
+
+    fn can_accept_input(
+        &self,
+        _: RectF,
+        _: RectF,
+        _: &Self::LayoutState,
+        _: &Self::PaintState,
+        _: &mut EventContext,
+    ) -> bool {
+        false
+    }
+
+    fn selected_text_range(
+        &self,
+        _: RectF,
+        _: RectF,
+        _: &Self::LayoutState,
+        _: &Self::PaintState,
+        _: &mut EventContext,
+    ) -> Option<Range<usize>> {
+        None
     }
 
     fn debug(

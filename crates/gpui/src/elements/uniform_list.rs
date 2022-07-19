@@ -327,6 +327,35 @@ impl Element for UniformList {
         handled
     }
 
+    fn can_accept_input(
+        &self,
+        _: RectF,
+        _: RectF,
+        layout: &Self::LayoutState,
+        _: &Self::PaintState,
+        cx: &mut EventContext,
+    ) -> bool {
+        let mut can_accept_input = false;
+        for item in &layout.items {
+            can_accept_input = item.can_accept_input(cx) || can_accept_input;
+        }
+        can_accept_input
+    }
+
+    fn selected_text_range(
+        &self,
+        _: RectF,
+        _: RectF,
+        layout: &Self::LayoutState,
+        _: &Self::PaintState,
+        cx: &mut EventContext,
+    ) -> Option<Range<usize>> {
+        layout
+            .items
+            .iter()
+            .find_map(|item| item.selected_text_range(cx))
+    }
+
     fn debug(
         &self,
         bounds: RectF,

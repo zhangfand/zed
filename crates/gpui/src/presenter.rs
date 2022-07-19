@@ -11,7 +11,7 @@ use crate::{
     Action, AnyModelHandle, AnyViewHandle, AnyWeakModelHandle, AssetCache, ElementBox, Entity,
     FontSystem, ModelHandle, MouseButton, MouseEvent, MouseMovedEvent, MouseRegion, MouseRegionId,
     ReadModel, ReadView, RenderContext, RenderParams, Scene, UpgradeModelHandle, UpgradeViewHandle,
-    View, ViewHandle, WeakModelHandle, WeakViewHandle,
+    View, ViewHandle, WeakModelHandle, WeakViewHandle, WindowEventResult,
 };
 use pathfinder_geometry::vector::{vec2f, Vector2F};
 use serde_json::json;
@@ -19,7 +19,7 @@ use smallvec::SmallVec;
 use std::{
     collections::{HashMap, HashSet},
     marker::PhantomData,
-    ops::{Deref, DerefMut},
+    ops::{Deref, DerefMut, Range},
     sync::Arc,
 };
 
@@ -224,7 +224,11 @@ impl Presenter {
         }
     }
 
-    pub fn dispatch_event(&mut self, event: Event, cx: &mut MutableAppContext) -> bool {
+    pub fn dispatch_event(
+        &mut self,
+        event: Event,
+        cx: &mut MutableAppContext,
+    ) -> WindowEventResult {
         if let Some(root_view_id) = cx.root_view_id(self.window_id) {
             let mut invalidated_views = Vec::new();
             let mut mouse_down_out_handlers = Vec::new();
@@ -388,9 +392,19 @@ impl Presenter {
                 }
             }
 
-            if !handled {
-                handled = event_cx.dispatch_event(root_view_id, &event);
-            }
+            let result = if handled {
+                WindowEventResult::Handled
+            } else if event_cx.dispatch_event(root_view_id, &event) {
+                WindowEventResult::Handled
+            } else if let Some(focused_view_id) = event_cx.focused_view_id() {
+                WindowEventResult::Unhandled {
+                    can_accept_input: event_cx.can_accept_input(focused_view_id),
+                }
+            } else {
+                WindowEventResult::Unhandled {
+                    can_accept_input: false,
+                }
+            };
 
             invalidated_views.extend(event_cx.invalidated_views);
             let dispatch_directives = event_cx.dispatched_actions;
@@ -408,9 +422,11 @@ impl Presenter {
                 cx.dispatch_action_any(self.window_id, &dispatch_path, directive.action.as_ref());
             }
 
-            handled
+            result
         } else {
-            false
+            WindowEventResult::Unhandled {
+                can_accept_input: false,
+            }
         }
     }
 
@@ -487,6 +503,15 @@ impl Presenter {
         }
 
         (handled, event_cx)
+    }
+
+    pub fn selected_text_range(&mut self, cx: &mut MutableAppContext) -> Option<Range<usize>> {
+        let mut event_cx = self.build_event_context(cx);
+        if let Some(focused_view_id) = event_cx.focused_view_id() {
+            event_cx.selected_text_range(focused_view_id)
+        } else {
+            None
+        }
     }
 
     pub fn build_event_context<'a>(
@@ -697,6 +722,10 @@ pub struct EventContext<'a> {
 }
 
 impl<'a> EventContext<'a> {
+    fn focused_view_id(&self) -> Option<usize> {
+        self.app.focused_view_id(self.window_id)
+    }
+
     fn dispatch_event(&mut self, view_id: usize, event: &Event) -> bool {
         if let Some(mut element) = self.rendered_views.remove(&view_id) {
             let result =
@@ -705,6 +734,26 @@ impl<'a> EventContext<'a> {
             result
         } else {
             false
+        }
+    }
+
+    fn can_accept_input(&mut self, view_id: usize) -> bool {
+        if let Some(element) = self.rendered_views.remove(&view_id) {
+            let result = self.with_current_view(view_id, |this| element.can_accept_input(this));
+            self.rendered_views.insert(view_id, element);
+            result
+        } else {
+            false
+        }
+    }
+
+    fn selected_text_range(&mut self, view_id: usize) -> Option<Range<usize>> {
+        if let Some(element) = self.rendered_views.remove(&view_id) {
+            let range = self.with_current_view(view_id, |this| element.selected_text_range(this));
+            self.rendered_views.insert(view_id, element);
+            range
+        } else {
+            None
         }
     }
 
@@ -934,6 +983,28 @@ impl Element for ChildView {
         cx: &mut EventContext,
     ) -> bool {
         cx.dispatch_event(self.view.id(), event)
+    }
+
+    fn can_accept_input(
+        &self,
+        _: RectF,
+        _: RectF,
+        _: &Self::LayoutState,
+        _: &Self::PaintState,
+        cx: &mut EventContext,
+    ) -> bool {
+        cx.can_accept_input(self.view.id())
+    }
+
+    fn selected_text_range(
+        &self,
+        _: RectF,
+        _: RectF,
+        _: &Self::LayoutState,
+        _: &Self::PaintState,
+        cx: &mut EventContext,
+    ) -> Option<Range<usize>> {
+        cx.selected_text_range(self.view.id())
     }
 
     fn debug(

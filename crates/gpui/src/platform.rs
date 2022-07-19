@@ -26,6 +26,7 @@ use serde::Deserialize;
 use std::{
     any::Any,
     fmt::{self, Display},
+    ops::Range,
     path::{Path, PathBuf},
     rc::Rc,
     str::FromStr,
@@ -90,11 +91,12 @@ pub trait Dispatcher: Send + Sync {
 
 pub trait Window: WindowContext {
     fn as_any_mut(&mut self) -> &mut dyn Any;
-    fn on_event(&mut self, callback: Box<dyn FnMut(Event) -> bool>);
+    fn on_event(&mut self, callback: Box<dyn FnMut(Event) -> WindowEventResult>);
     fn on_active_status_change(&mut self, callback: Box<dyn FnMut(bool)>);
     fn on_resize(&mut self, callback: Box<dyn FnMut()>);
     fn on_should_close(&mut self, callback: Box<dyn FnMut() -> bool>);
     fn on_close(&mut self, callback: Box<dyn FnOnce()>);
+    fn on_selected_text_range(&mut self, callback: Box<dyn FnMut() -> Range<usize>>);
     fn prompt(&self, level: PromptLevel, msg: &str, answers: &[&str]) -> oneshot::Receiver<usize>;
     fn activate(&self);
     fn set_title(&mut self, title: &str);
@@ -121,6 +123,11 @@ pub struct WindowOptions<'a> {
 pub enum WindowBounds {
     Maximized,
     Fixed(RectF),
+}
+
+pub enum WindowEventResult {
+    Handled,
+    Unhandled { can_accept_input: bool },
 }
 
 pub struct PathPromptOptions {

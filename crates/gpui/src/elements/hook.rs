@@ -4,6 +4,7 @@ use crate::{
     DebugContext, Element, ElementBox, Event, EventContext, LayoutContext, PaintContext,
     SizeConstraint,
 };
+use std::ops::Range;
 
 pub struct Hook {
     child: ElementBox,
@@ -63,6 +64,28 @@ impl Element for Hook {
         cx: &mut EventContext,
     ) -> bool {
         self.child.dispatch_event(event, cx)
+    }
+
+    fn selected_text_range(
+        &self,
+        _: RectF,
+        _: RectF,
+        _: &Self::LayoutState,
+        _: &Self::PaintState,
+        cx: &mut EventContext,
+    ) -> Option<Range<usize>> {
+        self.child.selected_text_range(cx)
+    }
+
+    fn can_accept_input(
+        &self,
+        _: RectF,
+        _: RectF,
+        _: &Self::LayoutState,
+        _: &Self::PaintState,
+        cx: &mut EventContext,
+    ) -> bool {
+        self.child.can_accept_input(cx)
     }
 
     fn debug(

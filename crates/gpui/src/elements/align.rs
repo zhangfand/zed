@@ -4,6 +4,7 @@ use crate::{
     SizeConstraint,
 };
 use json::ToJson;
+use std::ops::Range;
 
 use serde_json::json;
 
@@ -92,6 +93,28 @@ impl Element for Align {
         cx: &mut EventContext,
     ) -> bool {
         self.child.dispatch_event(event, cx)
+    }
+
+    fn can_accept_input(
+        &self,
+        _: RectF,
+        _: RectF,
+        _: &Self::LayoutState,
+        _: &Self::PaintState,
+        cx: &mut EventContext,
+    ) -> bool {
+        self.child.can_accept_input(cx)
+    }
+
+    fn selected_text_range(
+        &self,
+        _: RectF,
+        _: RectF,
+        _: &Self::LayoutState,
+        _: &Self::PaintState,
+        cx: &mut EventContext,
+    ) -> Option<Range<usize>> {
+        self.child.selected_text_range(cx)
     }
 
     fn debug(

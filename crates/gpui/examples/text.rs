@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use gpui::{
     color::Color,
     fonts::{Properties, Weight},
@@ -110,6 +112,28 @@ impl gpui::Element for TextElement {
         _: &mut gpui::EventContext,
     ) -> bool {
         false
+    }
+
+    fn can_accept_input(
+        &self,
+        _: RectF,
+        _: RectF,
+        _: &Self::LayoutState,
+        _: &Self::PaintState,
+        _: &mut gpui::EventContext,
+    ) -> bool {
+        false
+    }
+
+    fn selected_text_range(
+        &self,
+        _: RectF,
+        _: RectF,
+        _: &Self::LayoutState,
+        _: &Self::PaintState,
+        _: &mut gpui::EventContext,
+    ) -> Option<Range<usize>> {
+        None
     }
 
     fn debug(

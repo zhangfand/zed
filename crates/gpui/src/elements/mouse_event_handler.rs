@@ -1,5 +1,3 @@
-use std::{any::TypeId, rc::Rc};
-
 use super::Padding;
 use crate::{
     geometry::{
@@ -12,6 +10,7 @@ use crate::{
     PaintContext, RenderContext, SizeConstraint, View,
 };
 use serde_json::json;
+use std::{any::TypeId, ops::Range, rc::Rc};
 
 pub struct MouseEventHandler {
     child: ElementBox,
@@ -190,6 +189,28 @@ impl Element for MouseEventHandler {
         cx: &mut EventContext,
     ) -> bool {
         self.child.dispatch_event(event, cx)
+    }
+
+    fn can_accept_input(
+        &self,
+        _: RectF,
+        _: RectF,
+        _: &Self::LayoutState,
+        _: &Self::PaintState,
+        cx: &mut EventContext,
+    ) -> bool {
+        self.child.can_accept_input(cx)
+    }
+
+    fn selected_text_range(
+        &self,
+        _: RectF,
+        _: RectF,
+        _: &Self::LayoutState,
+        _: &Self::PaintState,
+        cx: &mut EventContext,
+    ) -> Option<Range<usize>> {
+        self.child.selected_text_range(cx)
     }
 
     fn debug(

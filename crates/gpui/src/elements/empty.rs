@@ -7,6 +7,7 @@ use crate::{
     DebugContext,
 };
 use crate::{Element, Event, EventContext, LayoutContext, PaintContext, SizeConstraint};
+use std::ops::Range;
 
 pub struct Empty {
     collapsed: bool,
@@ -65,6 +66,28 @@ impl Element for Empty {
         _: &mut EventContext,
     ) -> bool {
         false
+    }
+
+    fn can_accept_input(
+        &self,
+        _: RectF,
+        _: RectF,
+        _: &Self::LayoutState,
+        _: &Self::PaintState,
+        _: &mut EventContext,
+    ) -> bool {
+        false
+    }
+
+    fn selected_text_range(
+        &self,
+        _: RectF,
+        _: RectF,
+        _: &Self::LayoutState,
+        _: &Self::PaintState,
+        _: &mut EventContext,
+    ) -> Option<Range<usize>> {
+        None
     }
 
     fn debug(
