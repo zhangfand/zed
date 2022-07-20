@@ -17,8 +17,7 @@ use cocoa::{
     },
     base::{id, nil},
     foundation::{
-        NSArray, NSAutoreleasePool, NSInteger, NSNotFound, NSPoint, NSRect, NSSize, NSString,
-        NSUInteger,
+        NSAutoreleasePool, NSInteger, NSNotFound, NSPoint, NSRect, NSSize, NSString, NSUInteger,
     },
     quartzcore::AutoresizingMask,
 };
@@ -49,7 +48,6 @@ use std::{
 };
 
 const WINDOW_STATE_IVAR: &'static str = "windowState";
-const INPUT_CONTEXT_IVAR: &'static str = "zedInputContext";
 
 static mut WINDOW_CLASS: *const Class = ptr::null();
 static mut VIEW_CLASS: *const Class = ptr::null();
@@ -59,6 +57,12 @@ static mut VIEW_CLASS: *const Class = ptr::null();
 struct NSRange {
     pub location: NSUInteger,
     pub length: NSUInteger,
+}
+
+impl NSRange {
+    fn is_valid(&self) -> bool {
+        self.location != NSNotFound as NSUInteger
+    }
 }
 
 unsafe impl objc::Encode for NSRange {
@@ -188,11 +192,6 @@ unsafe fn build_classes() {
         );
 
         decl.add_protocol(Protocol::get("NSTextInputClient").unwrap());
-        decl.add_ivar::<*mut c_void>(INPUT_CONTEXT_IVAR);
-        decl.add_method(
-            sel!(inputContext),
-            input_context as extern "C" fn(&Object, Sel) -> id,
-        );
         decl.add_method(
             sel!(validAttributesForMarkedText),
             valid_attributes_for_marked_text as extern "C" fn(&Object, Sel) -> id,
@@ -699,7 +698,7 @@ extern "C" fn handle_key_equivalent(this: &Object, _: Sel, native_event: id) -> 
                 } => unsafe {
                     let input_cx: id = msg_send![this, inputContext];
                     let handled: BOOL = msg_send![input_cx, handleEvent: native_event];
-                    handled
+                    dbg!(handled)
                 },
                 WindowEventResult::Unhandled {
                     can_accept_input: false,
@@ -1004,12 +1003,11 @@ extern "C" fn insert_text(this: &Object, _: Sel, text: id, range: NSRange) {
     println!("insert_text");
     let window_state = unsafe { get_window_state(this) };
     let text = unsafe { CStr::from_ptr(text.UTF8String() as *mut c_char) };
+    dbg!(&text, range);
     if let Ok(text) = text.to_str() {
         let event_callback = window_state.borrow_mut().event_callback.take();
         if let Some(mut event_callback) = event_callback {
-            let range = if range.location as NSInteger != NSNotFound
-                && range.length as NSInteger != NSNotFound
-            {
+            let range = if range.is_valid() {
                 Some(range.location as usize..(range.location + range.length) as usize)
             } else {
                 None
@@ -1028,10 +1026,10 @@ extern "C" fn set_marked_text(
     _: &Object,
     _: Sel,
     _text: id,
-    _selected_range: NSRange,
-    _replacement_range: NSRange,
+    selected_range: NSRange,
+    replacement_range: NSRange,
 ) {
-    println!("set_marked_text");
+    dbg!("set_marked_text", selected_range, replacement_range);
     // let _text = unsafe { CStr::from_ptr(text.UTF8String() as *mut c_char) };
 }
 
