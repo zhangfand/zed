@@ -1,7 +1,7 @@
 use editor::{Anchor, Editor};
 use gpui::{
-    elements::*, AppContext, Entity, ModelHandle, RenderContext, Subscription, View, ViewContext,
-    ViewHandle,
+    elements::*, AppContext, Entity, ModelHandle, MouseButton, RenderContext, Subscription, View,
+    ViewContext, ViewHandle,
 };
 use language::{Buffer, OutlineItem};
 use project::Project;
@@ -76,13 +76,43 @@ impl View for Breadcrumbs {
         };
 
         Flex::row()
-            .with_child(Label::new(filename, theme.breadcrumbs.text.clone()).boxed())
-            .with_children(symbols.into_iter().flat_map(|symbol| {
+            .with_child(
+                MouseEventHandler::new::<file_finder::Toggle, _, _>(0, cx, |_, _| {
+                    Label::new(filename, theme.breadcrumbs.text.clone()).boxed()
+                })
+                .with_cursor_style(gpui::CursorStyle::PointingHand)
+                .on_click(MouseButton::Left, |_, cx| {
+                    cx.dispatch_action(file_finder::Toggle)
+                })
+                .with_tooltip::<file_finder::Toggle, _>(
+                    0,
+                    "Toggle File Finder".to_string(),
+                    Some(Box::new(file_finder::Toggle)),
+                    theme.tooltip.clone(),
+                    cx,
+                )
+                .boxed(),
+            )
+            .with_children(symbols.into_iter().enumerate().flat_map(|(i, symbol)| {
                 [
                     Label::new(" 〉 ".to_string(), theme.breadcrumbs.text.clone()).boxed(),
-                    Text::new(symbol.text, theme.breadcrumbs.text.clone())
-                        .with_highlights(symbol.highlight_ranges)
-                        .boxed(),
+                    MouseEventHandler::new::<outline::Toggle, _, _>(i, cx, |_, _| {
+                        Text::new(symbol.text, theme.breadcrumbs.text.clone())
+                            .with_highlights(symbol.highlight_ranges)
+                            .boxed()
+                    })
+                    .with_cursor_style(gpui::CursorStyle::PointingHand)
+                    .on_click(MouseButton::Left, |_, cx| {
+                        cx.dispatch_action(outline::Toggle)
+                    })
+                    .with_tooltip::<outline::Toggle, _>(
+                        i,
+                        "Toggle Outline View".to_string(),
+                        Some(Box::new(outline::Toggle)),
+                        theme.tooltip.clone(),
+                        cx,
+                    )
+                    .boxed(),
                 ]
             }))
             .contained()

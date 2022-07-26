@@ -607,8 +607,10 @@ version = "0.1.0"
 dependencies = [
  "collections",
  "editor",
+ "file_finder",
  "gpui",
  "language",
+ "outline",
  "project",
  "search",
  "settings",

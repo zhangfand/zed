@@ -10,8 +10,10 @@ doctest = false
 [dependencies]
 collections = { path = "../collections" }
 editor = { path = "../editor" }
+file_finder = { path = "../file_finder" }
 gpui = { path = "../gpui" }
 language = { path = "../language" }
+outline = { path = "../outline" }
 project = { path = "../project" }
 search = { path = "../search" }
 settings = { path = "../settings" }
