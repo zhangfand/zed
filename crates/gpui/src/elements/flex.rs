@@ -1,5 +1,3 @@
-use std::{any::Any, f32::INFINITY, ops::Range};
-
 use crate::{
     json::{self, ToJson, Value},
     presenter::MeasurementContext,
@@ -12,6 +10,7 @@ use pathfinder_geometry::{
     vector::{vec2f, Vector2F},
 };
 use serde_json::json;
+use std::{any::Any, f32::INFINITY, ops::Range};
 
 #[derive(Default)]
 struct ScrollState {

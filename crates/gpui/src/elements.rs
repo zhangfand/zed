@@ -13,6 +13,7 @@ mod label;
 mod list;
 mod mouse_event_handler;
 mod overlay;
+mod scrollable;
 mod stack;
 mod svg;
 mod text;
@@ -23,7 +24,7 @@ use self::expanded::Expanded;
 pub use self::{
     align::*, canvas::*, constrained_box::*, container::*, empty::*, event_handler::*, flex::*,
     hook::*, image::*, keystroke_label::*, label::*, list::*, mouse_event_handler::*, overlay::*,
-    stack::*, svg::*, text::*, tooltip::*, uniform_list::*,
+    scrollable::*, stack::*, svg::*, text::*, tooltip::*, uniform_list::*,
 };
 pub use crate::presenter::ChildView;
 use crate::{
@@ -186,6 +187,13 @@ pub trait Element {
         Self: 'static + Sized,
     {
         Tooltip::new::<Tag, T>(id, text, action, style, self.boxed(), cx)
+    }
+
+    fn scrollable<Tag: 'static, T: View>(self, id: usize, cx: &mut RenderContext<T>) -> Scrollable
+    where
+        Self: 'static + Sized,
+    {
+        Scrollable::new::<Tag, T>(id, self.boxed(), cx)
     }
 }
 
