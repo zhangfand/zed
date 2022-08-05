@@ -34,6 +34,7 @@ pub struct ProjectPanel {
     project: ModelHandle<Project>,
     list: UniformListState,
     visible_entries: Vec<(WorktreeId, Vec<Entry>)>,
+    longest_entry_index: Option<usize>,
     last_worktree_root_id: Option<ProjectEntryId>,
     expanded_dir_ids: HashMap<WorktreeId, Vec<ProjectEntryId>>,
     selection: Option<Selection>,
@@ -203,6 +204,7 @@ impl ProjectPanel {
                 project: project.clone(),
                 list: Default::default(),
                 visible_entries: Default::default(),
+                longest_entry_index: Default::default(),
                 last_worktree_root_id: Default::default(),
                 expanded_dir_ids: Default::default(),
                 selection: None,
@@ -891,6 +893,16 @@ impl ProjectPanel {
                 entry_id,
             });
         }
+
+        self.longest_entry_index = self
+            .visible_entries
+            .iter()
+            .flat_map(|(_, entries)| entries)
+            .enumerate()
+            .max_by_key(|(_, entry)| {
+                entry.path.components().count() + entry.path.file_name().map_or(0, |f| f.len())
+            })
+            .map(|(ix, _)| ix);
     }
 
     fn expand_entry(
@@ -1099,14 +1111,15 @@ impl View for ProjectPanel {
     }
 
     fn render(&mut self, cx: &mut gpui::RenderContext<'_, Self>) -> gpui::ElementBox {
-        enum Tag {}
+        enum ContextMenu {}
+        enum Scrollable {}
         let theme = &cx.global::<Settings>().theme.project_panel;
         let mut container_style = theme.container;
         let padding = std::mem::take(&mut container_style.padding);
         let last_worktree_root_id = self.last_worktree_root_id;
         Stack::new()
             .with_child(
-                MouseEventHandler::new::<Tag, _, _>(0, cx, |_, cx| {
+                MouseEventHandler::new::<ContextMenu, _, _>(0, cx, |_, cx| {
                     UniformList::new(
                         self.list.clone(),
                         self.visible_entries
@@ -1129,8 +1142,11 @@ impl View for ProjectPanel {
                     )
                     .with_padding_top(padding.top)
                     .with_padding_bottom(padding.bottom)
+                    .with_width_from_item(self.longest_entry_index)
                     .contained()
                     .with_style(container_style)
+                    .scrollable::<Scrollable, _>(0, cx)
+                    .horizontal(true)
                     .expanded()
                     .boxed()
                 })
