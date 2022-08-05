@@ -106,11 +106,14 @@ impl UniformList {
             delta *= 20.;
         }
 
-        let mut state = self.state.0.borrow_mut();
-        state.scroll_top = (state.scroll_top - delta.y()).max(0.0).min(scroll_max);
-        cx.notify();
-
-        true
+        if delta.y() == 0. {
+            false
+        } else {
+            let mut state = self.state.0.borrow_mut();
+            state.scroll_top = (state.scroll_top - delta.y()).max(0.0).min(scroll_max);
+            cx.notify();
+            true
+        }
     }
 
     fn autoscroll(&mut self, scroll_max: f32, list_height: f32, item_height: f32) {
