@@ -668,6 +668,23 @@ impl CompletionsMenu {
         let matches = self.matches.clone();
         let selected_item = self.selected_item;
         let container_style = style.autocomplete.container;
+        let longest_completion_ix = self
+            .matches
+            .iter()
+            .enumerate()
+            .max_by_key(|(_, mat)| {
+                self.completions[mat.candidate_id]
+                    .label
+                    .text
+                    .chars()
+                    .count()
+            })
+            .map(|(ix, _)| ix);
+        let sampling = if let Some(longest_completion_ix) = longest_completion_ix {
+            Sampling::HeightAndWidthFromItemIndex(longest_completion_ix)
+        } else {
+            Sampling::HeightFromFirstItem
+        };
         UniformList::new(
             self.list.clone(),
             matches.len(),
@@ -717,19 +734,7 @@ impl CompletionsMenu {
                 }
             },
         )
-        .with_width_from_item(
-            self.matches
-                .iter()
-                .enumerate()
-                .max_by_key(|(_, mat)| {
-                    self.completions[mat.candidate_id]
-                        .label
-                        .text
-                        .chars()
-                        .count()
-                })
-                .map(|(ix, _)| ix),
-        )
+        .with_sampling(sampling)
         .contained()
         .with_style(container_style)
         .boxed()
@@ -817,6 +822,17 @@ impl CodeActionsMenu {
         let container_style = style.autocomplete.container;
         let actions = self.actions.clone();
         let selected_item = self.selected_item;
+        let longest_code_action_ix = self
+            .actions
+            .iter()
+            .enumerate()
+            .max_by_key(|(_, action)| action.lsp_action.title.chars().count())
+            .map(|(ix, _)| ix);
+        let sampling = if let Some(longest_code_action_ix) = longest_code_action_ix {
+            Sampling::HeightAndWidthFromItemIndex(longest_code_action_ix)
+        } else {
+            Sampling::HeightFromFirstItem
+        };
         let element = UniformList::new(
             self.list.clone(),
             actions.len(),
@@ -852,13 +868,7 @@ impl CodeActionsMenu {
                 }
             },
         )
-        .with_width_from_item(
-            self.actions
-                .iter()
-                .enumerate()
-                .max_by_key(|(_, action)| action.lsp_action.title.chars().count())
-                .map(|(ix, _)| ix),
-        )
+        .with_sampling(sampling)
         .contained()
         .with_style(container_style)
         .boxed();

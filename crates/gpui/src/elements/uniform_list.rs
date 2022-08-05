@@ -48,7 +48,13 @@ pub struct UniformList {
     append_items: Box<dyn Fn(Range<usize>, &mut Vec<ElementBox>, &mut LayoutContext)>,
     padding_top: f32,
     padding_bottom: f32,
-    get_width_from_item: Option<usize>,
+    sampling: Sampling,
+}
+
+pub enum Sampling {
+    HeightFromFirstItem,
+    HeightAndWidthFromItemIndex(usize),
+    HeightAndWidthFromElement(ElementBox),
 }
 
 impl UniformList {
@@ -75,12 +81,12 @@ impl UniformList {
             }),
             padding_top: 0.,
             padding_bottom: 0.,
-            get_width_from_item: None,
+            sampling: Sampling::HeightFromFirstItem,
         }
     }
 
-    pub fn with_width_from_item(mut self, item_ix: Option<usize>) -> Self {
-        self.get_width_from_item = item_ix;
+    pub fn with_sampling(mut self, sampling: Sampling) -> Self {
+        self.sampling = sampling;
         self
     }
 
@@ -189,47 +195,70 @@ impl Element for UniformList {
         let mut items = Vec::new();
         let mut size = constraint.max;
         let mut item_size;
+        let item_constraint;
         let sample_item_ix;
         let sample_item;
-        if let Some(sample_ix) = self.get_width_from_item {
-            (self.append_items)(sample_ix..sample_ix + 1, &mut items, cx);
-            sample_item_ix = sample_ix;
+        match &mut self.sampling {
+            Sampling::HeightFromFirstItem => {
+                (self.append_items)(0..1, &mut items, cx);
+                if let Some(mut item) = items.pop() {
+                    item_size = item.layout(
+                        SizeConstraint::new(
+                            vec2f(constraint.max.x(), 0.0),
+                            vec2f(constraint.max.x(), f32::INFINITY),
+                        ),
+                        cx,
+                    );
+                    item_size.set_x(size.x());
+                    item_constraint = SizeConstraint {
+                        min: item_size,
+                        max: vec2f(constraint.max.x(), item_size.y()),
+                    };
+                    sample_item_ix = Some(0);
+                    sample_item = Some(item);
+                } else {
+                    return no_items;
+                }
+            }
+            Sampling::HeightAndWidthFromItemIndex(sample_ix) => {
+                (self.append_items)(*sample_ix..*sample_ix + 1, &mut items, cx);
 
-            if let Some(mut item) = items.pop() {
-                item_size = item.layout(
+                if let Some(mut item) = items.pop() {
+                    item_size = item.layout(
+                        SizeConstraint::new(
+                            vec2f(constraint.min.x(), 0.0),
+                            vec2f(constraint.max.x(), f32::INFINITY),
+                        ),
+                        cx,
+                    );
+                    item_constraint = SizeConstraint {
+                        min: item_size,
+                        max: item_size,
+                    };
+                    size.set_x(item_size.x());
+                    sample_item_ix = Some(*sample_ix);
+                    sample_item = Some(item);
+                } else {
+                    return no_items;
+                }
+            }
+            Sampling::HeightAndWidthFromElement(element) => {
+                item_size = element.layout(
                     SizeConstraint::new(
                         vec2f(constraint.min.x(), 0.0),
                         vec2f(constraint.max.x(), f32::INFINITY),
                     ),
                     cx,
                 );
+                item_constraint = SizeConstraint {
+                    min: item_size,
+                    max: item_size,
+                };
                 size.set_x(item_size.x());
-                sample_item = item;
-            } else {
-                return no_items;
-            }
-        } else {
-            (self.append_items)(0..1, &mut items, cx);
-            sample_item_ix = 0;
-            if let Some(mut item) = items.pop() {
-                item_size = item.layout(
-                    SizeConstraint::new(
-                        vec2f(constraint.max.x(), 0.0),
-                        vec2f(constraint.max.x(), f32::INFINITY),
-                    ),
-                    cx,
-                );
-                item_size.set_x(size.x());
-                sample_item = item
-            } else {
-                return no_items;
+                sample_item_ix = None;
+                sample_item = None;
             }
         }
-
-        let item_constraint = SizeConstraint {
-            min: item_size,
-            max: vec2f(constraint.max.x(), item_size.y()),
-        };
         let item_height = item_size.y();
 
         let scroll_height = self.item_count as f32 * item_height;
@@ -251,7 +280,9 @@ impl Element for UniformList {
             start + (size.y() / item_height.max(1.)).ceil() as usize + 1,
         );
 
-        if (start..end).contains(&sample_item_ix) {
+        if sample_item_ix.map_or(false, |ix| (start..end).contains(&ix)) {
+            let sample_item_ix = sample_item_ix.unwrap();
+            let sample_item = sample_item.unwrap();
             if sample_item_ix > start {
                 (self.append_items)(start..sample_item_ix, &mut items, cx);
             }

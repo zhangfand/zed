@@ -5,7 +5,7 @@ use gpui::{
     actions,
     anyhow::{anyhow, Result},
     elements::{
-        ChildView, ConstrainedBox, Empty, Flex, Label, MouseEventHandler, ParentElement,
+        ChildView, ConstrainedBox, Empty, Flex, Label, MouseEventHandler, ParentElement, Sampling,
         ScrollTarget, Stack, Svg, UniformList, UniformListState,
     },
     geometry::vector::Vector2F,
@@ -964,51 +964,93 @@ impl ProjectPanel {
                 let root_name = OsStr::new(snapshot.root_name());
                 for entry in &visible_worktree_entries[range.start.saturating_sub(ix)..end_ix - ix]
                 {
-                    let mut details = EntryDetails {
-                        filename: entry
-                            .path
-                            .file_name()
-                            .unwrap_or(root_name)
-                            .to_string_lossy()
-                            .to_string(),
-                        depth: entry.path.components().count(),
-                        kind: entry.kind,
-                        is_ignored: entry.is_ignored,
-                        is_expanded: expanded_entry_ids.binary_search(&entry.id).is_ok(),
-                        is_selected: self.selection.map_or(false, |e| {
-                            e.worktree_id == snapshot.id() && e.entry_id == entry.id
-                        }),
-                        is_editing: false,
-                        is_processing: false,
-                        is_cut: self
-                            .clipboard_entry
-                            .map_or(false, |e| e.is_cut() && e.entry_id() == entry.id),
-                    };
-                    if let Some(edit_state) = &self.edit_state {
-                        let is_edited_entry = if edit_state.is_new_entry {
-                            entry.id == NEW_ENTRY_ID
-                        } else {
-                            entry.id == edit_state.entry_id
-                        };
-                        if is_edited_entry {
-                            if let Some(processing_filename) = &edit_state.processing_filename {
-                                details.is_processing = true;
-                                details.filename.clear();
-                                details.filename.push_str(&processing_filename);
-                            } else {
-                                if edit_state.is_new_entry {
-                                    details.filename.clear();
-                                }
-                                details.is_editing = true;
-                            }
-                        }
-                    }
-
+                    let details =
+                        self.details_for_entry(entry, root_name, expanded_entry_ids, &snapshot);
                     callback(entry.id, details, cx);
                 }
             }
             ix = end_ix;
         }
+    }
+
+    fn details_for_entry(
+        &self,
+        entry: &Entry,
+        root_name: &OsStr,
+        expanded_entry_ids: &[ProjectEntryId],
+        snapshot: &project::Snapshot,
+    ) -> EntryDetails {
+        let mut details = EntryDetails {
+            filename: entry
+                .path
+                .file_name()
+                .unwrap_or(root_name)
+                .to_string_lossy()
+                .to_string(),
+            depth: entry.path.components().count(),
+            kind: entry.kind,
+            is_ignored: entry.is_ignored,
+            is_expanded: expanded_entry_ids.binary_search(&entry.id).is_ok(),
+            is_selected: self.selection.map_or(false, |e| {
+                e.worktree_id == snapshot.id() && e.entry_id == entry.id
+            }),
+            is_editing: false,
+            is_processing: false,
+            is_cut: self
+                .clipboard_entry
+                .map_or(false, |e| e.is_cut() && e.entry_id() == entry.id),
+        };
+        if let Some(edit_state) = &self.edit_state {
+            let is_edited_entry = if edit_state.is_new_entry {
+                entry.id == NEW_ENTRY_ID
+            } else {
+                entry.id == edit_state.entry_id
+            };
+            if is_edited_entry {
+                if let Some(processing_filename) = &edit_state.processing_filename {
+                    details.is_processing = true;
+                    details.filename.clear();
+                    details.filename.push_str(&processing_filename);
+                } else {
+                    if edit_state.is_new_entry {
+                        details.filename.clear();
+                    }
+                    details.is_editing = true;
+                }
+            }
+        }
+        details
+    }
+
+    fn longest_entry_details(&self, cx: &AppContext) -> Option<EntryDetails> {
+        if let Some(longest_entry_ix) = self.longest_entry_index {
+            let mut ix = 0;
+            for (worktree_id, entries) in &self.visible_entries {
+                let end_ix = ix + entries.len();
+                if longest_entry_ix < end_ix {
+                    if let Some(worktree) = self.project.read(cx).worktree_for_id(*worktree_id, cx)
+                    {
+                        let snapshot = worktree.read(cx).snapshot();
+                        let expanded_entry_ids = self
+                            .expanded_dir_ids
+                            .get(&snapshot.id())
+                            .map(Vec::as_slice)
+                            .unwrap_or(&[]);
+                        let root_name = OsStr::new(snapshot.root_name());
+                        let entry = &entries[longest_entry_ix - ix];
+                        return Some(self.details_for_entry(
+                            entry,
+                            root_name,
+                            expanded_entry_ids,
+                            &snapshot,
+                        ));
+                    }
+                }
+                ix = end_ix;
+            }
+        }
+
+        None
     }
 
     fn render_entry(
@@ -1021,65 +1063,7 @@ impl ProjectPanel {
         let kind = details.kind;
         let show_editor = details.is_editing && !details.is_processing;
         MouseEventHandler::new::<Self, _, _>(entry_id.to_usize(), cx, |state, _| {
-            let padding = theme.container.padding.left + details.depth as f32 * theme.indent_width;
-            let mut style = theme.entry.style_for(state, details.is_selected).clone();
-            if details.is_ignored {
-                style.text.color.fade_out(theme.ignored_entry_fade);
-                style.icon_color.fade_out(theme.ignored_entry_fade);
-            }
-            if details.is_cut {
-                style.text.color.fade_out(theme.cut_entry_fade);
-                style.icon_color.fade_out(theme.cut_entry_fade);
-            }
-            let row_container_style = if show_editor {
-                theme.filename_editor.container
-            } else {
-                style.container
-            };
-            Flex::row()
-                .with_child(
-                    ConstrainedBox::new(if kind == EntryKind::Dir {
-                        if details.is_expanded {
-                            Svg::new("icons/chevron_down_8.svg")
-                                .with_color(style.icon_color)
-                                .boxed()
-                        } else {
-                            Svg::new("icons/chevron_right_8.svg")
-                                .with_color(style.icon_color)
-                                .boxed()
-                        }
-                    } else {
-                        Empty::new().boxed()
-                    })
-                    .with_max_width(style.icon_size)
-                    .with_max_height(style.icon_size)
-                    .aligned()
-                    .constrained()
-                    .with_width(style.icon_size)
-                    .boxed(),
-                )
-                .with_child(if show_editor {
-                    ChildView::new(editor.clone())
-                        .contained()
-                        .with_margin_left(theme.entry.default.icon_spacing)
-                        .aligned()
-                        .left()
-                        .flex(1.0, true)
-                        .boxed()
-                } else {
-                    Label::new(details.filename, style.text.clone())
-                        .contained()
-                        .with_margin_left(style.icon_spacing)
-                        .aligned()
-                        .left()
-                        .boxed()
-                })
-                .constrained()
-                .with_height(theme.entry.default.height)
-                .contained()
-                .with_style(row_container_style)
-                .with_padding_left(padding)
-                .boxed()
+            Self::render_entry_contents(details, state, show_editor, editor, theme)
         })
         .on_click(
             MouseButton::Left,
@@ -1103,6 +1087,75 @@ impl ProjectPanel {
         .with_cursor_style(CursorStyle::PointingHand)
         .boxed()
     }
+
+    fn render_entry_contents(
+        details: EntryDetails,
+        state: gpui::MouseState,
+        show_editor: bool,
+        editor: &ViewHandle<Editor>,
+        theme: &theme::ProjectPanel,
+    ) -> ElementBox {
+        let kind = details.kind;
+        let padding = theme.container.padding.left + details.depth as f32 * theme.indent_width;
+        let mut style = theme.entry.style_for(state, details.is_selected).clone();
+        if details.is_ignored {
+            style.text.color.fade_out(theme.ignored_entry_fade);
+            style.icon_color.fade_out(theme.ignored_entry_fade);
+        }
+        if details.is_cut {
+            style.text.color.fade_out(theme.cut_entry_fade);
+            style.icon_color.fade_out(theme.cut_entry_fade);
+        }
+        let row_container_style = if show_editor {
+            theme.filename_editor.container
+        } else {
+            style.container
+        };
+        Flex::row()
+            .with_child(
+                ConstrainedBox::new(if kind == EntryKind::Dir {
+                    if details.is_expanded {
+                        Svg::new("icons/chevron_down_8.svg")
+                            .with_color(style.icon_color)
+                            .boxed()
+                    } else {
+                        Svg::new("icons/chevron_right_8.svg")
+                            .with_color(style.icon_color)
+                            .boxed()
+                    }
+                } else {
+                    Empty::new().boxed()
+                })
+                .with_max_width(style.icon_size)
+                .with_max_height(style.icon_size)
+                .aligned()
+                .constrained()
+                .with_width(style.icon_size)
+                .boxed(),
+            )
+            .with_child(if show_editor {
+                ChildView::new(editor.clone())
+                    .contained()
+                    .with_margin_left(theme.entry.default.icon_spacing)
+                    .aligned()
+                    .left()
+                    .flex(1.0, true)
+                    .boxed()
+            } else {
+                Label::new(details.filename, style.text.clone())
+                    .contained()
+                    .with_margin_left(style.icon_spacing)
+                    .aligned()
+                    .left()
+                    .boxed()
+            })
+            .constrained()
+            .with_height(theme.entry.default.height)
+            .contained()
+            .with_style(row_container_style)
+            .with_padding_left(padding)
+            .boxed()
+    }
 }
 
 impl View for ProjectPanel {
@@ -1117,6 +1170,19 @@ impl View for ProjectPanel {
         let mut container_style = theme.container;
         let padding = std::mem::take(&mut container_style.padding);
         let last_worktree_root_id = self.last_worktree_root_id;
+        let sampling = if let Some(details) = self.longest_entry_details(cx) {
+            let element = Self::render_entry_contents(
+                details,
+                Default::default(),
+                false,
+                &self.filename_editor,
+                theme,
+            );
+            Sampling::HeightAndWidthFromElement(element)
+        } else {
+            Sampling::HeightFromFirstItem
+        };
+
         Stack::new()
             .with_child(
                 MouseEventHandler::new::<ContextMenu, _, _>(0, cx, |_, cx| {
@@ -1142,7 +1208,7 @@ impl View for ProjectPanel {
                     )
                     .with_padding_top(padding.top)
                     .with_padding_bottom(padding.bottom)
-                    .with_width_from_item(self.longest_entry_index)
+                    .with_sampling(sampling)
                     .contained()
                     .with_style(container_style)
                     .scrollable::<Scrollable, _>(0, cx)
