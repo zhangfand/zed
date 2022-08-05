@@ -196,7 +196,13 @@ impl Element for UniformList {
             sample_item_ix = sample_ix;
 
             if let Some(mut item) = items.pop() {
-                item_size = item.layout(constraint, cx);
+                item_size = item.layout(
+                    SizeConstraint::new(
+                        vec2f(constraint.min.x(), 0.0),
+                        vec2f(constraint.max.x(), f32::INFINITY),
+                    ),
+                    cx,
+                );
                 size.set_x(item_size.x());
                 sample_item = item;
             } else {
