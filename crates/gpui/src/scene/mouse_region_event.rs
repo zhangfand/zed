@@ -5,12 +5,29 @@ use std::{
 
 use pathfinder_geometry::{rect::RectF, vector::Vector2F};
 
-use crate::{MouseButton, MouseButtonEvent, MouseMovedEvent, ScrollWheelEvent};
+use crate::{MouseButton, MouseButtonEvent, MouseMovedEvent, MouseRegion, ScrollWheelEvent};
+
+pub trait RegionEventMaker<E> {
+    fn make(region: &MouseRegion, e: &E) -> MouseRegionEvent;
+}
+
+pub trait NonLocalRegionEvent {
+    fn make(region: &MouseRegion) -> MouseRegionEvent;
+}
 
 #[derive(Debug, Default, Clone)]
 pub struct MoveRegionEvent {
     pub region: RectF,
     pub platform_event: MouseMovedEvent,
+}
+
+impl RegionEventMaker<MouseMovedEvent> for MoveRegionEvent {
+    fn make(region: &MouseRegion, e: &MouseMovedEvent) -> MouseRegionEvent {
+        MouseRegionEvent::Move(Self {
+            region: region.bounds,
+            platform_event: e.clone(),
+        })
+    }
 }
 
 impl Deref for MoveRegionEvent {
@@ -57,6 +74,15 @@ pub struct DownRegionEvent {
     pub platform_event: MouseButtonEvent,
 }
 
+impl RegionEventMaker<MouseButtonEvent> for DownRegionEvent {
+    fn make(region: &MouseRegion, e: &MouseButtonEvent) -> MouseRegionEvent {
+        MouseRegionEvent::Down(Self {
+            region: region.bounds,
+            platform_event: e.clone(),
+        })
+    }
+}
+
 impl Deref for DownRegionEvent {
     type Target = MouseButtonEvent;
 
@@ -69,6 +95,15 @@ impl Deref for DownRegionEvent {
 pub struct UpRegionEvent {
     pub region: RectF,
     pub platform_event: MouseButtonEvent,
+}
+
+impl RegionEventMaker<MouseButtonEvent> for UpRegionEvent {
+    fn make(region: &MouseRegion, e: &MouseButtonEvent) -> MouseRegionEvent {
+        MouseRegionEvent::Up(UpRegionEvent {
+            region: region.bounds,
+            platform_event: e.clone(),
+        })
+    }
 }
 
 impl Deref for UpRegionEvent {
@@ -99,6 +134,15 @@ pub struct DownOutRegionEvent {
     pub platform_event: MouseButtonEvent,
 }
 
+impl RegionEventMaker<MouseButtonEvent> for DownOutRegionEvent {
+    fn make(region: &MouseRegion, e: &MouseButtonEvent) -> MouseRegionEvent {
+        MouseRegionEvent::DownOut(DownOutRegionEvent {
+            region: region.bounds,
+            platform_event: e.clone(),
+        })
+    }
+}
+
 impl Deref for DownOutRegionEvent {
     type Target = MouseButtonEvent;
 
@@ -111,6 +155,15 @@ impl Deref for DownOutRegionEvent {
 pub struct UpOutRegionEvent {
     pub region: RectF,
     pub platform_event: MouseButtonEvent,
+}
+
+impl RegionEventMaker<MouseButtonEvent> for UpOutRegionEvent {
+    fn make(region: &MouseRegion, e: &MouseButtonEvent) -> MouseRegionEvent {
+        MouseRegionEvent::UpOut(UpOutRegionEvent {
+            region: region.bounds,
+            platform_event: e.clone(),
+        })
+    }
 }
 
 impl Deref for UpOutRegionEvent {
