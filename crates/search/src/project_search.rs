@@ -1,7 +1,6 @@
 use crate::{
-    active_match_index, match_index_for_direction, query_suggestion_for_editor, Direction,
-    SearchOption, SelectNextMatch, SelectPrevMatch, ToggleCaseSensitive, ToggleRegex,
-    ToggleWholeWord,
+    active_match_index, match_index_for_direction, query_suggestion_for_editor, SearchOption,
+    SelectNextMatch, SelectPrevMatch, ToggleCaseSensitive, ToggleRegex, ToggleWholeWord,
 };
 use collections::HashMap;
 use editor::{Anchor, Autoscroll, Editor, MultiBuffer, SelectAll, MAX_TAB_TITLE_LEN};
@@ -21,7 +20,8 @@ use std::{
 };
 use util::ResultExt as _;
 use workspace::{
-    Item, ItemHandle, ItemNavHistory, Pane, ToolbarItemLocation, ToolbarItemView, Workspace,
+    item::search::Direction, item::Item, item::ItemHandle, ItemNavHistory, Pane,
+    ToolbarItemLocation, ToolbarItemView, Workspace,
 };
 
 actions!(project_search, [SearchInNew, ToggleFocus]);
@@ -877,7 +877,7 @@ impl View for ProjectSearchBar {
 impl ToolbarItemView for ProjectSearchBar {
     fn set_active_pane_item(
         &mut self,
-        active_pane_item: Option<&dyn workspace::ItemHandle>,
+        active_pane_item: Option<&dyn workspace::item::ItemHandle>,
         cx: &mut ViewContext<Self>,
     ) -> ToolbarItemLocation {
         cx.notify();

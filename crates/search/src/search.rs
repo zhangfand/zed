@@ -6,6 +6,7 @@ use std::{
     cmp::{self, Ordering},
     ops::Range,
 };
+use workspace::item::search::Direction;
 
 pub mod buffer_search;
 pub mod project_search;
@@ -49,12 +50,6 @@ impl SearchOption {
             SearchOption::Regex => Box::new(ToggleRegex),
         }
     }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum Direction {
-    Prev,
-    Next,
 }
 
 pub(crate) fn active_match_index(

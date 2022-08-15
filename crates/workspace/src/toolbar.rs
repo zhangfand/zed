@@ -1,4 +1,4 @@
-use crate::{ItemHandle, Pane};
+use crate::{item::ItemHandle, Pane};
 use gpui::{
     elements::*, platform::CursorStyle, Action, AnyViewHandle, AppContext, ElementBox, Entity,
     MouseButton, MutableAppContext, RenderContext, View, ViewContext, ViewHandle, WeakViewHandle,
@@ -8,7 +8,7 @@ use settings::Settings;
 pub trait ToolbarItemView: View {
     fn set_active_pane_item(
         &mut self,
-        active_pane_item: Option<&dyn crate::ItemHandle>,
+        active_pane_item: Option<&dyn crate::item::ItemHandle>,
         cx: &mut ViewContext<Self>,
     ) -> ToolbarItemLocation;
 

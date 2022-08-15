@@ -219,7 +219,7 @@ impl View for DiagnosticIndicator {
 impl StatusItemView for DiagnosticIndicator {
     fn set_active_pane_item(
         &mut self,
-        active_pane_item: Option<&dyn workspace::ItemHandle>,
+        active_pane_item: Option<&dyn workspace::item::ItemHandle>,
         cx: &mut ViewContext<Self>,
     ) {
         if let Some(editor) = active_pane_item.and_then(|item| item.downcast::<Editor>()) {

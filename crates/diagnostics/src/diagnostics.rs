@@ -29,7 +29,7 @@ use std::{
     sync::Arc,
 };
 use util::TryFutureExt;
-use workspace::{ItemHandle as _, ItemNavHistory, Workspace};
+use workspace::{item::ItemHandle as _, ItemNavHistory, Workspace};
 
 actions!(diagnostics, [Deploy]);
 
@@ -498,7 +498,7 @@ impl ProjectDiagnosticsEditor {
     }
 }
 
-impl workspace::Item for ProjectDiagnosticsEditor {
+impl workspace::item::Item for ProjectDiagnosticsEditor {
     fn tab_content(
         &self,
         _detail: Option<usize>,

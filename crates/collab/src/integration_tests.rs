@@ -51,7 +51,7 @@ use std::{
     time::Duration,
 };
 use theme::ThemeRegistry;
-use workspace::{Item, SplitDirection, ToggleFollow, Workspace};
+use workspace::{item::Item, SplitDirection, ToggleFollow, Workspace};
 
 #[ctor::ctor]
 fn init_logger() {

@@ -69,7 +69,7 @@ use std::{
 pub use sum_tree::Bias;
 use theme::{DiagnosticStyle, Theme};
 use util::{post_inc, ResultExt, TryFutureExt};
-use workspace::{ItemNavHistory, Workspace};
+use workspace::{item::search::Searchable, ItemNavHistory, Workspace};
 
 const CURSOR_BLINK_INTERVAL: Duration = Duration::from_millis(500);
 const MAX_LINE_LEN: usize = 1024;
@@ -6249,6 +6249,12 @@ impl View for Editor {
     }
 }
 
+impl Searchable for Editor {
+    fn next_match() {
+        todo!()
+    }
+}
+
 fn build_style(
     settings: &Settings,
     get_field_editor_theme: Option<GetFieldEditorTheme>,
@@ -6646,7 +6652,7 @@ mod tests {
         assert_set_eq,
         test::{marked_text_ranges, marked_text_ranges_by, sample_text, TextRangeMarker},
     };
-    use workspace::{FollowableItem, ItemHandle, NavigationEntry, Pane};
+    use workspace::{item::FollowableItem, item::ItemHandle, NavigationEntry, Pane};
 
     #[gpui::test]
     fn test_edit_events(cx: &mut MutableAppContext) {
@@ -7098,7 +7104,7 @@ mod tests {
     #[gpui::test]
     fn test_navigation_history(cx: &mut gpui::MutableAppContext) {
         cx.set_global(Settings::test(cx));
-        use workspace::Item;
+        use workspace::item::Item;
         let (_, pane) = cx.add_window(Default::default(), Pane::new);
         let buffer = MultiBuffer::build_simple(&sample_text(300, 5, 'a'), cx);
 

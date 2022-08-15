@@ -1,4 +1,4 @@
-use crate::{ItemHandle, Pane};
+use crate::{item::ItemHandle, Pane};
 use gpui::{
     elements::*, AnyViewHandle, ElementBox, Entity, MutableAppContext, RenderContext, Subscription,
     View, ViewContext, ViewHandle,
@@ -8,7 +8,7 @@ use settings::Settings;
 pub trait StatusItemView: View {
     fn set_active_pane_item(
         &mut self,
-        active_pane_item: Option<&dyn crate::ItemHandle>,
+        active_pane_item: Option<&dyn crate::item::ItemHandle>,
         cx: &mut ViewContext<Self>,
     );
 }

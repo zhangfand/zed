@@ -1,5 +1,7 @@
-use super::{ItemHandle, SplitDirection};
-use crate::{toolbar::Toolbar, Item, NewFile, NewSearch, NewTerminal, WeakItemHandle, Workspace};
+use super::{item::ItemHandle, SplitDirection};
+use crate::{
+    item::Item, item::WeakItemHandle, toolbar::Toolbar, NewFile, NewSearch, NewTerminal, Workspace,
+};
 use anyhow::Result;
 use collections::{HashMap, HashSet, VecDeque};
 use context_menu::{ContextMenu, ContextMenuItem};

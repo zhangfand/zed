@@ -43,7 +43,7 @@ impl View for FeedbackLink {
 impl StatusItemView for FeedbackLink {
     fn set_active_pane_item(
         &mut self,
-        _: Option<&dyn workspace::ItemHandle>,
+        _: Option<&dyn workspace::item::ItemHandle>,
         _: &mut gpui::ViewContext<Self>,
     ) {
     }

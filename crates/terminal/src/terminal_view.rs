@@ -6,7 +6,7 @@ use gpui::{
     actions, elements::*, AnyViewHandle, AppContext, Entity, ModelHandle, MutableAppContext, View,
     ViewContext, ViewHandle,
 };
-use workspace::{Item, Workspace};
+use workspace::{item::Item, Workspace};
 
 use crate::TerminalSize;
 use project::{LocalWorktree, Project, ProjectPath};

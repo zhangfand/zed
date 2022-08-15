@@ -349,7 +349,7 @@ impl View for SidebarButtons {
 impl StatusItemView for SidebarButtons {
     fn set_active_pane_item(
         &mut self,
-        _: Option<&dyn crate::ItemHandle>,
+        _: Option<&dyn crate::item::ItemHandle>,
         _: &mut ViewContext<Self>,
     ) {
     }

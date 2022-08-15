@@ -20,7 +20,10 @@ use std::{
 };
 use text::{Point, Selection};
 use util::TryFutureExt;
-use workspace::{FollowableItem, Item, ItemHandle, ItemNavHistory, ProjectItem, StatusItemView};
+use workspace::{
+    item::FollowableItem, item::Item, item::ItemHandle, item::ProjectItem, ItemNavHistory,
+    StatusItemView,
+};
 
 pub const FORMAT_TIMEOUT: Duration = Duration::from_secs(2);
 pub const MAX_TAB_TITLE_LEN: usize = 24;

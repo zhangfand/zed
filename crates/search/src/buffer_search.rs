@@ -1,7 +1,6 @@
 use crate::{
-    active_match_index, match_index_for_direction, query_suggestion_for_editor, Direction,
-    SearchOption, SelectNextMatch, SelectPrevMatch, ToggleCaseSensitive, ToggleRegex,
-    ToggleWholeWord,
+    active_match_index, match_index_for_direction, query_suggestion_for_editor, SearchOption,
+    SelectNextMatch, SelectPrevMatch, ToggleCaseSensitive, ToggleRegex, ToggleWholeWord,
 };
 use collections::HashMap;
 use editor::{Anchor, Autoscroll, Editor};
@@ -10,12 +9,13 @@ use gpui::{
     Entity, MouseButton, MutableAppContext, RenderContext, Subscription, Task, View, ViewContext,
     ViewHandle, WeakViewHandle,
 };
-use language::OffsetRangeExt;
 use project::search::SearchQuery;
 use serde::Deserialize;
 use settings::Settings;
 use std::ops::Range;
-use workspace::{ItemHandle, Pane, ToolbarItemLocation, ToolbarItemView};
+use workspace::{
+    item::search::Direction, item::ItemHandle, Pane, ToolbarItemLocation, ToolbarItemView,
+};
 
 #[derive(Clone, Deserialize, PartialEq)]
 pub struct Deploy {
@@ -59,7 +59,7 @@ fn add_toggle_option_action<A: Action>(option: SearchOption, cx: &mut MutableApp
 
 pub struct BufferSearchBar {
     pub query_editor: ViewHandle<Editor>,
-    active_editor: Option<ViewHandle<Editor>>,
+    active_item: Option<Box<dyn ItemHandle>>,
     active_match_index: Option<usize>,
     active_editor_subscription: Option<Subscription>,
     editors_with_matches: HashMap<WeakViewHandle<Editor>, Vec<Range<Anchor>>>,
@@ -103,7 +103,7 @@ impl View for BufferSearchBar {
                             .flex(1., true)
                             .boxed(),
                     )
-                    .with_children(self.active_editor.as_ref().and_then(|editor| {
+                    .with_children(self.active_item.as_ref().and_then(|editor| {
                         let matches = self.editors_with_matches.get(&editor.downgrade())?;
                         let message = if let Some(match_ix) = self.active_match_index {
                             format!("{}/{}", match_ix + 1, matches.len())
@@ -159,14 +159,14 @@ impl ToolbarItemView for BufferSearchBar {
     ) -> ToolbarItemLocation {
         cx.notify();
         self.active_editor_subscription.take();
-        self.active_editor.take();
+        self.active_item.take();
         self.pending_search.take();
 
         if let Some(editor) = item.and_then(|item| item.act_as::<Editor>(cx)) {
             if editor.read(cx).searchable() {
                 self.active_editor_subscription =
                     Some(cx.subscribe(&editor, Self::on_active_editor_event));
-                self.active_editor = Some(editor);
+                self.active_item = Some(editor);
                 self.update_matches(false, cx);
                 if !self.dismissed {
                     return ToolbarItemLocation::Secondary;
@@ -183,7 +183,7 @@ impl ToolbarItemView for BufferSearchBar {
         _: ToolbarItemLocation,
         _: &AppContext,
     ) -> ToolbarItemLocation {
-        if self.active_editor.is_some() && !self.dismissed {
+        if self.active_item.is_some() && !self.dismissed {
             ToolbarItemLocation::Secondary
         } else {
             ToolbarItemLocation::Hidden
@@ -201,7 +201,7 @@ impl BufferSearchBar {
 
         Self {
             query_editor,
-            active_editor: None,
+            active_item: None,
             active_editor_subscription: None,
             active_match_index: None,
             editors_with_matches: Default::default(),
@@ -223,7 +223,7 @@ impl BufferSearchBar {
                 });
             }
         }
-        if let Some(active_editor) = self.active_editor.as_ref() {
+        if let Some(active_editor) = self.active_item.as_ref() {
             cx.focus(active_editor);
         }
         cx.emit(Event::UpdateLocation);
@@ -231,7 +231,7 @@ impl BufferSearchBar {
     }
 
     fn show(&mut self, focus: bool, suggest_query: bool, cx: &mut ViewContext<Self>) -> bool {
-        let editor = if let Some(editor) = self.active_editor.clone() {
+        let editor = if let Some(editor) = self.active_item.clone() {
             editor
         } else {
             return false;
@@ -369,7 +369,7 @@ impl BufferSearchBar {
     }
 
     fn focus_editor(&mut self, _: &FocusEditor, cx: &mut ViewContext<Self>) {
-        if let Some(active_editor) = self.active_editor.as_ref() {
+        if let Some(active_editor) = self.active_item.as_ref() {
             cx.focus(active_editor);
         }
     }
@@ -403,7 +403,7 @@ impl BufferSearchBar {
 
     fn select_match(&mut self, direction: Direction, cx: &mut ViewContext<Self>) {
         if let Some(index) = self.active_match_index {
-            if let Some(editor) = self.active_editor.as_ref() {
+            if let Some(editor) = self.active_item.as_ref() {
                 editor.update(cx, |editor, cx| {
                     if let Some(ranges) = self.editors_with_matches.get(&cx.weak_handle()) {
                         let new_index = match_index_for_direction(
@@ -475,7 +475,7 @@ impl BufferSearchBar {
         let mut active_editor_matches = None;
         for (editor, ranges) in self.editors_with_matches.drain() {
             if let Some(editor) = editor.upgrade(cx) {
-                if Some(&editor) == self.active_editor.as_ref() {
+                if Some(&editor) == self.active_item.as_ref() {
                     active_editor_matches = Some((editor.downgrade(), ranges));
                 } else {
                     editor.update(cx, |editor, cx| {
@@ -490,7 +490,7 @@ impl BufferSearchBar {
     fn update_matches(&mut self, select_closest_match: bool, cx: &mut ViewContext<Self>) {
         let query = self.query_editor.read(cx).text(cx);
         self.pending_search.take();
-        if let Some(editor) = self.active_editor.as_ref() {
+        if let Some(editor) = self.active_item.as_ref() {
             if query.is_empty() {
                 self.active_match_index.take();
                 editor.update(cx, |editor, cx| {
@@ -579,7 +579,7 @@ impl BufferSearchBar {
     }
 
     fn update_match_index(&mut self, cx: &mut ViewContext<Self>) {
-        let new_index = self.active_editor.as_ref().and_then(|editor| {
+        let new_index = self.active_item.as_ref().and_then(|editor| {
             let ranges = self.editors_with_matches.get(&editor.downgrade())?;
             let editor = editor.read(cx);
             active_match_index(

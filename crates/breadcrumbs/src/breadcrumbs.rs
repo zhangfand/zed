@@ -8,7 +8,7 @@ use project::Project;
 use search::ProjectSearchView;
 use settings::Settings;
 use theme::SyntaxTheme;
-use workspace::{ItemHandle, ToolbarItemLocation, ToolbarItemView};
+use workspace::{item::ItemHandle, ToolbarItemLocation, ToolbarItemView};
 
 pub enum Event {
     UpdateLocation,
