@@ -501,6 +501,11 @@ impl Foreground {
     }
 
     #[cfg(any(test, feature = "test-support"))]
+    pub fn is_deterministic(&self) -> bool {
+        matches!(self, Self::Deterministic { .. })
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
     pub fn run_until_parked(&self) {
         match self {
             Self::Deterministic { executor, .. } => executor.run_until_parked(),

@@ -2,6 +2,7 @@ use crate::StatusItemView;
 use gpui::{
     elements::*, impl_actions, platform::CursorStyle, AnyViewHandle, AppContext, Entity,
     MouseButton, MouseMovedEvent, RenderContext, Subscription, View, ViewContext, ViewHandle,
+    WeakViewHandle,
 };
 use serde::Deserialize;
 use settings::Settings;
@@ -75,7 +76,7 @@ struct Item {
 }
 
 pub struct SidebarButtons {
-    sidebar: ViewHandle<Sidebar>,
+    sidebar: WeakViewHandle<Sidebar>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
@@ -255,9 +256,11 @@ impl View for Sidebar {
 }
 
 impl SidebarButtons {
-    pub fn new(sidebar: ViewHandle<Sidebar>, cx: &mut ViewContext<Self>) -> Self {
-        cx.observe(&sidebar, |_, _, cx| cx.notify()).detach();
-        Self { sidebar }
+    pub fn new(sidebar: &ViewHandle<Sidebar>, cx: &mut ViewContext<Self>) -> Self {
+        cx.observe(sidebar, |_, _, cx| cx.notify()).detach();
+        Self {
+            sidebar: sidebar.downgrade(),
+        }
     }
 }
 
@@ -271,10 +274,15 @@ impl View for SidebarButtons {
     }
 
     fn render(&mut self, cx: &mut RenderContext<Self>) -> ElementBox {
+        let sidebar = if let Some(sidebar) = self.sidebar.upgrade(cx) {
+            sidebar.read(cx)
+        } else {
+            return Empty::new().boxed();
+        };
+
         let theme = &cx.global::<Settings>().theme;
         let tooltip_style = theme.tooltip.clone();
         let theme = &theme.workspace.status_bar.sidebar_buttons;
-        let sidebar = self.sidebar.read(cx);
         let item_style = theme.item;
         let badge_style = theme.badge;
         let active_ix = sidebar.active_item_ix;

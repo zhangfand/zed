@@ -88,10 +88,7 @@ pub fn run_test(
                         is_last_iteration,
                     );
                 });
-
-                cx.update(|cx| cx.remove_all_windows());
-                deterministic.run_until_parked();
-                cx.update(|_| {}); // flush effects
+                drop(cx);
 
                 leak_detector.lock().detect();
                 if is_last_iteration {

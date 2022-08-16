@@ -747,6 +747,17 @@ impl TestAppContext {
     }
 }
 
+#[cfg(any(test, feature = "test-support"))]
+impl Drop for TestAppContext {
+    fn drop(&mut self) {
+        self.update(|cx| cx.remove_all_windows());
+        if self.foreground().is_deterministic() {
+            self.foreground().run_until_parked();
+        }
+        self.update(|_| {}) // flush effects
+    }
+}
+
 impl AsyncAppContext {
     pub fn spawn<F, Fut, T>(&self, f: F) -> Task<T>
     where
