@@ -23,7 +23,7 @@ use gpui::{
 };
 use language::{
     range_to_lsp, tree_sitter_rust, Diagnostic, DiagnosticEntry, FakeLspAdapter, Language,
-    LanguageConfig, LanguageRegistry, LineEnding, OffsetRangeExt, Point, Rope,
+    LanguageConfig, LanguageRegistry, LineEnding, OffsetRangeExt, Point, RandomCharIter, Rope,
 };
 use lsp::{self, FakeLanguageServer};
 use parking_lot::Mutex;
@@ -4676,6 +4676,7 @@ async fn test_random_collaboration(
         cx.leak_detector(),
         next_entity_id,
     );
+    host_cx.update(editor::init);
     let host = server.create_client(&mut host_cx, "host").await;
     let host_project = host_cx.update(|cx| {
         Project::local(
@@ -4834,12 +4835,14 @@ async fn test_random_collaboration(
     let op_start_signal = futures::channel::mpsc::unbounded();
     user_ids.push(host.current_user_id(&host_cx));
     op_start_signals.push(op_start_signal.0);
+    let host_workspace = host.build_workspace(&host_project, &mut host_cx);
     clients.push(host_cx.foreground().spawn(host.simulate_host(
-        host_project,
+        host_workspace,
         op_start_signal.1,
         rng.clone(),
         host_cx,
     )));
+    drop(host_project);
 
     let disconnect_host_at = if rng.lock().gen_bool(0.2) {
         rng.lock().gen_range(0..max_operations)
@@ -4859,12 +4862,14 @@ async fn test_random_collaboration(
             deterministic.finish_waiting();
             deterministic.run_until_parked();
 
-            let (host, host_project, mut host_cx, host_err) = clients.remove(0);
+            let (host, host_workspace, mut host_cx, host_err) = clients.remove(0);
             if let Some(host_err) = host_err {
                 log::error!("host error - {:?}", host_err);
             }
-            host_project.read_with(&host_cx, |project, _| assert!(!project.is_shared()));
-            for (guest, guest_project, mut guest_cx, guest_err) in clients {
+            host_workspace.read_with(&host_cx, |workspace, cx| {
+                assert!(!workspace.project().read(cx).is_shared())
+            });
+            for (guest, guest_workspace, mut guest_cx, guest_err) in clients {
                 if let Some(guest_err) = guest_err {
                     log::error!("{} error - {:?}", guest.username, guest_err);
                 }
@@ -4885,10 +4890,12 @@ async fn test_random_collaboration(
                     .iter()
                     .flat_map(|contact| &contact.projects)
                     .any(|project| project.id == host_project_id));
-                guest_project.read_with(&guest_cx, |project, _| assert!(project.is_read_only()));
-                guest_cx.update(|_| drop((guest, guest_project)));
+                guest_workspace.read_with(&guest_cx, |workspace, cx| {
+                    assert!(workspace.project().read(cx).is_read_only())
+                });
+                guest_cx.update(|_| drop((guest, guest_workspace)));
             }
-            host_cx.update(|_| drop((host, host_project)));
+            host_cx.update(|_| drop((host, host_workspace)));
 
             return;
         }
@@ -4909,6 +4916,7 @@ async fn test_random_collaboration(
                     cx.leak_detector(),
                     next_entity_id,
                 );
+                guest_cx.update(editor::init);
 
                 deterministic.start_waiting();
                 let guest = server.create_client(&mut guest_cx, &guest_username).await;
@@ -4928,9 +4936,10 @@ async fn test_random_collaboration(
                 let op_start_signal = futures::channel::mpsc::unbounded();
                 user_ids.push(guest.current_user_id(&guest_cx));
                 op_start_signals.push(op_start_signal.0);
+                let guest_workspace = guest.build_workspace(&guest_project, &mut guest_cx);
                 clients.push(guest_cx.foreground().spawn(guest.simulate_guest(
                     guest_username.clone(),
-                    guest_project,
+                    guest_workspace,
                     op_start_signal.1,
                     rng.clone(),
                     guest_cx,
@@ -4950,14 +4959,16 @@ async fn test_random_collaboration(
                 deterministic.advance_clock(RECEIVE_TIMEOUT);
                 deterministic.start_waiting();
                 log::info!("Waiting for guest {} to exit...", removed_guest_id);
-                let (guest, guest_project, mut guest_cx, guest_err) = guest.await;
+                let (guest, guest_workspace, mut guest_cx, guest_err) = guest.await;
                 deterministic.finish_waiting();
                 server.allow_connections();
 
                 if let Some(guest_err) = guest_err {
                     log::error!("{} error - {:?}", guest.username, guest_err);
                 }
-                guest_project.read_with(&guest_cx, |project, _| assert!(project.is_read_only()));
+                guest_workspace.read_with(&guest_cx, |workspace, cx| {
+                    assert!(workspace.project().read(cx).is_read_only())
+                });
                 for user_id in &user_ids {
                     let contacts = server.app_state.db.get_contacts(*user_id).await.unwrap();
                     let contacts = server
@@ -4986,7 +4997,7 @@ async fn test_random_collaboration(
 
                 log::info!("{} removed", guest.username);
                 available_guests.push(guest.username.clone());
-                guest_cx.update(|_| drop((guest, guest_project)));
+                guest_cx.update(|_| drop((guest, guest_workspace)));
 
                 operations += 1;
             }
@@ -5013,12 +5024,12 @@ async fn test_random_collaboration(
     deterministic.finish_waiting();
     deterministic.run_until_parked();
 
-    let (host_client, host_project, mut host_cx, host_err) = clients.remove(0);
+    let (host_client, host_workspace, mut host_cx, host_err) = clients.remove(0);
     if let Some(host_err) = host_err {
         panic!("host error - {:?}", host_err);
     }
-    let host_worktree_snapshots = host_project.read_with(&host_cx, |project, cx| {
-        project
+    let host_worktree_snapshots = host_workspace.read_with(&host_cx, |workspace, cx| {
+        workspace
             .worktrees(cx)
             .map(|worktree| {
                 let snapshot = worktree.read(cx).snapshot();
@@ -5027,14 +5038,16 @@ async fn test_random_collaboration(
             .collect::<BTreeMap<_, _>>()
     });
 
-    host_project.read_with(&host_cx, |project, cx| project.check_invariants(cx));
+    host_workspace.read_with(&host_cx, |workspace, cx| {
+        workspace.project().read(cx).check_invariants(cx)
+    });
 
-    for (guest_client, guest_project, mut guest_cx, guest_err) in clients.into_iter() {
+    for (guest_client, guest_workspace, mut guest_cx, guest_err) in clients.into_iter() {
         if let Some(guest_err) = guest_err {
             panic!("{} error - {:?}", guest_client.username, guest_err);
         }
-        let worktree_snapshots = guest_project.read_with(&guest_cx, |project, cx| {
-            project
+        let worktree_snapshots = guest_workspace.read_with(&guest_cx, |workspace, cx| {
+            workspace
                 .worktrees(cx)
                 .map(|worktree| {
                     let worktree = worktree.read(cx);
@@ -5068,17 +5081,21 @@ async fn test_random_collaboration(
             assert_eq!(guest_snapshot.scan_id(), host_snapshot.scan_id());
         }
 
-        guest_project.read_with(&guest_cx, |project, cx| project.check_invariants(cx));
+        guest_workspace.read_with(&guest_cx, |workspace, cx| {
+            workspace.project().read(cx).check_invariants(cx)
+        });
 
         for guest_buffer in &guest_client.buffers {
             let buffer_id = guest_buffer.read_with(&guest_cx, |buffer, _| buffer.remote_id());
-            let host_buffer = host_project.read_with(&host_cx, |project, cx| {
-                project.buffer_for_id(buffer_id, cx).unwrap_or_else(|| {
-                    panic!(
+            let host_buffer = host_workspace.read_with(&host_cx, |workspace, cx| {
+                workspace
+                    .project()
+                    .read(cx)
+                    .buffer_for_id(buffer_id, cx)
+                    .expect(&format!(
                         "host does not have buffer for guest:{}, peer:{}, id:{}",
                         guest_client.username, guest_client.peer_id, buffer_id
-                    )
-                })
+                    ))
             });
             let path =
                 host_buffer.read_with(&host_cx, |buffer, cx| buffer.file().unwrap().full_path(cx));
@@ -5101,10 +5118,10 @@ async fn test_random_collaboration(
             );
         }
 
-        guest_cx.update(|_| drop((guest_project, guest_client)));
+        guest_cx.update(|_| drop((guest_client, guest_workspace)));
     }
 
-    host_cx.update(|_| drop((host_client, host_project)));
+    host_cx.update(|_| drop((host_client, host_workspace)));
 }
 
 struct TestServer {
@@ -5464,23 +5481,24 @@ impl TestClient {
 
     async fn simulate_host(
         mut self,
-        project: ModelHandle<Project>,
+        workspace: ViewHandle<Workspace>,
         op_start_signal: futures::channel::mpsc::UnboundedReceiver<()>,
         rng: Arc<Mutex<StdRng>>,
         mut cx: TestAppContext,
     ) -> (
         Self,
-        ModelHandle<Project>,
+        ViewHandle<Workspace>,
         TestAppContext,
         Option<anyhow::Error>,
     ) {
         async fn simulate_host_internal(
             client: &mut TestClient,
-            project: ModelHandle<Project>,
+            workspace: ViewHandle<Workspace>,
             mut op_start_signal: futures::channel::mpsc::UnboundedReceiver<()>,
             rng: Arc<Mutex<StdRng>>,
             cx: &mut TestAppContext,
         ) -> anyhow::Result<()> {
+            let project = workspace.read_with(cx, |workspace, _| workspace.project().clone());
             let fs = project.read_with(cx, |project, _| project.fs().clone());
 
             cx.update(|cx| {
@@ -5519,7 +5537,16 @@ impl TestClient {
                             find_or_create_worktree.await?;
                         }
                     }
-                    20..=79 if !files.is_empty() => {
+                    20..=39
+                        if !project.read_with(cx, |project, cx| {
+                            project.worktrees(cx).next().is_some()
+                        }) =>
+                    {
+                        client
+                            .randomly_mutate_workspace("Host", &workspace, &rng, cx)
+                            .await?;
+                    }
+                    40..=79 if !files.is_empty() => {
                         let buffer = if client.buffers.is_empty() || rng.lock().gen() {
                             let file = files.choose(&mut *rng.lock()).unwrap();
                             let (worktree, path) = project
@@ -5605,32 +5632,145 @@ impl TestClient {
         }
 
         let result =
-            simulate_host_internal(&mut self, project.clone(), op_start_signal, rng, &mut cx).await;
+            simulate_host_internal(&mut self, workspace.clone(), op_start_signal, rng, &mut cx)
+                .await;
         log::info!("Host done");
-        (self, project, cx, result.err())
+        (self, workspace, cx, result.err())
+    }
+
+    async fn randomly_mutate_workspace(
+        &self,
+        username: &str,
+        workspace: &ViewHandle<Workspace>,
+        rng: &Mutex<StdRng>,
+        cx: &mut TestAppContext,
+    ) -> anyhow::Result<()> {
+        let choice = rng.lock().gen_range(0..100);
+        match choice {
+            0..=29
+                if workspace
+                    .read_with(cx, |workspace, cx| workspace.items(cx).next().is_some()) =>
+            {
+                log::info!("{}: activating", username);
+                workspace.update(cx, |workspace, cx| {
+                    let editor = workspace
+                        .items(cx)
+                        .choose(&mut *rng.lock())
+                        .unwrap()
+                        .downcast::<Editor>()
+                        .unwrap();
+
+                    let choice = rng.lock().gen_range(0..100);
+                    match choice {
+                        0..=19 => {
+                            workspace.activate_item(&editor, cx);
+                        }
+                        20..=29 => {
+                            editor
+                                .update(cx, |editor, cx| editor.move_left(&Default::default(), cx));
+                        }
+                        30..=39 => {
+                            editor.update(cx, |editor, cx| {
+                                editor.select_left(&Default::default(), cx)
+                            });
+                        }
+                        40..=49 => {
+                            editor.update(cx, |editor, cx| {
+                                editor.move_right(&Default::default(), cx)
+                            });
+                        }
+                        50..=59 => {
+                            editor.update(cx, |editor, cx| {
+                                editor.select_right(&Default::default(), cx)
+                            });
+                        }
+                        _ => {
+                            let len = rng.lock().gen_range(1..=5);
+                            let text = RandomCharIter::new(&mut *rng.lock())
+                                .take(len)
+                                .collect::<String>();
+                            editor.update(cx, |editor, cx| editor.insert(&text, cx));
+                        }
+                    }
+                });
+            }
+            30..=49
+                if workspace.read_with(cx, |workspace, cx| {
+                    !workspace.project().read(cx).collaborators().is_empty()
+                }) =>
+            {
+                let (leader, follow) = workspace.update(cx, |workspace, cx| {
+                    let project = workspace.project().read(cx);
+                    let leader = project
+                        .collaborators()
+                        .keys()
+                        .choose(&mut *rng.lock())
+                        .copied()
+                        .unwrap();
+                    log::info!("{}: following {:?}", username, leader);
+                    (leader, workspace.toggle_follow(&ToggleFollow(leader), cx))
+                });
+                if let Some(follow) = follow {
+                    if let Err(error) = follow.await {
+                        log::info!(
+                            "{}: following peer {:?} failed {:?}",
+                            username,
+                            leader,
+                            error
+                        );
+                    }
+                }
+            }
+            _ => {
+                workspace
+                    .update(cx, |workspace, cx| {
+                        let rng = &mut *rng.lock();
+                        let project = workspace.project().read(cx);
+                        let path = project
+                            .worktrees(cx)
+                            .flat_map(|worktree| {
+                                let worktree = worktree.read(cx);
+                                worktree
+                                    .entries(true)
+                                    .filter(|entry| entry.is_file())
+                                    .map(|entry| (worktree.id(), entry.path.clone()))
+                            })
+                            .choose(rng)
+                            .unwrap();
+                        drop(rng);
+                        log::info!("{}: opening path {:?})", username, path);
+                        workspace.open_path(path, true, cx)
+                    })
+                    .await
+                    .map_err(|err| anyhow!("{:?}", err))?;
+            }
+        }
+
+        Ok(())
     }
 
     pub async fn simulate_guest(
         mut self,
         guest_username: String,
-        project: ModelHandle<Project>,
+        workspace: ViewHandle<Workspace>,
         op_start_signal: futures::channel::mpsc::UnboundedReceiver<()>,
         rng: Arc<Mutex<StdRng>>,
         mut cx: TestAppContext,
     ) -> (
         Self,
-        ModelHandle<Project>,
+        ViewHandle<Workspace>,
         TestAppContext,
         Option<anyhow::Error>,
     ) {
         async fn simulate_guest_internal(
             client: &mut TestClient,
             guest_username: &str,
-            project: ModelHandle<Project>,
+            workspace: ViewHandle<Workspace>,
             mut op_start_signal: futures::channel::mpsc::UnboundedReceiver<()>,
             rng: Arc<Mutex<StdRng>>,
             cx: &mut TestAppContext,
         ) -> anyhow::Result<()> {
+            let project = workspace.read_with(cx, |workspace, _| workspace.project().clone());
             while op_start_signal.next().await.is_some() {
                 let buffer = if client.buffers.is_empty() || rng.lock().gen() {
                     let worktree = if let Some(worktree) = project.read_with(cx, |project, cx| {
@@ -5905,6 +6045,11 @@ impl TestClient {
                             .unwrap()
                             .await?;
                     }
+                    70..=84 => {
+                        client
+                            .randomly_mutate_workspace(guest_username, &workspace, &rng, cx)
+                            .await?;
+                    }
                     _ => {
                         buffer.update(cx, |buffer, cx| {
                             log::info!(
@@ -5929,7 +6074,7 @@ impl TestClient {
         let result = simulate_guest_internal(
             &mut self,
             &guest_username,
-            project.clone(),
+            workspace.clone(),
             op_start_signal,
             rng,
             &mut cx,
@@ -5937,7 +6082,7 @@ impl TestClient {
         .await;
         log::info!("{}: done", guest_username);
 
-        (self, project, cx, result.err())
+        (self, workspace, cx, result.err())
     }
 }
 
