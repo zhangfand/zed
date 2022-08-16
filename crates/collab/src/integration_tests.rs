@@ -5651,7 +5651,6 @@ impl TestClient {
                 if workspace
                     .read_with(cx, |workspace, cx| workspace.items(cx).next().is_some()) =>
             {
-                log::info!("{}: activating", username);
                 workspace.update(cx, |workspace, cx| {
                     let editor = workspace
                         .items(cx)
@@ -5659,27 +5658,37 @@ impl TestClient {
                         .unwrap()
                         .downcast::<Editor>()
                         .unwrap();
+                    let editor_path = editor.read(cx).project_path(cx);
 
                     let choice = rng.lock().gen_range(0..100);
                     match choice {
                         0..=19 => {
+                            log::info!("{}: activating editor {:?}", username, editor_path);
                             workspace.activate_item(&editor, cx);
                         }
                         20..=29 => {
+                            log::info!("{}: moving left for editor {:?}", username, editor_path);
                             editor
                                 .update(cx, |editor, cx| editor.move_left(&Default::default(), cx));
                         }
                         30..=39 => {
+                            log::info!("{}: selecting left for editor {:?}", username, editor_path);
                             editor.update(cx, |editor, cx| {
                                 editor.select_left(&Default::default(), cx)
                             });
                         }
                         40..=49 => {
+                            log::info!("{}: moving right for editor {:?}", username, editor_path);
                             editor.update(cx, |editor, cx| {
                                 editor.move_right(&Default::default(), cx)
                             });
                         }
                         50..=59 => {
+                            log::info!(
+                                "{}: selecting right for editor {:?}",
+                                username,
+                                editor_path
+                            );
                             editor.update(cx, |editor, cx| {
                                 editor.select_right(&Default::default(), cx)
                             });
@@ -5689,6 +5698,12 @@ impl TestClient {
                             let text = RandomCharIter::new(&mut *rng.lock())
                                 .take(len)
                                 .collect::<String>();
+                            log::info!(
+                                "{}: inserting {:?} for editor {:?}",
+                                username,
+                                text,
+                                editor_path
+                            );
                             editor.update(cx, |editor, cx| editor.insert(&text, cx));
                         }
                     }
@@ -5701,14 +5716,21 @@ impl TestClient {
             {
                 let (leader, follow) = workspace.update(cx, |workspace, cx| {
                     let project = workspace.project().read(cx);
-                    let leader = project
+                    let (&leader_id, leader) = project
                         .collaborators()
-                        .keys()
+                        .iter()
                         .choose(&mut *rng.lock())
-                        .copied()
                         .unwrap();
-                    log::info!("{}: following {:?}", username, leader);
-                    (leader, workspace.toggle_follow(&ToggleFollow(leader), cx))
+                    let prev_leader_id = workspace.leader_for_pane(workspace.active_pane());
+                    if Some(leader_id) == prev_leader_id {
+                        log::info!("{}: unfollowing {:?}", username, leader.user.github_login);
+                    } else {
+                        log::info!("{}: following {:?}", username, leader.user.github_login);
+                    }
+                    (
+                        leader_id,
+                        workspace.toggle_follow(&ToggleFollow(leader_id), cx),
+                    )
                 });
                 if let Some(follow) = follow {
                     if let Err(error) = follow.await {
