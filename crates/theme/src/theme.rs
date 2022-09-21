@@ -18,7 +18,6 @@ pub struct Theme {
     pub meta: ThemeMeta,
     pub workspace: Workspace,
     pub context_menu: ContextMenu,
-    pub chat_panel: ChatPanel,
     pub contacts_panel: ContactsPanel,
     pub contact_finder: ContactFinder,
     pub project_panel: ProjectPanel,
@@ -253,18 +252,6 @@ pub struct SidebarItem {
     pub container: ContainerStyle,
     pub icon_color: Color,
     pub icon_size: f32,
-}
-
-#[derive(Deserialize, Default)]
-pub struct ChatPanel {
-    #[serde(flatten)]
-    pub container: ContainerStyle,
-    pub message: ChatMessage,
-    pub pending_message: ChatMessage,
-    pub channel_select: ChannelSelect,
-    pub input_editor: FieldEditor,
-    pub sign_in_prompt: TextStyle,
-    pub hovered_sign_in_prompt: TextStyle,
 }
 
 #[derive(Deserialize, Default)]
@@ -704,12 +691,6 @@ pub struct HoverPopover {
 
 #[derive(Clone, Deserialize, Default)]
 pub struct TerminalStyle {
-    pub colors: TerminalColors,
-    pub modal_container: ContainerStyle,
-}
-
-#[derive(Clone, Deserialize, Default)]
-pub struct TerminalColors {
     pub black: Color,
     pub red: Color,
     pub green: Color,
