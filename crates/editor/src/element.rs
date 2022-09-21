@@ -563,21 +563,31 @@ impl EditorElement {
                 DiffHunkStatus::Removed => {
                     let row = hunk.buffer_range.start;
 
-                    let offset = line_height / 2.;
-                    let start_y = row as f32 * line_height + offset - scroll_top;
-                    let end_y = start_y + line_height;
+                    let middle_y = row as f32 * line_height + line_height - scroll_top;
 
-                    let width = 0.4 * line_height;
-                    let highlight_origin = bounds.origin() + vec2f(-width, start_y);
-                    let highlight_size = vec2f(width * 2., end_y - start_y);
-                    let highlight_bounds = RectF::new(highlight_origin, highlight_size);
+                    let width = 0.32 * line_height;
+                    let height = 0.55 * line_height;
+                    let origin = bounds.origin();
 
-                    cx.scene.push_quad(Quad {
-                        bounds: highlight_bounds,
-                        background: Some(deleted_color),
-                        border: Border::new(0., Color::transparent_black()),
-                        corner_radius: 1. * line_height,
-                    });
+                    let top_left = origin + vec2f(0., middle_y - height / 2.);
+                    // let top_right = origin + vec2f(width, middle_y - height / 2.);
+                    let middle_right = origin + vec2f(width, middle_y);
+                    let bottom_left = origin + vec2f(0., middle_y + height / 2.);
+                    // let bottom_right = origin + vec2f(width, middle_y + height / 2.);
+                    
+                    let mut path = PathBuilder::new();
+                    path.reset(top_left);
+
+                    // path.line_to(middle_right);
+                    // path.curve_to(middle_right, top_right);
+                    path.curve_to(middle_right, top_left + (middle_right - top_left) / 2.);
+
+                    path.line_to(bottom_left);
+                    // path.curve_to(bottom_left, bottom_right);
+
+                    path.line_to(top_left);
+
+                    cx.scene.push_path(path.build(deleted_color, None));
 
                     continue;
                 }
