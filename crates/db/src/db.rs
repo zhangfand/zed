@@ -1,3 +1,4 @@
+mod items;
 mod kvp;
 mod migrations;
 
@@ -22,6 +23,17 @@ pub struct RealDb {
     connection: Mutex<Connection>,
     path: Option<PathBuf>,
 }
+
+// Things we need to think about:
+// Concurrency? - Needs some research
+// We need to configure or setup our database, create the tables and such
+
+// Write our first migration
+//
+
+// To make a migration:
+// Add to the migrations directory, a file with the name:
+//  <NUMBER>_<DESCRIPTION>.sql. Migrations are executed in order of number
 
 impl Db {
     /// Open or create a database at the given directory path.
