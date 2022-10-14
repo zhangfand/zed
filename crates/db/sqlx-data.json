@@ -1,3 +1,41 @@
 {
-  "db": "SQLite"
+  "db": "SQLite",
+  "39d30a14088174494b01b2669d81c10edf3dd1ef904d755da777afe781650832": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Right": 2
+      }
+    },
+    "query": "INSERT OR REPLACE INTO kv_store(key, value) VALUES (?, ?)"
+  },
+  "8a6e66cca5c90a6ba6644ff5c643e886780488d17811a33760bbd9ceec4efbab": {
+    "describe": {
+      "columns": [
+        {
+          "name": "value",
+          "ordinal": 0,
+          "type_info": "Text"
+        }
+      ],
+      "nullable": [
+        false
+      ],
+      "parameters": {
+        "Right": 1
+      }
+    },
+    "query": "SELECT value FROM kv_store WHERE key = ?"
+  },
+  "ff252b080ce7be53db14577c7f60a141e561211f6f3fad42fabaf6d2484a10b6": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Right": 1
+      }
+    },
+    "query": "DELETE FROM kv_store WHERE key = ?"
+  }
 }
