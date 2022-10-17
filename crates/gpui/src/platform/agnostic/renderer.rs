@@ -1,26 +1,20 @@
 use super::{atlas::AtlasAllocator, image_cache::ImageCache, sprite_cache::SpriteCache};
 use crate::{
     color::Color,
-    geometry::vector::{
-        vec2i, 
-        Vector2F
-    },
+    geometry::vector::{vec2i, Vector2F},
     platform,
     scene::{Glyph, Icon, Image, Layer, Quad, Scene, Shadow, Underline},
 };
 
+use pathfinder_geometry::rect::RectF;
 use shaders::ToFloat2 as _;
-use wgpu::{
-    util::DeviceExt,
-    include_wgsl,
-    Device, Queue, Surface
-};
 use std::{iter::Peekable, sync::Arc, vec};
+use wgpu::{self, include_wgsl, util::DeviceExt};
 
 const INSTANCE_BUFFER_SIZE: usize = 1024 * 1024; // This is an arbitrary decision. There's probably a more optimal value.
 
-const GPUI_QUAD_INPUT_INDEX_VERTICES_SLOT: u32 = 0;
-const GPUI_QUAD_INPUT_INDEX_QUADS_SLOT: u32 = 1;
+const GPUI_QUAD_INPUT_INDEX_VERTICES_SLOT: u32 = 1;
+const GPUI_QUAD_INPUT_INDEX_QUADS_SLOT: u32 = 2;
 
 #[repr(C)]
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
@@ -44,13 +38,13 @@ struct UnitVertex {
 
 impl UnitVertex {
     fn new(x: f32, y: f32) -> Self {
-        Self {
-            position: [x, y],
-        }
+        Self { position: [x, y] }
     }
 }
 
 pub struct Renderer {
+    device: Arc<wgpu::Device>,
+    queue: Arc<wgpu::Queue>,
     sprite_cache: SpriteCache,
     image_cache: ImageCache,
     path_atlases: AtlasAllocator,
@@ -60,6 +54,7 @@ pub struct Renderer {
     // image_pipeline_state: metal::RenderPipelineState,
     // path_atlas_pipeline_state: metal::RenderPipelineState,
     // underline_pipeline_state: metal::RenderPipelineState,
+    uniforms: wgpu::Buffer,
     unit_vertices: wgpu::Buffer,
     instances: wgpu::Buffer,
 }
@@ -70,15 +65,19 @@ struct PathSprite {
     // shader_data: shaders::GPUISprite,
 }
 
+pub struct Surface {
+    pub bounds: RectF
+}
+
 impl Renderer {
     pub fn new(
-        device: Arc<Device>,
-        queue: Arc<Queue>,
+        device: Arc<wgpu::Device>,
+        queue: Arc<wgpu::Queue>,
         pixel_format: wgpu::TextureFormat,
         scale_factor: f32,
         fonts: Arc<dyn platform::FontSystem>,
     ) -> Self {
-        let shaders = device.create_shader_module(&include_wgsl!("shaders/shaders.wgsl"));
+        let shaders = device.create_shader_module(include_wgsl!("shaders/shaders.wgsl"));
 
         let unit_vertices = [
             UnitVertex::new(0., 0.),
@@ -88,30 +87,40 @@ impl Renderer {
             UnitVertex::new(1., 0.),
             UnitVertex::new(1., 1.),
         ];
-        let unit_vertices = device.create_buffer_init(
-            &wgpu::util::BufferInitDescriptor {
-                label: Some("unit_vertices"),
-                contents: bytemuck::cast_slice(&unit_vertices),
-                usage: wgpu::BufferUsages::VERTEX,
-            }
-        );
+        let uniforms = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("uniforms"),
+            size: std::mem::size_of::<Vector2F>() as u64,
+            usage: wgpu::BufferUsages::VERTEX,
+            mapped_at_creation: true,
+        });
+        let unit_vertices = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("unit_vertices"),
+            contents: bytemuck::cast_slice(&unit_vertices),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
         let instances = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("instances"),
             size: INSTANCE_BUFFER_SIZE as u64,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::VERTEX,
             mapped_at_creation: true,
         });
 
-        let sprite_cache = SpriteCache::new(device.clone(), queue.clone(), vec2i(1024, 768), scale_factor, fonts);
+        let sprite_cache = SpriteCache::new(
+            device.clone(),
+            queue.clone(),
+            vec2i(1024, 768),
+            scale_factor,
+            fonts,
+        );
         let image_cache = ImageCache::new(device.clone(), queue.clone(), vec2i(1024, 768));
-        let path_atlases =
-            AtlasAllocator::new(device.clone(), queue.clone(), build_path_atlas_texture_descriptor());
-        let quad_pipeline = build_pipeline(
+        let path_atlases = AtlasAllocator::new(
+            device.clone(),
+            queue.clone(),
+            build_path_atlas_texture_descriptor(),
+        );
+        let quad_pipeline = build_quad_pipeline(
             &device,
-            "quad",
             &shaders,
-            "quad_vertex",
-            "quad_fragment",
             pixel_format,
         );
         // let shadow_pipeline_state = build_pipeline_state(
@@ -156,6 +165,8 @@ impl Renderer {
         // );
         //
         Self {
+            device,
+            queue,
             sprite_cache,
             image_cache,
             path_atlases,
@@ -165,6 +176,7 @@ impl Renderer {
             // image_pipeline_state,
             // path_atlas_pipeline_state,
             // underline_pipeline_state,
+            uniforms,
             unit_vertices,
             instances,
         }
@@ -174,20 +186,12 @@ impl Renderer {
         &mut self,
         scene: &Scene,
         drawable_size: Vector2F,
-        command_buffer: &wgpu::CommandBuffer,
-        output: &wgpu::Texture, // This might have to be surface instead
+        output: wgpu::SurfaceTexture,
     ) {
         let mut offset = 0;
 
-        let path_sprites = self.render_path_atlases(scene, &mut offset, command_buffer);
-        self.render_layers(
-            scene,
-            path_sprites,
-            &mut offset,
-            drawable_size,
-            command_buffer,
-            output,
-        );
+        let path_sprites = self.render_path_atlases(scene, &mut offset);
+        self.render_layers(scene, path_sprites, &mut offset, drawable_size, output);
         // self.instances.did_modify_range(NSRange {
         //     location: 0,
         //     length: offset as NSUInteger,
@@ -199,7 +203,6 @@ impl Renderer {
         &mut self,
         scene: &Scene,
         offset: &mut usize,
-        command_buffer: &wgpu::CommandBuffer,
     ) -> Vec<PathSprite> {
         self.path_atlases.clear();
         let mut sprites = Vec::new();
@@ -323,9 +326,17 @@ impl Renderer {
         path_sprites: Vec<PathSprite>,
         offset: &mut usize,
         drawable_size: Vector2F,
-        command_buffer: &wgpu::CommandBuffer,
-        output: &wgpu::Texture, // This might have to be surface instead
+        output: wgpu::SurfaceTexture, // This might have to be surface instead
     ) {
+        let view = output
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+        let mut command_encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+        let scale_factor = scene.scale_factor();
+        let mut path_sprites = path_sprites.into_iter().peekable();
+
         // let render_pass_descriptor = metal::RenderPassDescriptor::new();
         // let color_attachment = render_pass_descriptor
         //     .color_attachments()
@@ -337,73 +348,83 @@ impl Renderer {
         // color_attachment.set_clear_color(metal::MTLClearColor::new(0., 0., 0., 1.));
         // let command_encoder = command_buffer.new_render_command_encoder(render_pass_descriptor);
 
-        // command_encoder.set_viewport(metal::MTLViewport {
-        //     originX: 0.0,
-        //     originY: 0.0,
-        //     width: drawable_size.x() as f64,
-        //     height: drawable_size.y() as f64,
-        //     znear: 0.0,
-        //     zfar: 1.0,
-        // });
+        {
+            for (layer_id, layer) in scene.layers().enumerate() {
+                let mut render_pass =
+                    command_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                        label: Some("Render Pass"),
+                        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                            view: &view,
+                            resolve_target: None,
+                            ops: wgpu::Operations {
+                                load: wgpu::LoadOp::Clear(wgpu::Color {
+                                    r: 0.1,
+                                    g: 0.2,
+                                    b: 0.3,
+                                    a: 1.0,
+                                }),
+                                store: true,
+                            },
+                        })],
+                        depth_stencil_attachment: None,
+                    });
 
-        // let scale_factor = scene.scale_factor();
-        // let mut path_sprites = path_sprites.into_iter().peekable();
-        // for (layer_id, layer) in scene.layers().enumerate() {
-        //     self.clip(scene, layer, drawable_size, command_encoder);
-        //     self.render_shadows(
-        //         layer.shadows(),
-        //         scale_factor,
-        //         offset,
-        //         drawable_size,
-        //         command_encoder,
-        //     );
-        //     self.render_quads(
-        //         layer.quads(),
-        //         scale_factor,
-        //         offset,
-        //         drawable_size,
-        //         command_encoder,
-        //     );
-        //     self.render_path_sprites(
-        //         layer_id,
-        //         &mut path_sprites,
-        //         offset,
-        //         drawable_size,
-        //         command_encoder,
-        //     );
-        //     self.render_underlines(
-        //         layer.underlines(),
-        //         scale_factor,
-        //         offset,
-        //         drawable_size,
-        //         command_encoder,
-        //     );
-        //     self.render_sprites(
-        //         layer.glyphs(),
-        //         layer.icons(),
-        //         scale_factor,
-        //         offset,
-        //         drawable_size,
-        //         command_encoder,
-        //     );
-        //     self.render_images(
-        //         layer.images(),
-        //         scale_factor,
-        //         offset,
-        //         drawable_size,
-        //         command_encoder,
-        //     );
-        // }
-
-        // command_encoder.end_encoding();
+                self.clip(scene, layer, drawable_size, &mut render_pass);
+                // self.render_shadows(
+                //     layer.shadows(),
+                //     scale_factor,
+                //     offset,
+                //     drawable_size,
+                //     &command_encoder,
+                // );
+                self.render_quads(
+                    layer.quads(),
+                    scale_factor,
+                    offset,
+                    drawable_size,
+                    &mut render_pass,
+                );
+                // self.render_path_sprites(
+                //     layer_id,
+                //     &mut path_sprites,
+                //     offset,
+                //     drawable_size,
+                //     &command_encoder,
+                // );
+                // self.render_underlines(
+                //     layer.underlines(),
+                //     scale_factor,
+                //     offset,
+                //     drawable_size,
+                //     &command_encoder,
+                // );
+                // self.render_sprites(
+                //     layer.glyphs(),
+                //     layer.icons(),
+                //     scale_factor,
+                //     offset,
+                //     drawable_size,
+                //     &command_encoder,
+                // );
+                // self.render_images(
+                //     layer.images(),
+                //     scale_factor,
+                //     offset,
+                //     drawable_size,
+                //     &command_encoder,
+                // );
+            }
+        }
+        self.queue.submit(std::iter::once(command_encoder.finish()));
+        output.present();
     }
 
-    fn clip(
-        &mut self,
+    fn clip<'a>(
+        &self,
         scene: &Scene,
         layer: &Layer,
-        drawable_size: Vector2F,
-        // command_encoder: &metal::RenderCommandEncoderRef,
+        drawable_size: Vector2F,        
+        render_pass: &mut wgpu::RenderPass<'a>,
     ) {
         // let clip_bounds = (layer.clip_bounds().unwrap_or(RectF::new(
         //     vec2f(0., 0.),
@@ -485,12 +506,12 @@ impl Renderer {
     }
 
     fn render_quads<'a>(
-        &'a mut self,
+        &'a self,
         quads: &[Quad],
         scale_factor: f32,
         offset: &mut usize,
         drawable_size: Vector2F,
-        render_pass: &'a mut wgpu::RenderPass<'a>,
+        render_pass: &mut wgpu::RenderPass<'a>,
     ) {
         if quads.is_empty() {
             return;
@@ -504,34 +525,27 @@ impl Renderer {
         );
 
         render_pass.set_pipeline(&self.quad_pipeline);
+
+        render_pass.set_vertex_buffer(
+            0,
+            self.uniforms.slice(..),
+        );
         render_pass.set_vertex_buffer(
             GPUI_QUAD_INPUT_INDEX_VERTICES_SLOT,
-            self.unit_vertices.slice(..));
+            self.unit_vertices.slice(..),
+        );
 
         render_pass.set_vertex_buffer(
             GPUI_QUAD_INPUT_INDEX_QUADS_SLOT,
-            self.instances.slice((*offset as u64)..));
-        // command_encoder.set_vertex_buffer(
-        //     shaders::GPUIQuadInputIndex_GPUIQuadInputIndexVertices as u64,
-        //     Some(&self.unit_vertices),
-        //     0,
-        // );
-        // command_encoder.set_vertex_buffer(
-        //     shaders::GPUIQuadInputIndex_GPUIQuadInputIndexQuads as u64,
-        //     Some(&self.instances),
-        //     *offset as u64,
-        // );
-        // command_encoder.set_vertex_bytes(
-        //     shaders::GPUIQuadInputIndex_GPUIQuadInputIndexUniforms as u64,
-        //     mem::size_of::<shaders::GPUIUniforms>() as u64,
-        //     [shaders::GPUIUniforms {
-        //         viewport_size: drawable_size.to_float2(),
-        //     }]
-        //     .as_ptr() as *const c_void,
-        // );
+            self.instances.slice((*offset as u64)..),
+        );
 
-        let mut instance_buffer_contents = self.instances.slice((*offset as u64)..).get_mapped_range_mut();
-        let quad_chunks = instance_buffer_contents.chunks_exact_mut(std::mem::size_of::<GPUIQuad>());
+        let mut instance_buffer_contents = self
+            .instances
+            .slice((*offset as u64)..)
+            .get_mapped_range_mut();
+        let quad_chunks =
+            instance_buffer_contents.chunks_exact_mut(std::mem::size_of::<GPUIQuad>());
         for (ix, (quad, instance_slice)) in quads.iter().zip(quad_chunks).enumerate() {
             let bounds = quad.bounds * scale_factor;
             let border_width = quad.border.width * scale_factor;
@@ -550,25 +564,14 @@ impl Renderer {
                 corner_radius: quad.corner_radius * scale_factor,
             };
 
-            instance_slice.copy_from_slice(&bytemuck::cast::<GPUIQuad, [u8; std::mem::size_of::<GPUIQuad>()]>(shader_quad));
+            instance_slice.copy_from_slice(&bytemuck::cast::<
+                GPUIQuad,
+                [u8; std::mem::size_of::<GPUIQuad>()],
+            >(shader_quad));
         }
-        // let buffer_contents = unsafe {
-        //     (self.instances.contents() as *mut u8).offset(*offset as isize)
-        //         as *mut shaders::GPUIQuad
-        // };
-        // for (ix, quad) in quads.iter().enumerate() {
-        //     unsafe {
-        //         *(buffer_contents.offset(ix as isize)) = shader_quad;
-        //     }
-        // }
 
-        // command_encoder.draw_primitives_instanced(
-        //     metal::MTLPrimitiveType::Triangle,
-        //     0,
-        //     6,
-        //     quads.len() as u64,
-        // );
-        // *offset = next_offset;
+        render_pass.draw_indexed(0..6, 0, 0..quads.len() as u32);
+        *offset = next_offset;
     }
 
     fn render_sprites(
@@ -954,7 +957,6 @@ impl Renderer {
     }
 }
 
-
 fn build_path_atlas_texture_descriptor() -> wgpu::TextureDescriptor<'static> {
     wgpu::TextureDescriptor {
         size: wgpu::Extent3d {
@@ -971,20 +973,56 @@ fn build_path_atlas_texture_descriptor() -> wgpu::TextureDescriptor<'static> {
     }
 }
 
-fn build_pipeline(
-    device: &Device,
-    label: &str,
+fn build_quad_pipeline(
+    device: &wgpu::Device,
     shaders: &wgpu::ShaderModule,
-    vertex_fn_name: &str,
-    fragment_fn_name: &str,
     pixel_format: wgpu::TextureFormat,
 ) -> wgpu::RenderPipeline {
-    let render_pipeline_layout =
-        device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: None,
-            bind_group_layouts: &[],
-            push_constant_ranges: &[],
-        });
+    let label = "quad";
+    let vertex_fn_name = "quad_vertex";
+    let fragment_fn_name = "quad_fragment";
+
+    let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("quad_bind_group_layout"),
+        entries: &[
+            wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::VERTEX,
+                ty: wgpu::BindingType::Buffer { 
+                    ty: wgpu::BufferBindingType::Uniform, 
+                    has_dynamic_offset: false,
+                    min_binding_size: None 
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 1,
+                visibility: wgpu::ShaderStages::VERTEX,
+                ty: wgpu::BindingType::Buffer { 
+                    ty: wgpu::BufferBindingType::Storage { read_only: true }, 
+                    has_dynamic_offset: false,
+                    min_binding_size: None 
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 2,
+                visibility: wgpu::ShaderStages::VERTEX,
+                ty: wgpu::BindingType::Buffer { 
+                    ty: wgpu::BufferBindingType::Storage { read_only: true }, 
+                    has_dynamic_offset: false,
+                    min_binding_size: None 
+                },
+                count: None,
+            },
+        ],
+    });
+
+    let render_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: None,
+        bind_group_layouts: &[&bind_group_layout],
+        push_constant_ranges: &[],
+    });
 
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
         label: Some(label),
@@ -997,7 +1035,7 @@ fn build_pipeline(
         fragment: Some(wgpu::FragmentState {
             module: shaders,
             entry_point: fragment_fn_name,
-            targets: &[wgpu::ColorTargetState {
+            targets: &[Some(wgpu::ColorTargetState {
                 format: pixel_format,
                 blend: Some(wgpu::BlendState {
                     color: wgpu::BlendComponent {
@@ -1012,7 +1050,7 @@ fn build_pipeline(
                     },
                 }),
                 write_mask: wgpu::ColorWrites::ALL,
-            }],
+            })],
         }),
         primitive: wgpu::PrimitiveState {
             topology: wgpu::PrimitiveTopology::TriangleList,
@@ -1040,9 +1078,9 @@ mod shaders {
 
     use crate::{
         color::Color,
-        geometry::vector::{Vector2F, Vector2I}
+        geometry::vector::{Vector2F, Vector2I},
     };
-    
+
     // TODO: Use unsafe transmutation
     pub trait ToFloat2 {
         fn to_float2(&self) -> [f32; 2];
@@ -1070,10 +1108,10 @@ mod shaders {
     impl Color {
         pub fn to_float4(&self) -> [f32; 4] {
             [
-                self.r as f32 / 255.0, 
-                self.g as f32 / 255.0, 
-                self.b as f32 / 255.0, 
-                self.a as f32 / 255.0
+                self.r as f32 / 255.0,
+                self.g as f32 / 255.0,
+                self.b as f32 / 255.0,
+                self.a as f32 / 255.0,
             ]
         }
     }

@@ -1,7 +1,7 @@
 use crate::{
     clipboard::ClipboardItem,
     platform::{self, CursorStyle},
-    executor, Action, Menu,
+    executor, Action, Menu, keymap,
 };
 use super::{window::Window, Dispatcher, FontSystem};
 use anyhow::Result;
@@ -33,7 +33,7 @@ impl platform::ForegroundPlatform for WindowsForegroundPlatform {
         unimplemented!()
     }
 
-    fn on_open_files(&self, callback: Box<dyn FnMut(Vec<PathBuf>)>) {
+    fn on_open_urls(&self, callback: Box<dyn FnMut(Vec<String>)>) {
         unimplemented!()
     }
 
@@ -45,7 +45,15 @@ impl platform::ForegroundPlatform for WindowsForegroundPlatform {
         unimplemented!()
     }
 
-    fn set_menus(&self, menus: Vec<Menu>) {
+    fn on_will_open_menu(&self, callback: Box<dyn FnMut()>) {
+        unimplemented!()
+    }
+
+    fn on_validate_menu_command(&self, callback: Box<dyn FnMut(&dyn Action) -> bool>) {
+        unimplemented!()
+    }
+
+    fn set_menus(&self, menus: Vec<Menu>, keystroke_matcher: &keymap::Matcher) {
         unimplemented!()
     }
 
@@ -93,6 +101,18 @@ impl platform::Platform for WindowsPlatform {
         Box::new(Window::open(id, options, executor, self.fonts()))
     }
 
+    fn hide(&self) {
+
+    }
+
+    fn hide_other_apps(&self) {
+
+    }
+
+    fn unhide_other_apps(&self) {
+
+    }
+
     fn key_window_id(&self) -> Option<usize> {
         Window::key_window_id()
     }
@@ -102,6 +122,10 @@ impl platform::Platform for WindowsPlatform {
     }
 
     fn quit(&self) {
+        unimplemented!()
+    }
+
+    fn add_status_item(&self) -> Box<dyn crate::Window> {
         unimplemented!()
     }
 
@@ -137,7 +161,15 @@ impl platform::Platform for WindowsPlatform {
         unimplemented!()
     }
 
-    fn path_for_resource(&self, name: Option<&str>, extension: Option<&str>) -> Result<PathBuf> {
+    fn path_for_auxiliary_executable(&self, name: &str) -> Result<PathBuf> {
+        unimplemented!()
+    }
+
+    fn app_path(&self) -> Result<PathBuf> {
+        unimplemented!()
+    }
+
+    fn app_version(&self) -> Result<platform::AppVersion> {
         unimplemented!()
     }
 }

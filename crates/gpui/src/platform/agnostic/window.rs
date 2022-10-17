@@ -7,6 +7,7 @@ use crate::{
 };
 use super::renderer::Renderer;
 
+use pathfinder_geometry::rect::RectF;
 use postage::oneshot;
 use std::{
     sync::Arc,
@@ -19,7 +20,8 @@ pub struct Window(Rc<RefCell<WindowState>>);
 
 struct WindowState {
     id: usize,
-    event_callback: Option<Box<dyn FnMut(Event)>>,
+    event_callback: Option<Box<dyn FnMut(Event) -> bool>>,
+    activate_callback: Option<Box<dyn FnMut(bool)>>,
     resize_callback: Option<Box<dyn FnMut()>>,
     close_callback: Option<Box<dyn FnOnce()>>,
     synthetic_drag_counter: usize,
@@ -52,7 +54,7 @@ impl platform::Window for Window {
         self
     }
 
-    fn on_event(&mut self, callback: Box<dyn FnMut(Event)>) {
+    fn on_event(&mut self, callback: Box<dyn FnMut(Event) -> bool>) {
         self.0.as_ref().borrow_mut().event_callback = Some(callback);
     }
 
@@ -60,8 +62,24 @@ impl platform::Window for Window {
         self.0.as_ref().borrow_mut().resize_callback = Some(callback);
     }
 
+    fn on_fullscreen(&mut self, callback: Box<dyn FnMut(bool)>) {
+        
+    }
+
+    fn on_should_close(&mut self, callback: Box<dyn FnMut() -> bool>) {
+        
+    }
+
     fn on_close(&mut self, callback: Box<dyn FnOnce()>) {
         self.0.as_ref().borrow_mut().close_callback = Some(callback);
+    }
+
+    fn on_active_status_change(&mut self, callback: Box<dyn FnMut(bool)>) {
+        self.0.as_ref().borrow_mut().activate_callback = Some(callback);
+    }
+
+    fn set_input_handler(&mut self, input_handler: Box<dyn crate::InputHandler>) {
+        
     }
 
     fn prompt(
@@ -76,23 +94,56 @@ impl platform::Window for Window {
     fn activate(&self) {
         unimplemented!()
     }
-}
 
-impl platform::WindowContext for Window {
-    fn size(&self) -> Vector2F {
+    fn set_title(&mut self, title: &str) {
         unimplemented!()
+    }
+
+    fn set_edited(&mut self, edited: bool) {
+        unimplemented!();
+    }
+
+    fn show_character_palette(&self) {
+        unimplemented!();
+    }
+
+    fn minimize(&self) {
+        unimplemented!();
+    }
+
+    fn zoom(&self) {
+        unimplemented!();
+    }
+
+    fn toggle_full_screen(&self) {
+        unimplemented!();
+    }
+
+    fn bounds(&self) -> RectF {
+        unimplemented!();
+    }
+
+    fn content_size(&self) -> Vector2F {
+        unimplemented!();
     }
 
     fn scale_factor(&self) -> f32 {
-        unimplemented!()
+        unimplemented!();
     }
 
     fn present_scene(&mut self, scene: Scene) {
-        unimplemented!()
+        unimplemented!();
     }
 
     fn titlebar_height(&self) -> f32 {
-        unimplemented!()
+        unimplemented!();
+    }
+
+    fn appearance(&self) -> crate::Appearance {
+        unimplemented!();
+    }
+
+    fn on_appearance_changed(&mut self, callback: Box<dyn FnMut()>)  {
+        unimplemented!();
     }
 }
-

@@ -1,14 +1,15 @@
 pub mod atlas;
 pub mod fonts;
 pub mod sprite_cache;
+pub mod renderer;
 mod dispatcher;
 mod image_cache;
 mod platform;
-mod renderer;
 mod window;
 
 pub use dispatcher::Dispatcher;
 pub use fonts::FontSystem;
+pub use renderer::Surface;
 use platform::{WindowsPlatform, WindowsForegroundPlatform};
 use std::{
     rc::Rc,

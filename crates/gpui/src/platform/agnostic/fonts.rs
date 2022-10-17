@@ -5,28 +5,24 @@ use crate::{
         transform2d::Transform2F,
         vector::{Vector2F, Vector2I},
     },
-    platform,
-    text_layout::{RunStyle, LineLayout, Run, Glyph},
+    platform::{self, RasterizationOptions},
+    text_layout::{Glyph, LineLayout, Run, RunStyle},
 };
 use font_kit::{
-    canvas::{Canvas, Format, RasterizationOptions}, 
-    handle::Handle, 
-    hinting::HintingOptions, 
+    canvas::Canvas,
+    handle::Handle,
+    hinting::HintingOptions,
     source::SystemSource,
     sources::mem::MemSource,
 };
 use parking_lot::RwLock;
+use std::{cell::RefCell, path::Path, sync::Arc};
 use swash::{
-    Attributes, CacheKey, Charmap, FontRef,
-    shape::{Direction, ShapeContext},
     scale::{Render, ScaleContext, Source, StrikeWith},
+    shape::{Direction, ShapeContext},
     text::Script,
-    zeno::Vector,
-};
-use std::{
-    path::Path,
-    cell::RefCell,
-    sync::Arc
+    zeno::{Vector, Format},
+    Attributes, CacheKey, Charmap, FontRef,
 };
 
 thread_local! {
@@ -42,10 +38,10 @@ struct SwashFont {
 impl SwashFont {
     fn from_handle(handle: &Handle) -> Option<Self> {
         match handle {
-            Handle::Path { path, font_index } => 
-                Self::from_file(path, *font_index as usize),
-            Handle::Memory { bytes, font_index } => 
-                Self::from_data(bytes.clone(), *font_index as usize),
+            Handle::Path { path, font_index } => Self::from_file(path, *font_index as usize),
+            Handle::Memory { bytes, font_index } => {
+                Self::from_data(bytes.clone(), *font_index as usize)
+            }
         }
     }
 
@@ -127,9 +123,14 @@ impl platform::FontSystem for FontSystem {
         scale_factor: f32,
         options: RasterizationOptions,
     ) -> Option<(RectI, Vec<u8>)> {
-        self.0
-            .write()
-            .rasterize_glyph(font_id, font_size, glyph_id, subpixel_shift, scale_factor, options)
+        self.0.write().rasterize_glyph(
+            font_id,
+            font_size,
+            glyph_id,
+            subpixel_shift,
+            scale_factor,
+            options,
+        )
     }
 
     fn layout_line(&self, text: &str, font_size: f32, runs: &[(usize, RunStyle)]) -> LineLayout {
@@ -160,8 +161,8 @@ impl FontSystemState {
             .select_family_by_name(name)
             .or_else(|_| SYSTEM_SOURCE.with(|ss| ss.select_family_by_name(name)))?;
         for font in family.fonts() {
-            let font = SwashFont::from_handle(font)
-                .ok_or(anyhow::anyhow!("Failed to load font"))?;
+            let font =
+                SwashFont::from_handle(font).ok_or(anyhow::anyhow!("Failed to load font"))?;
             font_ids.push(FontId(self.fonts.len()));
             self.fonts.push(font);
         }
@@ -198,11 +199,14 @@ impl FontSystemState {
     fn typographic_bounds(&mut self, font_id: FontId, glyph_id: GlyphId) -> anyhow::Result<RectF> {
         let font = self.fonts[font_id.0].as_ref();
         let mut scaler = self.scale_context.builder(font).build();
-        let outline = scaler.scale_outline(glyph_id as u16).ok_or(anyhow::anyhow!("Failed to scale outline"))?;
+        let outline = scaler
+            .scale_outline(glyph_id as u16)
+            .ok_or(anyhow::anyhow!("Failed to scale outline"))?;
         let bounds = outline.bounds();
         Ok(RectF::new(
-                Vector2F::new(bounds.min.x, bounds.min.y), 
-                Vector2F::new(bounds.max.x, bounds.max.y)))
+            Vector2F::new(bounds.min.x, bounds.min.y),
+            Vector2F::new(bounds.max.x, bounds.max.y),
+        ))
     }
 
     fn advance(&self, font_id: FontId, glyph_id: GlyphId) -> anyhow::Result<Vector2F> {
@@ -211,7 +215,8 @@ impl FontSystemState {
 
         Ok(Vector2F::new(
             glyph_metrics.advance_width(glyph_id as u16),
-            glyph_metrics.advance_height(glyph_id as u16)))
+            glyph_metrics.advance_height(glyph_id as u16),
+        ))
     }
 
     fn glyph_for_char(&self, font_id: FontId, ch: char) -> Option<GlyphId> {
@@ -226,11 +231,19 @@ impl FontSystemState {
         glyph_id: GlyphId,
         subpixel_shift: Vector2F,
         scale_factor: f32,
+        options: RasterizationOptions,
     ) -> Option<(RectI, Vec<u8>)> {
         let font = self.fonts[font_id.0].as_ref();
-        let mut scaler = self.scale_context.builder(font)
+        let mut scaler = self
+            .scale_context
+            .builder(font)
             .size(font_size * scale_factor)
             .build();
+
+        let format = match options {
+            RasterizationOptions::Alpha => Format::Alpha,
+            RasterizationOptions::Bgra => Format::Subpixel,
+        };
 
         let image = Render::new(&[
             // Color outline with the first palette
@@ -239,17 +252,26 @@ impl FontSystemState {
             Source::ColorBitmap(StrikeWith::BestFit),
             // Standard scalable outline
             Source::Outline,
-        ]).offset(Vector::new(subpixel_shift.x(), subpixel_shift.y()))
-            .render(&mut scaler, glyph_id as u16)?;
+        ])
+        .offset(Vector::new(subpixel_shift.x(), subpixel_shift.y()))
+        .format(format)
+        .render(&mut scaler, glyph_id as u16)?;
 
         Some((
-            RectI::new(Vector2I::new(image.placement.left, image.placement.top),
-                       Vector2I::new(image.placement.width as i32, image.placement.height as i32)), 
-            image.data
+            RectI::new(
+                Vector2I::new(image.placement.left, image.placement.top),
+                Vector2I::new(image.placement.width as i32, image.placement.height as i32),
+            ),
+            image.data,
         ))
     }
 
-    fn layout_line(&mut self, text: &str, font_size: f32, runs: &[(usize, RunStyle)]) -> LineLayout {
+    fn layout_line(
+        &mut self,
+        text: &str,
+        font_size: f32,
+        runs: &[(usize, RunStyle)],
+    ) -> LineLayout {
         // Merge runs with the same font
         let last_run: RefCell<Option<(usize, FontId)>> = Default::default();
         let font_runs = runs
@@ -275,13 +297,12 @@ impl FontSystemState {
 
         // Get font text per run
         let mut previous_index: isize = -1;
-        let font_run_slices = font_runs
-            .map(|(len, font_id)| {
-                let start = (previous_index + 1) as usize;
-                let end = start + len;
-                previous_index = end as isize;
-                ((start..=end), font_id)
-            });
+        let font_run_slices = font_runs.map(|(len, font_id)| {
+            let start = (previous_index + 1) as usize;
+            let end = start + len;
+            previous_index = end as isize;
+            ((start..=end), font_id)
+        });
 
         // Shape each run into positioned glyphs
         let mut completed_runs = Vec::new();
@@ -292,7 +313,9 @@ impl FontSystemState {
             let run_text = &text[run_range.clone()];
             let font_ref = self.fonts[font_id.0].as_ref();
 
-            let mut shaper = self.shape_context.builder(font_ref)
+            let mut shaper = self
+                .shape_context
+                .builder(font_ref)
                 .script(Script::Latin)
                 .size(font_size)
                 .build();
@@ -306,20 +329,23 @@ impl FontSystemState {
             let mut glyphs = Vec::new();
             let mut next_advance = current_advance;
             shaper.shape_with(|glyph_cluster| {
-                for (glyph, source_range) in glyph_cluster.glyphs.iter().zip(glyph_cluster.components.iter()) {
+                for (glyph, source_range) in glyph_cluster
+                    .glyphs
+                    .iter()
+                    .zip(glyph_cluster.components.iter())
+                {
                     let glyph_x = glyph.x + current_advance;
                     next_advance = next_advance.max(glyph_x + glyph.advance);
                     glyphs.push(Glyph {
                         id: glyph.id as u32,
                         position: Vector2F::new(glyph_x, glyph.y),
-                        index: source_range.start as usize
+                        index: source_range.start as usize,
+                        // Figure out how to check if its actually an emoji
+                        is_emoji: false,
                     });
                 }
             });
-            completed_runs.push(Run {
-                font_id,
-                glyphs,
-            });
+            completed_runs.push(Run { font_id, glyphs });
             current_advance = next_advance;
         }
 
