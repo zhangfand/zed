@@ -5,6 +5,7 @@ use rusqlite::{
     named_params, params,
     types::{FromSql, FromSqlError, FromSqlResult, ValueRef},
 };
+use serde::{Deserialize, Serialize};
 
 use super::Db;
 
@@ -31,7 +32,7 @@ pub enum SerializedItemKind {
     Diagnostics,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SerializedItem {
     Editor(usize, PathBuf),
     Terminal(usize),
@@ -82,117 +83,132 @@ impl SerializedItem {
 
 impl Db {
     fn write_item(&self, serialized_item: SerializedItem) -> Result<()> {
-        let mut lock = self.connection.lock();
-        let tx = lock.transaction()?;
+        self.real()
+            .map(|db| {
+                let mut lock = db.connection.lock();
+                let tx = lock.transaction()?;
 
-        // Serialize the item
-        let id = serialized_item.id();
-        {
-            let kind = format!("{:?}", serialized_item.kind());
+                // Serialize the item
+                let id = serialized_item.id();
+                {
+                    let kind = format!("{:?}", serialized_item.kind());
 
-            let mut stmt =
-                tx.prepare_cached("INSERT OR REPLACE INTO items(id, kind) VALUES ((?), (?))")?;
+                    let mut stmt = tx.prepare_cached(
+                        "INSERT OR REPLACE INTO items(id, kind) VALUES ((?), (?))",
+                    )?;
 
-            stmt.execute(params![id, kind])?;
-        }
+                    stmt.execute(params![id, kind])?;
+                }
 
-        // Serialize item data
-        match &serialized_item {
-            SerializedItem::Editor(_, path) => {
-                let mut stmt = tx.prepare_cached(
-                    "INSERT OR REPLACE INTO item_path(item_id, path) VALUES ((?), (?))",
-                )?;
+                // Serialize item data
+                match &serialized_item {
+                    SerializedItem::Editor(_, path) => {
+                        let mut stmt = tx.prepare_cached(
+                            "INSERT OR REPLACE INTO item_path(item_id, path) VALUES ((?), (?))",
+                        )?;
 
-                let path_bytes = path.as_os_str().as_bytes();
-                stmt.execute(params![id, path_bytes])?;
-            }
-            SerializedItem::ProjectSearch(_, query) => {
-                let mut stmt = tx.prepare_cached(
-                    "INSERT OR REPLACE INTO item_query(item_id, query) VALUES ((?), (?))",
-                )?;
+                        let path_bytes = path.as_os_str().as_bytes();
+                        stmt.execute(params![id, path_bytes])?;
+                    }
+                    SerializedItem::ProjectSearch(_, query) => {
+                        let mut stmt = tx.prepare_cached(
+                            "INSERT OR REPLACE INTO item_query(item_id, query) VALUES ((?), (?))",
+                        )?;
 
-                stmt.execute(params![id, query])?;
-            }
-            _ => {}
-        }
+                        stmt.execute(params![id, query])?;
+                    }
+                    _ => {}
+                }
 
-        tx.commit()?;
+                tx.commit()?;
 
-        Ok(())
+                Ok(())
+            })
+            .unwrap_or(Ok(()))
     }
 
     fn delete_item(&self, item_id: usize) -> Result<()> {
-        let lock = self.connection.lock();
+        self.real()
+            .map(|db| {
+                let lock = db.connection.lock();
 
-        let mut stmt = lock.prepare_cached(
-            "
-            DELETE FROM items WHERE id = (:id);
-            DELETE FROM item_path WHERE id = (:id);
-            DELETE FROM item_query WHERE id = (:id);
-        ",
-        )?;
+                let mut stmt = lock.prepare_cached(
+                    "
+                    DELETE FROM items WHERE id = (:id);
+                    DELETE FROM item_path WHERE id = (:id);
+                    DELETE FROM item_query WHERE id = (:id);
+                    ",
+                )?;
 
-        stmt.execute(named_params! {":id": item_id})?;
+                stmt.execute(named_params! {":id": item_id})?;
 
-        Ok(())
+                Ok(())
+            })
+            .unwrap_or(Ok(()))
     }
 
     fn take_items(&self) -> Result<Vec<SerializedItem>> {
-        let mut lock = self.connection.lock();
+        self.real()
+            .map(|db| {
+                let mut lock = db.connection.lock();
 
-        let tx = lock.transaction()?;
+                let tx = lock.transaction()?;
 
-        // When working with transactions in rusqlite, need to make this kind of scope
-        // To make the borrow stuff work correctly. Don't know why, rust is wild.
-        let result = {
-            let mut read_stmt = tx.prepare_cached(
-                "
-                    SELECT items.id, items.kind, item_path.path, item_query.query
-                    FROM items
-                    LEFT JOIN item_path
+                // When working with transactions in rusqlite, need to make this kind of scope
+                // To make the borrow stuff work correctly. Don't know why, rust is wild.
+                let result = {
+                    let mut read_stmt = tx.prepare_cached(
+                        "
+                        SELECT items.id, items.kind, item_path.path, item_query.query
+                        FROM items
+                        LEFT JOIN item_path
                         ON items.id = item_path.item_id
-                    LEFT JOIN item_query
+                        LEFT JOIN item_query
                         ON items.id = item_query.item_id
-                    ORDER BY items.id
-            ",
-            )?;
+                        ORDER BY items.id
+                        ",
+                    )?;
 
-            let result = read_stmt
-                .query_map([], |row| {
-                    let id: usize = row.get(0)?;
-                    let kind: SerializedItemKind = row.get(1)?;
+                    let result = read_stmt
+                        .query_map([], |row| {
+                            let id: usize = row.get(0)?;
+                            let kind: SerializedItemKind = row.get(1)?;
 
-                    match kind {
-                        SerializedItemKind::Editor => {
-                            let buf: Vec<u8> = row.get(2)?;
-                            let path: PathBuf = OsStr::from_bytes(&buf).into();
+                            match kind {
+                                SerializedItemKind::Editor => {
+                                    let buf: Vec<u8> = row.get(2)?;
+                                    let path: PathBuf = OsStr::from_bytes(&buf).into();
 
-                            Ok(SerializedItem::Editor(id, path))
-                        }
-                        SerializedItemKind::Terminal => Ok(SerializedItem::Terminal(id)),
-                        SerializedItemKind::ProjectSearch => {
-                            let query: Arc<str> = row.get(3)?;
-                            Ok(SerializedItem::ProjectSearch(id, query.to_string()))
-                        }
-                        SerializedItemKind::Diagnostics => Ok(SerializedItem::Diagnostics(id)),
-                    }
-                })?
-                .collect::<Result<Vec<SerializedItem>, rusqlite::Error>>()?;
+                                    Ok(SerializedItem::Editor(id, path))
+                                }
+                                SerializedItemKind::Terminal => Ok(SerializedItem::Terminal(id)),
+                                SerializedItemKind::ProjectSearch => {
+                                    let query: Arc<str> = row.get(3)?;
+                                    Ok(SerializedItem::ProjectSearch(id, query.to_string()))
+                                }
+                                SerializedItemKind::Diagnostics => {
+                                    Ok(SerializedItem::Diagnostics(id))
+                                }
+                            }
+                        })?
+                        .collect::<Result<Vec<SerializedItem>, rusqlite::Error>>()?;
 
-            let mut delete_stmt = tx.prepare_cached(
-                "DELETE FROM items;
-                DELETE FROM item_path;
-                DELETE FROM item_query;",
-            )?;
+                    let mut delete_stmt = tx.prepare_cached(
+                        "DELETE FROM items;
+                        DELETE FROM item_path;
+                        DELETE FROM item_query;",
+                    )?;
 
-            delete_stmt.execute([])?;
+                    delete_stmt.execute([])?;
 
-            result
-        };
+                    result
+                };
 
-        tx.commit()?;
+                tx.commit()?;
 
-        Ok(result)
+                Ok(result)
+            })
+            .unwrap_or_else(|| Ok(Default::default()))
     }
 }
 
@@ -204,7 +220,7 @@ mod test {
 
     #[test]
     fn test_items_round_trip() -> Result<()> {
-        let db = Db::open_in_memory()?;
+        let db = Db::open_in_memory();
 
         let mut items = vec![
             SerializedItem::Editor(0, PathBuf::from("/tmp/test.txt")),

@@ -79,7 +79,7 @@ impl Db {
     fn initialize(mut conn: Connection) -> Result<Mutex<Connection>> {
         MIGRATIONS.to_latest(&mut conn)?;
 
-        conn.pragma_update(None, "journal_mode", "WAL")?;
+        conn.pragma_update(None, "journal_mode", "WAL2")?;
         conn.pragma_update(None, "synchronous", "NORMAL")?;
         conn.pragma_update(None, "foreign_keys", true)?;
         conn.pragma_update(None, "case_sensitive_like", true)?;
