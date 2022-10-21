@@ -4,7 +4,7 @@ use alacritty_terminal::{
     index::Point,
     term::{cell::Flags, TermMode},
 };
-use editor::{Cursor, HighlightedRange, HighlightedRangeLine};
+use editor::{scrollbar::ScrollableLayout, Cursor, HighlightedRange, HighlightedRangeLine};
 use gpui::{
     color::Color,
     elements::{Empty, Overlay},
@@ -45,6 +45,24 @@ pub struct LayoutState {
     mode: TermMode,
     display_offset: usize,
     hyperlink_tooltip: Option<ElementBox>,
+}
+
+impl ScrollableLayout for LayoutState {
+    fn line_height(&self, _: &PaintContext) -> f32 {
+        self.size.line_height()
+    }
+
+    fn max_scroll(&self) -> Vector2F {
+        todo!()
+    }
+
+    fn scroll_position(&self) -> Vector2F {
+        todo!()
+    }
+
+    fn show_scrollbars(&self) -> bool {
+        todo!()
+    }
 }
 
 ///Helper struct for converting data between alacritty's cursor points, and displayed cursor points

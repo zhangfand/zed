@@ -94,16 +94,20 @@ pub struct EditorElement {
 }
 
 impl ScrollableLayout for LayoutState {
-    fn font_size(&self) -> f32 {
-        self.style.text.font_size
+    fn line_height(&self, cx: &PaintContext) -> f32 {
+        cx.font_cache.line_height(self.style.text.font_size)
     }
 
-    fn max_row(&self) -> u32 {
-        self.max_row
-    }
+    // fn max_row(&self) -> u32 {
+    //     self.max_row
+    // }
 
-    fn height_in_rows(&self) -> f32 {
-        self.position_map.size.y() / self.position_map.line_height
+    // fn height_in_rows(&self) -> f32 {
+    //     self.position_map.size.y() / self.position_map.line_height
+    // }
+    
+    fn max_scroll(&self) -> Vector2F {
+        self.position_map.scroll_max
     }
 
     fn scroll_position(&self) -> Vector2F {
@@ -1780,6 +1784,7 @@ impl Element for EditorElement {
                 style,
                 position_map: Arc::new(PositionMap {
                     size,
+                    row_count: max_row + 1,
                     scroll_max,
                     line_layouts,
                     line_height,
@@ -1935,6 +1940,7 @@ pub struct LayoutState {
 pub struct PositionMap {
     size: Vector2F,
     line_height: f32,
+    row_count: u32,
     scroll_max: Vector2F,
     em_width: f32,
     em_advance: f32,
