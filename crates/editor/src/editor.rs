@@ -8,6 +8,7 @@ mod link_go_to_definition;
 mod mouse_context_menu;
 pub mod movement;
 mod multi_buffer;
+pub mod scrollbar;
 pub mod selections_collection;
 
 #[cfg(test)]
@@ -58,6 +59,7 @@ pub use multi_buffer::{
 use multi_buffer::{MultiBufferChunks, ToOffsetUtf16};
 use ordered_float::OrderedFloat;
 use project::{FormatTrigger, LocationLink, Project, ProjectPath, ProjectTransaction};
+use scrollbar::ScrollableView;
 use selections_collection::{resolve_multiple, MutableSelectionsCollection, SelectionsCollection};
 use serde::{Deserialize, Serialize};
 use settings::Settings;
@@ -84,7 +86,7 @@ const SCROLLBAR_SHOW_INTERVAL: Duration = Duration::from_secs(1);
 const MAX_LINE_LEN: usize = 1024;
 const MIN_NAVIGATION_HISTORY_ROW_DELTA: i64 = 10;
 const MAX_SELECTION_HISTORY_LEN: usize = 1024;
-pub const SCROLL_EVENT_SEPARATION: Duration = Duration::from_millis(28);
+const SCROLL_EVENT_SEPARATION: Duration = Duration::from_millis(28);
 
 pub const FORMAT_TIMEOUT: Duration = Duration::from_secs(2);
 
@@ -1058,6 +1060,20 @@ pub struct EditorCreated(pub ViewHandle<Editor>);
 enum GotoDefinitionKind {
     Symbol,
     Type,
+}
+
+impl ScrollableView for Editor {
+    fn scroll_position(&self, cx: &mut ViewContext<Self>) -> Vector2F {
+        Self::scroll_position(self, cx)
+    }
+
+    fn set_scroll_position(&mut self, pos: Vector2F, cx: &mut ViewContext<Self>) {
+        Self::set_scroll_position(self, pos, cx)
+    }
+
+    fn make_scrollbar_visible(&mut self, cx: &mut ViewContext<Self>) {
+        Self::make_scrollbar_visible(self, cx)
+    }
 }
 
 impl Editor {
