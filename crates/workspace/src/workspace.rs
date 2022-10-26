@@ -2678,6 +2678,11 @@ impl Workspace {
             _ => {}
         }
     }
+
+    #[cfg(test)]
+    pub fn center_pane_group(&self) -> &PaneGroup {
+        &self.center
+    }
 }
 
 impl Entity for Workspace {

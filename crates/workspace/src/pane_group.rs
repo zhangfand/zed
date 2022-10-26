@@ -293,32 +293,42 @@ impl PaneAxis {
     }
 
     fn remove(&mut self, pane_to_remove: &ViewHandle<Pane>) -> Result<Option<Member>> {
-        let mut found_pane = false;
-        let mut remove_member = None;
-        for (idx, member) in self.members.iter_mut().enumerate() {
+        let mut found_pane_index = None;
+        let mut remove_member = false;
+        for (index, member) in self.members.iter_mut().enumerate() {
             match member {
                 Member::Axis(axis) => {
                     if let Ok(last_pane) = axis.remove(pane_to_remove) {
                         if let Some(last_pane) = last_pane {
                             *member = last_pane;
                         }
-                        found_pane = true;
+                        found_pane_index = Some(index);
                         break;
                     }
                 }
+
                 Member::Pane(pane) => {
                     if pane == pane_to_remove {
-                        found_pane = true;
-                        remove_member = Some(idx);
+                        found_pane_index = Some(index);
+                        remove_member = true;
                         break;
                     }
                 }
             }
         }
 
-        if found_pane {
-            if let Some(idx) = remove_member {
-                self.members.remove(idx);
+        if let Some(found_pane_index) = found_pane_index {
+            if remove_member {
+                self.members.remove(found_pane_index);
+            } else if matches!(&self.members[found_pane_index], Member::Axis(axis) if axis.axis == self.axis)
+            {
+                let child = self.members.remove(found_pane_index);
+                let members_to_splice = match child {
+                    Member::Axis(axis) => axis.members,
+                    _ => unreachable!(),
+                };
+                self.members
+                    .splice(found_pane_index..found_pane_index, members_to_splice);
             }
 
             if self.members.len() == 1 {
@@ -412,5 +422,99 @@ impl SplitDirection {
             Self::Left | Self::Up => false,
             Self::Down | Self::Right => true,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use fs::FakeFs;
+    use gpui::{Axis, TestAppContext, ViewContext};
+    use project::Project;
+    use settings::Settings;
+
+    use crate::{pane, tests::TestItem, ItemHandle, Pane, SplitDirection, Workspace};
+
+    use super::Member;
+
+    pub fn default_item_factory(
+        _workspace: &mut Workspace,
+        cx: &mut ViewContext<Workspace>,
+    ) -> Box<dyn ItemHandle> {
+        Box::new(cx.add_view(|_| TestItem::new()))
+    }
+
+    #[gpui::test]
+    async fn test_axis_closing_simplifies_split_tree(cx: &mut TestAppContext) {
+        Settings::test_async(cx);
+        let fs = FakeFs::new(cx.background());
+
+        cx.update(|cx| pane::init(cx));
+
+        let project = Project::test(fs, [], cx).await;
+        let (_, workspace) = cx.add_window(|cx| Workspace::new(project, default_item_factory, cx));
+
+        // Add an item to start
+        workspace.update(cx, |workspace, cx| {
+            let item = cx.add_view(|_| TestItem::new());
+            let pane = workspace.active_pane().clone();
+            Pane::add_item(workspace, &pane, Box::new(item), true, true, None, cx);
+        });
+
+        // Split right
+        workspace.update(cx, |workspace, cx| {
+            workspace.active_pane().update(cx, |pane, cx| {
+                pane.split(SplitDirection::Right, cx);
+            });
+        });
+        let right_pane = workspace.read_with(cx, |workspace, _| workspace.active_pane().clone());
+
+        // Split down
+        workspace.update(cx, |workspace, cx| {
+            workspace
+                .active_pane()
+                .update(cx, |pane, cx| {
+                    pane.split(SplitDirection::Down, cx);
+                    workspace.active_pane()
+                })
+                .clone()
+        });
+
+        // Split right again
+        workspace.update(cx, |workspace, cx| {
+            workspace
+                .active_pane()
+                .update(cx, |pane, cx| {
+                    pane.split(SplitDirection::Right, cx);
+                    workspace.active_pane()
+                })
+                .clone()
+        });
+
+        // Activate the right_pane and close its item
+        // leaving behind a vertical axis with a single member
+        let right_pane_item_id =
+            right_pane.read_with(cx, |pane, _| pane.active_item().unwrap().id());
+        workspace
+            .update(cx, |workspace, cx| {
+                Pane::close_item(workspace, right_pane.clone(), right_pane_item_id, cx)
+            })
+            .await
+            .unwrap();
+
+        workspace.read_with(cx, |workspace, _| {
+            let pane_group = workspace.center_pane_group();
+
+            let pane_axis = match &pane_group.root {
+                Member::Axis(axis) => axis,
+                _ => panic!("Root group was not an axis"),
+            };
+
+            assert_eq!(Axis::Horizontal, pane_axis.axis);
+            assert_eq!(3, pane_axis.members.len());
+            assert!(pane_axis
+                .members
+                .iter()
+                .all(|member| matches!(member, Member::Pane(_))));
+        })
     }
 }
