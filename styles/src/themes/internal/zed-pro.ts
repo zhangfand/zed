@@ -1,4 +1,4 @@
-import chroma from "chroma-js";
+import chroma, { Color } from "chroma-js";
 import { colorRamp, createColorScheme } from "../common/ramps";
 
 const name = "Zed Pro";
@@ -9,27 +9,129 @@ const license = {
   url: "?",
 };
 
+// Look into using LAB over HSL
+function buildRamp(steps: any, hue: any, saturation: any, lightness: any) {
+  let ramp: Color[] = []
+
+  for (let step = 0; step <= steps; step++) {
+    let hueIncrement = (hue.end - hue.start) / steps
+    let stepHue = hue.start + (hueIncrement * step)
+
+    let saturationIncrement = saturation.end / steps
+    let stepSaturation = saturation.start + (saturationIncrement * step)
+
+    let lightnessIncrement = (lightness.end - lightness.start) / steps
+    let stepLightness = lightness.start + (lightnessIncrement * step)
+
+    let rampStep = chroma(stepHue, stepSaturation, stepLightness, "hsl")
+
+    ramp.push(rampStep)
+  }
+
+  return chroma.scale(ramp)
+}
+
+function buildNeutrals() {
+  let steps = 11
+  let hue = {
+    start: 220,
+    end: 240,
+    curve: "linear"
+  }
+  let saturation = {
+    start: 0.12,
+    end: 0.01,
+    curve: "linear"
+  }
+  let lightness = {
+    start: 0.08,
+    end: 1,
+    curve: "linear"
+  }
+
+  return buildRamp(steps, hue, saturation, lightness)
+}
+
+const domain = [
+  0, 0.4, 0.8, 1
+]
+
+const neutral = buildNeutrals().domain(domain)
+
+const red = chroma.scale([
+  "#fff5f5",
+  "#fbafaf",
+  "#f57474",
+  "#eb4949",
+  "#de2c2c",
+  "#cc1818",
+  "#b40c0c",
+  "#960505",
+  "#710202",
+  "#490000",
+  "#1f0000"
+].reverse())
+
+const orange = chroma.scale([
+  "#ffe8e1",
+  "#facdbd",
+  "#f4b69a",
+  "#eb9260",
+  "#de782f",
+  "#d36012",
+  "#c44d00",
+  "#b04400",
+  "#963a00",
+  "#752e00",
+  "#512000",
+  "#2b1100"
+].reverse())
+
+const yellow = chroma.scale([
+  "#fff5db",
+  "#f6e1ad",
+  "#ecce81",
+  "#e0b750",
+  "#dda933",
+  "#d89920",
+  "#d08713",
+  "#c4760b",
+  "#b56506",
+  "#a25602",
+  "#8c4701",
+  "#753b00"
+].reverse())
+
+const green = chroma.scale([
+  "#f7fff4",
+  "#e8fcdf",
+  "#d9faca",
+  "#b5ed9d",
+  "#8dd86e",
+  "#65b944",
+  "#409224",
+  "#246a10",
+  "#134905",
+  "#093101",
+  "#042400",
+  "#031f00"
+].reverse())
+
+const cyan = colorRamp(chroma("#215050"))
+const blue = colorRamp(chroma("#2F6DB7"))
+const violet = colorRamp(chroma("#5874C1"))
+const magenta = colorRamp(chroma("#DE9AB8"))
+
 const ramps = {
-  neutral: chroma
-    .scale([
-      "#101010",
-      "#1C1C1C",
-      "#212121",
-      "#2D2D2D",
-      "#B9B9B9",
-      "#DADADA",
-      "#E6E6E6",
-      "#FFFFFF",
-    ])
-    .domain([0, 0.1, 0.2, 0.3, 0.7, 0.8, 0.9, 1]),
-  red: colorRamp(chroma("#DC604F")),
-  orange: colorRamp(chroma("#DE782F")),
-  yellow: colorRamp(chroma("#E0B750")),
-  green: colorRamp(chroma("#2A643D")),
-  cyan: colorRamp(chroma("#215050")),
-  blue: colorRamp(chroma("#2F6DB7")),
-  violet: colorRamp(chroma("#5874C1")),
-  magenta: colorRamp(chroma("#DE9AB8")),
+  neutral: neutral,
+  red: red,
+  orange: orange,
+  yellow: yellow,
+  green: green,
+  cyan: cyan,
+  blue: blue,
+  violet: violet,
+  magenta: magenta,
 };
 
 export const dark = createColorScheme(`${name} Dark`, false, ramps);
