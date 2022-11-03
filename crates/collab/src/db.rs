@@ -57,6 +57,16 @@ pub trait Db: Send + Sync {
         user: NewUserParams,
     ) -> Result<Option<NewUserResult>>;
 
+    async fn create_room(&self, creator_id: UserId) -> Result<RoomId>;
+    async fn invite_to_room(
+        &self,
+        room_id: RoomId,
+        inviter_id: UserId,
+        invitee_id: UserId,
+    ) -> Result<()>;
+    async fn get_authorized_users_for_room(&self, room_id: RoomId) -> Result<Vec<UserId>>;
+    async fn leave_room(&self, room_id: RoomId, user_id: UserId) -> Result<()>;
+
     /// Registers a new project for the given user.
     async fn register_project(&self, host_user_id: UserId) -> Result<ProjectId>;
 
@@ -791,6 +801,99 @@ impl Db for PostgresDb {
             email_address: email_address.into(),
             email_confirmation_code,
         })
+    }
+
+    // rooms
+
+    async fn create_room(&self, creator_id: UserId) -> Result<RoomId> {
+        let mut tx = self.pool.begin().await?;
+        let room_id = sqlx::query_scalar(
+            "
+            INSERT INTO rooms
+            RETURNING id
+            ",
+        )
+        .fetch_one(&mut tx)
+        .await
+        .map(RoomId)?;
+
+        sqlx::query(
+            "
+            INSERT INTO room_authorizations(room_id, user_id)
+            VALUES ($1, $2)
+            ",
+        )
+        .bind(room_id)
+        .bind(creator_id)
+        .execute(&mut tx)
+        .await?;
+
+        tx.commit().await?;
+
+        Ok(room_id)
+    }
+
+    async fn invite_to_room(
+        &self,
+        room_id: RoomId,
+        inviter_id: UserId,
+        invitee_id: UserId,
+    ) -> Result<()> {
+        sqlx::query_scalar(
+            "
+            SELECT id
+            FROM room_authorizations
+            WHERE room_id = $1 AND user_id = $2
+            ",
+        )
+        .bind(room_id)
+        .bind(inviter_id)
+        .fetch_one(&self.pool)
+        .await
+        .map(RoomId)
+        .map_err(|_| anyhow!("inviting user not authorized in room"))?;
+
+        sqlx::query(
+            "
+            INSERT INTO room_authorizations(room_id, user_id)
+            VALUES ($1, $2)
+            ",
+        )
+        .bind(room_id)
+        .bind(invitee_id)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    async fn get_authorized_users_for_room(&self, room_id: RoomId) -> Result<Vec<UserId>> {
+        Ok(sqlx::query_scalar(
+            "
+            SELECT user_id
+            FROM room_authorizations
+            WHERE room_id = $1
+            ",
+        )
+        .bind(room_id)
+        .fetch_all(&self.pool)
+        .await
+        .map(|user_ids| user_ids.into_iter().map(UserId).collect())?)
+    }
+
+    async fn leave_room(&self, room_id: RoomId, user_id: UserId) -> Result<()> {
+        sqlx::query(
+            "
+            DELETE FROM room_authorizations
+            WHERE room_id = $1 AND user_id = $2
+            ",
+        )
+        .bind(room_id)
+        .bind(user_id)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
     }
 
     // projects
@@ -1663,6 +1766,8 @@ pub struct User {
     pub connected_once: bool,
 }
 
+id_type!(RoomId);
+
 id_type!(ProjectId);
 #[derive(Clone, Debug, Default, FromRow, Serialize, PartialEq)]
 pub struct Project {
@@ -1815,7 +1920,7 @@ pub use test::*;
 mod test {
     use super::*;
     use anyhow::anyhow;
-    use collections::BTreeMap;
+    use collections::{BTreeMap, HashSet};
     use gpui::executor::Background;
     use lazy_static::lazy_static;
     use parking_lot::Mutex;
@@ -1827,6 +1932,7 @@ mod test {
     pub struct FakeDb {
         background: Arc<Background>,
         pub users: Mutex<BTreeMap<UserId, User>>,
+        pub rooms: Mutex<BTreeMap<RoomId, FakeRoom>>,
         pub projects: Mutex<BTreeMap<ProjectId, Project>>,
         pub worktree_extensions: Mutex<BTreeMap<(ProjectId, u64, String), u32>>,
         pub orgs: Mutex<BTreeMap<OrgId, Org>>,
@@ -1839,6 +1945,7 @@ mod test {
         next_user_id: Mutex<i32>,
         next_org_id: Mutex<i32>,
         next_channel_id: Mutex<i32>,
+        next_room_id: Mutex<i32>,
         next_project_id: Mutex<i32>,
     }
 
@@ -1850,12 +1957,18 @@ mod test {
         pub should_notify: bool,
     }
 
+    #[derive(Debug)]
+    pub struct FakeRoom {
+        pub authorized_user_ids: HashSet<UserId>,
+    }
+
     impl FakeDb {
         pub fn new(background: Arc<Background>) -> Self {
             Self {
                 background,
                 users: Default::default(),
                 next_user_id: Mutex::new(0),
+                rooms: Default::default(),
                 projects: Default::default(),
                 worktree_extensions: Default::default(),
                 next_project_id: Mutex::new(1),
@@ -1868,6 +1981,7 @@ mod test {
                 channel_messages: Default::default(),
                 next_channel_message_id: Mutex::new(1),
                 contacts: Default::default(),
+                next_room_id: Default::default(),
             }
         }
     }
@@ -2035,6 +2149,65 @@ mod test {
             _device_id: Option<&str>,
         ) -> Result<Invite> {
             unimplemented!()
+        }
+
+        // rooms
+
+        async fn create_room(&self, creator_id: UserId) -> Result<RoomId> {
+            self.background.simulate_random_delay().await;
+
+            let room_id = RoomId(post_inc(&mut *self.next_room_id.lock()));
+            self.rooms.lock().insert(
+                room_id,
+                FakeRoom {
+                    authorized_user_ids: [creator_id].into_iter().collect(),
+                },
+            );
+
+            Ok(room_id)
+        }
+
+        async fn invite_to_room(
+            &self,
+            room_id: RoomId,
+            inviter_id: UserId,
+            invitee_id: UserId,
+        ) -> Result<()> {
+            self.background.simulate_random_delay().await;
+
+            let mut rooms = self.rooms.lock();
+            let room = rooms
+                .get_mut(&room_id)
+                .ok_or_else(|| anyhow!("room not found"))?;
+            if !room.authorized_user_ids.contains(&inviter_id) {
+                Err(anyhow!("inviting user not authorized in room"))?;
+            }
+            room.authorized_user_ids.insert(invitee_id);
+
+            Ok(())
+        }
+
+        async fn get_authorized_users_for_room(&self, room_id: RoomId) -> Result<Vec<UserId>> {
+            self.background.simulate_random_delay().await;
+
+            let rooms = self.rooms.lock();
+            let room = rooms
+                .get(&room_id)
+                .ok_or_else(|| anyhow!("room not found"))?;
+
+            Ok(room.authorized_user_ids.iter().cloned().collect())
+        }
+
+        async fn leave_room(&self, room_id: RoomId, user_id: UserId) -> Result<()> {
+            self.background.simulate_random_delay().await;
+
+            let mut rooms = self.rooms.lock();
+            let room = rooms
+                .get_mut(&room_id)
+                .ok_or_else(|| anyhow!("room not found"))?;
+            room.authorized_user_ids.remove(&user_id);
+
+            Ok(())
         }
 
         // projects
