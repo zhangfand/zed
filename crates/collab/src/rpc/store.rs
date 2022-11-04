@@ -1,4 +1,4 @@
-use crate::db::{self, ChannelId, ProjectId, UserId};
+use crate::db::{self, ChannelId, ProjectId, RoomId, UserId};
 use anyhow::{anyhow, Result};
 use collections::{btree_map, BTreeMap, BTreeSet, HashMap, HashSet};
 use nanoid::nanoid;
@@ -7,15 +7,11 @@ use serde::Serialize;
 use std::{borrow::Cow, mem, path::PathBuf, str, time::Duration};
 use time::OffsetDateTime;
 use tracing::instrument;
-use util::post_inc;
-
-pub type RoomId = u64;
 
 #[derive(Default, Serialize)]
 pub struct Store {
     connections: BTreeMap<ConnectionId, ConnectionState>,
     connected_users: BTreeMap<UserId, ConnectedUser>,
-    next_room_id: RoomId,
     rooms: BTreeMap<RoomId, proto::Room>,
     projects: BTreeMap<ProjectId, Project>,
     #[serde(skip)]
@@ -173,7 +169,7 @@ impl Store {
             } else {
                 let room = self.room(active_call.room_id)?;
                 Some(proto::IncomingCall {
-                    room_id: active_call.room_id,
+                    room_id: active_call.room_id.to_proto(),
                     caller_user_id: active_call.caller_user_id.to_proto(),
                     participant_user_ids: room
                         .participants
@@ -346,7 +342,11 @@ impl Store {
         }
     }
 
-    pub fn create_room(&mut self, creator_connection_id: ConnectionId) -> Result<&proto::Room> {
+    pub fn create_room(
+        &mut self,
+        room_id: RoomId,
+        creator_connection_id: ConnectionId,
+    ) -> Result<&proto::Room> {
         let connection = self
             .connections
             .get_mut(&creator_connection_id)
@@ -360,9 +360,8 @@ impl Store {
             "can't create a room with an active call"
         );
 
-        let room_id = post_inc(&mut self.next_room_id);
         let room = proto::Room {
-            id: room_id,
+            id: room_id.to_proto(),
             participants: vec![proto::Participant {
                 user_id: connection.user_id.to_proto(),
                 peer_id: creator_connection_id.0,
@@ -582,7 +581,7 @@ impl Store {
             room,
             recipient_connection_ids,
             proto::IncomingCall {
-                room_id,
+                room_id: room_id.to_proto(),
                 caller_user_id: caller_user_id.to_proto(),
                 participant_user_ids: room
                     .participants

@@ -2,7 +2,7 @@ mod store;
 
 use crate::{
     auth,
-    db::{self, ChannelId, MessageId, ProjectId, User, UserId},
+    db::{self, ChannelId, MessageId, ProjectId, RoomId, User, UserId},
     AppState, Result,
 };
 use anyhow::anyhow;
@@ -607,13 +607,16 @@ impl Server {
         request: TypedEnvelope<proto::CreateRoom>,
         response: Response<proto::CreateRoom>,
     ) -> Result<()> {
-        let user_id;
-        let room;
-        {
-            let mut store = self.store().await;
-            user_id = store.user_id_for_connection(request.sender_id)?;
-            room = store.create_room(request.sender_id)?.clone();
-        }
+        let user_id = self
+            .store()
+            .await
+            .user_id_for_connection(request.sender_id)?;
+        let room_id = self.app_state.db.create_room(user_id).await?;
+        let room = self
+            .store()
+            .await
+            .create_room(room_id, request.sender_id)?
+            .clone();
 
         let live_kit_connection_info =
             if let Some(live_kit) = self.app_state.live_kit_client.as_ref() {
@@ -658,7 +661,7 @@ impl Server {
             let mut store = self.store().await;
             user_id = store.user_id_for_connection(request.sender_id)?;
             let (room, recipient_connection_ids) =
-                store.join_room(request.payload.id, request.sender_id)?;
+                store.join_room(RoomId::from_proto(request.payload.id), request.sender_id)?;
             for recipient_id in recipient_connection_ids {
                 self.peer
                     .send(recipient_id, proto::CallCanceled {})
@@ -698,7 +701,8 @@ impl Server {
         {
             let mut store = self.store().await;
             let user_id = store.user_id_for_connection(message.sender_id)?;
-            let left_room = store.leave_room(message.payload.id, message.sender_id)?;
+            let left_room =
+                store.leave_room(RoomId::from_proto(message.payload.id), message.sender_id)?;
             contacts_to_update.insert(user_id);
 
             for project in left_room.unshared_projects {
@@ -775,7 +779,7 @@ impl Server {
             return Err(anyhow!("cannot call a user who isn't a contact"))?;
         }
 
-        let room_id = request.payload.room_id;
+        let room_id = RoomId::from_proto(request.payload.room_id);
         let mut calls = {
             let mut store = self.store().await;
             let (room, recipient_connection_ids, incoming_call) = store.call(
@@ -823,13 +827,11 @@ impl Server {
         response: Response<proto::CancelCall>,
     ) -> Result<()> {
         let recipient_user_id = UserId::from_proto(request.payload.recipient_user_id);
+        let room_id = RoomId::from_proto(request.payload.room_id);
         {
             let mut store = self.store().await;
-            let (room, recipient_connection_ids) = store.cancel_call(
-                request.payload.room_id,
-                recipient_user_id,
-                request.sender_id,
-            )?;
+            let (room, recipient_connection_ids) =
+                store.cancel_call(room_id, recipient_user_id, request.sender_id)?;
             for recipient_id in recipient_connection_ids {
                 self.peer
                     .send(recipient_id, proto::CallCanceled {})
@@ -846,12 +848,13 @@ impl Server {
         self: Arc<Server>,
         message: TypedEnvelope<proto::DeclineCall>,
     ) -> Result<()> {
+        let room_id = RoomId::from_proto(message.payload.room_id);
         let recipient_user_id;
         {
             let mut store = self.store().await;
             recipient_user_id = store.user_id_for_connection(message.sender_id)?;
             let (room, recipient_connection_ids) =
-                store.decline_call(message.payload.room_id, message.sender_id)?;
+                store.decline_call(room_id, message.sender_id)?;
             for recipient_id in recipient_connection_ids {
                 self.peer
                     .send(recipient_id, proto::CallCanceled {})
@@ -868,7 +871,7 @@ impl Server {
         request: TypedEnvelope<proto::UpdateParticipantLocation>,
         response: Response<proto::UpdateParticipantLocation>,
     ) -> Result<()> {
-        let room_id = request.payload.room_id;
+        let room_id = RoomId::from_proto(request.payload.room_id);
         let location = request
             .payload
             .location
@@ -926,9 +929,10 @@ impl Server {
             .await
             .user_id_for_connection(request.sender_id)?;
         let project_id = self.app_state.db.register_project(user_id).await?;
+        let room_id = RoomId::from_proto(request.payload.room_id);
         let mut store = self.store().await;
         let room = store.share_project(
-            request.payload.room_id,
+            room_id,
             project_id,
             request.payload.worktrees,
             request.sender_id,
