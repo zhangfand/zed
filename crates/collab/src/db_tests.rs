@@ -1189,6 +1189,87 @@ async fn test_metrics_id() {
     assert_ne!(metrics_id1, metrics_id2);
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn test_rooms() {
+    for test_db in [
+        TestDb::postgres().await,
+        TestDb::fake(build_background_executor()),
+    ] {
+        let db = test_db.db();
+        let user1 = db
+            .create_user(
+                &format!("user1@example.com"),
+                false,
+                NewUserParams {
+                    github_login: format!("user1"),
+                    github_user_id: 1,
+                    invite_count: 0,
+                },
+            )
+            .await
+            .unwrap()
+            .user_id;
+        let user2 = db
+            .create_user(
+                &format!("user2@example.com"),
+                false,
+                NewUserParams {
+                    github_login: format!("user2"),
+                    github_user_id: 2,
+                    invite_count: 0,
+                },
+            )
+            .await
+            .unwrap()
+            .user_id;
+
+        let room_id = db.create_room(user1).await.unwrap();
+        assert_eq!(
+            db.get_authorized_users_for_room(room_id).await.unwrap(),
+            [user1]
+        );
+
+        db.add_authorized_user_to_room(room_id, user2)
+            .await
+            .unwrap();
+        assert_eq!(
+            db.get_authorized_users_for_room(room_id).await.unwrap(),
+            [user1, user2]
+        );
+
+        // Ensure adding the same authorized user twice doesn't fail.
+        db.add_authorized_user_to_room(room_id, user2)
+            .await
+            .unwrap();
+        assert_eq!(
+            db.get_authorized_users_for_room(room_id).await.unwrap(),
+            [user1, user2]
+        );
+
+        db.remove_authorized_user_from_room(room_id, user1)
+            .await
+            .unwrap();
+        assert_eq!(
+            db.get_authorized_users_for_room(room_id).await.unwrap(),
+            [user2]
+        );
+
+        // Ensure removing the same authorized user twice doesn't fail.
+        assert_eq!(
+            db.get_authorized_users_for_room(room_id).await.unwrap(),
+            [user2]
+        );
+
+        // Removing the last authorized user deletes the room.
+        db.remove_authorized_user_from_room(room_id, user2)
+            .await
+            .unwrap();
+        db.add_authorized_user_to_room(room_id, user1)
+            .await
+            .unwrap_err();
+    }
+}
+
 fn build_background_executor() -> Arc<Background> {
     Deterministic::new(0).build_background()
 }

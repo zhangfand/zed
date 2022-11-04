@@ -58,14 +58,13 @@ pub trait Db: Send + Sync {
     ) -> Result<Option<NewUserResult>>;
 
     async fn create_room(&self, creator_id: UserId) -> Result<RoomId>;
-    async fn invite_to_room(
+    async fn add_authorized_user_to_room(&self, room_id: RoomId, user_id: UserId) -> Result<()>;
+    async fn remove_authorized_user_from_room(
         &self,
         room_id: RoomId,
-        inviter_id: UserId,
-        invitee_id: UserId,
+        user_id: UserId,
     ) -> Result<()>;
     async fn get_authorized_users_for_room(&self, room_id: RoomId) -> Result<Vec<UserId>>;
-    async fn leave_room(&self, room_id: RoomId, user_id: UserId) -> Result<()>;
 
     /// Registers a new project for the given user.
     async fn register_project(&self, host_user_id: UserId) -> Result<ProjectId>;
@@ -810,6 +809,7 @@ impl Db for PostgresDb {
         let room_id = sqlx::query_scalar(
             "
             INSERT INTO rooms
+            DEFAULT VALUES
             RETURNING id
             ",
         )
@@ -821,6 +821,7 @@ impl Db for PostgresDb {
             "
             INSERT INTO room_authorizations(room_id, user_id)
             VALUES ($1, $2)
+            ON CONFLICT DO NOTHING
             ",
         )
         .bind(room_id)
@@ -833,36 +834,57 @@ impl Db for PostgresDb {
         Ok(room_id)
     }
 
-    async fn invite_to_room(
-        &self,
-        room_id: RoomId,
-        inviter_id: UserId,
-        invitee_id: UserId,
-    ) -> Result<()> {
-        sqlx::query_scalar(
-            "
-            SELECT id
-            FROM room_authorizations
-            WHERE room_id = $1 AND user_id = $2
-            ",
-        )
-        .bind(room_id)
-        .bind(inviter_id)
-        .fetch_one(&self.pool)
-        .await
-        .map(RoomId)
-        .map_err(|_| anyhow!("inviting user not authorized in room"))?;
-
+    async fn add_authorized_user_to_room(&self, room_id: RoomId, user_id: UserId) -> Result<()> {
         sqlx::query(
             "
             INSERT INTO room_authorizations(room_id, user_id)
             VALUES ($1, $2)
+            ON CONFLICT DO NOTHING
             ",
         )
         .bind(room_id)
-        .bind(invitee_id)
+        .bind(user_id)
         .execute(&self.pool)
         .await?;
+        Ok(())
+    }
+
+    async fn remove_authorized_user_from_room(
+        &self,
+        room_id: RoomId,
+        user_id: UserId,
+    ) -> Result<()> {
+        let mut tx = self.pool.begin().await?;
+        sqlx::query(
+            "
+            DELETE FROM room_authorizations
+            WHERE room_id = $1 AND user_id = $2
+            ",
+        )
+        .bind(room_id)
+        .bind(user_id)
+        .execute(&mut tx)
+        .await?;
+
+        let room_is_empty = sqlx::query_scalar::<_, i32>(
+            "
+            SELECT 1
+            FROM room_authorizations
+            WHERE room_id = $1
+            ",
+        )
+        .bind(room_id)
+        .fetch_optional(&mut tx)
+        .await?
+        .is_none();
+        if room_is_empty {
+            sqlx::query("DELETE FROM rooms WHERE id = $1")
+                .bind(room_id)
+                .execute(&mut tx)
+                .await?;
+        }
+
+        tx.commit().await?;
 
         Ok(())
     }
@@ -879,21 +901,6 @@ impl Db for PostgresDb {
         .fetch_all(&self.pool)
         .await
         .map(|user_ids| user_ids.into_iter().map(UserId).collect())?)
-    }
-
-    async fn leave_room(&self, room_id: RoomId, user_id: UserId) -> Result<()> {
-        sqlx::query(
-            "
-            DELETE FROM room_authorizations
-            WHERE room_id = $1 AND user_id = $2
-            ",
-        )
-        .bind(room_id)
-        .bind(user_id)
-        .execute(&self.pool)
-        .await?;
-
-        Ok(())
     }
 
     // projects
@@ -1920,7 +1927,7 @@ pub use test::*;
 mod test {
     use super::*;
     use anyhow::anyhow;
-    use collections::{BTreeMap, HashSet};
+    use collections::{BTreeMap, BTreeSet};
     use gpui::executor::Background;
     use lazy_static::lazy_static;
     use parking_lot::Mutex;
@@ -1959,7 +1966,7 @@ mod test {
 
     #[derive(Debug)]
     pub struct FakeRoom {
-        pub authorized_user_ids: HashSet<UserId>,
+        pub authorized_user_ids: BTreeSet<UserId>,
     }
 
     impl FakeDb {
@@ -2167,11 +2174,10 @@ mod test {
             Ok(room_id)
         }
 
-        async fn invite_to_room(
+        async fn add_authorized_user_to_room(
             &self,
             room_id: RoomId,
-            inviter_id: UserId,
-            invitee_id: UserId,
+            user_id: UserId,
         ) -> Result<()> {
             self.background.simulate_random_delay().await;
 
@@ -2179,10 +2185,26 @@ mod test {
             let room = rooms
                 .get_mut(&room_id)
                 .ok_or_else(|| anyhow!("room not found"))?;
-            if !room.authorized_user_ids.contains(&inviter_id) {
-                Err(anyhow!("inviting user not authorized in room"))?;
+            room.authorized_user_ids.insert(user_id);
+
+            Ok(())
+        }
+
+        async fn remove_authorized_user_from_room(
+            &self,
+            room_id: RoomId,
+            user_id: UserId,
+        ) -> Result<()> {
+            self.background.simulate_random_delay().await;
+
+            let mut rooms = self.rooms.lock();
+            let room = rooms
+                .get_mut(&room_id)
+                .ok_or_else(|| anyhow!("room not found"))?;
+            room.authorized_user_ids.remove(&user_id);
+            if room.authorized_user_ids.is_empty() {
+                rooms.remove(&room_id);
             }
-            room.authorized_user_ids.insert(invitee_id);
 
             Ok(())
         }
@@ -2196,18 +2218,6 @@ mod test {
                 .ok_or_else(|| anyhow!("room not found"))?;
 
             Ok(room.authorized_user_ids.iter().cloned().collect())
-        }
-
-        async fn leave_room(&self, room_id: RoomId, user_id: UserId) -> Result<()> {
-            self.background.simulate_random_delay().await;
-
-            let mut rooms = self.rooms.lock();
-            let room = rooms
-                .get_mut(&room_id)
-                .ok_or_else(|| anyhow!("room not found"))?;
-            room.authorized_user_ids.remove(&user_id);
-
-            Ok(())
         }
 
         // projects
