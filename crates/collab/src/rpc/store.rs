@@ -1260,6 +1260,31 @@ impl Store {
             }
         }
     }
+
+    #[cfg(test)]
+    pub fn check_db_invariants(&self, db: &db::FakeDb) {
+        // Rooms match between the database and the store
+        let db_room_ids = db.rooms.lock().keys().copied().collect::<BTreeSet<_>>();
+        let store_room_ids = self.rooms.keys().copied().collect::<BTreeSet<_>>();
+        assert_eq!(db_room_ids, store_room_ids);
+
+        // For each room, authorized users match participants
+        for (room_id, store_room) in &self.rooms {
+            let store_participant_ids = store_room
+                .participants
+                .iter()
+                .map(|p| p.user_id)
+                .chain(store_room.pending_participant_user_ids.iter().copied())
+                .map(UserId::from_proto)
+                .collect::<BTreeSet<_>>();
+            let db_authorized_user_ids = &db.rooms.lock()[&room_id].authorized_user_ids;
+            assert_eq!(
+                *db_authorized_user_ids, store_participant_ids,
+                "invalid authorized users in database for room {}",
+                room_id
+            );
+        }
+    }
 }
 
 impl Project {

@@ -437,11 +437,15 @@ impl Server {
                                 let handle_message = (handler)(this.clone(), message);
 
                                 drop(span_enter);
+                                #[cfg(test)]
+                                let this = this.clone();
                                 let handle_message = async move {
                                     handle_message.await;
                                     if let Some(mut notifications) = notifications {
                                         let _ = notifications.send(()).await;
                                     }
+                                    #[cfg(test)]
+                                    this.check_invariants().await;
                                 }.instrument(span);
 
                                 if is_background {
@@ -511,7 +515,7 @@ impl Server {
 
             if let Some(room) = removed_connection.room {
                 self.room_updated(&room);
-                room_left = Some(self.room_left(&room, connection_id));
+                room_left = Some(self.room_left(&room, connection_id, removed_connection.user_id));
             }
 
             contacts_to_update.insert(removed_connection.user_id);
@@ -738,7 +742,7 @@ impl Server {
             }
 
             self.room_updated(&left_room.room);
-            room_left = self.room_left(&left_room.room, message.sender_id);
+            room_left = self.room_left(&left_room.room, message.sender_id, user_id);
 
             for connection_id in left_room.canceled_call_connection_ids {
                 self.peer
@@ -780,6 +784,19 @@ impl Server {
         }
 
         let room_id = RoomId::from_proto(request.payload.room_id);
+        let authorized_users = self
+            .app_state
+            .db
+            .get_authorized_users_for_room(room_id)
+            .await?;
+        if !authorized_users.contains(&caller_user_id) {
+            return Err(anyhow!("not authorized in room"))?;
+        }
+        self.app_state
+            .db
+            .add_authorized_user_to_room(room_id, recipient_user_id)
+            .await?;
+
         let mut calls = {
             let mut store = self.store().await;
             let (room, recipient_connection_ids, incoming_call) = store.call(
@@ -811,6 +828,10 @@ impl Server {
             }
         }
 
+        self.app_state
+            .db
+            .remove_authorized_user_from_room(room_id, recipient_user_id)
+            .await?;
         {
             let mut store = self.store().await;
             let room = store.call_failed(room_id, recipient_user_id)?;
@@ -826,8 +847,25 @@ impl Server {
         request: TypedEnvelope<proto::CancelCall>,
         response: Response<proto::CancelCall>,
     ) -> Result<()> {
+        let current_user_id = self
+            .store()
+            .await
+            .user_id_for_connection(request.sender_id)?;
         let recipient_user_id = UserId::from_proto(request.payload.recipient_user_id);
         let room_id = RoomId::from_proto(request.payload.room_id);
+        let authorized_users = self
+            .app_state
+            .db
+            .get_authorized_users_for_room(room_id)
+            .await?;
+        if !authorized_users.contains(&current_user_id) {
+            return Err(anyhow!("not authorized in room"))?;
+        }
+        self.app_state
+            .db
+            .remove_authorized_user_from_room(room_id, recipient_user_id)
+            .await?;
+
         {
             let mut store = self.store().await;
             let (room, recipient_connection_ids) =
@@ -849,10 +887,17 @@ impl Server {
         message: TypedEnvelope<proto::DeclineCall>,
     ) -> Result<()> {
         let room_id = RoomId::from_proto(message.payload.room_id);
-        let recipient_user_id;
+        let recipient_user_id = self
+            .store()
+            .await
+            .user_id_for_connection(message.sender_id)?;
+
+        self.app_state
+            .db
+            .remove_authorized_user_from_room(room_id, recipient_user_id)
+            .await?;
         {
             let mut store = self.store().await;
-            recipient_user_id = store.user_id_for_connection(message.sender_id)?;
             let (room, recipient_connection_ids) =
                 store.decline_call(room_id, message.sender_id)?;
             for recipient_id in recipient_connection_ids {
@@ -900,18 +945,24 @@ impl Server {
         &self,
         room: &proto::Room,
         connection_id: ConnectionId,
+        user_id: UserId,
     ) -> impl Future<Output = Result<()>> {
-        let client = self.app_state.live_kit_client.clone();
-        let room_name = room.live_kit_room.clone();
+        let db = self.app_state.db.clone();
+        let live_kit_client = self.app_state.live_kit_client.clone();
+        let room_id = RoomId::from_proto(room.id);
+        let live_kit_room = room.live_kit_room.clone();
         let participant_count = room.participants.len();
         async move {
-            if let Some(client) = client {
+            db.remove_authorized_user_from_room(room_id, user_id)
+                .await?;
+
+            if let Some(client) = live_kit_client {
                 client
-                    .remove_participant(room_name.clone(), connection_id.to_string())
+                    .remove_participant(live_kit_room.clone(), connection_id.to_string())
                     .await?;
 
                 if participant_count == 0 {
-                    client.delete_room(room_name).await?;
+                    client.delete_room(live_kit_room).await?;
                 }
             }
 
@@ -1940,6 +1991,13 @@ impl Server {
             store: self.store().await,
             peer: &self.peer,
         }
+    }
+
+    #[cfg(test)]
+    async fn check_invariants(&self) {
+        let db = self.app_state.db.as_fake().unwrap();
+        let store = self.store().await;
+        store.check_db_invariants(db);
     }
 }
 
