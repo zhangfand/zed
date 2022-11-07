@@ -36,6 +36,7 @@ use rpc::{
     Connection, ConnectionId, Peer, Receipt, TypedEnvelope,
 };
 use serde::{Serialize, Serializer};
+use sqlx::types::Uuid;
 use std::{
     any::TypeId,
     future::Future,
@@ -98,6 +99,7 @@ impl<R: RequestMessage> Response<R> {
 }
 
 pub struct Server {
+    epoch: Uuid,
     peer: Arc<Peer>,
     pub(crate) store: Mutex<Store>,
     app_state: Arc<AppState>,
@@ -144,6 +146,7 @@ impl Server {
         notifications: Option<mpsc::UnboundedSender<()>>,
     ) -> Arc<Self> {
         let mut server = Self {
+            epoch: Uuid::new_v4(),
             peer: Peer::new(),
             app_state,
             store: Default::default(),
@@ -638,11 +641,15 @@ impl Server {
         request: Message<proto::CreateRoom>,
         response: Response<proto::CreateRoom>,
     ) -> Result<()> {
-        let room;
-        {
-            let mut store = self.store().await;
-            room = store.create_room(request.sender_connection_id)?.clone();
-        }
+        let room = self
+            .app_state
+            .db
+            .create_room(
+                request.sender_user_id,
+                request.sender_connection_id,
+                self.epoch,
+            )
+            .await?;
 
         let live_kit_connection_info =
             if let Some(live_kit) = self.app_state.live_kit_client.as_ref() {
@@ -673,7 +680,21 @@ impl Server {
             };
 
         response.send(proto::CreateRoomResponse {
-            room: Some(room),
+            room: Some(proto::Room {
+                id: room.id.to_proto(),
+                participants: vec![proto::Participant {
+                    user_id: request.sender_user_id.to_proto(),
+                    peer_id: request.sender_connection_id.0,
+                    projects: Default::default(),
+                    location: Some(proto::ParticipantLocation {
+                        variant: Some(proto::participant_location::Variant::External(
+                            Default::default(),
+                        )),
+                    }),
+                }],
+                pending_participant_user_ids: Default::default(),
+                live_kit_room: room.live_kit_room,
+            }),
             live_kit_connection_info,
         })?;
         self.update_user_contacts(request.sender_user_id).await?;

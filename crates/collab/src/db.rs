@@ -4,6 +4,7 @@ use async_trait::async_trait;
 use axum::http::StatusCode;
 use collections::HashMap;
 use futures::StreamExt;
+use rpc::ConnectionId;
 use serde::{Deserialize, Serialize};
 pub use sqlx::postgres::PgPoolOptions as DbOptions;
 use sqlx::{
@@ -56,6 +57,13 @@ pub trait Db: Send + Sync {
         invite: &Invite,
         user: NewUserParams,
     ) -> Result<Option<NewUserResult>>;
+
+    async fn create_room(
+        &self,
+        user_id: UserId,
+        connection_id: ConnectionId,
+        server_epoch: Uuid,
+    ) -> Result<Room>;
 
     /// Registers a new project for the given user.
     async fn register_project(&self, host_user_id: UserId) -> Result<ProjectId>;
@@ -790,6 +798,60 @@ impl Db for PostgresDb {
         Ok(Invite {
             email_address: email_address.into(),
             email_confirmation_code,
+        })
+    }
+
+    // rooms
+
+    async fn create_room(
+        &self,
+        user_id: UserId,
+        connection_id: ConnectionId,
+        server_epoch: Uuid,
+    ) -> Result<Room> {
+        let mut tx = self.pool.begin().await?;
+        let live_kit_room = nanoid::nanoid!(30);
+        let room_id = sqlx::query_scalar(
+            "
+            INSERT INTO rooms (live_kit_room)
+            VALUES ($1)
+            ",
+        )
+        .bind(&live_kit_room)
+        .fetch_one(&mut tx)
+        .await
+        .map(RoomId)?;
+
+        sqlx::query(
+            "
+            INSERT INTO room_participants (room_id, user_id, connection_id, server_epoch)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            ",
+        )
+        .bind(room_id)
+        .bind(user_id)
+        .bind(connection_id.0 as i32)
+        .bind(server_epoch)
+        .execute(&mut tx)
+        .await?;
+
+        sqlx::query(
+            "
+            INSERT INTO calls (caller_user_id, callee_user_id, callee_connection_id, server_epoch, room_id)
+            VALUES ($1, $1, $2, $3, $4)
+            ",
+        )
+        .bind(user_id)
+        .bind(connection_id.0 as i32)
+        .bind(server_epoch)
+        .bind(room_id)
+        .execute(&mut tx)
+        .await?;
+
+        tx.commit().await?;
+        Ok(Room {
+            id: room_id,
+            live_kit_room,
         })
     }
 
@@ -1663,6 +1725,13 @@ pub struct User {
     pub connected_once: bool,
 }
 
+id_type!(RoomId);
+#[derive(Clone, Debug, Default, FromRow, Serialize, PartialEq)]
+pub struct Room {
+    pub id: RoomId,
+    pub live_kit_room: String,
+}
+
 id_type!(ProjectId);
 #[derive(Clone, Debug, Default, FromRow, Serialize, PartialEq)]
 pub struct Project {
@@ -2034,6 +2103,17 @@ mod test {
             _email_address: &str,
             _device_id: Option<&str>,
         ) -> Result<Invite> {
+            unimplemented!()
+        }
+
+        // rooms
+
+        async fn create_room(
+            &self,
+            _user_id: UserId,
+            _connection_id: ConnectionId,
+            _server_epoch: Uuid,
+        ) -> Result<Room> {
             unimplemented!()
         }
 

@@ -1,13 +1,11 @@
 use crate::db::{self, ChannelId, ProjectId, UserId};
 use anyhow::{anyhow, Result};
 use collections::{btree_map, BTreeMap, BTreeSet, HashMap, HashSet};
-use nanoid::nanoid;
 use rpc::{proto, ConnectionId};
 use serde::Serialize;
 use std::{borrow::Cow, mem, path::PathBuf, str, time::Duration};
 use time::OffsetDateTime;
 use tracing::instrument;
-use util::post_inc;
 
 pub type RoomId = u64;
 
@@ -15,7 +13,6 @@ pub type RoomId = u64;
 pub struct Store {
     connections: BTreeMap<ConnectionId, ConnectionState>,
     connected_users: BTreeMap<UserId, ConnectedUser>,
-    next_room_id: RoomId,
     rooms: BTreeMap<RoomId, proto::Room>,
     projects: BTreeMap<ProjectId, Project>,
     #[serde(skip)]
@@ -344,47 +341,6 @@ impl Store {
             busy: self.is_user_busy(user_id),
             should_notify,
         }
-    }
-
-    pub fn create_room(&mut self, creator_connection_id: ConnectionId) -> Result<&proto::Room> {
-        let connection = self
-            .connections
-            .get_mut(&creator_connection_id)
-            .ok_or_else(|| anyhow!("no such connection"))?;
-        let connected_user = self
-            .connected_users
-            .get_mut(&connection.user_id)
-            .ok_or_else(|| anyhow!("no such connection"))?;
-        anyhow::ensure!(
-            connected_user.active_call.is_none(),
-            "can't create a room with an active call"
-        );
-
-        let room_id = post_inc(&mut self.next_room_id);
-        let room = proto::Room {
-            id: room_id,
-            participants: vec![proto::Participant {
-                user_id: connection.user_id.to_proto(),
-                peer_id: creator_connection_id.0,
-                projects: Default::default(),
-                location: Some(proto::ParticipantLocation {
-                    variant: Some(proto::participant_location::Variant::External(
-                        proto::participant_location::External {},
-                    )),
-                }),
-            }],
-            pending_participant_user_ids: Default::default(),
-            live_kit_room: nanoid!(30),
-        };
-
-        self.rooms.insert(room_id, room);
-        connected_user.active_call = Some(Call {
-            caller_user_id: connection.user_id,
-            room_id,
-            connection_id: Some(creator_connection_id),
-            initial_project_id: None,
-        });
-        Ok(self.rooms.get(&room_id).unwrap())
     }
 
     pub fn join_room(
