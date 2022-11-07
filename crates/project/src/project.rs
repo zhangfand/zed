@@ -1,5 +1,6 @@
 mod ignore;
 mod lsp_command;
+pub mod repository_store;
 pub mod search;
 pub mod worktree;
 
@@ -35,6 +36,7 @@ use lsp_command::*;
 use parking_lot::Mutex;
 use postage::watch;
 use rand::prelude::*;
+use repository_store::RepositoryStore;
 use search::SearchQuery;
 use serde::Serialize;
 use settings::{FormatOnSave, Formatter, Settings};
@@ -104,6 +106,7 @@ pub struct Project {
     user_store: ModelHandle<UserStore>,
     project_store: ModelHandle<ProjectStore>,
     fs: Arc<dyn Fs>,
+    repository_store: Arc<RepositoryStore>,
     client_state: Option<ProjectClientState>,
     collaborators: HashMap<PeerId, Collaborator>,
     client_subscriptions: Vec<client::Subscription>,
@@ -415,6 +418,7 @@ impl Project {
         project_store: ModelHandle<ProjectStore>,
         languages: Arc<LanguageRegistry>,
         fs: Arc<dyn Fs>,
+        repository_store: Arc<RepositoryStore>,
         cx: &mut MutableAppContext,
     ) -> ModelHandle<Self> {
         cx.add_model(|cx: &mut ModelContext<Self>| {
@@ -441,6 +445,7 @@ impl Project {
                 user_store,
                 project_store,
                 fs,
+                repository_store,
                 next_entry_id: Default::default(),
                 next_diagnostic_group_id: Default::default(),
                 language_servers: Default::default(),
@@ -462,6 +467,7 @@ impl Project {
         project_store: ModelHandle<ProjectStore>,
         languages: Arc<LanguageRegistry>,
         fs: Arc<dyn Fs>,
+        repository_store: Arc<RepositoryStore>,
         mut cx: AsyncAppContext,
     ) -> Result<ModelHandle<Self>, JoinProjectError> {
         client.authenticate_and_connect(true, &cx).await?;
@@ -499,6 +505,7 @@ impl Project {
                 user_store: user_store.clone(),
                 project_store,
                 fs,
+                repository_store,
                 next_entry_id: Default::default(),
                 next_diagnostic_group_id: Default::default(),
                 client_subscriptions: vec![client.add_model_for_remote_entity(remote_id, cx)],
@@ -594,8 +601,20 @@ impl Project {
         let client = cx.update(|cx| client::Client::new(http_client.clone(), cx));
         let user_store = cx.add_model(|cx| UserStore::new(client.clone(), http_client, cx));
         let project_store = cx.add_model(|_| ProjectStore::new());
-        let project =
-            cx.update(|cx| Project::local(client, user_store, project_store, languages, fs, cx));
+        let repository_store = RepositoryStore::new();
+
+        let project = cx.update(|cx| {
+            Project::local(
+                client,
+                user_store,
+                project_store,
+                languages,
+                fs,
+                repository_store,
+                cx,
+            )
+        });
+
         for path in root_paths {
             let (tree, _) = project
                 .update(cx, |project, cx| {
@@ -4186,9 +4205,12 @@ impl Project {
         cx: &mut ModelContext<Self>,
     ) -> Task<Result<ModelHandle<Worktree>>> {
         let fs = self.fs.clone();
+        let repository_store = self.repository_store.clone();
         let client = self.client.clone();
+
         let next_entry_id = self.next_entry_id.clone();
         let path: Arc<Path> = abs_path.as_ref().into();
+
         let task = self
             .loading_local_worktrees
             .entry(path.clone())
@@ -4200,10 +4222,12 @@ impl Project {
                             path.clone(),
                             visible,
                             fs,
+                            repository_store,
                             next_entry_id,
                             &mut cx,
                         )
                         .await;
+
                         project.update(&mut cx, |project, _| {
                             project.loading_local_worktrees.remove(&path);
                         });
@@ -4230,6 +4254,7 @@ impl Project {
                 .shared()
             })
             .clone();
+
         cx.foreground().spawn(async move {
             match task.await {
                 Ok(worktree) => Ok(worktree),
@@ -4261,9 +4286,6 @@ impl Project {
         if worktree.read(cx).is_local() {
             cx.subscribe(worktree, |this, worktree, event, cx| match event {
                 worktree::Event::UpdatedEntries => this.update_local_worktree_buffers(worktree, cx),
-                worktree::Event::UpdatedGitRepositories(updated_repos) => {
-                    this.update_local_worktree_buffers_git_repos(worktree, updated_repos, cx)
-                }
             })
             .detach();
         }
@@ -4372,9 +4394,8 @@ impl Project {
         }
     }
 
-    fn update_local_worktree_buffers_git_repos(
+    fn update_local_buffers_git_repos(
         &mut self,
-        worktree: ModelHandle<Worktree>,
         repos: &[GitRepositoryEntry],
         cx: &mut ModelContext<Self>,
     ) {
@@ -4384,9 +4405,6 @@ impl Project {
                     Some(file) => file,
                     None => continue,
                 };
-                if file.worktree != worktree {
-                    continue;
-                }
 
                 let path = file.path().clone();
 

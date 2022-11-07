@@ -10,6 +10,8 @@ pub use git2::Repository as LibGitRepository;
 
 #[async_trait::async_trait]
 pub trait GitRepository: Send {
+    fn path(&self) -> &Path;
+
     fn reload_index(&self);
 
     fn load_index_text(&self, relative_file_path: &Path) -> Option<String>;
@@ -17,17 +19,22 @@ pub trait GitRepository: Send {
 
 #[async_trait::async_trait]
 impl GitRepository for LibGitRepository {
+    fn path(&self) -> &Path {
+        LibGitRepository::path(self)
+    }
+
     fn reload_index(&self) {
         if let Ok(mut index) = self.index() {
             _ = index.read(false);
         }
     }
 
-    fn load_index_text(&self, relative_file_path: &Path) -> Option<String> {
-        fn logic(repo: &LibGitRepository, relative_file_path: &Path) -> Result<Option<String>> {
+    //TODO: This may need to be relative to the content root?
+    fn load_index_text(&self, path: &Path) -> Option<String> {
+        fn logic(repo: &LibGitRepository, path: &Path) -> Result<Option<String>> {
             const STAGE_NORMAL: i32 = 0;
             let index = repo.index()?;
-            let oid = match index.get_path(relative_file_path, STAGE_NORMAL) {
+            let oid = match index.get_path(path, STAGE_NORMAL) {
                 Some(entry) => entry.id,
                 None => return Ok(None),
             };
@@ -36,7 +43,7 @@ impl GitRepository for LibGitRepository {
             Ok(Some(String::from_utf8(content)?))
         }
 
-        match logic(&self, relative_file_path) {
+        match logic(&self, path) {
             Ok(value) => return value,
             Err(err) => log::error!("Error loading head text: {:?}", err),
         }
@@ -62,6 +69,10 @@ impl FakeGitRepository {
 
 #[async_trait::async_trait]
 impl GitRepository for FakeGitRepository {
+    fn path(&self) -> &Path {
+        todo!()
+    }
+
     fn reload_index(&self) {}
 
     fn load_index_text(&self, path: &Path) -> Option<String> {
