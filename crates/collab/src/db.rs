@@ -1732,6 +1732,26 @@ pub struct Room {
     pub live_kit_room: String,
 }
 
+#[derive(Clone, Debug, Default, FromRow, PartialEq)]
+pub struct RoomParticipant {
+    pub room_id: RoomId,
+    pub user_id: UserId,
+    pub location_kind: Option<i32>,
+    pub location_project_id: Option<ProjectId>,
+    pub connection_id: i32,
+    pub server_epoch: Uuid,
+}
+
+#[derive(Clone, Debug, Default, FromRow, PartialEq)]
+pub struct Call {
+    pub caller_user_id: UserId,
+    pub callee_user_id: UserId,
+    pub callee_connection_id: Option<i32>,
+    pub server_epoch: Uuid,
+    pub room_id: RoomId,
+    pub initial_project_id: Option<ProjectId>,
+}
+
 id_type!(ProjectId);
 #[derive(Clone, Debug, Default, FromRow, Serialize, PartialEq)]
 pub struct Project {
@@ -1896,6 +1916,9 @@ mod test {
     pub struct FakeDb {
         background: Arc<Background>,
         pub users: Mutex<BTreeMap<UserId, User>>,
+        pub rooms: Mutex<BTreeMap<RoomId, Room>>,
+        pub room_participants: Mutex<BTreeMap<RoomId, Vec<RoomParticipant>>>,
+        pub calls: Mutex<BTreeMap<UserId, Call>>,
         pub projects: Mutex<BTreeMap<ProjectId, Project>>,
         pub worktree_extensions: Mutex<BTreeMap<(ProjectId, u64, String), u32>>,
         pub orgs: Mutex<BTreeMap<OrgId, Org>>,
@@ -1908,6 +1931,7 @@ mod test {
         next_user_id: Mutex<i32>,
         next_org_id: Mutex<i32>,
         next_channel_id: Mutex<i32>,
+        next_room_id: Mutex<i32>,
         next_project_id: Mutex<i32>,
     }
 
@@ -1925,6 +1949,10 @@ mod test {
                 background,
                 users: Default::default(),
                 next_user_id: Mutex::new(0),
+                rooms: Default::default(),
+                next_room_id: Mutex::new(0),
+                room_participants: Default::default(),
+                calls: Default::default(),
                 projects: Default::default(),
                 worktree_extensions: Default::default(),
                 next_project_id: Mutex::new(1),
@@ -2110,11 +2138,34 @@ mod test {
 
         async fn create_room(
             &self,
-            _user_id: UserId,
-            _connection_id: ConnectionId,
-            _server_epoch: Uuid,
+            user_id: UserId,
+            connection_id: ConnectionId,
+            server_epoch: Uuid,
         ) -> Result<Room> {
-            unimplemented!()
+            self.background.simulate_random_delay().await;
+            if !self.users.lock().contains_key(&user_id) {
+                Err(anyhow!("no such user"))?;
+            }
+
+            if self.calls.lock().contains_key(&user_id) {
+                Err(anyhow!("can't create a room with an active call"))?;
+            }
+
+            let room_id = RoomId(post_inc(&mut *self.next_room_id.lock()));
+            let room = Room {
+                id: room_id,
+                live_kit_room: nanoid::nanoid!(30)
+            };
+            self.rooms.lock().insert(room_id, room.clone());
+            self.room_participants.lock().insert(room_id, vec![RoomParticipant {
+                room_id,
+                user_id,
+                location_kind: None,
+                location_project_id: None,
+                connection_id: connection_id.0 as i32,
+                server_epoch,
+            }]);
+            Ok(room)
         }
 
         // projects
