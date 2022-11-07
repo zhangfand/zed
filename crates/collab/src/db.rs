@@ -4,13 +4,13 @@ use async_trait::async_trait;
 use axum::http::StatusCode;
 use collections::HashMap;
 use futures::StreamExt;
-use rpc::ConnectionId;
+use rpc::{proto, ConnectionId};
 use serde::{Deserialize, Serialize};
 pub use sqlx::postgres::PgPoolOptions as DbOptions;
 use sqlx::{
     migrate::{Migrate as _, Migration, MigrationSource},
     types::Uuid,
-    FromRow, QueryBuilder,
+    FromRow, Postgres, QueryBuilder, Transaction,
 };
 use std::{cmp, ops::Range, path::Path, time::Duration};
 use time::{OffsetDateTime, PrimitiveDateTime};
@@ -62,8 +62,15 @@ pub trait Db: Send + Sync {
         &self,
         user_id: UserId,
         connection_id: ConnectionId,
-        server_epoch: Uuid,
-    ) -> Result<Room>;
+    ) -> Result<proto::Room>;
+
+    async fn call(
+        &self,
+        room_id: RoomId,
+        calling_user_id: UserId,
+        called_user_id: UserId,
+        initial_project_id: Option<ProjectId>,
+    ) -> Result<proto::Room>;
 
     /// Registers a new project for the given user.
     async fn register_project(&self, host_user_id: UserId) -> Result<ProjectId>;
@@ -257,6 +264,76 @@ impl PostgresDb {
         }
         result.push('%');
         result
+    }
+
+    pub async fn commit_room_transaction(
+        &self,
+        room_id: RoomId,
+        mut tx: Transaction<'static, Postgres>,
+    ) -> Result<proto::Room> {
+        sqlx::query(
+            "
+            UPDATE rooms
+            SET version = version + 1
+            WHERE id = $1
+            ",
+        )
+        .bind(room_id)
+        .execute(&mut tx)
+        .await?;
+
+        let room: Room = sqlx::query_as(
+            "
+            SELECT *
+            FROM rooms
+            WHERE id = $1
+            ",
+        )
+        .bind(room_id)
+        .fetch_one(&mut tx)
+        .await?;
+
+        let mut db_participants =
+            sqlx::query_as::<_, (UserId, Option<i32>, Option<i32>, Option<i32>)>(
+                "
+                SELECT user_id, connection_id, location_kind, location_project_id,
+                FROM room_participants
+                WHERE room_id = $1
+                ",
+            )
+            .bind(room_id)
+            .fetch(&mut tx);
+
+        let mut participants = Vec::new();
+        let mut pending_participant_user_ids = Vec::new();
+        while let Some(participant) = db_participants.next().await {
+            let (user_id, connection_id, _location_kind, _location_project_id) = participant?;
+            if let Some(connection_id) = connection_id {
+                participants.push(proto::Participant {
+                    user_id: user_id.to_proto(),
+                    peer_id: connection_id as u32,
+                    projects: Default::default(),
+                    location: Some(proto::ParticipantLocation {
+                        variant: Some(proto::participant_location::Variant::External(
+                            Default::default(),
+                        )),
+                    }),
+                });
+            } else {
+                pending_participant_user_ids.push(user_id.to_proto());
+            }
+        }
+        drop(db_participants);
+
+        tx.commit().await?;
+
+        Ok(proto::Room {
+            id: room.id.to_proto(),
+            version: room.version as u64,
+            live_kit_room: room.live_kit_room,
+            participants,
+            pending_participant_user_ids,
+        })
     }
 }
 
@@ -807,14 +884,13 @@ impl Db for PostgresDb {
         &self,
         user_id: UserId,
         connection_id: ConnectionId,
-        server_epoch: Uuid,
-    ) -> Result<Room> {
+    ) -> Result<proto::Room> {
         let mut tx = self.pool.begin().await?;
         let live_kit_room = nanoid::nanoid!(30);
         let room_id = sqlx::query_scalar(
             "
-            INSERT INTO rooms (live_kit_room)
-            VALUES ($1)
+            INSERT INTO rooms (live_kit_room, version)
+            VALUES ($1, 0)
             ",
         )
         .bind(&live_kit_room)
@@ -824,35 +900,65 @@ impl Db for PostgresDb {
 
         sqlx::query(
             "
-            INSERT INTO room_participants (room_id, user_id, connection_id, server_epoch)
-            VALUES ($1, $2, $3, $4, $5, $6)
+            INSERT INTO room_participants (room_id, user_id, connection_id)
+            VALUES ($1, $2, $3)
             ",
         )
         .bind(room_id)
         .bind(user_id)
         .bind(connection_id.0 as i32)
-        .bind(server_epoch)
         .execute(&mut tx)
         .await?;
 
         sqlx::query(
             "
-            INSERT INTO calls (caller_user_id, callee_user_id, callee_connection_id, server_epoch, room_id)
-            VALUES ($1, $1, $2, $3, $4)
+            INSERT INTO calls (room_id, calling_user_id, called_user_id, answering_connection_id)
+            VALUES ($1, $2, $3, $4)
             ",
         )
+        .bind(room_id)
+        .bind(user_id)
         .bind(user_id)
         .bind(connection_id.0 as i32)
-        .bind(server_epoch)
-        .bind(room_id)
         .execute(&mut tx)
         .await?;
 
-        tx.commit().await?;
-        Ok(Room {
-            id: room_id,
-            live_kit_room,
-        })
+        self.commit_room_transaction(room_id, tx).await
+    }
+
+    async fn call(
+        &self,
+        room_id: RoomId,
+        calling_user_id: UserId,
+        called_user_id: UserId,
+        initial_project_id: Option<ProjectId>,
+    ) -> Result<proto::Room> {
+        let mut tx = self.pool.begin().await?;
+        sqlx::query(
+            "
+            INSERT INTO calls (room_id, calling_user_id, called_user_id, initial_project_id)
+            VALUES ($1, $2, $3, $4)
+            ",
+        )
+        .bind(room_id)
+        .bind(calling_user_id)
+        .bind(called_user_id)
+        .bind(initial_project_id)
+        .execute(&mut tx)
+        .await?;
+
+        sqlx::query(
+            "
+            INSERT INTO room_participants (room_id, user_id)
+            VALUES ($1, $2)
+            ",
+        )
+        .bind(room_id)
+        .bind(called_user_id)
+        .execute(&mut tx)
+        .await?;
+
+        self.commit_room_transaction(room_id, tx).await
     }
 
     // projects
@@ -1729,6 +1835,7 @@ id_type!(RoomId);
 #[derive(Clone, Debug, Default, FromRow, Serialize, PartialEq)]
 pub struct Room {
     pub id: RoomId,
+    pub version: i32,
     pub live_kit_room: String,
 }
 
@@ -1738,17 +1845,15 @@ pub struct RoomParticipant {
     pub user_id: UserId,
     pub location_kind: Option<i32>,
     pub location_project_id: Option<ProjectId>,
-    pub connection_id: i32,
-    pub server_epoch: Uuid,
+    pub connection_id: Option<i32>,
 }
 
 #[derive(Clone, Debug, Default, FromRow, PartialEq)]
 pub struct Call {
-    pub caller_user_id: UserId,
-    pub callee_user_id: UserId,
-    pub callee_connection_id: Option<i32>,
-    pub server_epoch: Uuid,
     pub room_id: RoomId,
+    pub calling_user_id: UserId,
+    pub called_user_id: UserId,
+    pub answering_connection_id: Option<i32>,
     pub initial_project_id: Option<ProjectId>,
 }
 
@@ -1967,6 +2072,41 @@ mod test {
                 contacts: Default::default(),
             }
         }
+
+        fn room_snapshot(&self, room_id: RoomId) -> Result<proto::Room> {
+            let mut rooms = self.rooms.lock();
+            let room = rooms
+                .get_mut(&room_id)
+                .ok_or_else(|| anyhow!("no such room"))?;
+            room.version += 1;
+
+            let mut participants = Vec::new();
+            let mut pending_participant_user_ids = Vec::new();
+            for participant in self.room_participants.lock().get(&room_id).unwrap() {
+                if let Some(connection_id) = participant.connection_id {
+                    participants.push(proto::Participant {
+                        user_id: participant.user_id.to_proto(),
+                        peer_id: connection_id as u32,
+                        projects: Default::default(),
+                        location: Some(proto::ParticipantLocation {
+                            variant: Some(proto::participant_location::Variant::External(
+                                Default::default(),
+                            )),
+                        }),
+                    });
+                } else {
+                    pending_participant_user_ids.push(participant.user_id.to_proto());
+                }
+            }
+
+            Ok(proto::Room {
+                id: room_id.to_proto(),
+                version: room.version as u64,
+                live_kit_room: room.live_kit_room.clone(),
+                participants,
+                pending_participant_user_ids,
+            })
+        }
     }
 
     #[async_trait]
@@ -2140,9 +2280,9 @@ mod test {
             &self,
             user_id: UserId,
             connection_id: ConnectionId,
-            server_epoch: Uuid,
-        ) -> Result<Room> {
+        ) -> Result<proto::Room> {
             self.background.simulate_random_delay().await;
+
             if !self.users.lock().contains_key(&user_id) {
                 Err(anyhow!("no such user"))?;
             }
@@ -2154,18 +2294,79 @@ mod test {
             let room_id = RoomId(post_inc(&mut *self.next_room_id.lock()));
             let room = Room {
                 id: room_id,
-                live_kit_room: nanoid::nanoid!(30)
+                version: 0,
+                live_kit_room: nanoid::nanoid!(30),
             };
             self.rooms.lock().insert(room_id, room.clone());
-            self.room_participants.lock().insert(room_id, vec![RoomParticipant {
+            self.room_participants.lock().insert(
                 room_id,
+                vec![RoomParticipant {
+                    room_id,
+                    user_id,
+                    location_kind: None,
+                    location_project_id: None,
+                    connection_id: Some(connection_id.0 as i32),
+                }],
+            );
+            self.calls.lock().insert(
                 user_id,
+                Call {
+                    room_id,
+                    calling_user_id: user_id,
+                    called_user_id: user_id,
+                    answering_connection_id: Some(connection_id.0 as i32),
+                    initial_project_id: None,
+                },
+            );
+
+            self.room_snapshot(room_id)
+        }
+
+        async fn call(
+            &self,
+            room_id: RoomId,
+            calling_user_id: UserId,
+            called_user_id: UserId,
+            initial_project_id: Option<ProjectId>,
+        ) -> Result<proto::Room> {
+            self.background.simulate_random_delay().await;
+
+            let mut calls = self.calls.lock();
+            let mut room_participants = self.room_participants.lock();
+
+            if calls.contains_key(&called_user_id) {
+                Err(anyhow!("called user is already on another call"))?
+            }
+
+            let room_participants = room_participants
+                .get_mut(&room_id)
+                .ok_or_else(|| anyhow!("room does not exist"))?;
+            if room_participants
+                .iter()
+                .any(|p| p.user_id == called_user_id)
+            {
+                Err(anyhow!("user is already in the room"))?;
+            }
+
+            calls.insert(
+                called_user_id,
+                Call {
+                    room_id,
+                    calling_user_id,
+                    called_user_id,
+                    answering_connection_id: None,
+                    initial_project_id,
+                },
+            );
+            room_participants.push(RoomParticipant {
+                room_id,
+                user_id: called_user_id,
                 location_kind: None,
                 location_project_id: None,
-                connection_id: connection_id.0 as i32,
-                server_epoch,
-            }]);
-            Ok(room)
+                connection_id: None,
+            });
+
+            self.room_snapshot(room_id)
         }
 
         // projects
