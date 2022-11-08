@@ -229,6 +229,7 @@ request_messages!(
     (Test, Test),
     (UpdateBuffer, Ack),
     (UpdateParticipantLocation, Ack),
+    (UpdateProject, Ack),
     (UpdateWorktree, Ack),
 );
 

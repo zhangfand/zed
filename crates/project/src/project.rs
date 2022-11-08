@@ -147,6 +147,8 @@ enum WorktreeHandle {
 enum ProjectClientState {
     Local {
         remote_id: u64,
+        metadata_changed: watch::Sender<()>,
+        _maintain_metadata: Task<Option<()>>,
         _detect_unshare: Task<Option<()>>,
     },
     Remote {
@@ -729,25 +731,12 @@ impl Project {
     }
 
     fn metadata_changed(&mut self, cx: &mut ModelContext<Self>) {
-        if let Some(ProjectClientState::Local { remote_id, .. }) = &self.client_state {
-            let project_id = *remote_id;
-            let worktrees = self
-                .worktrees
-                .iter()
-                .filter_map(|worktree| {
-                    worktree
-                        .upgrade(cx)
-                        .map(|worktree| worktree.read(cx).as_local().unwrap().metadata_proto())
-                })
-                .collect();
-            self.client
-                .send(proto::UpdateProject {
-                    project_id,
-                    worktrees,
-                })
-                .log_err();
+        if let Some(ProjectClientState::Local {
+            metadata_changed, ..
+        }) = &mut self.client_state
+        {
+            *metadata_changed.borrow_mut() = ();
         }
-
         cx.notify();
     }
 
@@ -1043,8 +1032,33 @@ impl Project {
         cx.notify();
 
         let mut status = self.client.status();
+        let (metadata_changed_tx, mut metadata_changed_rx) = watch::channel();
         self.client_state = Some(ProjectClientState::Local {
             remote_id: project_id,
+            metadata_changed: metadata_changed_tx,
+            _maintain_metadata: cx.spawn_weak(move |this, cx| async move {
+                while metadata_changed_rx.next().await.is_some() {
+                    let this = this.upgrade(&cx)?;
+                    this.read_with(&cx, |this, cx| {
+                        let worktrees = this
+                            .worktrees
+                            .iter()
+                            .filter_map(|worktree| {
+                                worktree.upgrade(cx).map(|worktree| {
+                                    worktree.read(cx).as_local().unwrap().metadata_proto()
+                                })
+                            })
+                            .collect();
+                        this.client.request(proto::UpdateProject {
+                            project_id,
+                            worktrees,
+                        })
+                    })
+                    .await
+                    .log_err();
+                }
+                None
+            }),
             _detect_unshare: cx.spawn_weak(move |this, mut cx| {
                 async move {
                     let is_connected = status.next().await.map_or(false, |s| s.is_connected());
