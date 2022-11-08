@@ -165,7 +165,6 @@ impl Server {
             .add_request_handler(Server::join_project)
             .add_message_handler(Server::leave_project)
             .add_message_handler(Server::update_project)
-            .add_message_handler(Server::register_project_activity)
             .add_request_handler(Server::update_worktree)
             .add_message_handler(Server::start_language_server)
             .add_message_handler(Server::update_language_server)
@@ -318,58 +317,6 @@ impl Server {
                 }
             }
         })
-    }
-
-    /// Start a long lived task that records which users are active in which projects.
-    pub fn start_recording_project_activity<E: 'static + Executor>(
-        self: &Arc<Self>,
-        interval: Duration,
-        executor: E,
-    ) {
-        executor.spawn_detached({
-            let this = Arc::downgrade(self);
-            let executor = executor.clone();
-            async move {
-                let mut period_start = OffsetDateTime::now_utc();
-                let mut active_projects = Vec::<(UserId, ProjectId)>::new();
-                loop {
-                    let sleep = executor.sleep(interval);
-                    sleep.await;
-                    let this = if let Some(this) = this.upgrade() {
-                        this
-                    } else {
-                        break;
-                    };
-
-                    active_projects.clear();
-                    active_projects.extend(this.store().await.projects().flat_map(
-                        |(project_id, project)| {
-                            project.guests.values().chain([&project.host]).filter_map(
-                                |collaborator| {
-                                    if !collaborator.admin
-                                        && collaborator
-                                            .last_activity
-                                            .map_or(false, |activity| activity > period_start)
-                                    {
-                                        Some((collaborator.user_id, *project_id))
-                                    } else {
-                                        None
-                                    }
-                                },
-                            )
-                        },
-                    ));
-
-                    let period_end = OffsetDateTime::now_utc();
-                    this.app_state
-                        .db
-                        .record_user_activity(period_start..period_end, &active_projects)
-                        .await
-                        .trace_err();
-                    period_start = period_end;
-                }
-            }
-        });
     }
 
     pub fn handle_connection<E: Executor>(
@@ -1203,17 +1150,6 @@ impl Server {
         Ok(())
     }
 
-    async fn register_project_activity(
-        self: Arc<Server>,
-        request: Message<proto::RegisterProjectActivity>,
-    ) -> Result<()> {
-        self.store().await.register_project_activity(
-            ProjectId::from_proto(request.payload.project_id),
-            request.sender_connection_id,
-        )?;
-        Ok(())
-    }
-
     async fn update_worktree(
         self: Arc<Server>,
         request: Message<proto::UpdateWorktree>,
@@ -1406,11 +1342,10 @@ impl Server {
         response: Response<proto::UpdateBuffer>,
     ) -> Result<()> {
         let project_id = ProjectId::from_proto(request.payload.project_id);
-        let receiver_ids = {
-            let mut store = self.store().await;
-            store.register_project_activity(project_id, request.sender_connection_id)?;
-            store.project_connection_ids(project_id, request.sender_connection_id)?
-        };
+        let receiver_ids = self
+            .store()
+            .await
+            .project_connection_ids(project_id, request.sender_connection_id)?;
 
         broadcast(
             request.sender_connection_id,
@@ -1498,16 +1433,13 @@ impl Server {
         let project_id = ProjectId::from_proto(request.payload.project_id);
         let leader_id = ConnectionId(request.payload.leader_id);
         let follower_id = request.sender_connection_id;
+        if !self
+            .store()
+            .await
+            .project_connection_ids(project_id, follower_id)?
+            .contains(&leader_id)
         {
-            let mut store = self.store().await;
-            if !store
-                .project_connection_ids(project_id, follower_id)?
-                .contains(&leader_id)
-            {
-                Err(anyhow!("no such peer"))?;
-            }
-
-            store.register_project_activity(project_id, follower_id)?;
+            Err(anyhow!("no such peer"))?;
         }
 
         let mut response_payload = self
@@ -1524,14 +1456,14 @@ impl Server {
     async fn unfollow(self: Arc<Self>, request: Message<proto::Unfollow>) -> Result<()> {
         let project_id = ProjectId::from_proto(request.payload.project_id);
         let leader_id = ConnectionId(request.payload.leader_id);
-        let mut store = self.store().await;
-        if !store
+        if !self
+            .store()
+            .await
             .project_connection_ids(project_id, request.sender_connection_id)?
             .contains(&leader_id)
         {
             Err(anyhow!("no such peer"))?;
         }
-        store.register_project_activity(project_id, request.sender_connection_id)?;
         self.peer
             .forward_send(request.sender_connection_id, leader_id, request.payload)?;
         Ok(())
@@ -1542,10 +1474,10 @@ impl Server {
         request: Message<proto::UpdateFollowers>,
     ) -> Result<()> {
         let project_id = ProjectId::from_proto(request.payload.project_id);
-        let mut store = self.store().await;
-        store.register_project_activity(project_id, request.sender_connection_id)?;
-        let connection_ids =
-            store.project_connection_ids(project_id, request.sender_connection_id)?;
+        let connection_ids = self
+            .store()
+            .await
+            .project_connection_ids(project_id, request.sender_connection_id)?;
         let leader_id = request
             .payload
             .variant

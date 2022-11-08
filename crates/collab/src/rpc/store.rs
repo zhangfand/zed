@@ -1026,30 +1026,6 @@ impl Store {
             .ok_or_else(|| anyhow!("no such project"))
     }
 
-    pub fn register_project_activity(
-        &mut self,
-        project_id: ProjectId,
-        connection_id: ConnectionId,
-    ) -> Result<()> {
-        let project = self
-            .projects
-            .get_mut(&project_id)
-            .ok_or_else(|| anyhow!("no such project"))?;
-        let collaborator = if connection_id == project.host_connection_id {
-            &mut project.host
-        } else if let Some(guest) = project.guests.get_mut(&connection_id) {
-            guest
-        } else {
-            return Err(anyhow!("no such project"))?;
-        };
-        collaborator.last_activity = Some(OffsetDateTime::now_utc());
-        Ok(())
-    }
-
-    pub fn projects(&self) -> impl Iterator<Item = (&ProjectId, &Project)> {
-        self.projects.iter()
-    }
-
     pub fn read_project(
         &self,
         project_id: ProjectId,
