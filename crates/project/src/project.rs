@@ -746,30 +746,6 @@ impl Project {
                     worktrees,
                 })
                 .log_err();
-
-            let worktrees = self.visible_worktrees(cx).collect::<Vec<_>>();
-            let scans_complete = futures::future::join_all(
-                worktrees
-                    .iter()
-                    .filter_map(|worktree| Some(worktree.read(cx).as_local()?.scan_complete())),
-            );
-
-            let worktrees = worktrees.into_iter().map(|handle| handle.downgrade());
-
-            cx.spawn_weak(move |_, cx| async move {
-                scans_complete.await;
-                cx.read(|cx| {
-                    for worktree in worktrees {
-                        if let Some(worktree) = worktree
-                            .upgrade(cx)
-                            .and_then(|worktree| worktree.read(cx).as_local())
-                        {
-                            worktree.send_extension_counts(project_id);
-                        }
-                    }
-                })
-            })
-            .detach();
         }
 
         cx.notify();

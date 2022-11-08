@@ -50,7 +50,6 @@ message Envelope {
         UpdateProject update_project = 41;
         RegisterProjectActivity register_project_activity = 42;
         UpdateWorktree update_worktree = 43;
-        UpdateWorktreeExtensions update_worktree_extensions = 44;
 
         CreateProjectEntry create_project_entry = 45;
         RenameProjectEntry rename_project_entry = 46;
@@ -282,13 +281,6 @@ message UpdateWorktree {
     uint64 scan_id = 6;
     bool is_last_update = 7;
     bytes abs_path = 8;
-}
-
-message UpdateWorktreeExtensions {
-    uint64 project_id = 1;
-    uint64 worktree_id = 2;
-    repeated string extensions = 3;
-    repeated uint32 counts = 4;
 }
 
 message CreateProjectEntry {

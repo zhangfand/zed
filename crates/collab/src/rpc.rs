@@ -167,7 +167,6 @@ impl Server {
             .add_message_handler(Server::update_project)
             .add_message_handler(Server::register_project_activity)
             .add_request_handler(Server::update_worktree)
-            .add_message_handler(Server::update_worktree_extensions)
             .add_message_handler(Server::start_language_server)
             .add_message_handler(Server::update_language_server)
             .add_message_handler(Server::update_diagnostic_summary)
@@ -1245,25 +1244,6 @@ impl Server {
             },
         );
         response.send(proto::Ack {})?;
-        Ok(())
-    }
-
-    async fn update_worktree_extensions(
-        self: Arc<Server>,
-        request: Message<proto::UpdateWorktreeExtensions>,
-    ) -> Result<()> {
-        let project_id = ProjectId::from_proto(request.payload.project_id);
-        let worktree_id = request.payload.worktree_id;
-        let extensions = request
-            .payload
-            .extensions
-            .into_iter()
-            .zip(request.payload.counts)
-            .collect();
-        self.app_state
-            .db
-            .update_worktree_extensions(project_id, worktree_id, extensions)
-            .await?;
         Ok(())
     }
 
