@@ -57,8 +57,6 @@ pub struct Project {
 pub struct Collaborator {
     pub replica_id: ReplicaId,
     pub user_id: UserId,
-    #[serde(skip)]
-    pub last_activity: Option<OffsetDateTime>,
     pub admin: bool,
 }
 
@@ -110,8 +108,6 @@ pub struct LeftRoom<'a> {
 #[derive(Copy, Clone)]
 pub struct Metrics {
     pub connections: usize,
-    pub registered_projects: usize,
-    pub active_projects: usize,
     pub shared_projects: usize,
 }
 
@@ -121,27 +117,17 @@ impl Store {
         let active_window_start = OffsetDateTime::now_utc() - ACTIVE_PROJECT_TIMEOUT;
 
         let connections = self.connections.values().filter(|c| !c.admin).count();
-        let mut registered_projects = 0;
-        let mut active_projects = 0;
         let mut shared_projects = 0;
         for project in self.projects.values() {
             if let Some(connection) = self.connections.get(&project.host_connection_id) {
                 if !connection.admin {
-                    registered_projects += 1;
-                    if project.is_active_since(active_window_start) {
-                        active_projects += 1;
-                        if !project.guests.is_empty() {
-                            shared_projects += 1;
-                        }
-                    }
+                    shared_projects += 1;
                 }
             }
         }
 
         Metrics {
             connections,
-            registered_projects,
-            active_projects,
             shared_projects,
         }
     }
@@ -716,7 +702,6 @@ impl Store {
                 host: Collaborator {
                     user_id: connection.user_id,
                     replica_id: 0,
-                    last_activity: None,
                     admin: connection.admin,
                 },
                 guests: Default::default(),
@@ -915,12 +900,10 @@ impl Store {
             Collaborator {
                 replica_id,
                 user_id: connection.user_id,
-                last_activity: Some(OffsetDateTime::now_utc()),
                 admin: connection.admin,
             },
         );
 
-        project.host.last_activity = Some(OffsetDateTime::now_utc());
         Ok((project, replica_id))
     }
 
@@ -1196,17 +1179,6 @@ impl Store {
 }
 
 impl Project {
-    fn is_active_since(&self, start_time: OffsetDateTime) -> bool {
-        self.guests
-            .values()
-            .chain([&self.host])
-            .any(|collaborator| {
-                collaborator
-                    .last_activity
-                    .map_or(false, |active_time| active_time > start_time)
-            })
-    }
-
     pub fn guest_connection_ids(&self) -> Vec<ConnectionId> {
         self.guests.keys().copied().collect()
     }

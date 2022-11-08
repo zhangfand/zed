@@ -62,10 +62,6 @@ use tracing::{info_span, instrument, Instrument};
 lazy_static! {
     static ref METRIC_CONNECTIONS: IntGauge =
         register_int_gauge!("connections", "number of connections").unwrap();
-    static ref METRIC_REGISTERED_PROJECTS: IntGauge =
-        register_int_gauge!("registered_projects", "number of registered projects").unwrap();
-    static ref METRIC_ACTIVE_PROJECTS: IntGauge =
-        register_int_gauge!("active_projects", "number of active projects").unwrap();
     static ref METRIC_SHARED_PROJECTS: IntGauge = register_int_gauge!(
         "shared_projects",
         "number of open projects with one or more guests"
@@ -2047,8 +2043,6 @@ pub async fn handle_metrics(Extension(server): Extension<Arc<Server>>) -> axum::
     // We call `store_mut` here for its side effects of updating metrics.
     let metrics = server.store().await.metrics();
     METRIC_CONNECTIONS.set(metrics.connections as _);
-    METRIC_REGISTERED_PROJECTS.set(metrics.registered_projects as _);
-    METRIC_ACTIVE_PROJECTS.set(metrics.active_projects as _);
     METRIC_SHARED_PROJECTS.set(metrics.shared_projects as _);
 
     let encoder = prometheus::TextEncoder::new();
