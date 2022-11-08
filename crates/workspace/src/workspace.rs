@@ -33,7 +33,7 @@ use log::{error, warn};
 pub use pane::*;
 pub use pane_group::*;
 use postage::prelude::Stream;
-use project::{Project, ProjectEntryId, ProjectPath, ProjectStore, Worktree, WorktreeId};
+use project::{Project, ProjectEntryId, ProjectPath, Worktree, WorktreeId};
 use searchable::SearchableItemHandle;
 use serde::Deserialize;
 use settings::{Autosave, DockAnchor, Settings};
@@ -271,7 +271,6 @@ pub struct AppState {
     pub themes: Arc<ThemeRegistry>,
     pub client: Arc<client::Client>,
     pub user_store: ModelHandle<client::UserStore>,
-    pub project_store: ModelHandle<ProjectStore>,
     pub fs: Arc<dyn fs::Fs>,
     pub build_window_options: fn() -> WindowOptions<'static>,
     pub initialize_workspace: fn(&mut Workspace, &Arc<AppState>, &mut ViewContext<Workspace>),
@@ -973,7 +972,6 @@ impl AppState {
         let languages = Arc::new(LanguageRegistry::test());
         let http_client = client::test::FakeHttpClient::with_404_response();
         let client = Client::new(http_client.clone(), cx);
-        let project_store = cx.add_model(|_| ProjectStore::new());
         let user_store = cx.add_model(|cx| UserStore::new(client.clone(), http_client, cx));
         let themes = ThemeRegistry::new((), cx.font_cache().clone());
         Arc::new(Self {
@@ -982,7 +980,6 @@ impl AppState {
             fs,
             languages,
             user_store,
-            project_store,
             initialize_workspace: |_, _, _| {},
             build_window_options: Default::default,
             default_item_factory: |_, _| unimplemented!(),
@@ -1235,7 +1232,6 @@ impl Workspace {
                     Project::local(
                         app_state.client.clone(),
                         app_state.user_store.clone(),
-                        app_state.project_store.clone(),
                         app_state.languages.clone(),
                         app_state.fs.clone(),
                         cx,
@@ -2898,7 +2894,6 @@ pub fn open_paths(
                 let project = Project::local(
                     app_state.client.clone(),
                     app_state.user_store.clone(),
-                    app_state.project_store.clone(),
                     app_state.languages.clone(),
                     app_state.fs.clone(),
                     cx,
@@ -2930,7 +2925,6 @@ fn open_new(app_state: &Arc<AppState>, cx: &mut MutableAppContext) {
             Project::local(
                 app_state.client.clone(),
                 app_state.user_store.clone(),
-                app_state.project_store.clone(),
                 app_state.languages.clone(),
                 app_state.fs.clone(),
                 cx,
