@@ -106,14 +106,15 @@ impl RepositoryStore {
 
     /// Gives the git repository who's .git folder contains the given canonical path
     pub(crate) fn repo_for_canonical_path_in_dot_git(
-        &mut self,
+        &self,
         canonical_path: &Path,
-    ) -> Option<&mut RepositoryEntry> {
+    ) -> Option<RepositoryEntry> {
         // Git repositories cannot be nested, so we don't need to reverse the order
         self.entries
             .read()
-            .iter_mut()
+            .iter()
             .find(|repo| repo.canonical_path_in_dot_git(canonical_path))
+            .cloned()
     }
 
     /// Gives the git repository who's .git folder contains the given canonical path

@@ -34,7 +34,8 @@ use live_kit_client::MacOSDisplay;
 use lsp::{self, FakeLanguageServer};
 use parking_lot::Mutex;
 use project::{
-    search::SearchQuery, DiagnosticSummary, Project, ProjectPath, ProjectStore, WorktreeId,
+    repository_store::RepositoryStore, search::SearchQuery, DiagnosticSummary, Project,
+    ProjectPath, ProjectStore, WorktreeId,
 };
 use rand::prelude::*;
 use serde_json::json;
@@ -2286,6 +2287,7 @@ async fn test_leaving_project(
             client_b.project_store.clone(),
             client_b.language_registry.clone(),
             FakeFs::new(cx.background()),
+            client_b.repository_store.clone(),
             cx,
         )
     })
@@ -6207,6 +6209,7 @@ impl TestServer {
             });
 
         let fs = FakeFs::new(cx.background());
+        let repository_store = RepositoryStore::new();
         let user_store = cx.add_model(|cx| UserStore::new(client.clone(), http, cx));
         let project_store = cx.add_model(|_| ProjectStore::new());
         let app_state = Arc::new(workspace::AppState {
@@ -6216,6 +6219,7 @@ impl TestServer {
             languages: Arc::new(LanguageRegistry::new(Task::ready(()))),
             themes: ThemeRegistry::new((), cx.font_cache()),
             fs: fs.clone(),
+            repository_store: repository_store.clone(),
             build_window_options: Default::default,
             initialize_workspace: |_, _, _| unimplemented!(),
             default_item_factory: |_, _| unimplemented!(),
@@ -6242,6 +6246,7 @@ impl TestServer {
             user_store,
             project_store,
             fs,
+            repository_store,
             language_registry: Arc::new(LanguageRegistry::test()),
             buffers: Default::default(),
         };
@@ -6364,6 +6369,7 @@ struct TestClient {
     pub project_store: ModelHandle<ProjectStore>,
     language_registry: Arc<LanguageRegistry>,
     fs: Arc<FakeFs>,
+    repository_store: Arc<RepositoryStore>,
     buffers: HashMap<ModelHandle<Project>, HashSet<ModelHandle<language::Buffer>>>,
 }
 
@@ -6434,6 +6440,7 @@ impl TestClient {
                 self.project_store.clone(),
                 self.language_registry.clone(),
                 self.fs.clone(),
+                self.repository_store.clone(),
                 cx,
             )
         });
@@ -6462,6 +6469,7 @@ impl TestClient {
                 self.project_store.clone(),
                 self.language_registry.clone(),
                 FakeFs::new(cx.background()),
+                self.repository_store.clone(),
                 cx,
             )
         });
@@ -6592,6 +6600,7 @@ impl TestClient {
                             client.project_store.clone(),
                             client.language_registry.clone(),
                             FakeFs::new(cx.background()),
+                            client.repository_store.clone(),
                             cx.to_async(),
                         )
                         .await?;

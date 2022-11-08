@@ -33,7 +33,10 @@ use log::{error, warn};
 pub use pane::*;
 pub use pane_group::*;
 use postage::prelude::Stream;
-use project::{Project, ProjectEntryId, ProjectPath, ProjectStore, Worktree, WorktreeId};
+use project::{
+    repository_store::RepositoryStore, Project, ProjectEntryId, ProjectPath, ProjectStore,
+    Worktree, WorktreeId,
+};
 use searchable::SearchableItemHandle;
 use serde::Deserialize;
 use settings::{Autosave, DockAnchor, Settings};
@@ -273,6 +276,7 @@ pub struct AppState {
     pub user_store: ModelHandle<client::UserStore>,
     pub project_store: ModelHandle<ProjectStore>,
     pub fs: Arc<dyn fs::Fs>,
+    pub repository_store: Arc<RepositoryStore>,
     pub build_window_options: fn() -> WindowOptions<'static>,
     pub initialize_workspace: fn(&mut Workspace, &Arc<AppState>, &mut ViewContext<Workspace>),
     pub default_item_factory: DefaultItemFactory,
@@ -970,6 +974,7 @@ impl AppState {
         cx.set_global(settings);
 
         let fs = fs::FakeFs::new(cx.background().clone());
+        let repository_store = RepositoryStore::new();
         let languages = Arc::new(LanguageRegistry::test());
         let http_client = client::test::FakeHttpClient::with_404_response();
         let client = Client::new(http_client.clone(), cx);
@@ -980,6 +985,7 @@ impl AppState {
             client,
             themes,
             fs,
+            repository_store,
             languages,
             user_store,
             project_store,
@@ -1238,6 +1244,7 @@ impl Workspace {
                         app_state.project_store.clone(),
                         app_state.languages.clone(),
                         app_state.fs.clone(),
+                        app_state.repository_store.clone(),
                         cx,
                     ),
                     app_state.default_item_factory,
@@ -2901,6 +2908,7 @@ pub fn open_paths(
                     app_state.project_store.clone(),
                     app_state.languages.clone(),
                     app_state.fs.clone(),
+                    app_state.repository_store.clone(),
                     cx,
                 );
                 new_project = Some(project.clone());
@@ -2933,6 +2941,7 @@ fn open_new(app_state: &Arc<AppState>, cx: &mut MutableAppContext) {
                 app_state.project_store.clone(),
                 app_state.languages.clone(),
                 app_state.fs.clone(),
+                app_state.repository_store.clone(),
                 cx,
             ),
             app_state.default_item_factory,

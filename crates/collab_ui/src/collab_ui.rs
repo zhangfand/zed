@@ -46,6 +46,7 @@ pub fn init(app_state: Arc<AppState>, cx: &mut MutableAppContext) {
                     app_state.project_store.clone(),
                     app_state.languages.clone(),
                     app_state.fs.clone(),
+                    app_state.repository_store.clone(),
                     cx.clone(),
                 )
                 .await?;

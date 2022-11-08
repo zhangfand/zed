@@ -23,7 +23,7 @@ use isahc::{config::Configurable, Request};
 use language::LanguageRegistry;
 use log::LevelFilter;
 use parking_lot::Mutex;
-use project::{Fs, HomeDir, ProjectStore};
+use project::{repository_store::RepositoryStore, Fs, HomeDir, ProjectStore};
 use serde_json::json;
 use settings::{
     self, settings_file::SettingsFile, KeymapFileContent, Settings, SettingsFileContent,
@@ -63,6 +63,7 @@ fn main() {
     load_embedded_fonts(&app);
 
     let fs = Arc::new(RealFs);
+    let repository_store = RepositoryStore::new();
 
     let themes = ThemeRegistry::new(Assets, app.font_cache());
     let default_settings = Settings::defaults(Assets, &app.font_cache(), &themes);
@@ -159,6 +160,7 @@ fn main() {
             user_store,
             project_store,
             fs,
+            repository_store,
             build_window_options,
             initialize_workspace,
             default_item_factory,
