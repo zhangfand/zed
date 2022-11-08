@@ -1,9 +1,8 @@
 use crate::{Error, Result};
 use anyhow::{anyhow, Context};
-use async_trait::async_trait;
 use axum::http::StatusCode;
 use collections::HashMap;
-use futures::StreamExt;
+use futures::{future::BoxFuture, FutureExt, StreamExt};
 use rpc::{proto, ConnectionId};
 use serde::{Deserialize, Serialize};
 pub use sqlx::postgres::PgPoolOptions as DbOptions;
@@ -15,132 +14,174 @@ use sqlx::{
 use std::{path::Path, time::Duration};
 use time::OffsetDateTime;
 
-#[async_trait]
 pub trait Db: Send + Sync {
-    async fn create_user(
-        &self,
-        email_address: &str,
+    fn create_user<'a>(
+        &'a self,
+        email_address: &'a str,
         admin: bool,
         params: NewUserParams,
-    ) -> Result<NewUserResult>;
-    async fn get_all_users(&self, page: u32, limit: u32) -> Result<Vec<User>>;
-    async fn fuzzy_search_users(&self, query: &str, limit: u32) -> Result<Vec<User>>;
-    async fn get_user_by_id(&self, id: UserId) -> Result<Option<User>>;
-    async fn get_user_metrics_id(&self, id: UserId) -> Result<String>;
-    async fn get_users_by_ids(&self, ids: Vec<UserId>) -> Result<Vec<User>>;
-    async fn get_users_with_no_invites(&self, invited_by_another_user: bool) -> Result<Vec<User>>;
-    async fn get_user_by_github_account(
-        &self,
-        github_login: &str,
+    ) -> BoxFuture<'a, Result<NewUserResult>>;
+    fn get_all_users<'a>(&'a self, page: u32, limit: u32) -> BoxFuture<'a, Result<Vec<User>>>;
+    fn fuzzy_search_users<'a>(
+        &'a self,
+        query: &'a str,
+        limit: u32,
+    ) -> BoxFuture<'a, Result<Vec<User>>>;
+    fn get_user_by_id<'a>(&'a self, id: UserId) -> BoxFuture<'a, Result<Option<User>>>;
+    fn get_user_metrics_id<'a>(&'a self, id: UserId) -> BoxFuture<'a, Result<String>>;
+    fn get_users_by_ids<'a>(&'a self, ids: Vec<UserId>) -> BoxFuture<'a, Result<Vec<User>>>;
+    fn get_users_with_no_invites<'a>(
+        &'a self,
+        invited_by_another_user: bool,
+    ) -> BoxFuture<'a, Result<Vec<User>>>;
+    fn get_user_by_github_account<'a>(
+        &'a self,
+        github_login: &'a str,
         github_user_id: Option<i32>,
-    ) -> Result<Option<User>>;
-    async fn set_user_is_admin(&self, id: UserId, is_admin: bool) -> Result<()>;
-    async fn set_user_connected_once(&self, id: UserId, connected_once: bool) -> Result<()>;
-    async fn destroy_user(&self, id: UserId) -> Result<()>;
+    ) -> BoxFuture<'a, Result<Option<User>>>;
+    fn set_user_is_admin<'a>(&'a self, id: UserId, is_admin: bool) -> BoxFuture<'a, Result<()>>;
+    fn set_user_connected_once<'a>(
+        &'a self,
+        id: UserId,
+        connected_once: bool,
+    ) -> BoxFuture<'a, Result<()>>;
+    fn destroy_user<'a>(&'a self, id: UserId) -> BoxFuture<'a, Result<()>>;
 
-    async fn set_invite_count_for_user(&self, id: UserId, count: u32) -> Result<()>;
-    async fn get_invite_code_for_user(&self, id: UserId) -> Result<Option<(String, u32)>>;
-    async fn get_user_for_invite_code(&self, code: &str) -> Result<User>;
-    async fn create_invite_from_code(
-        &self,
-        code: &str,
-        email_address: &str,
-        device_id: Option<&str>,
-    ) -> Result<Invite>;
+    fn set_invite_count_for_user<'a>(&'a self, id: UserId, count: u32)
+        -> BoxFuture<'a, Result<()>>;
+    fn get_invite_code_for_user<'a>(
+        &'a self,
+        id: UserId,
+    ) -> BoxFuture<'a, Result<Option<(String, u32)>>>;
+    fn get_user_for_invite_code<'a>(&'a self, code: &'a str) -> BoxFuture<'a, Result<User>>;
+    fn create_invite_from_code<'a>(
+        &'a self,
+        code: &'a str,
+        email_address: &'a str,
+        device_id: Option<&'a str>,
+    ) -> BoxFuture<'a, Result<Invite>>;
 
-    async fn create_signup(&self, signup: Signup) -> Result<()>;
-    async fn get_waitlist_summary(&self) -> Result<WaitlistSummary>;
-    async fn get_unsent_invites(&self, count: usize) -> Result<Vec<Invite>>;
-    async fn record_sent_invites(&self, invites: &[Invite]) -> Result<()>;
-    async fn create_user_from_invite(
-        &self,
-        invite: &Invite,
+    fn create_signup<'a>(&'a self, signup: Signup) -> BoxFuture<'a, Result<()>>;
+    fn get_waitlist_summary<'a>(&'a self) -> BoxFuture<'a, Result<WaitlistSummary>>;
+    fn get_unsent_invites<'a>(&'a self, count: usize) -> BoxFuture<'a, Result<Vec<Invite>>>;
+    fn record_sent_invites<'a>(&'a self, invites: &'a [Invite]) -> BoxFuture<'a, Result<()>>;
+    fn create_user_from_invite<'a>(
+        &'a self,
+        invite: &'a Invite,
         user: NewUserParams,
-    ) -> Result<Option<NewUserResult>>;
+    ) -> BoxFuture<'a, Result<Option<NewUserResult>>>;
 
-    async fn create_room(
-        &self,
+    fn create_room<'a>(
+        &'a self,
         user_id: UserId,
         connection_id: ConnectionId,
-    ) -> Result<proto::Room>;
+    ) -> BoxFuture<'a, Result<proto::Room>>;
 
-    async fn call(
-        &self,
+    fn call<'a>(
+        &'a self,
         room_id: RoomId,
         calling_user_id: UserId,
         called_user_id: UserId,
         initial_project_id: Option<ProjectId>,
-    ) -> Result<proto::Room>;
+    ) -> BoxFuture<'a, Result<proto::Room>>;
 
     /// Registers a new project for the given user.
-    async fn register_project(&self, host_user_id: UserId) -> Result<ProjectId>;
+    fn register_project<'a>(&'a self, host_user_id: UserId) -> BoxFuture<'a, Result<ProjectId>>;
 
     /// Unregisters a project for the given project id.
-    async fn unregister_project(&self, project_id: ProjectId) -> Result<()>;
+    fn unregister_project<'a>(&'a self, project_id: ProjectId) -> BoxFuture<'a, Result<()>>;
 
-    async fn get_contacts(&self, id: UserId) -> Result<Vec<Contact>>;
-    async fn has_contact(&self, user_id_a: UserId, user_id_b: UserId) -> Result<bool>;
-    async fn send_contact_request(&self, requester_id: UserId, responder_id: UserId) -> Result<()>;
-    async fn remove_contact(&self, requester_id: UserId, responder_id: UserId) -> Result<()>;
-    async fn dismiss_contact_notification(
-        &self,
+    fn get_contacts<'a>(&'a self, id: UserId) -> BoxFuture<'a, Result<Vec<Contact>>>;
+    fn has_contact<'a>(
+        &'a self,
+        user_id_a: UserId,
+        user_id_b: UserId,
+    ) -> BoxFuture<'a, Result<bool>>;
+    fn send_contact_request<'a>(
+        &'a self,
+        requester_id: UserId,
+        responder_id: UserId,
+    ) -> BoxFuture<'a, Result<()>>;
+    fn remove_contact<'a>(
+        &'a self,
+        requester_id: UserId,
+        responder_id: UserId,
+    ) -> BoxFuture<'a, Result<()>>;
+    fn dismiss_contact_notification<'a>(
+        &'a self,
         responder_id: UserId,
         requester_id: UserId,
-    ) -> Result<()>;
-    async fn respond_to_contact_request(
-        &self,
+    ) -> BoxFuture<'a, Result<()>>;
+    fn respond_to_contact_request<'a>(
+        &'a self,
         responder_id: UserId,
         requester_id: UserId,
         accept: bool,
-    ) -> Result<()>;
+    ) -> BoxFuture<'a, Result<()>>;
 
-    async fn create_access_token_hash(
-        &self,
+    fn create_access_token_hash<'a>(
+        &'a self,
         user_id: UserId,
-        access_token_hash: &str,
+        access_token_hash: &'a str,
         max_access_token_count: usize,
-    ) -> Result<()>;
-    async fn get_access_token_hashes(&self, user_id: UserId) -> Result<Vec<String>>;
+    ) -> BoxFuture<'a, Result<()>>;
+    fn get_access_token_hashes<'a>(&'a self, user_id: UserId)
+        -> BoxFuture<'a, Result<Vec<String>>>;
 
     #[cfg(any(test, feature = "seed-support"))]
-    async fn find_org_by_slug(&self, slug: &str) -> Result<Option<Org>>;
+    fn find_org_by_slug<'a>(&'a self, slug: &'a str) -> BoxFuture<'a, Result<Option<Org>>>;
     #[cfg(any(test, feature = "seed-support"))]
-    async fn create_org(&self, name: &str, slug: &str) -> Result<OrgId>;
+    fn create_org<'a>(&'a self, name: &'a str, slug: &'a str) -> BoxFuture<'a, Result<OrgId>>;
     #[cfg(any(test, feature = "seed-support"))]
-    async fn add_org_member(&self, org_id: OrgId, user_id: UserId, is_admin: bool) -> Result<()>;
+    fn add_org_member<'a>(
+        &'a self,
+        org_id: OrgId,
+        user_id: UserId,
+        is_admin: bool,
+    ) -> BoxFuture<'a, Result<()>>;
     #[cfg(any(test, feature = "seed-support"))]
-    async fn create_org_channel(&self, org_id: OrgId, name: &str) -> Result<ChannelId>;
+    fn create_org_channel<'a>(
+        &'a self,
+        org_id: OrgId,
+        name: &'a str,
+    ) -> BoxFuture<'a, Result<ChannelId>>;
     #[cfg(any(test, feature = "seed-support"))]
 
-    async fn get_org_channels(&self, org_id: OrgId) -> Result<Vec<Channel>>;
-    async fn get_accessible_channels(&self, user_id: UserId) -> Result<Vec<Channel>>;
-    async fn can_user_access_channel(&self, user_id: UserId, channel_id: ChannelId)
-        -> Result<bool>;
+    fn get_org_channels<'a>(&'a self, org_id: OrgId) -> BoxFuture<'a, Result<Vec<Channel>>>;
+    fn get_accessible_channels<'a>(
+        &'a self,
+        user_id: UserId,
+    ) -> BoxFuture<'a, Result<Vec<Channel>>>;
+    fn can_user_access_channel<'a>(
+        &'a self,
+        user_id: UserId,
+        channel_id: ChannelId,
+    ) -> BoxFuture<'a, Result<bool>>;
 
     #[cfg(any(test, feature = "seed-support"))]
-    async fn add_channel_member(
-        &self,
+    fn add_channel_member<'a>(
+        &'a self,
         channel_id: ChannelId,
         user_id: UserId,
         is_admin: bool,
-    ) -> Result<()>;
-    async fn create_channel_message(
-        &self,
+    ) -> BoxFuture<'a, Result<()>>;
+    fn create_channel_message<'a>(
+        &'a self,
         channel_id: ChannelId,
         sender_id: UserId,
-        body: &str,
+        body: &'a str,
         timestamp: OffsetDateTime,
         nonce: u128,
-    ) -> Result<MessageId>;
-    async fn get_channel_messages(
-        &self,
+    ) -> BoxFuture<'a, Result<MessageId>>;
+    fn get_channel_messages<'a>(
+        &'a self,
         channel_id: ChannelId,
         count: usize,
         before_id: Option<MessageId>,
-    ) -> Result<Vec<ChannelMessage>>;
+    ) -> BoxFuture<'a, Result<Vec<ChannelMessage>>>;
 
     #[cfg(test)]
-    async fn teardown(&self, url: &str);
+    fn teardown<'a>(&'a self, url: &'a str) -> futures::future::BoxFuture<'a, ()>;
 
     #[cfg(test)]
     fn as_fake(&self) -> Option<&FakeDb>;
@@ -220,7 +261,7 @@ impl PostgresDb {
         result
     }
 
-    pub async fn commit_room_transaction(
+    async fn commit_room_transaction(
         &self,
         room_id: RoomId,
         mut tx: Transaction<'static, Postgres>,
@@ -291,1119 +332,1292 @@ impl PostgresDb {
     }
 }
 
-#[async_trait]
 impl Db for PostgresDb {
     // users
 
-    async fn create_user(
-        &self,
-        email_address: &str,
+    fn create_user<'a>(
+        &'a self,
+        email_address: &'a str,
         admin: bool,
         params: NewUserParams,
-    ) -> Result<NewUserResult> {
-        let query = "
-            INSERT INTO users (email_address, github_login, github_user_id, admin)
-            VALUES ($1, $2, $3, $4)
-            ON CONFLICT (github_login) DO UPDATE SET github_login = excluded.github_login
-            RETURNING id, metrics_id::text
-        ";
-        let (user_id, metrics_id): (UserId, String) = sqlx::query_as(query)
-            .bind(email_address)
-            .bind(params.github_login)
-            .bind(params.github_user_id)
-            .bind(admin)
-            .fetch_one(&self.pool)
-            .await?;
-        Ok(NewUserResult {
-            user_id,
-            metrics_id,
-            signup_device_id: None,
-            inviting_user_id: None,
-        })
+    ) -> BoxFuture<'a, Result<NewUserResult>> {
+        async move {
+            let query = "
+                INSERT INTO users (email_address, github_login, github_user_id, admin)
+                VALUES ($1, $2, $3, $4)
+                ON CONFLICT (github_login) DO UPDATE SET github_login = excluded.github_login
+                RETURNING id, metrics_id::text
+            ";
+            let (user_id, metrics_id): (UserId, String) = sqlx::query_as(query)
+                .bind(email_address)
+                .bind(params.github_login)
+                .bind(params.github_user_id)
+                .bind(admin)
+                .fetch_one(&self.pool)
+                .await?;
+            Ok(NewUserResult {
+                user_id,
+                metrics_id,
+                signup_device_id: None,
+                inviting_user_id: None,
+            })
+        }
+        .boxed()
     }
 
-    async fn get_all_users(&self, page: u32, limit: u32) -> Result<Vec<User>> {
-        let query = "SELECT * FROM users ORDER BY github_login ASC LIMIT $1 OFFSET $2";
-        Ok(sqlx::query_as(query)
-            .bind(limit as i32)
-            .bind((page * limit) as i32)
-            .fetch_all(&self.pool)
-            .await?)
+    fn get_all_users<'a>(&'a self, page: u32, limit: u32) -> BoxFuture<'a, Result<Vec<User>>> {
+        async move {
+            let query = "SELECT * FROM users ORDER BY github_login ASC LIMIT $1 OFFSET $2";
+            Ok(sqlx::query_as(query)
+                .bind(limit as i32)
+                .bind((page * limit) as i32)
+                .fetch_all(&self.pool)
+                .await?)
+        }
+        .boxed()
     }
 
-    async fn fuzzy_search_users(&self, name_query: &str, limit: u32) -> Result<Vec<User>> {
-        let like_string = Self::fuzzy_like_string(name_query);
-        let query = "
-            SELECT users.*
-            FROM users
-            WHERE github_login ILIKE $1
-            ORDER BY github_login <-> $2
-            LIMIT $3
-        ";
-        Ok(sqlx::query_as(query)
-            .bind(like_string)
-            .bind(name_query)
-            .bind(limit as i32)
-            .fetch_all(&self.pool)
-            .await?)
+    fn fuzzy_search_users<'a>(
+        &'a self,
+        name_query: &'a str,
+        limit: u32,
+    ) -> BoxFuture<'a, Result<Vec<User>>> {
+        async move {
+            let like_string = Self::fuzzy_like_string(name_query);
+            let query = "
+                SELECT users.*
+                FROM users
+                WHERE github_login ILIKE $1
+                ORDER BY github_login <-> $2
+                LIMIT $3
+            ";
+            Ok(sqlx::query_as(query)
+                .bind(like_string)
+                .bind(name_query)
+                .bind(limit as i32)
+                .fetch_all(&self.pool)
+                .await?)
+        }
+        .boxed()
     }
 
-    async fn get_user_by_id(&self, id: UserId) -> Result<Option<User>> {
-        let users = self.get_users_by_ids(vec![id]).await?;
-        Ok(users.into_iter().next())
+    fn get_user_by_id<'a>(&'a self, id: UserId) -> BoxFuture<'a, Result<Option<User>>> {
+        async move {
+            let users = self.get_users_by_ids(vec![id]).await?;
+            Ok(users.into_iter().next())
+        }
+        .boxed()
     }
 
-    async fn get_user_metrics_id(&self, id: UserId) -> Result<String> {
-        let query = "
-            SELECT metrics_id::text
-            FROM users
-            WHERE id = $1
-        ";
-        Ok(sqlx::query_scalar(query)
-            .bind(id)
-            .fetch_one(&self.pool)
-            .await?)
+    fn get_user_metrics_id<'a>(&'a self, id: UserId) -> BoxFuture<'a, Result<String>> {
+        async move {
+            let query = "
+                SELECT metrics_id::text
+                FROM users
+                WHERE id = $1
+            ";
+            Ok(sqlx::query_scalar(query)
+                .bind(id)
+                .fetch_one(&self.pool)
+                .await?)
+        }
+        .boxed()
     }
 
-    async fn get_users_by_ids(&self, ids: Vec<UserId>) -> Result<Vec<User>> {
-        let ids = ids.into_iter().map(|id| id.0).collect::<Vec<_>>();
-        let query = "
-            SELECT users.*
-            FROM users
-            WHERE users.id = ANY ($1)
-        ";
-        Ok(sqlx::query_as(query)
-            .bind(&ids)
-            .fetch_all(&self.pool)
-            .await?)
+    fn get_users_by_ids<'a>(&'a self, ids: Vec<UserId>) -> BoxFuture<'a, Result<Vec<User>>> {
+        async move {
+            let ids = ids.into_iter().map(|id| id.0).collect::<Vec<_>>();
+            let query = "
+                SELECT users.*
+                FROM users
+                WHERE users.id = ANY ($1)
+            ";
+            Ok(sqlx::query_as(query)
+                .bind(&ids)
+                .fetch_all(&self.pool)
+                .await?)
+        }
+        .boxed()
     }
 
-    async fn get_users_with_no_invites(&self, invited_by_another_user: bool) -> Result<Vec<User>> {
-        let query = format!(
-            "
-            SELECT users.*
-            FROM users
-            WHERE invite_count = 0
-            AND inviter_id IS{} NULL
-            ",
-            if invited_by_another_user { " NOT" } else { "" }
-        );
-
-        Ok(sqlx::query_as(&query).fetch_all(&self.pool).await?)
-    }
-
-    async fn get_user_by_github_account(
-        &self,
-        github_login: &str,
-        github_user_id: Option<i32>,
-    ) -> Result<Option<User>> {
-        if let Some(github_user_id) = github_user_id {
-            let mut user = sqlx::query_as::<_, User>(
+    fn get_users_with_no_invites<'a>(
+        &'a self,
+        invited_by_another_user: bool,
+    ) -> BoxFuture<'a, Result<Vec<User>>> {
+        async move {
+            let query = format!(
                 "
-                UPDATE users
-                SET github_login = $1
-                WHERE github_user_id = $2
-                RETURNING *
+                SELECT users.*
+                FROM users
+                WHERE invite_count = 0
+                AND inviter_id IS{} NULL
                 ",
-            )
-            .bind(github_login)
-            .bind(github_user_id)
-            .fetch_optional(&self.pool)
-            .await?;
+                if invited_by_another_user { " NOT" } else { "" }
+            );
 
-            if user.is_none() {
-                user = sqlx::query_as::<_, User>(
+            Ok(sqlx::query_as(&query).fetch_all(&self.pool).await?)
+        }
+        .boxed()
+    }
+
+    fn get_user_by_github_account<'a>(
+        &'a self,
+        github_login: &'a str,
+        github_user_id: Option<i32>,
+    ) -> BoxFuture<'a, Result<Option<User>>> {
+        async move {
+            if let Some(github_user_id) = github_user_id {
+                let mut user = sqlx::query_as::<_, User>(
                     "
                     UPDATE users
-                    SET github_user_id = $1
-                    WHERE github_login = $2
+                    SET github_login = $1
+                    WHERE github_user_id = $2
                     RETURNING *
                     ",
                 )
-                .bind(github_user_id)
                 .bind(github_login)
+                .bind(github_user_id)
                 .fetch_optional(&self.pool)
                 .await?;
+
+                if user.is_none() {
+                    user = sqlx::query_as::<_, User>(
+                        "
+                        UPDATE users
+                        SET github_user_id = $1
+                        WHERE github_login = $2
+                        RETURNING *
+                        ",
+                    )
+                    .bind(github_user_id)
+                    .bind(github_login)
+                    .fetch_optional(&self.pool)
+                    .await?;
+                }
+
+                Ok(user)
+            } else {
+                Ok(sqlx::query_as(
+                    "
+                    SELECT * FROM users
+                    WHERE github_login = $1
+                    LIMIT 1
+                    ",
+                )
+                .bind(github_login)
+                .fetch_optional(&self.pool)
+                .await?)
             }
-
-            Ok(user)
-        } else {
-            Ok(sqlx::query_as(
-                "
-                SELECT * FROM users
-                WHERE github_login = $1
-                LIMIT 1
-                ",
-            )
-            .bind(github_login)
-            .fetch_optional(&self.pool)
-            .await?)
         }
+        .boxed()
     }
 
-    async fn set_user_is_admin(&self, id: UserId, is_admin: bool) -> Result<()> {
-        let query = "UPDATE users SET admin = $1 WHERE id = $2";
-        Ok(sqlx::query(query)
-            .bind(is_admin)
-            .bind(id.0)
-            .execute(&self.pool)
-            .await
-            .map(drop)?)
+    fn set_user_is_admin<'a>(&'a self, id: UserId, is_admin: bool) -> BoxFuture<'a, Result<()>> {
+        async move {
+            let query = "UPDATE users SET admin = $1 WHERE id = $2";
+            Ok(sqlx::query(query)
+                .bind(is_admin)
+                .bind(id.0)
+                .execute(&self.pool)
+                .await
+                .map(drop)?)
+        }
+        .boxed()
     }
 
-    async fn set_user_connected_once(&self, id: UserId, connected_once: bool) -> Result<()> {
-        let query = "UPDATE users SET connected_once = $1 WHERE id = $2";
-        Ok(sqlx::query(query)
-            .bind(connected_once)
-            .bind(id.0)
-            .execute(&self.pool)
-            .await
-            .map(drop)?)
+    fn set_user_connected_once<'a>(
+        &'a self,
+        id: UserId,
+        connected_once: bool,
+    ) -> BoxFuture<'a, Result<()>> {
+        async move {
+            let query = "UPDATE users SET connected_once = $1 WHERE id = $2";
+            Ok(sqlx::query(query)
+                .bind(connected_once)
+                .bind(id.0)
+                .execute(&self.pool)
+                .await
+                .map(drop)?)
+        }
+        .boxed()
     }
 
-    async fn destroy_user(&self, id: UserId) -> Result<()> {
-        let query = "DELETE FROM access_tokens WHERE user_id = $1;";
-        sqlx::query(query)
-            .bind(id.0)
-            .execute(&self.pool)
-            .await
-            .map(drop)?;
-        let query = "DELETE FROM users WHERE id = $1;";
-        Ok(sqlx::query(query)
-            .bind(id.0)
-            .execute(&self.pool)
-            .await
-            .map(drop)?)
+    fn destroy_user<'a>(&'a self, id: UserId) -> BoxFuture<'a, Result<()>> {
+        async move {
+            let query = "DELETE FROM access_tokens WHERE user_id = $1;";
+            sqlx::query(query)
+                .bind(id.0)
+                .execute(&self.pool)
+                .await
+                .map(drop)?;
+            let query = "DELETE FROM users WHERE id = $1;";
+            Ok(sqlx::query(query)
+                .bind(id.0)
+                .execute(&self.pool)
+                .await
+                .map(drop)?)
+        }
+        .boxed()
     }
 
     // signups
 
-    async fn create_signup(&self, signup: Signup) -> Result<()> {
-        sqlx::query(
-            "
-            INSERT INTO signups
-            (
-                email_address,
-                email_confirmation_code,
-                email_confirmation_sent,
-                platform_linux,
-                platform_mac,
-                platform_windows,
-                platform_unknown,
-                editor_features,
-                programming_languages,
-                device_id
-            )
-            VALUES
-                ($1, $2, 'f', $3, $4, $5, 'f', $6, $7, $8)
-            RETURNING id
-            ",
-        )
-        .bind(&signup.email_address)
-        .bind(&random_email_confirmation_code())
-        .bind(&signup.platform_linux)
-        .bind(&signup.platform_mac)
-        .bind(&signup.platform_windows)
-        .bind(&signup.editor_features)
-        .bind(&signup.programming_languages)
-        .bind(&signup.device_id)
-        .execute(&self.pool)
-        .await?;
-        Ok(())
-    }
-
-    async fn get_waitlist_summary(&self) -> Result<WaitlistSummary> {
-        Ok(sqlx::query_as(
-            "
-            SELECT
-                COUNT(*) as count,
-                COALESCE(SUM(CASE WHEN platform_linux THEN 1 ELSE 0 END), 0) as linux_count,
-                COALESCE(SUM(CASE WHEN platform_mac THEN 1 ELSE 0 END), 0) as mac_count,
-                COALESCE(SUM(CASE WHEN platform_windows THEN 1 ELSE 0 END), 0) as windows_count,
-                COALESCE(SUM(CASE WHEN platform_unknown THEN 1 ELSE 0 END), 0) as unknown_count
-            FROM (
-                SELECT *
-                FROM signups
-                WHERE
-                    NOT email_confirmation_sent
-            ) AS unsent
-            ",
-        )
-        .fetch_one(&self.pool)
-        .await?)
-    }
-
-    async fn get_unsent_invites(&self, count: usize) -> Result<Vec<Invite>> {
-        Ok(sqlx::query_as(
-            "
-            SELECT
-                email_address, email_confirmation_code
-            FROM signups
-            WHERE
-                NOT email_confirmation_sent AND
-                (platform_mac OR platform_unknown)
-            LIMIT $1
-            ",
-        )
-        .bind(count as i32)
-        .fetch_all(&self.pool)
-        .await?)
-    }
-
-    async fn record_sent_invites(&self, invites: &[Invite]) -> Result<()> {
-        sqlx::query(
-            "
-            UPDATE signups
-            SET email_confirmation_sent = 't'
-            WHERE email_address = ANY ($1)
-            ",
-        )
-        .bind(
-            &invites
-                .iter()
-                .map(|s| s.email_address.as_str())
-                .collect::<Vec<_>>(),
-        )
-        .execute(&self.pool)
-        .await?;
-        Ok(())
-    }
-
-    async fn create_user_from_invite(
-        &self,
-        invite: &Invite,
-        user: NewUserParams,
-    ) -> Result<Option<NewUserResult>> {
-        let mut tx = self.pool.begin().await?;
-
-        let (signup_id, existing_user_id, inviting_user_id, signup_device_id): (
-            i32,
-            Option<UserId>,
-            Option<UserId>,
-            Option<String>,
-        ) = sqlx::query_as(
-            "
-            SELECT id, user_id, inviting_user_id, device_id
-            FROM signups
-            WHERE
-                email_address = $1 AND
-                email_confirmation_code = $2
-            ",
-        )
-        .bind(&invite.email_address)
-        .bind(&invite.email_confirmation_code)
-        .fetch_optional(&mut tx)
-        .await?
-        .ok_or_else(|| Error::Http(StatusCode::NOT_FOUND, "no such invite".to_string()))?;
-
-        if existing_user_id.is_some() {
-            return Ok(None);
-        }
-
-        let (user_id, metrics_id): (UserId, String) = sqlx::query_as(
-            "
-            INSERT INTO users
-            (email_address, github_login, github_user_id, admin, invite_count, invite_code)
-            VALUES
-            ($1, $2, $3, 'f', $4, $5)
-            ON CONFLICT (github_login) DO UPDATE SET
-                email_address = excluded.email_address,
-                github_user_id = excluded.github_user_id,
-                admin = excluded.admin
-            RETURNING id, metrics_id::text
-            ",
-        )
-        .bind(&invite.email_address)
-        .bind(&user.github_login)
-        .bind(&user.github_user_id)
-        .bind(&user.invite_count)
-        .bind(random_invite_code())
-        .fetch_one(&mut tx)
-        .await?;
-
-        sqlx::query(
-            "
-            UPDATE signups
-            SET user_id = $1
-            WHERE id = $2
-            ",
-        )
-        .bind(&user_id)
-        .bind(&signup_id)
-        .execute(&mut tx)
-        .await?;
-
-        if let Some(inviting_user_id) = inviting_user_id {
-            let id: Option<UserId> = sqlx::query_scalar(
+    fn create_signup<'a>(&'a self, signup: Signup) -> BoxFuture<'a, Result<()>> {
+        async move {
+            sqlx::query(
                 "
-                UPDATE users
-                SET invite_count = invite_count - 1
-                WHERE id = $1 AND invite_count > 0
+                INSERT INTO signups
+                (
+                    email_address,
+                    email_confirmation_code,
+                    email_confirmation_sent,
+                    platform_linux,
+                    platform_mac,
+                    platform_windows,
+                    platform_unknown,
+                    editor_features,
+                    programming_languages,
+                    device_id
+                )
+                VALUES
+                    ($1, $2, 'f', $3, $4, $5, 'f', $6, $7, $8)
                 RETURNING id
                 ",
             )
-            .bind(&inviting_user_id)
+            .bind(&signup.email_address)
+            .bind(&random_email_confirmation_code())
+            .bind(&signup.platform_linux)
+            .bind(&signup.platform_mac)
+            .bind(&signup.platform_windows)
+            .bind(&signup.editor_features)
+            .bind(&signup.programming_languages)
+            .bind(&signup.device_id)
+            .execute(&self.pool)
+            .await?;
+            Ok(())
+        }
+        .boxed()
+    }
+
+    fn get_waitlist_summary<'a>(&'a self) -> BoxFuture<'a, Result<WaitlistSummary>> {
+        async move {
+            Ok(sqlx::query_as(
+                "
+                SELECT
+                    COUNT(*) as count,
+                    COALESCE(SUM(CASE WHEN platform_linux THEN 1 ELSE 0 END), 0) as linux_count,
+                    COALESCE(SUM(CASE WHEN platform_mac THEN 1 ELSE 0 END), 0) as mac_count,
+                    COALESCE(SUM(CASE WHEN platform_windows THEN 1 ELSE 0 END), 0) as windows_count,
+                    COALESCE(SUM(CASE WHEN platform_unknown THEN 1 ELSE 0 END), 0) as unknown_count
+                FROM (
+                    SELECT *
+                    FROM signups
+                    WHERE
+                        NOT email_confirmation_sent
+                ) AS unsent
+                ",
+            )
+            .fetch_one(&self.pool)
+            .await?)
+        }
+        .boxed()
+    }
+
+    fn get_unsent_invites<'a>(&'a self, count: usize) -> BoxFuture<'a, Result<Vec<Invite>>> {
+        async move {
+            Ok(sqlx::query_as(
+                "
+                SELECT
+                    email_address, email_confirmation_code
+                FROM signups
+                WHERE
+                    NOT email_confirmation_sent AND
+                    (platform_mac OR platform_unknown)
+                LIMIT $1
+                ",
+            )
+            .bind(count as i32)
+            .fetch_all(&self.pool)
+            .await?)
+        }
+        .boxed()
+    }
+
+    fn record_sent_invites<'a>(&'a self, invites: &'a [Invite]) -> BoxFuture<'a, Result<()>> {
+        async move {
+            sqlx::query(
+                "
+                UPDATE signups
+                SET email_confirmation_sent = 't'
+                WHERE email_address = ANY ($1)
+                ",
+            )
+            .bind(
+                &invites
+                    .iter()
+                    .map(|s| s.email_address.as_str())
+                    .collect::<Vec<_>>(),
+            )
+            .execute(&self.pool)
+            .await?;
+            Ok(())
+        }
+        .boxed()
+    }
+
+    fn create_user_from_invite<'a>(
+        &'a self,
+        invite: &'a Invite,
+        user: NewUserParams,
+    ) -> BoxFuture<'a, Result<Option<NewUserResult>>> {
+        async move {
+            let mut tx = self.pool.begin().await?;
+
+            let (signup_id, existing_user_id, inviting_user_id, signup_device_id): (
+                i32,
+                Option<UserId>,
+                Option<UserId>,
+                Option<String>,
+            ) = sqlx::query_as(
+                "
+                SELECT id, user_id, inviting_user_id, device_id
+                FROM signups
+                WHERE
+                    email_address = $1 AND
+                    email_confirmation_code = $2
+                ",
+            )
+            .bind(&invite.email_address)
+            .bind(&invite.email_confirmation_code)
+            .fetch_optional(&mut tx)
+            .await?
+            .ok_or_else(|| Error::Http(StatusCode::NOT_FOUND, "no such invite".to_string()))?;
+
+            if existing_user_id.is_some() {
+                return Ok(None);
+            }
+
+            let (user_id, metrics_id): (UserId, String) = sqlx::query_as(
+                "
+                INSERT INTO users
+                (email_address, github_login, github_user_id, admin, invite_count, invite_code)
+                VALUES
+                ($1, $2, $3, 'f', $4, $5)
+                ON CONFLICT (github_login) DO UPDATE SET
+                    email_address = excluded.email_address,
+                    github_user_id = excluded.github_user_id,
+                    admin = excluded.admin
+                RETURNING id, metrics_id::text
+                ",
+            )
+            .bind(&invite.email_address)
+            .bind(&user.github_login)
+            .bind(&user.github_user_id)
+            .bind(&user.invite_count)
+            .bind(random_invite_code())
+            .fetch_one(&mut tx)
+            .await?;
+
+            sqlx::query(
+                "
+                UPDATE signups
+                SET user_id = $1
+                WHERE id = $2
+                ",
+            )
+            .bind(&user_id)
+            .bind(&signup_id)
+            .execute(&mut tx)
+            .await?;
+
+            if let Some(inviting_user_id) = inviting_user_id {
+                let id: Option<UserId> = sqlx::query_scalar(
+                    "
+                    UPDATE users
+                    SET invite_count = invite_count - 1
+                    WHERE id = $1 AND invite_count > 0
+                    RETURNING id
+                    ",
+                )
+                .bind(&inviting_user_id)
+                .fetch_optional(&mut tx)
+                .await?;
+
+                if id.is_none() {
+                    Err(Error::Http(
+                        StatusCode::UNAUTHORIZED,
+                        "no invites remaining".to_string(),
+                    ))?;
+                }
+
+                sqlx::query(
+                    "
+                    INSERT INTO contacts
+                        (user_id_a, user_id_b, a_to_b, should_notify, accepted)
+                    VALUES
+                        ($1, $2, 't', 't', 't')
+                    ON CONFLICT DO NOTHING
+                    ",
+                )
+                .bind(inviting_user_id)
+                .bind(user_id)
+                .execute(&mut tx)
+                .await?;
+            }
+
+            tx.commit().await?;
+            Ok(Some(NewUserResult {
+                user_id,
+                metrics_id,
+                inviting_user_id,
+                signup_device_id,
+            }))
+        }
+        .boxed()
+    }
+
+    // invite codes
+
+    fn set_invite_count_for_user<'a>(
+        &'a self,
+        id: UserId,
+        count: u32,
+    ) -> BoxFuture<'a, Result<()>> {
+        async move {
+            let mut tx = self.pool.begin().await?;
+            if count > 0 {
+                sqlx::query(
+                    "
+                    UPDATE users
+                    SET invite_code = $1
+                    WHERE id = $2 AND invite_code IS NULL
+                    ",
+                )
+                .bind(random_invite_code())
+                .bind(id)
+                .execute(&mut tx)
+                .await?;
+            }
+
+            sqlx::query(
+                "
+                UPDATE users
+                SET invite_count = $1
+                WHERE id = $2
+                ",
+            )
+            .bind(count as i32)
+            .bind(id)
+            .execute(&mut tx)
+            .await?;
+            tx.commit().await?;
+            Ok(())
+        }
+        .boxed()
+    }
+
+    fn get_invite_code_for_user<'a>(
+        &'a self,
+        id: UserId,
+    ) -> BoxFuture<'a, Result<Option<(String, u32)>>> {
+        async move {
+            let result: Option<(String, i32)> = sqlx::query_as(
+                "
+                SELECT invite_code, invite_count
+                FROM users
+                WHERE id = $1 AND invite_code IS NOT NULL 
+                ",
+            )
+            .bind(id)
+            .fetch_optional(&self.pool)
+            .await?;
+            if let Some((code, count)) = result {
+                Ok(Some((code, count.try_into().map_err(anyhow::Error::new)?)))
+            } else {
+                Ok(None)
+            }
+        }
+        .boxed()
+    }
+
+    fn get_user_for_invite_code<'a>(&'a self, code: &'a str) -> BoxFuture<'a, Result<User>> {
+        async move {
+            sqlx::query_as(
+                "
+                SELECT *
+                FROM users
+                WHERE invite_code = $1
+                ",
+            )
+            .bind(code)
+            .fetch_optional(&self.pool)
+            .await?
+            .ok_or_else(|| {
+                Error::Http(
+                    StatusCode::NOT_FOUND,
+                    "that invite code does not exist".to_string(),
+                )
+            })
+        }
+        .boxed()
+    }
+
+    fn create_invite_from_code<'a>(
+        &'a self,
+        code: &'a str,
+        email_address: &'a str,
+        device_id: Option<&'a str>,
+    ) -> BoxFuture<'a, Result<Invite>> {
+        async move {
+            let mut tx = self.pool.begin().await?;
+
+            let existing_user: Option<UserId> = sqlx::query_scalar(
+                "
+                SELECT id
+                FROM users
+                WHERE email_address = $1
+                ",
+            )
+            .bind(email_address)
+            .fetch_optional(&mut tx)
+            .await?;
+            if existing_user.is_some() {
+                Err(anyhow!("email address is already in use"))?;
+            }
+
+            let row: Option<(UserId, i32)> = sqlx::query_as(
+                "
+                SELECT id, invite_count
+                FROM users
+                WHERE invite_code = $1
+                ",
+            )
+            .bind(code)
             .fetch_optional(&mut tx)
             .await?;
 
-            if id.is_none() {
+            let (inviter_id, invite_count) = match row {
+                Some(row) => row,
+                None => Err(Error::Http(
+                    StatusCode::NOT_FOUND,
+                    "invite code not found".to_string(),
+                ))?,
+            };
+
+            if invite_count == 0 {
                 Err(Error::Http(
                     StatusCode::UNAUTHORIZED,
                     "no invites remaining".to_string(),
                 ))?;
             }
 
-            sqlx::query(
+            let email_confirmation_code: String = sqlx::query_scalar(
                 "
-                INSERT INTO contacts
-                    (user_id_a, user_id_b, a_to_b, should_notify, accepted)
+                INSERT INTO signups
+                (
+                    email_address,
+                    email_confirmation_code,
+                    email_confirmation_sent,
+                    inviting_user_id,
+                    platform_linux,
+                    platform_mac,
+                    platform_windows,
+                    platform_unknown,
+                    device_id
+                )
                 VALUES
-                    ($1, $2, 't', 't', 't')
-                ON CONFLICT DO NOTHING
+                    ($1, $2, 'f', $3, 'f', 'f', 'f', 't', $4)
+                ON CONFLICT (email_address)
+                DO UPDATE SET
+                    inviting_user_id = excluded.inviting_user_id
+                RETURNING email_confirmation_code
                 ",
             )
-            .bind(inviting_user_id)
-            .bind(user_id)
-            .execute(&mut tx)
+            .bind(&email_address)
+            .bind(&random_email_confirmation_code())
+            .bind(&inviter_id)
+            .bind(&device_id)
+            .fetch_one(&mut tx)
             .await?;
-        }
 
-        tx.commit().await?;
-        Ok(Some(NewUserResult {
-            user_id,
-            metrics_id,
-            inviting_user_id,
-            signup_device_id,
-        }))
-    }
+            tx.commit().await?;
 
-    // invite codes
-
-    async fn set_invite_count_for_user(&self, id: UserId, count: u32) -> Result<()> {
-        let mut tx = self.pool.begin().await?;
-        if count > 0 {
-            sqlx::query(
-                "
-                UPDATE users
-                SET invite_code = $1
-                WHERE id = $2 AND invite_code IS NULL
-            ",
-            )
-            .bind(random_invite_code())
-            .bind(id)
-            .execute(&mut tx)
-            .await?;
-        }
-
-        sqlx::query(
-            "
-            UPDATE users
-            SET invite_count = $1
-            WHERE id = $2
-            ",
-        )
-        .bind(count as i32)
-        .bind(id)
-        .execute(&mut tx)
-        .await?;
-        tx.commit().await?;
-        Ok(())
-    }
-
-    async fn get_invite_code_for_user(&self, id: UserId) -> Result<Option<(String, u32)>> {
-        let result: Option<(String, i32)> = sqlx::query_as(
-            "
-                SELECT invite_code, invite_count
-                FROM users
-                WHERE id = $1 AND invite_code IS NOT NULL 
-            ",
-        )
-        .bind(id)
-        .fetch_optional(&self.pool)
-        .await?;
-        if let Some((code, count)) = result {
-            Ok(Some((code, count.try_into().map_err(anyhow::Error::new)?)))
-        } else {
-            Ok(None)
-        }
-    }
-
-    async fn get_user_for_invite_code(&self, code: &str) -> Result<User> {
-        sqlx::query_as(
-            "
-                SELECT *
-                FROM users
-                WHERE invite_code = $1
-            ",
-        )
-        .bind(code)
-        .fetch_optional(&self.pool)
-        .await?
-        .ok_or_else(|| {
-            Error::Http(
-                StatusCode::NOT_FOUND,
-                "that invite code does not exist".to_string(),
-            )
-        })
-    }
-
-    async fn create_invite_from_code(
-        &self,
-        code: &str,
-        email_address: &str,
-        device_id: Option<&str>,
-    ) -> Result<Invite> {
-        let mut tx = self.pool.begin().await?;
-
-        let existing_user: Option<UserId> = sqlx::query_scalar(
-            "
-            SELECT id
-            FROM users
-            WHERE email_address = $1
-            ",
-        )
-        .bind(email_address)
-        .fetch_optional(&mut tx)
-        .await?;
-        if existing_user.is_some() {
-            Err(anyhow!("email address is already in use"))?;
-        }
-
-        let row: Option<(UserId, i32)> = sqlx::query_as(
-            "
-            SELECT id, invite_count
-            FROM users
-            WHERE invite_code = $1
-            ",
-        )
-        .bind(code)
-        .fetch_optional(&mut tx)
-        .await?;
-
-        let (inviter_id, invite_count) = match row {
-            Some(row) => row,
-            None => Err(Error::Http(
-                StatusCode::NOT_FOUND,
-                "invite code not found".to_string(),
-            ))?,
-        };
-
-        if invite_count == 0 {
-            Err(Error::Http(
-                StatusCode::UNAUTHORIZED,
-                "no invites remaining".to_string(),
-            ))?;
-        }
-
-        let email_confirmation_code: String = sqlx::query_scalar(
-            "
-            INSERT INTO signups
-            (
-                email_address,
+            Ok(Invite {
+                email_address: email_address.into(),
                 email_confirmation_code,
-                email_confirmation_sent,
-                inviting_user_id,
-                platform_linux,
-                platform_mac,
-                platform_windows,
-                platform_unknown,
-                device_id
-            )
-            VALUES
-                ($1, $2, 'f', $3, 'f', 'f', 'f', 't', $4)
-            ON CONFLICT (email_address)
-            DO UPDATE SET
-                inviting_user_id = excluded.inviting_user_id
-            RETURNING email_confirmation_code
-            ",
-        )
-        .bind(&email_address)
-        .bind(&random_email_confirmation_code())
-        .bind(&inviter_id)
-        .bind(&device_id)
-        .fetch_one(&mut tx)
-        .await?;
-
-        tx.commit().await?;
-
-        Ok(Invite {
-            email_address: email_address.into(),
-            email_confirmation_code,
-        })
+            })
+        }
+        .boxed()
     }
 
     // rooms
 
-    async fn create_room(
-        &self,
+    fn create_room<'a>(
+        &'a self,
         user_id: UserId,
         connection_id: ConnectionId,
-    ) -> Result<proto::Room> {
-        let mut tx = self.pool.begin().await?;
-        let live_kit_room = nanoid::nanoid!(30);
-        let room_id = sqlx::query_scalar(
-            "
-            INSERT INTO rooms (live_kit_room, version)
-            VALUES ($1, 0)
-            ",
-        )
-        .bind(&live_kit_room)
-        .fetch_one(&mut tx)
-        .await
-        .map(RoomId)?;
+    ) -> BoxFuture<'a, Result<proto::Room>> {
+        async move {
+            let mut tx = self.pool.begin().await?;
+            let live_kit_room = nanoid::nanoid!(30);
+            let room_id = sqlx::query_scalar(
+                "
+                INSERT INTO rooms (live_kit_room, version)
+                VALUES ($1, 0)
+                ",
+            )
+            .bind(&live_kit_room)
+            .fetch_one(&mut tx)
+            .await
+            .map(RoomId)?;
 
-        sqlx::query(
-            "
-            INSERT INTO room_participants (room_id, user_id, connection_id)
-            VALUES ($1, $2, $3)
-            ",
-        )
-        .bind(room_id)
-        .bind(user_id)
-        .bind(connection_id.0 as i32)
-        .execute(&mut tx)
-        .await?;
+            sqlx::query(
+                "
+                INSERT INTO room_participants (room_id, user_id, connection_id)
+                VALUES ($1, $2, $3)
+                ",
+            )
+            .bind(room_id)
+            .bind(user_id)
+            .bind(connection_id.0 as i32)
+            .execute(&mut tx)
+            .await?;
 
-        sqlx::query(
-            "
-            INSERT INTO calls (room_id, calling_user_id, called_user_id, answering_connection_id)
-            VALUES ($1, $2, $3, $4)
-            ",
-        )
-        .bind(room_id)
-        .bind(user_id)
-        .bind(user_id)
-        .bind(connection_id.0 as i32)
-        .execute(&mut tx)
-        .await?;
+            sqlx::query(
+                "
+                INSERT INTO calls (room_id, calling_user_id, called_user_id, answering_connection_id)
+                VALUES ($1, $2, $3, $4)
+                ",
+            )
+            .bind(room_id)
+            .bind(user_id)
+            .bind(user_id)
+            .bind(connection_id.0 as i32)
+            .execute(&mut tx)
+            .await?;
 
-        self.commit_room_transaction(room_id, tx).await
+            self.commit_room_transaction(room_id, tx).await
+        }
+        .boxed()
     }
 
-    async fn call(
-        &self,
+    fn call<'a>(
+        &'a self,
         room_id: RoomId,
         calling_user_id: UserId,
         called_user_id: UserId,
         initial_project_id: Option<ProjectId>,
-    ) -> Result<proto::Room> {
-        let mut tx = self.pool.begin().await?;
-        sqlx::query(
-            "
-            INSERT INTO calls (room_id, calling_user_id, called_user_id, initial_project_id)
-            VALUES ($1, $2, $3, $4)
-            ",
-        )
-        .bind(room_id)
-        .bind(calling_user_id)
-        .bind(called_user_id)
-        .bind(initial_project_id)
-        .execute(&mut tx)
-        .await?;
+    ) -> BoxFuture<'a, Result<proto::Room>> {
+        async move {
+            let mut tx = self.pool.begin().await?;
+            sqlx::query(
+                "
+                INSERT INTO calls (room_id, calling_user_id, called_user_id, initial_project_id)
+                VALUES ($1, $2, $3, $4)
+                ",
+            )
+            .bind(room_id)
+            .bind(calling_user_id)
+            .bind(called_user_id)
+            .bind(initial_project_id)
+            .execute(&mut tx)
+            .await?;
 
-        sqlx::query(
-            "
-            INSERT INTO room_participants (room_id, user_id)
-            VALUES ($1, $2)
-            ",
-        )
-        .bind(room_id)
-        .bind(called_user_id)
-        .execute(&mut tx)
-        .await?;
+            sqlx::query(
+                "
+                INSERT INTO room_participants (room_id, user_id)
+                VALUES ($1, $2)
+                ",
+            )
+            .bind(room_id)
+            .bind(called_user_id)
+            .execute(&mut tx)
+            .await?;
 
-        self.commit_room_transaction(room_id, tx).await
+            self.commit_room_transaction(room_id, tx).await
+        }
+        .boxed()
     }
 
     // projects
 
-    async fn register_project(&self, host_user_id: UserId) -> Result<ProjectId> {
-        Ok(sqlx::query_scalar(
-            "
-            INSERT INTO projects(host_user_id)
-            VALUES ($1)
-            RETURNING id
-            ",
-        )
-        .bind(host_user_id)
-        .fetch_one(&self.pool)
-        .await
-        .map(ProjectId)?)
+    fn register_project<'a>(&'a self, host_user_id: UserId) -> BoxFuture<'a, Result<ProjectId>> {
+        async move {
+            Ok(sqlx::query_scalar(
+                "
+                INSERT INTO projects(host_user_id)
+                VALUES ($1)
+                RETURNING id
+                ",
+            )
+            .bind(host_user_id)
+            .fetch_one(&self.pool)
+            .await
+            .map(ProjectId)?)
+        }
+        .boxed()
     }
 
-    async fn unregister_project(&self, project_id: ProjectId) -> Result<()> {
-        sqlx::query(
-            "
-            UPDATE projects
-            SET unregistered = 't'
-            WHERE id = $1
-            ",
-        )
-        .bind(project_id)
-        .execute(&self.pool)
-        .await?;
-        Ok(())
+    fn unregister_project<'a>(&'a self, project_id: ProjectId) -> BoxFuture<'a, Result<()>> {
+        async move {
+            sqlx::query(
+                "
+                UPDATE projects
+                SET unregistered = 't'
+                WHERE id = $1
+                ",
+            )
+            .bind(project_id)
+            .execute(&self.pool)
+            .await?;
+            Ok(())
+        }
+        .boxed()
     }
 
     // contacts
 
-    async fn get_contacts(&self, user_id: UserId) -> Result<Vec<Contact>> {
-        let query = "
-            SELECT user_id_a, user_id_b, a_to_b, accepted, should_notify
-            FROM contacts
-            WHERE user_id_a = $1 OR user_id_b = $1;
-        ";
+    fn get_contacts<'a>(&'a self, user_id: UserId) -> BoxFuture<'a, Result<Vec<Contact>>> {
+        async move {
+            let query = "
+                SELECT user_id_a, user_id_b, a_to_b, accepted, should_notify
+                FROM contacts
+                WHERE user_id_a = $1 OR user_id_b = $1;
+            ";
 
-        let mut rows = sqlx::query_as::<_, (UserId, UserId, bool, bool, bool)>(query)
-            .bind(user_id)
-            .fetch(&self.pool);
+            let mut rows = sqlx::query_as::<_, (UserId, UserId, bool, bool, bool)>(query)
+                .bind(user_id)
+                .fetch(&self.pool);
 
-        let mut contacts = Vec::new();
-        while let Some(row) = rows.next().await {
-            let (user_id_a, user_id_b, a_to_b, accepted, should_notify) = row?;
+            let mut contacts = Vec::new();
+            while let Some(row) = rows.next().await {
+                let (user_id_a, user_id_b, a_to_b, accepted, should_notify) = row?;
 
-            if user_id_a == user_id {
-                if accepted {
+                if user_id_a == user_id {
+                    if accepted {
+                        contacts.push(Contact::Accepted {
+                            user_id: user_id_b,
+                            should_notify: should_notify && a_to_b,
+                        });
+                    } else if a_to_b {
+                        contacts.push(Contact::Outgoing { user_id: user_id_b })
+                    } else {
+                        contacts.push(Contact::Incoming {
+                            user_id: user_id_b,
+                            should_notify,
+                        });
+                    }
+                } else if accepted {
                     contacts.push(Contact::Accepted {
-                        user_id: user_id_b,
-                        should_notify: should_notify && a_to_b,
+                        user_id: user_id_a,
+                        should_notify: should_notify && !a_to_b,
                     });
                 } else if a_to_b {
-                    contacts.push(Contact::Outgoing { user_id: user_id_b })
-                } else {
                     contacts.push(Contact::Incoming {
-                        user_id: user_id_b,
+                        user_id: user_id_a,
                         should_notify,
                     });
+                } else {
+                    contacts.push(Contact::Outgoing { user_id: user_id_a });
                 }
-            } else if accepted {
-                contacts.push(Contact::Accepted {
-                    user_id: user_id_a,
-                    should_notify: should_notify && !a_to_b,
-                });
-            } else if a_to_b {
-                contacts.push(Contact::Incoming {
-                    user_id: user_id_a,
-                    should_notify,
-                });
+            }
+
+            contacts.sort_unstable_by_key(|contact| contact.user_id());
+
+            Ok(contacts)
+        }
+        .boxed()
+    }
+
+    fn has_contact<'a>(
+        &'a self,
+        user_id_1: UserId,
+        user_id_2: UserId,
+    ) -> BoxFuture<'a, Result<bool>> {
+        async move {
+            let (id_a, id_b) = if user_id_1 < user_id_2 {
+                (user_id_1, user_id_2)
             } else {
-                contacts.push(Contact::Outgoing { user_id: user_id_a });
+                (user_id_2, user_id_1)
+            };
+
+            let query = "
+                SELECT 1 FROM contacts
+                WHERE user_id_a = $1 AND user_id_b = $2 AND accepted = 't'
+                LIMIT 1
+            ";
+            Ok(sqlx::query_scalar::<_, i32>(query)
+                .bind(id_a.0)
+                .bind(id_b.0)
+                .fetch_optional(&self.pool)
+                .await?
+                .is_some())
+        }
+        .boxed()
+    }
+
+    fn send_contact_request<'a>(
+        &'a self,
+        sender_id: UserId,
+        receiver_id: UserId,
+    ) -> BoxFuture<'a, Result<()>> {
+        async move {
+            let (id_a, id_b, a_to_b) = if sender_id < receiver_id {
+                (sender_id, receiver_id, true)
+            } else {
+                (receiver_id, sender_id, false)
+            };
+            let query = "
+                INSERT into contacts (user_id_a, user_id_b, a_to_b, accepted, should_notify)
+                VALUES ($1, $2, $3, 'f', 't')
+                ON CONFLICT (user_id_a, user_id_b) DO UPDATE
+                SET
+                    accepted = 't',
+                    should_notify = 'f'
+                WHERE
+                    NOT contacts.accepted AND
+                    ((contacts.a_to_b = excluded.a_to_b AND contacts.user_id_a = excluded.user_id_b) OR
+                    (contacts.a_to_b != excluded.a_to_b AND contacts.user_id_a = excluded.user_id_a));
+            ";
+            let result = sqlx::query(query)
+                .bind(id_a.0)
+                .bind(id_b.0)
+                .bind(a_to_b)
+                .execute(&self.pool)
+                .await?;
+
+            if result.rows_affected() == 1 {
+                Ok(())
+            } else {
+                Err(anyhow!("contact already requested"))?
             }
         }
-
-        contacts.sort_unstable_by_key(|contact| contact.user_id());
-
-        Ok(contacts)
+        .boxed()
     }
 
-    async fn has_contact(&self, user_id_1: UserId, user_id_2: UserId) -> Result<bool> {
-        let (id_a, id_b) = if user_id_1 < user_id_2 {
-            (user_id_1, user_id_2)
-        } else {
-            (user_id_2, user_id_1)
-        };
+    fn remove_contact<'a>(
+        &'a self,
+        requester_id: UserId,
+        responder_id: UserId,
+    ) -> BoxFuture<'a, Result<()>> {
+        async move {
+            let (id_a, id_b) = if responder_id < requester_id {
+                (responder_id, requester_id)
+            } else {
+                (requester_id, responder_id)
+            };
+            let query = "
+                DELETE FROM contacts
+                WHERE user_id_a = $1 AND user_id_b = $2;
+            ";
+            let result = sqlx::query(query)
+                .bind(id_a.0)
+                .bind(id_b.0)
+                .execute(&self.pool)
+                .await?;
 
-        let query = "
-            SELECT 1 FROM contacts
-            WHERE user_id_a = $1 AND user_id_b = $2 AND accepted = 't'
-            LIMIT 1
-        ";
-        Ok(sqlx::query_scalar::<_, i32>(query)
-            .bind(id_a.0)
-            .bind(id_b.0)
-            .fetch_optional(&self.pool)
-            .await?
-            .is_some())
-    }
-
-    async fn send_contact_request(&self, sender_id: UserId, receiver_id: UserId) -> Result<()> {
-        let (id_a, id_b, a_to_b) = if sender_id < receiver_id {
-            (sender_id, receiver_id, true)
-        } else {
-            (receiver_id, sender_id, false)
-        };
-        let query = "
-            INSERT into contacts (user_id_a, user_id_b, a_to_b, accepted, should_notify)
-            VALUES ($1, $2, $3, 'f', 't')
-            ON CONFLICT (user_id_a, user_id_b) DO UPDATE
-            SET
-                accepted = 't',
-                should_notify = 'f'
-            WHERE
-                NOT contacts.accepted AND
-                ((contacts.a_to_b = excluded.a_to_b AND contacts.user_id_a = excluded.user_id_b) OR
-                (contacts.a_to_b != excluded.a_to_b AND contacts.user_id_a = excluded.user_id_a));
-        ";
-        let result = sqlx::query(query)
-            .bind(id_a.0)
-            .bind(id_b.0)
-            .bind(a_to_b)
-            .execute(&self.pool)
-            .await?;
-
-        if result.rows_affected() == 1 {
-            Ok(())
-        } else {
-            Err(anyhow!("contact already requested"))?
+            if result.rows_affected() == 1 {
+                Ok(())
+            } else {
+                Err(anyhow!("no such contact"))?
+            }
         }
+        .boxed()
     }
 
-    async fn remove_contact(&self, requester_id: UserId, responder_id: UserId) -> Result<()> {
-        let (id_a, id_b) = if responder_id < requester_id {
-            (responder_id, requester_id)
-        } else {
-            (requester_id, responder_id)
-        };
-        let query = "
-            DELETE FROM contacts
-            WHERE user_id_a = $1 AND user_id_b = $2;
-        ";
-        let result = sqlx::query(query)
-            .bind(id_a.0)
-            .bind(id_b.0)
-            .execute(&self.pool)
-            .await?;
-
-        if result.rows_affected() == 1 {
-            Ok(())
-        } else {
-            Err(anyhow!("no such contact"))?
-        }
-    }
-
-    async fn dismiss_contact_notification(
-        &self,
+    fn dismiss_contact_notification<'a>(
+        &'a self,
         user_id: UserId,
         contact_user_id: UserId,
-    ) -> Result<()> {
-        let (id_a, id_b, a_to_b) = if user_id < contact_user_id {
-            (user_id, contact_user_id, true)
-        } else {
-            (contact_user_id, user_id, false)
-        };
+    ) -> BoxFuture<'a, Result<()>> {
+        async move {
+            let (id_a, id_b, a_to_b) = if user_id < contact_user_id {
+                (user_id, contact_user_id, true)
+            } else {
+                (contact_user_id, user_id, false)
+            };
 
-        let query = "
-            UPDATE contacts
-            SET should_notify = 'f'
-            WHERE
-                user_id_a = $1 AND user_id_b = $2 AND
-                (
-                    (a_to_b = $3 AND accepted) OR
-                    (a_to_b != $3 AND NOT accepted)
-                );
-        ";
+            let query = "
+                UPDATE contacts
+                SET should_notify = 'f'
+                WHERE
+                    user_id_a = $1 AND user_id_b = $2 AND
+                    (
+                        (a_to_b = $3 AND accepted) OR
+                        (a_to_b != $3 AND NOT accepted)
+                    );
+            ";
 
-        let result = sqlx::query(query)
-            .bind(id_a.0)
-            .bind(id_b.0)
-            .bind(a_to_b)
-            .execute(&self.pool)
-            .await?;
+            let result = sqlx::query(query)
+                .bind(id_a.0)
+                .bind(id_b.0)
+                .bind(a_to_b)
+                .execute(&self.pool)
+                .await?;
 
-        if result.rows_affected() == 0 {
-            Err(anyhow!("no such contact request"))?;
+            if result.rows_affected() == 0 {
+                Err(anyhow!("no such contact request"))?;
+            }
+
+            Ok(())
         }
-
-        Ok(())
+        .boxed()
     }
 
-    async fn respond_to_contact_request(
-        &self,
+    fn respond_to_contact_request<'a>(
+        &'a self,
         responder_id: UserId,
         requester_id: UserId,
         accept: bool,
-    ) -> Result<()> {
-        let (id_a, id_b, a_to_b) = if responder_id < requester_id {
-            (responder_id, requester_id, false)
-        } else {
-            (requester_id, responder_id, true)
-        };
-        let result = if accept {
-            let query = "
-                UPDATE contacts
-                SET accepted = 't', should_notify = 't'
-                WHERE user_id_a = $1 AND user_id_b = $2 AND a_to_b = $3;
-            ";
-            sqlx::query(query)
-                .bind(id_a.0)
-                .bind(id_b.0)
-                .bind(a_to_b)
-                .execute(&self.pool)
-                .await?
-        } else {
-            let query = "
-                DELETE FROM contacts
-                WHERE user_id_a = $1 AND user_id_b = $2 AND a_to_b = $3 AND NOT accepted;
-            ";
-            sqlx::query(query)
-                .bind(id_a.0)
-                .bind(id_b.0)
-                .bind(a_to_b)
-                .execute(&self.pool)
-                .await?
-        };
-        if result.rows_affected() == 1 {
-            Ok(())
-        } else {
-            Err(anyhow!("no such contact request"))?
+    ) -> BoxFuture<'a, Result<()>> {
+        async move {
+            let (id_a, id_b, a_to_b) = if responder_id < requester_id {
+                (responder_id, requester_id, false)
+            } else {
+                (requester_id, responder_id, true)
+            };
+            let result = if accept {
+                let query = "
+                    UPDATE contacts
+                    SET accepted = 't', should_notify = 't'
+                    WHERE user_id_a = $1 AND user_id_b = $2 AND a_to_b = $3;
+                ";
+                sqlx::query(query)
+                    .bind(id_a.0)
+                    .bind(id_b.0)
+                    .bind(a_to_b)
+                    .execute(&self.pool)
+                    .await?
+            } else {
+                let query = "
+                    DELETE FROM contacts
+                    WHERE user_id_a = $1 AND user_id_b = $2 AND a_to_b = $3 AND NOT accepted;
+                ";
+                sqlx::query(query)
+                    .bind(id_a.0)
+                    .bind(id_b.0)
+                    .bind(a_to_b)
+                    .execute(&self.pool)
+                    .await?
+            };
+            if result.rows_affected() == 1 {
+                Ok(())
+            } else {
+                Err(anyhow!("no such contact request"))?
+            }
         }
+        .boxed()
     }
 
     // access tokens
 
-    async fn create_access_token_hash(
-        &self,
+    fn create_access_token_hash<'a>(
+        &'a self,
         user_id: UserId,
-        access_token_hash: &str,
+        access_token_hash: &'a str,
         max_access_token_count: usize,
-    ) -> Result<()> {
-        let insert_query = "
-            INSERT INTO access_tokens (user_id, hash)
-            VALUES ($1, $2);
-        ";
-        let cleanup_query = "
-            DELETE FROM access_tokens
-            WHERE id IN (
-                SELECT id from access_tokens
-                WHERE user_id = $1
-                ORDER BY id DESC
-                OFFSET $3
-            )
-        ";
+    ) -> BoxFuture<'a, Result<()>> {
+        async move {
+            let insert_query = "
+                INSERT INTO access_tokens (user_id, hash)
+                VALUES ($1, $2);
+            ";
+            let cleanup_query = "
+                DELETE FROM access_tokens
+                WHERE id IN (
+                    SELECT id from access_tokens
+                    WHERE user_id = $1
+                    ORDER BY id DESC
+                    OFFSET $3
+                )
+            ";
 
-        let mut tx = self.pool.begin().await?;
-        sqlx::query(insert_query)
-            .bind(user_id.0)
-            .bind(access_token_hash)
-            .execute(&mut tx)
-            .await?;
-        sqlx::query(cleanup_query)
-            .bind(user_id.0)
-            .bind(access_token_hash)
-            .bind(max_access_token_count as i32)
-            .execute(&mut tx)
-            .await?;
-        Ok(tx.commit().await?)
+            let mut tx = self.pool.begin().await?;
+            sqlx::query(insert_query)
+                .bind(user_id.0)
+                .bind(access_token_hash)
+                .execute(&mut tx)
+                .await?;
+            sqlx::query(cleanup_query)
+                .bind(user_id.0)
+                .bind(access_token_hash)
+                .bind(max_access_token_count as i32)
+                .execute(&mut tx)
+                .await?;
+            Ok(tx.commit().await?)
+        }
+        .boxed()
     }
 
-    async fn get_access_token_hashes(&self, user_id: UserId) -> Result<Vec<String>> {
-        let query = "
-            SELECT hash
-            FROM access_tokens
-            WHERE user_id = $1
-            ORDER BY id DESC
-        ";
-        Ok(sqlx::query_scalar(query)
-            .bind(user_id.0)
-            .fetch_all(&self.pool)
-            .await?)
+    fn get_access_token_hashes<'a>(
+        &'a self,
+        user_id: UserId,
+    ) -> BoxFuture<'a, Result<Vec<String>>> {
+        async move {
+            let query = "
+                SELECT hash
+                FROM access_tokens
+                WHERE user_id = $1
+                ORDER BY id DESC
+            ";
+            Ok(sqlx::query_scalar(query)
+                .bind(user_id.0)
+                .fetch_all(&self.pool)
+                .await?)
+        }
+        .boxed()
     }
 
     // orgs
 
     #[allow(unused)] // Help rust-analyzer
     #[cfg(any(test, feature = "seed-support"))]
-    async fn find_org_by_slug(&self, slug: &str) -> Result<Option<Org>> {
-        let query = "
-            SELECT *
-            FROM orgs
-            WHERE slug = $1
-        ";
-        Ok(sqlx::query_as(query)
-            .bind(slug)
-            .fetch_optional(&self.pool)
-            .await?)
+    fn find_org_by_slug<'a>(&'a self, slug: &'a str) -> BoxFuture<'a, Result<Option<Org>>> {
+        async move {
+            let query = "
+                SELECT *
+                FROM orgs
+                WHERE slug = $1
+            ";
+            Ok(sqlx::query_as(query)
+                .bind(slug)
+                .fetch_optional(&self.pool)
+                .await?)
+        }
+        .boxed()
     }
 
     #[cfg(any(test, feature = "seed-support"))]
-    async fn create_org(&self, name: &str, slug: &str) -> Result<OrgId> {
-        let query = "
-            INSERT INTO orgs (name, slug)
-            VALUES ($1, $2)
-            RETURNING id
-        ";
-        Ok(sqlx::query_scalar(query)
-            .bind(name)
-            .bind(slug)
-            .fetch_one(&self.pool)
-            .await
-            .map(OrgId)?)
+    fn create_org<'a>(&'a self, name: &'a str, slug: &'a str) -> BoxFuture<'a, Result<OrgId>> {
+        async move {
+            let query = "
+                INSERT INTO orgs (name, slug)
+                VALUES ($1, $2)
+                RETURNING id
+            ";
+            Ok(sqlx::query_scalar(query)
+                .bind(name)
+                .bind(slug)
+                .fetch_one(&self.pool)
+                .await
+                .map(OrgId)?)
+        }
+        .boxed()
     }
 
     #[cfg(any(test, feature = "seed-support"))]
-    async fn add_org_member(&self, org_id: OrgId, user_id: UserId, is_admin: bool) -> Result<()> {
-        let query = "
-            INSERT INTO org_memberships (org_id, user_id, admin)
-            VALUES ($1, $2, $3)
-            ON CONFLICT DO NOTHING
-        ";
-        Ok(sqlx::query(query)
-            .bind(org_id.0)
-            .bind(user_id.0)
-            .bind(is_admin)
-            .execute(&self.pool)
-            .await
-            .map(drop)?)
+    fn add_org_member<'a>(
+        &'a self,
+        org_id: OrgId,
+        user_id: UserId,
+        is_admin: bool,
+    ) -> BoxFuture<'a, Result<()>> {
+        async move {
+            let query = "
+                INSERT INTO org_memberships (org_id, user_id, admin)
+                VALUES ($1, $2, $3)
+                ON CONFLICT DO NOTHING
+            ";
+            Ok(sqlx::query(query)
+                .bind(org_id.0)
+                .bind(user_id.0)
+                .bind(is_admin)
+                .execute(&self.pool)
+                .await
+                .map(drop)?)
+        }
+        .boxed()
     }
 
     // channels
 
     #[cfg(any(test, feature = "seed-support"))]
-    async fn create_org_channel(&self, org_id: OrgId, name: &str) -> Result<ChannelId> {
-        let query = "
-            INSERT INTO channels (owner_id, owner_is_user, name)
-            VALUES ($1, false, $2)
-            RETURNING id
-        ";
-        Ok(sqlx::query_scalar(query)
-            .bind(org_id.0)
-            .bind(name)
-            .fetch_one(&self.pool)
-            .await
-            .map(ChannelId)?)
+    fn create_org_channel<'a>(
+        &'a self,
+        org_id: OrgId,
+        name: &'a str,
+    ) -> BoxFuture<'a, Result<ChannelId>> {
+        async move {
+            let query = "
+                INSERT INTO channels (owner_id, owner_is_user, name)
+                VALUES ($1, false, $2)
+                RETURNING id
+            ";
+            Ok(sqlx::query_scalar(query)
+                .bind(org_id.0)
+                .bind(name)
+                .fetch_one(&self.pool)
+                .await
+                .map(ChannelId)?)
+        }
+        .boxed()
     }
 
     #[allow(unused)] // Help rust-analyzer
     #[cfg(any(test, feature = "seed-support"))]
-    async fn get_org_channels(&self, org_id: OrgId) -> Result<Vec<Channel>> {
-        let query = "
-            SELECT *
-            FROM channels
-            WHERE
-                channels.owner_is_user = false AND
-                channels.owner_id = $1
-        ";
-        Ok(sqlx::query_as(query)
-            .bind(org_id.0)
-            .fetch_all(&self.pool)
-            .await?)
+    fn get_org_channels<'a>(&'a self, org_id: OrgId) -> BoxFuture<'a, Result<Vec<Channel>>> {
+        async move {
+            let query = "
+                SELECT *
+                FROM channels
+                WHERE
+                    channels.owner_is_user = false AND
+                    channels.owner_id = $1
+            ";
+            Ok(sqlx::query_as(query)
+                .bind(org_id.0)
+                .fetch_all(&self.pool)
+                .await?)
+        }
+        .boxed()
     }
 
-    async fn get_accessible_channels(&self, user_id: UserId) -> Result<Vec<Channel>> {
-        let query = "
-            SELECT
-                channels.*
-            FROM
-                channel_memberships, channels
-            WHERE
-                channel_memberships.user_id = $1 AND
-                channel_memberships.channel_id = channels.id
-        ";
-        Ok(sqlx::query_as(query)
-            .bind(user_id.0)
-            .fetch_all(&self.pool)
-            .await?)
+    fn get_accessible_channels<'a>(
+        &'a self,
+        user_id: UserId,
+    ) -> BoxFuture<'a, Result<Vec<Channel>>> {
+        async move {
+            let query = "
+                SELECT
+                    channels.*
+                FROM
+                    channel_memberships, channels
+                WHERE
+                    channel_memberships.user_id = $1 AND
+                    channel_memberships.channel_id = channels.id
+            ";
+            Ok(sqlx::query_as(query)
+                .bind(user_id.0)
+                .fetch_all(&self.pool)
+                .await?)
+        }
+        .boxed()
     }
 
-    async fn can_user_access_channel(
-        &self,
+    fn can_user_access_channel<'a>(
+        &'a self,
         user_id: UserId,
         channel_id: ChannelId,
-    ) -> Result<bool> {
-        let query = "
-            SELECT id
-            FROM channel_memberships
-            WHERE user_id = $1 AND channel_id = $2
-            LIMIT 1
-        ";
-        Ok(sqlx::query_scalar::<_, i32>(query)
-            .bind(user_id.0)
-            .bind(channel_id.0)
-            .fetch_optional(&self.pool)
-            .await
-            .map(|e| e.is_some())?)
+    ) -> BoxFuture<'a, Result<bool>> {
+        async move {
+            let query = "
+                SELECT id
+                FROM channel_memberships
+                WHERE user_id = $1 AND channel_id = $2
+                LIMIT 1
+            ";
+            Ok(sqlx::query_scalar::<_, i32>(query)
+                .bind(user_id.0)
+                .bind(channel_id.0)
+                .fetch_optional(&self.pool)
+                .await
+                .map(|e| e.is_some())?)
+        }
+        .boxed()
     }
 
     #[cfg(any(test, feature = "seed-support"))]
-    async fn add_channel_member(
-        &self,
+    fn add_channel_member<'a>(
+        &'a self,
         channel_id: ChannelId,
         user_id: UserId,
         is_admin: bool,
-    ) -> Result<()> {
-        let query = "
-            INSERT INTO channel_memberships (channel_id, user_id, admin)
-            VALUES ($1, $2, $3)
-            ON CONFLICT DO NOTHING
-        ";
-        Ok(sqlx::query(query)
-            .bind(channel_id.0)
-            .bind(user_id.0)
-            .bind(is_admin)
-            .execute(&self.pool)
-            .await
-            .map(drop)?)
+    ) -> BoxFuture<'a, Result<()>> {
+        async move {
+            let query = "
+                INSERT INTO channel_memberships (channel_id, user_id, admin)
+                VALUES ($1, $2, $3)
+                ON CONFLICT DO NOTHING
+            ";
+            Ok(sqlx::query(query)
+                .bind(channel_id.0)
+                .bind(user_id.0)
+                .bind(is_admin)
+                .execute(&self.pool)
+                .await
+                .map(drop)?)
+        }
+        .boxed()
     }
 
     // messages
 
-    async fn create_channel_message(
-        &self,
+    fn create_channel_message<'a>(
+        &'a self,
         channel_id: ChannelId,
         sender_id: UserId,
-        body: &str,
+        body: &'a str,
         timestamp: OffsetDateTime,
         nonce: u128,
-    ) -> Result<MessageId> {
-        let query = "
-            INSERT INTO channel_messages (channel_id, sender_id, body, sent_at, nonce)
-            VALUES ($1, $2, $3, $4, $5)
-            ON CONFLICT (nonce) DO UPDATE SET nonce = excluded.nonce
-            RETURNING id
-        ";
-        Ok(sqlx::query_scalar(query)
-            .bind(channel_id.0)
-            .bind(sender_id.0)
-            .bind(body)
-            .bind(timestamp)
-            .bind(Uuid::from_u128(nonce))
-            .fetch_one(&self.pool)
-            .await
-            .map(MessageId)?)
+    ) -> BoxFuture<'a, Result<MessageId>> {
+        async move {
+            let query = "
+                INSERT INTO channel_messages (channel_id, sender_id, body, sent_at, nonce)
+                VALUES ($1, $2, $3, $4, $5)
+                ON CONFLICT (nonce) DO UPDATE SET nonce = excluded.nonce
+                RETURNING id
+            ";
+            Ok(sqlx::query_scalar(query)
+                .bind(channel_id.0)
+                .bind(sender_id.0)
+                .bind(body)
+                .bind(timestamp)
+                .bind(Uuid::from_u128(nonce))
+                .fetch_one(&self.pool)
+                .await
+                .map(MessageId)?)
+        }
+        .boxed()
     }
 
-    async fn get_channel_messages(
-        &self,
+    fn get_channel_messages<'a>(
+        &'a self,
         channel_id: ChannelId,
         count: usize,
         before_id: Option<MessageId>,
-    ) -> Result<Vec<ChannelMessage>> {
-        let query = r#"
-            SELECT * FROM (
-                SELECT
-                    id, channel_id, sender_id, body, sent_at AT TIME ZONE 'UTC' as sent_at, nonce
-                FROM
-                    channel_messages
-                WHERE
-                    channel_id = $1 AND
-                    id < $2
-                ORDER BY id DESC
-                LIMIT $3
-            ) as recent_messages
-            ORDER BY id ASC
-        "#;
-        Ok(sqlx::query_as(query)
-            .bind(channel_id.0)
-            .bind(before_id.unwrap_or(MessageId::MAX))
-            .bind(count as i64)
-            .fetch_all(&self.pool)
-            .await?)
+    ) -> BoxFuture<'a, Result<Vec<ChannelMessage>>> {
+        async move {
+            let query = r#"
+                SELECT * FROM (
+                    SELECT
+                        id, channel_id, sender_id, body, sent_at AT TIME ZONE 'UTC' as sent_at, nonce
+                    FROM
+                        channel_messages
+                    WHERE
+                        channel_id = $1 AND
+                        id < $2
+                    ORDER BY id DESC
+                    LIMIT $3
+                ) as recent_messages
+                ORDER BY id ASC
+            "#;
+            Ok(sqlx::query_as(query)
+                .bind(channel_id.0)
+                .bind(before_id.unwrap_or(MessageId::MAX))
+                .bind(count as i64)
+                .fetch_all(&self.pool)
+                .await?)
+        }
+        .boxed()
     }
 
     #[cfg(test)]
-    async fn teardown(&self, url: &str) {
-        use util::ResultExt;
+    fn teardown<'a>(&'a self, url: &'a str) -> BoxFuture<'a, ()> {
+        async move {
+            use util::ResultExt;
 
-        let query = "
-            SELECT pg_terminate_backend(pg_stat_activity.pid)
-            FROM pg_stat_activity
-            WHERE pg_stat_activity.datname = current_database() AND pid <> pg_backend_pid();
-        ";
-        sqlx::query(query).execute(&self.pool).await.log_err();
-        self.pool.close().await;
-        <sqlx::Postgres as sqlx::migrate::MigrateDatabase>::drop_database(url)
-            .await
-            .log_err();
+            let query = "
+                SELECT pg_terminate_backend(pg_stat_activity.pid)
+                FROM pg_stat_activity
+                WHERE pg_stat_activity.datname = current_database() AND pid <> pg_backend_pid();
+            ";
+            sqlx::query(query).execute(&self.pool).await.log_err();
+            self.pool.close().await;
+            <sqlx::Postgres as sqlx::migrate::MigrateDatabase>::drop_database(url)
+                .await
+                .log_err();
+        }
+        .boxed()
     }
 
     #[cfg(test)]
@@ -1647,6 +1861,7 @@ mod test {
     use super::*;
     use anyhow::anyhow;
     use collections::BTreeMap;
+    use futures::FutureExt;
     use gpui::executor::Background;
     use lazy_static::lazy_static;
     use parking_lot::Mutex;
@@ -1744,630 +1959,755 @@ mod test {
         }
     }
 
-    #[async_trait]
     impl Db for FakeDb {
-        async fn create_user(
-            &self,
-            email_address: &str,
+        fn create_user<'a>(
+            &'a self,
+            email_address: &'a str,
             admin: bool,
             params: NewUserParams,
-        ) -> Result<NewUserResult> {
-            self.background.simulate_random_delay().await;
+        ) -> BoxFuture<'a, Result<NewUserResult>> {
+            async move {
+                self.background.simulate_random_delay().await;
 
-            let mut users = self.users.lock();
-            let user_id = if let Some(user) = users
-                .values()
-                .find(|user| user.github_login == params.github_login)
-            {
-                user.id
-            } else {
-                let id = post_inc(&mut *self.next_user_id.lock());
-                let user_id = UserId(id);
-                users.insert(
-                    user_id,
-                    User {
-                        id: user_id,
-                        github_login: params.github_login,
-                        github_user_id: Some(params.github_user_id),
-                        email_address: Some(email_address.to_string()),
-                        admin,
-                        invite_code: None,
-                        invite_count: 0,
-                        connected_once: false,
-                    },
-                );
-                user_id
-            };
-            Ok(NewUserResult {
-                user_id,
-                metrics_id: "the-metrics-id".to_string(),
-                inviting_user_id: None,
-                signup_device_id: None,
-            })
-        }
-
-        async fn get_all_users(&self, _page: u32, _limit: u32) -> Result<Vec<User>> {
-            unimplemented!()
-        }
-
-        async fn fuzzy_search_users(&self, _: &str, _: u32) -> Result<Vec<User>> {
-            unimplemented!()
-        }
-
-        async fn get_user_by_id(&self, id: UserId) -> Result<Option<User>> {
-            self.background.simulate_random_delay().await;
-            Ok(self.get_users_by_ids(vec![id]).await?.into_iter().next())
-        }
-
-        async fn get_user_metrics_id(&self, _id: UserId) -> Result<String> {
-            Ok("the-metrics-id".to_string())
-        }
-
-        async fn get_users_by_ids(&self, ids: Vec<UserId>) -> Result<Vec<User>> {
-            self.background.simulate_random_delay().await;
-            let users = self.users.lock();
-            Ok(ids.iter().filter_map(|id| users.get(id).cloned()).collect())
-        }
-
-        async fn get_users_with_no_invites(&self, _: bool) -> Result<Vec<User>> {
-            unimplemented!()
-        }
-
-        async fn get_user_by_github_account(
-            &self,
-            github_login: &str,
-            github_user_id: Option<i32>,
-        ) -> Result<Option<User>> {
-            self.background.simulate_random_delay().await;
-            if let Some(github_user_id) = github_user_id {
-                for user in self.users.lock().values_mut() {
-                    if user.github_user_id == Some(github_user_id) {
-                        user.github_login = github_login.into();
-                        return Ok(Some(user.clone()));
-                    }
-                    if user.github_login == github_login {
-                        user.github_user_id = Some(github_user_id);
-                        return Ok(Some(user.clone()));
-                    }
-                }
-                Ok(None)
-            } else {
-                Ok(self
-                    .users
-                    .lock()
+                let mut users = self.users.lock();
+                let user_id = if let Some(user) = users
                     .values()
-                    .find(|user| user.github_login == github_login)
-                    .cloned())
+                    .find(|user| user.github_login == params.github_login)
+                {
+                    user.id
+                } else {
+                    let id = post_inc(&mut *self.next_user_id.lock());
+                    let user_id = UserId(id);
+                    users.insert(
+                        user_id,
+                        User {
+                            id: user_id,
+                            github_login: params.github_login,
+                            github_user_id: Some(params.github_user_id),
+                            email_address: Some(email_address.to_string()),
+                            admin,
+                            invite_code: None,
+                            invite_count: 0,
+                            connected_once: false,
+                        },
+                    );
+                    user_id
+                };
+                Ok(NewUserResult {
+                    user_id,
+                    metrics_id: "the-metrics-id".to_string(),
+                    inviting_user_id: None,
+                    signup_device_id: None,
+                })
             }
+            .boxed()
         }
 
-        async fn set_user_is_admin(&self, _id: UserId, _is_admin: bool) -> Result<()> {
-            unimplemented!()
+        fn get_all_users<'a>(
+            &'a self,
+            _page: u32,
+            _limit: u32,
+        ) -> BoxFuture<'a, Result<Vec<User>>> {
+            async move { unimplemented!() }.boxed()
         }
 
-        async fn set_user_connected_once(&self, id: UserId, connected_once: bool) -> Result<()> {
-            self.background.simulate_random_delay().await;
-            let mut users = self.users.lock();
-            let mut user = users
-                .get_mut(&id)
-                .ok_or_else(|| anyhow!("user not found"))?;
-            user.connected_once = connected_once;
-            Ok(())
+        fn fuzzy_search_users<'a>(
+            &'a self,
+            _: &'a str,
+            _: u32,
+        ) -> BoxFuture<'a, Result<Vec<User>>> {
+            async move { unimplemented!() }.boxed()
         }
 
-        async fn destroy_user(&self, _id: UserId) -> Result<()> {
-            unimplemented!()
+        fn get_user_by_id<'a>(&'a self, id: UserId) -> BoxFuture<'a, Result<Option<User>>> {
+            async move {
+                self.background.simulate_random_delay().await;
+                Ok(self.get_users_by_ids(vec![id]).await?.into_iter().next())
+            }
+            .boxed()
+        }
+
+        fn get_user_metrics_id<'a>(&'a self, _id: UserId) -> BoxFuture<'a, Result<String>> {
+            async move { Ok("the-metrics-id".to_string()) }.boxed()
+        }
+
+        fn get_users_by_ids<'a>(&'a self, ids: Vec<UserId>) -> BoxFuture<'a, Result<Vec<User>>> {
+            async move {
+                self.background.simulate_random_delay().await;
+                let users = self.users.lock();
+                Ok(ids.iter().filter_map(|id| users.get(id).cloned()).collect())
+            }
+            .boxed()
+        }
+
+        fn get_users_with_no_invites<'a>(&'a self, _: bool) -> BoxFuture<'a, Result<Vec<User>>> {
+            async move { unimplemented!() }.boxed()
+        }
+
+        fn get_user_by_github_account<'a>(
+            &'a self,
+            github_login: &'a str,
+            github_user_id: Option<i32>,
+        ) -> BoxFuture<'a, Result<Option<User>>> {
+            async move {
+                self.background.simulate_random_delay().await;
+                if let Some(github_user_id) = github_user_id {
+                    for user in self.users.lock().values_mut() {
+                        if user.github_user_id == Some(github_user_id) {
+                            user.github_login = github_login.into();
+                            return Ok(Some(user.clone()));
+                        }
+                        if user.github_login == github_login {
+                            user.github_user_id = Some(github_user_id);
+                            return Ok(Some(user.clone()));
+                        }
+                    }
+                    Ok(None)
+                } else {
+                    Ok(self
+                        .users
+                        .lock()
+                        .values()
+                        .find(|user| user.github_login == github_login)
+                        .cloned())
+                }
+            }
+            .boxed()
+        }
+
+        fn set_user_is_admin<'a>(
+            &'a self,
+            _id: UserId,
+            _is_admin: bool,
+        ) -> BoxFuture<'a, Result<()>> {
+            async move { unimplemented!() }.boxed()
+        }
+
+        fn set_user_connected_once<'a>(
+            &'a self,
+            id: UserId,
+            connected_once: bool,
+        ) -> BoxFuture<'a, Result<()>> {
+            async move {
+                self.background.simulate_random_delay().await;
+                let mut users = self.users.lock();
+                let mut user = users
+                    .get_mut(&id)
+                    .ok_or_else(|| anyhow!("user not found"))?;
+                user.connected_once = connected_once;
+                Ok(())
+            }
+            .boxed()
+        }
+
+        fn destroy_user<'a>(&'a self, _id: UserId) -> BoxFuture<'a, Result<()>> {
+            async move { unimplemented!() }.boxed()
         }
 
         // signups
 
-        async fn create_signup(&self, _signup: Signup) -> Result<()> {
+        fn create_signup<'a>(&'a self, _signup: Signup) -> BoxFuture<'a, Result<()>> {
+            async move { unimplemented!() }.boxed()
+        }
+
+        fn get_waitlist_summary<'a>(&'a self) -> BoxFuture<'a, Result<WaitlistSummary>> {
+            async move { unimplemented!() }.boxed()
+        }
+
+        fn get_unsent_invites<'a>(&'a self, _count: usize) -> BoxFuture<'a, Result<Vec<Invite>>> {
+            async move { unimplemented!() }.boxed()
+        }
+
+        fn record_sent_invites<'a>(&'a self, _invites: &'a [Invite]) -> BoxFuture<'a, Result<()>> {
             unimplemented!()
         }
 
-        async fn get_waitlist_summary(&self) -> Result<WaitlistSummary> {
-            unimplemented!()
-        }
-
-        async fn get_unsent_invites(&self, _count: usize) -> Result<Vec<Invite>> {
-            unimplemented!()
-        }
-
-        async fn record_sent_invites(&self, _invites: &[Invite]) -> Result<()> {
-            unimplemented!()
-        }
-
-        async fn create_user_from_invite(
-            &self,
+        fn create_user_from_invite<'a>(
+            &'a self,
             _invite: &Invite,
             _user: NewUserParams,
-        ) -> Result<Option<NewUserResult>> {
-            unimplemented!()
+        ) -> BoxFuture<'a, Result<Option<NewUserResult>>> {
+            async move { unimplemented!() }.boxed()
         }
 
         // invite codes
 
-        async fn set_invite_count_for_user(&self, _id: UserId, _count: u32) -> Result<()> {
-            unimplemented!()
+        fn set_invite_count_for_user<'a>(
+            &'a self,
+            _id: UserId,
+            _count: u32,
+        ) -> BoxFuture<'a, Result<()>> {
+            async move { unimplemented!() }.boxed()
         }
 
-        async fn get_invite_code_for_user(&self, _id: UserId) -> Result<Option<(String, u32)>> {
-            self.background.simulate_random_delay().await;
-            Ok(None)
+        fn get_invite_code_for_user<'a>(
+            &'a self,
+            _id: UserId,
+        ) -> BoxFuture<'a, Result<Option<(String, u32)>>> {
+            async move {
+                self.background.simulate_random_delay().await;
+                Ok(None)
+            }
+            .boxed()
         }
 
-        async fn get_user_for_invite_code(&self, _code: &str) -> Result<User> {
-            unimplemented!()
+        fn get_user_for_invite_code<'a>(&'a self, _code: &'a str) -> BoxFuture<'a, Result<User>> {
+            async move { unimplemented!() }.boxed()
         }
 
-        async fn create_invite_from_code(
-            &self,
+        fn create_invite_from_code<'a>(
+            &'a self,
             _code: &str,
             _email_address: &str,
             _device_id: Option<&str>,
-        ) -> Result<Invite> {
-            unimplemented!()
+        ) -> BoxFuture<'a, Result<Invite>> {
+            async move { unimplemented!() }.boxed()
         }
 
         // rooms
 
-        async fn create_room(
-            &self,
+        fn create_room<'a>(
+            &'a self,
             user_id: UserId,
             connection_id: ConnectionId,
-        ) -> Result<proto::Room> {
-            self.background.simulate_random_delay().await;
+        ) -> BoxFuture<'a, Result<proto::Room>> {
+            async move {
+                self.background.simulate_random_delay().await;
 
-            if !self.users.lock().contains_key(&user_id) {
-                Err(anyhow!("no such user"))?;
-            }
+                if !self.users.lock().contains_key(&user_id) {
+                    Err(anyhow!("no such user"))?;
+                }
 
-            if self.calls.lock().contains_key(&user_id) {
-                Err(anyhow!("can't create a room with an active call"))?;
-            }
+                if self.calls.lock().contains_key(&user_id) {
+                    Err(anyhow!("can't create a room with an active call"))?;
+                }
 
-            let room_id = RoomId(post_inc(&mut *self.next_room_id.lock()));
-            let room = Room {
-                id: room_id,
-                version: 0,
-                live_kit_room: nanoid::nanoid!(30),
-            };
-            self.rooms.lock().insert(room_id, room.clone());
-            self.room_participants.lock().insert(
-                room_id,
-                vec![RoomParticipant {
+                let room_id = RoomId(post_inc(&mut *self.next_room_id.lock()));
+                let room = Room {
+                    id: room_id,
+                    version: 0,
+                    live_kit_room: nanoid::nanoid!(30),
+                };
+                self.rooms.lock().insert(room_id, room.clone());
+                self.room_participants.lock().insert(
                     room_id,
+                    vec![RoomParticipant {
+                        room_id,
+                        user_id,
+                        location_kind: None,
+                        location_project_id: None,
+                        connection_id: Some(connection_id.0 as i32),
+                    }],
+                );
+                self.calls.lock().insert(
                     user_id,
-                    location_kind: None,
-                    location_project_id: None,
-                    connection_id: Some(connection_id.0 as i32),
-                }],
-            );
-            self.calls.lock().insert(
-                user_id,
-                Call {
-                    room_id,
-                    calling_user_id: user_id,
-                    called_user_id: user_id,
-                    answering_connection_id: Some(connection_id.0 as i32),
-                    initial_project_id: None,
-                },
-            );
+                    Call {
+                        room_id,
+                        calling_user_id: user_id,
+                        called_user_id: user_id,
+                        answering_connection_id: Some(connection_id.0 as i32),
+                        initial_project_id: None,
+                    },
+                );
 
-            self.room_snapshot(room_id)
+                self.room_snapshot(room_id)
+            }
+            .boxed()
         }
 
-        async fn call(
-            &self,
+        fn call<'a>(
+            &'a self,
             room_id: RoomId,
             calling_user_id: UserId,
             called_user_id: UserId,
             initial_project_id: Option<ProjectId>,
-        ) -> Result<proto::Room> {
-            self.background.simulate_random_delay().await;
+        ) -> BoxFuture<'a, Result<proto::Room>> {
+            async move {
+                self.background.simulate_random_delay().await;
 
-            let mut calls = self.calls.lock();
-            let mut room_participants = self.room_participants.lock();
+                let mut calls = self.calls.lock();
+                let mut room_participants = self.room_participants.lock();
 
-            if calls.contains_key(&called_user_id) {
-                Err(anyhow!("called user is already on another call"))?
-            }
+                if calls.contains_key(&called_user_id) {
+                    Err(anyhow!("called user is already on another call"))?
+                }
 
-            let room_participants = room_participants
-                .get_mut(&room_id)
-                .ok_or_else(|| anyhow!("room does not exist"))?;
-            if room_participants
-                .iter()
-                .any(|p| p.user_id == called_user_id)
-            {
-                Err(anyhow!("user is already in the room"))?;
-            }
+                let room_participants = room_participants
+                    .get_mut(&room_id)
+                    .ok_or_else(|| anyhow!("room does not exist"))?;
+                if room_participants
+                    .iter()
+                    .any(|p| p.user_id == called_user_id)
+                {
+                    Err(anyhow!("user is already in the room"))?;
+                }
 
-            calls.insert(
-                called_user_id,
-                Call {
-                    room_id,
-                    calling_user_id,
+                calls.insert(
                     called_user_id,
-                    answering_connection_id: None,
-                    initial_project_id,
-                },
-            );
-            room_participants.push(RoomParticipant {
-                room_id,
-                user_id: called_user_id,
-                location_kind: None,
-                location_project_id: None,
-                connection_id: None,
-            });
+                    Call {
+                        room_id,
+                        calling_user_id,
+                        called_user_id,
+                        answering_connection_id: None,
+                        initial_project_id,
+                    },
+                );
+                room_participants.push(RoomParticipant {
+                    room_id,
+                    user_id: called_user_id,
+                    location_kind: None,
+                    location_project_id: None,
+                    connection_id: None,
+                });
 
-            self.room_snapshot(room_id)
+                self.room_snapshot(room_id)
+            }
+            .boxed()
         }
 
         // projects
 
-        async fn register_project(&self, host_user_id: UserId) -> Result<ProjectId> {
-            self.background.simulate_random_delay().await;
-            if !self.users.lock().contains_key(&host_user_id) {
-                Err(anyhow!("no such user"))?;
-            }
+        fn register_project<'a>(
+            &'a self,
+            host_user_id: UserId,
+        ) -> BoxFuture<'a, Result<ProjectId>> {
+            async move {
+                self.background.simulate_random_delay().await;
+                if !self.users.lock().contains_key(&host_user_id) {
+                    Err(anyhow!("no such user"))?;
+                }
 
-            let project_id = ProjectId(post_inc(&mut *self.next_project_id.lock()));
-            self.projects.lock().insert(
-                project_id,
-                Project {
-                    id: project_id,
-                    host_user_id,
-                    unregistered: false,
-                },
-            );
-            Ok(project_id)
+                let project_id = ProjectId(post_inc(&mut *self.next_project_id.lock()));
+                self.projects.lock().insert(
+                    project_id,
+                    Project {
+                        id: project_id,
+                        host_user_id,
+                        unregistered: false,
+                    },
+                );
+                Ok(project_id)
+            }
+            .boxed()
         }
 
-        async fn unregister_project(&self, project_id: ProjectId) -> Result<()> {
-            self.background.simulate_random_delay().await;
-            self.projects
-                .lock()
-                .get_mut(&project_id)
-                .ok_or_else(|| anyhow!("no such project"))?
-                .unregistered = true;
-            Ok(())
+        fn unregister_project<'a>(&'a self, project_id: ProjectId) -> BoxFuture<'a, Result<()>> {
+            async move {
+                self.background.simulate_random_delay().await;
+                self.projects
+                    .lock()
+                    .get_mut(&project_id)
+                    .ok_or_else(|| anyhow!("no such project"))?
+                    .unregistered = true;
+                Ok(())
+            }
+            .boxed()
         }
 
         // contacts
 
-        async fn get_contacts(&self, id: UserId) -> Result<Vec<Contact>> {
-            self.background.simulate_random_delay().await;
-            let mut contacts = Vec::new();
+        fn get_contacts<'a>(&'a self, id: UserId) -> BoxFuture<'a, Result<Vec<Contact>>> {
+            async move {
+                self.background.simulate_random_delay().await;
+                let mut contacts = Vec::new();
 
-            for contact in self.contacts.lock().iter() {
-                if contact.requester_id == id {
-                    if contact.accepted {
-                        contacts.push(Contact::Accepted {
-                            user_id: contact.responder_id,
-                            should_notify: contact.should_notify,
-                        });
-                    } else {
-                        contacts.push(Contact::Outgoing {
-                            user_id: contact.responder_id,
-                        });
-                    }
-                } else if contact.responder_id == id {
-                    if contact.accepted {
-                        contacts.push(Contact::Accepted {
-                            user_id: contact.requester_id,
-                            should_notify: false,
-                        });
-                    } else {
-                        contacts.push(Contact::Incoming {
-                            user_id: contact.requester_id,
-                            should_notify: contact.should_notify,
-                        });
+                for contact in self.contacts.lock().iter() {
+                    if contact.requester_id == id {
+                        if contact.accepted {
+                            contacts.push(Contact::Accepted {
+                                user_id: contact.responder_id,
+                                should_notify: contact.should_notify,
+                            });
+                        } else {
+                            contacts.push(Contact::Outgoing {
+                                user_id: contact.responder_id,
+                            });
+                        }
+                    } else if contact.responder_id == id {
+                        if contact.accepted {
+                            contacts.push(Contact::Accepted {
+                                user_id: contact.requester_id,
+                                should_notify: false,
+                            });
+                        } else {
+                            contacts.push(Contact::Incoming {
+                                user_id: contact.requester_id,
+                                should_notify: contact.should_notify,
+                            });
+                        }
                     }
                 }
+
+                contacts.sort_unstable_by_key(|contact| contact.user_id());
+                Ok(contacts)
             }
-
-            contacts.sort_unstable_by_key(|contact| contact.user_id());
-            Ok(contacts)
+            .boxed()
         }
 
-        async fn has_contact(&self, user_id_a: UserId, user_id_b: UserId) -> Result<bool> {
-            self.background.simulate_random_delay().await;
-            Ok(self.contacts.lock().iter().any(|contact| {
-                contact.accepted
-                    && ((contact.requester_id == user_id_a && contact.responder_id == user_id_b)
-                        || (contact.requester_id == user_id_b && contact.responder_id == user_id_a))
-            }))
+        fn has_contact<'a>(
+            &'a self,
+            user_id_a: UserId,
+            user_id_b: UserId,
+        ) -> BoxFuture<'a, Result<bool>> {
+            async move {
+                self.background.simulate_random_delay().await;
+                Ok(self.contacts.lock().iter().any(|contact| {
+                    contact.accepted
+                        && ((contact.requester_id == user_id_a
+                            && contact.responder_id == user_id_b)
+                            || (contact.requester_id == user_id_b
+                                && contact.responder_id == user_id_a))
+                }))
+            }
+            .boxed()
         }
 
-        async fn send_contact_request(
-            &self,
+        fn send_contact_request<'a>(
+            &'a self,
             requester_id: UserId,
             responder_id: UserId,
-        ) -> Result<()> {
-            self.background.simulate_random_delay().await;
-            let mut contacts = self.contacts.lock();
-            for contact in contacts.iter_mut() {
-                if contact.requester_id == requester_id && contact.responder_id == responder_id {
-                    if contact.accepted {
-                        Err(anyhow!("contact already exists"))?;
-                    } else {
-                        Err(anyhow!("contact already requested"))?;
+        ) -> BoxFuture<'a, Result<()>> {
+            async move {
+                self.background.simulate_random_delay().await;
+                let mut contacts = self.contacts.lock();
+                for contact in contacts.iter_mut() {
+                    if contact.requester_id == requester_id && contact.responder_id == responder_id
+                    {
+                        if contact.accepted {
+                            Err(anyhow!("contact already exists"))?;
+                        } else {
+                            Err(anyhow!("contact already requested"))?;
+                        }
+                    }
+                    if contact.responder_id == requester_id && contact.requester_id == responder_id
+                    {
+                        if contact.accepted {
+                            Err(anyhow!("contact already exists"))?;
+                        } else {
+                            contact.accepted = true;
+                            contact.should_notify = false;
+                            return Ok(());
+                        }
                     }
                 }
-                if contact.responder_id == requester_id && contact.requester_id == responder_id {
-                    if contact.accepted {
-                        Err(anyhow!("contact already exists"))?;
-                    } else {
-                        contact.accepted = true;
+                contacts.push(FakeContact {
+                    requester_id,
+                    responder_id,
+                    accepted: false,
+                    should_notify: true,
+                });
+                Ok(())
+            }
+            .boxed()
+        }
+
+        fn remove_contact<'a>(
+            &'a self,
+            requester_id: UserId,
+            responder_id: UserId,
+        ) -> BoxFuture<'a, Result<()>> {
+            async move {
+                self.background.simulate_random_delay().await;
+                self.contacts.lock().retain(|contact| {
+                    !(contact.requester_id == requester_id && contact.responder_id == responder_id)
+                });
+                Ok(())
+            }
+            .boxed()
+        }
+
+        fn dismiss_contact_notification<'a>(
+            &'a self,
+            user_id: UserId,
+            contact_user_id: UserId,
+        ) -> BoxFuture<'a, Result<()>> {
+            async move {
+                self.background.simulate_random_delay().await;
+                let mut contacts = self.contacts.lock();
+                for contact in contacts.iter_mut() {
+                    if contact.requester_id == contact_user_id
+                        && contact.responder_id == user_id
+                        && !contact.accepted
+                    {
+                        contact.should_notify = false;
+                        return Ok(());
+                    }
+                    if contact.requester_id == user_id
+                        && contact.responder_id == contact_user_id
+                        && contact.accepted
+                    {
                         contact.should_notify = false;
                         return Ok(());
                     }
                 }
+                Err(anyhow!("no such notification"))?
             }
-            contacts.push(FakeContact {
-                requester_id,
-                responder_id,
-                accepted: false,
-                should_notify: true,
-            });
-            Ok(())
+            .boxed()
         }
 
-        async fn remove_contact(&self, requester_id: UserId, responder_id: UserId) -> Result<()> {
-            self.background.simulate_random_delay().await;
-            self.contacts.lock().retain(|contact| {
-                !(contact.requester_id == requester_id && contact.responder_id == responder_id)
-            });
-            Ok(())
-        }
-
-        async fn dismiss_contact_notification(
-            &self,
-            user_id: UserId,
-            contact_user_id: UserId,
-        ) -> Result<()> {
-            self.background.simulate_random_delay().await;
-            let mut contacts = self.contacts.lock();
-            for contact in contacts.iter_mut() {
-                if contact.requester_id == contact_user_id
-                    && contact.responder_id == user_id
-                    && !contact.accepted
-                {
-                    contact.should_notify = false;
-                    return Ok(());
-                }
-                if contact.requester_id == user_id
-                    && contact.responder_id == contact_user_id
-                    && contact.accepted
-                {
-                    contact.should_notify = false;
-                    return Ok(());
-                }
-            }
-            Err(anyhow!("no such notification"))?
-        }
-
-        async fn respond_to_contact_request(
-            &self,
+        fn respond_to_contact_request<'a>(
+            &'a self,
             responder_id: UserId,
             requester_id: UserId,
             accept: bool,
-        ) -> Result<()> {
-            self.background.simulate_random_delay().await;
-            let mut contacts = self.contacts.lock();
-            for (ix, contact) in contacts.iter_mut().enumerate() {
-                if contact.requester_id == requester_id && contact.responder_id == responder_id {
-                    if contact.accepted {
-                        Err(anyhow!("contact already confirmed"))?;
+        ) -> BoxFuture<'a, Result<()>> {
+            async move {
+                self.background.simulate_random_delay().await;
+                let mut contacts = self.contacts.lock();
+                for (ix, contact) in contacts.iter_mut().enumerate() {
+                    if contact.requester_id == requester_id && contact.responder_id == responder_id
+                    {
+                        if contact.accepted {
+                            Err(anyhow!("contact already confirmed"))?;
+                        }
+                        if accept {
+                            contact.accepted = true;
+                            contact.should_notify = true;
+                        } else {
+                            contacts.remove(ix);
+                        }
+                        return Ok(());
                     }
-                    if accept {
-                        contact.accepted = true;
-                        contact.should_notify = true;
-                    } else {
-                        contacts.remove(ix);
-                    }
-                    return Ok(());
+                }
+                Err(anyhow!("no such contact request"))?
+            }
+            .boxed()
+        }
+
+        fn create_access_token_hash<'a>(
+            &'a self,
+            _user_id: UserId,
+            _access_token_hash: &'a str,
+            _max_access_token_count: usize,
+        ) -> BoxFuture<'a, Result<()>> {
+            async move { unimplemented!() }.boxed()
+        }
+
+        fn get_access_token_hashes<'a>(
+            &'a self,
+            _user_id: UserId,
+        ) -> BoxFuture<'a, Result<Vec<String>>> {
+            async move { unimplemented!() }.boxed()
+        }
+
+        fn find_org_by_slug<'a>(&'a self, _slug: &str) -> BoxFuture<'a, Result<Option<Org>>> {
+            async move { unimplemented!() }.boxed()
+        }
+
+        fn create_org<'a>(&'a self, name: &'a str, slug: &'a str) -> BoxFuture<'a, Result<OrgId>> {
+            async move {
+                self.background.simulate_random_delay().await;
+                let mut orgs = self.orgs.lock();
+                if orgs.values().any(|org| org.slug == slug) {
+                    Err(anyhow!("org already exists"))?
+                } else {
+                    let org_id = OrgId(post_inc(&mut *self.next_org_id.lock()));
+                    orgs.insert(
+                        org_id,
+                        Org {
+                            id: org_id,
+                            name: name.to_string(),
+                            slug: slug.to_string(),
+                        },
+                    );
+                    Ok(org_id)
                 }
             }
-            Err(anyhow!("no such contact request"))?
+            .boxed()
         }
 
-        async fn create_access_token_hash(
-            &self,
-            _user_id: UserId,
-            _access_token_hash: &str,
-            _max_access_token_count: usize,
-        ) -> Result<()> {
-            unimplemented!()
-        }
-
-        async fn get_access_token_hashes(&self, _user_id: UserId) -> Result<Vec<String>> {
-            unimplemented!()
-        }
-
-        async fn find_org_by_slug(&self, _slug: &str) -> Result<Option<Org>> {
-            unimplemented!()
-        }
-
-        async fn create_org(&self, name: &str, slug: &str) -> Result<OrgId> {
-            self.background.simulate_random_delay().await;
-            let mut orgs = self.orgs.lock();
-            if orgs.values().any(|org| org.slug == slug) {
-                Err(anyhow!("org already exists"))?
-            } else {
-                let org_id = OrgId(post_inc(&mut *self.next_org_id.lock()));
-                orgs.insert(
-                    org_id,
-                    Org {
-                        id: org_id,
-                        name: name.to_string(),
-                        slug: slug.to_string(),
-                    },
-                );
-                Ok(org_id)
-            }
-        }
-
-        async fn add_org_member(
-            &self,
+        fn add_org_member<'a>(
+            &'a self,
             org_id: OrgId,
             user_id: UserId,
             is_admin: bool,
-        ) -> Result<()> {
-            self.background.simulate_random_delay().await;
-            if !self.orgs.lock().contains_key(&org_id) {
-                Err(anyhow!("org does not exist"))?;
+        ) -> BoxFuture<'a, Result<()>> {
+            async move {
+                self.background.simulate_random_delay().await;
+                if !self.orgs.lock().contains_key(&org_id) {
+                    Err(anyhow!("org does not exist"))?;
+                }
+                if !self.users.lock().contains_key(&user_id) {
+                    Err(anyhow!("user does not exist"))?;
+                }
+
+                self.org_memberships
+                    .lock()
+                    .entry((org_id, user_id))
+                    .or_insert(is_admin);
+                Ok(())
             }
-            if !self.users.lock().contains_key(&user_id) {
-                Err(anyhow!("user does not exist"))?;
+            .boxed()
+        }
+
+        fn create_org_channel<'a>(
+            &'a self,
+            org_id: OrgId,
+            name: &'a str,
+        ) -> BoxFuture<'a, Result<ChannelId>> {
+            async move {
+                self.background.simulate_random_delay().await;
+                if !self.orgs.lock().contains_key(&org_id) {
+                    Err(anyhow!("org does not exist"))?;
+                }
+
+                let mut channels = self.channels.lock();
+                let channel_id = ChannelId(post_inc(&mut *self.next_channel_id.lock()));
+                channels.insert(
+                    channel_id,
+                    Channel {
+                        id: channel_id,
+                        name: name.to_string(),
+                        owner_id: org_id.0,
+                        owner_is_user: false,
+                    },
+                );
+                Ok(channel_id)
             }
-
-            self.org_memberships
-                .lock()
-                .entry((org_id, user_id))
-                .or_insert(is_admin);
-            Ok(())
+            .boxed()
         }
 
-        async fn create_org_channel(&self, org_id: OrgId, name: &str) -> Result<ChannelId> {
-            self.background.simulate_random_delay().await;
-            if !self.orgs.lock().contains_key(&org_id) {
-                Err(anyhow!("org does not exist"))?;
+        fn get_org_channels<'a>(&'a self, org_id: OrgId) -> BoxFuture<'a, Result<Vec<Channel>>> {
+            async move {
+                self.background.simulate_random_delay().await;
+                Ok(self
+                    .channels
+                    .lock()
+                    .values()
+                    .filter(|channel| !channel.owner_is_user && channel.owner_id == org_id.0)
+                    .cloned()
+                    .collect())
             }
-
-            let mut channels = self.channels.lock();
-            let channel_id = ChannelId(post_inc(&mut *self.next_channel_id.lock()));
-            channels.insert(
-                channel_id,
-                Channel {
-                    id: channel_id,
-                    name: name.to_string(),
-                    owner_id: org_id.0,
-                    owner_is_user: false,
-                },
-            );
-            Ok(channel_id)
+            .boxed()
         }
 
-        async fn get_org_channels(&self, org_id: OrgId) -> Result<Vec<Channel>> {
-            self.background.simulate_random_delay().await;
-            Ok(self
-                .channels
-                .lock()
-                .values()
-                .filter(|channel| !channel.owner_is_user && channel.owner_id == org_id.0)
-                .cloned()
-                .collect())
+        fn get_accessible_channels<'a>(
+            &'a self,
+            user_id: UserId,
+        ) -> BoxFuture<'a, Result<Vec<Channel>>> {
+            async move {
+                self.background.simulate_random_delay().await;
+                let channels = self.channels.lock();
+                let memberships = self.channel_memberships.lock();
+                Ok(channels
+                    .values()
+                    .filter(|channel| memberships.contains_key(&(channel.id, user_id)))
+                    .cloned()
+                    .collect())
+            }
+            .boxed()
         }
 
-        async fn get_accessible_channels(&self, user_id: UserId) -> Result<Vec<Channel>> {
-            self.background.simulate_random_delay().await;
-            let channels = self.channels.lock();
-            let memberships = self.channel_memberships.lock();
-            Ok(channels
-                .values()
-                .filter(|channel| memberships.contains_key(&(channel.id, user_id)))
-                .cloned()
-                .collect())
-        }
-
-        async fn can_user_access_channel(
-            &self,
+        fn can_user_access_channel<'a>(
+            &'a self,
             user_id: UserId,
             channel_id: ChannelId,
-        ) -> Result<bool> {
-            self.background.simulate_random_delay().await;
-            Ok(self
-                .channel_memberships
-                .lock()
-                .contains_key(&(channel_id, user_id)))
+        ) -> BoxFuture<'a, Result<bool>> {
+            async move {
+                self.background.simulate_random_delay().await;
+                Ok(self
+                    .channel_memberships
+                    .lock()
+                    .contains_key(&(channel_id, user_id)))
+            }
+            .boxed()
         }
 
-        async fn add_channel_member(
-            &self,
+        fn add_channel_member<'a>(
+            &'a self,
             channel_id: ChannelId,
             user_id: UserId,
             is_admin: bool,
-        ) -> Result<()> {
-            self.background.simulate_random_delay().await;
-            if !self.channels.lock().contains_key(&channel_id) {
-                Err(anyhow!("channel does not exist"))?;
-            }
-            if !self.users.lock().contains_key(&user_id) {
-                Err(anyhow!("user does not exist"))?;
-            }
+        ) -> BoxFuture<'a, Result<()>> {
+            async move {
+                self.background.simulate_random_delay().await;
+                if !self.channels.lock().contains_key(&channel_id) {
+                    Err(anyhow!("channel does not exist"))?;
+                }
+                if !self.users.lock().contains_key(&user_id) {
+                    Err(anyhow!("user does not exist"))?;
+                }
 
-            self.channel_memberships
-                .lock()
-                .entry((channel_id, user_id))
-                .or_insert(is_admin);
-            Ok(())
+                self.channel_memberships
+                    .lock()
+                    .entry((channel_id, user_id))
+                    .or_insert(is_admin);
+                Ok(())
+            }
+            .boxed()
         }
 
-        async fn create_channel_message(
-            &self,
+        fn create_channel_message<'a>(
+            &'a self,
             channel_id: ChannelId,
             sender_id: UserId,
-            body: &str,
+            body: &'a str,
             timestamp: OffsetDateTime,
             nonce: u128,
-        ) -> Result<MessageId> {
-            self.background.simulate_random_delay().await;
-            if !self.channels.lock().contains_key(&channel_id) {
-                Err(anyhow!("channel does not exist"))?;
-            }
-            if !self.users.lock().contains_key(&sender_id) {
-                Err(anyhow!("user does not exist"))?;
-            }
+        ) -> BoxFuture<'a, Result<MessageId>> {
+            async move {
+                self.background.simulate_random_delay().await;
+                if !self.channels.lock().contains_key(&channel_id) {
+                    Err(anyhow!("channel does not exist"))?;
+                }
+                if !self.users.lock().contains_key(&sender_id) {
+                    Err(anyhow!("user does not exist"))?;
+                }
 
-            let mut messages = self.channel_messages.lock();
-            if let Some(message) = messages
-                .values()
-                .find(|message| message.nonce.as_u128() == nonce)
-            {
-                Ok(message.id)
-            } else {
-                let message_id = MessageId(post_inc(&mut *self.next_channel_message_id.lock()));
-                messages.insert(
-                    message_id,
-                    ChannelMessage {
-                        id: message_id,
-                        channel_id,
-                        sender_id,
-                        body: body.to_string(),
-                        sent_at: timestamp,
-                        nonce: Uuid::from_u128(nonce),
-                    },
-                );
-                Ok(message_id)
+                let mut messages = self.channel_messages.lock();
+                if let Some(message) = messages
+                    .values()
+                    .find(|message| message.nonce.as_u128() == nonce)
+                {
+                    Ok(message.id)
+                } else {
+                    let message_id = MessageId(post_inc(&mut *self.next_channel_message_id.lock()));
+                    messages.insert(
+                        message_id,
+                        ChannelMessage {
+                            id: message_id,
+                            channel_id,
+                            sender_id,
+                            body: body.to_string(),
+                            sent_at: timestamp,
+                            nonce: Uuid::from_u128(nonce),
+                        },
+                    );
+                    Ok(message_id)
+                }
             }
+            .boxed()
         }
 
-        async fn get_channel_messages(
-            &self,
+        fn get_channel_messages<'a>(
+            &'a self,
             channel_id: ChannelId,
             count: usize,
             before_id: Option<MessageId>,
-        ) -> Result<Vec<ChannelMessage>> {
-            self.background.simulate_random_delay().await;
-            let mut messages = self
-                .channel_messages
-                .lock()
-                .values()
-                .rev()
-                .filter(|message| {
-                    message.channel_id == channel_id
-                        && message.id < before_id.unwrap_or(MessageId::MAX)
-                })
-                .take(count)
-                .cloned()
-                .collect::<Vec<_>>();
-            messages.sort_unstable_by_key(|message| message.id);
-            Ok(messages)
+        ) -> BoxFuture<'a, Result<Vec<ChannelMessage>>> {
+            async move {
+                self.background.simulate_random_delay().await;
+                let mut messages = self
+                    .channel_messages
+                    .lock()
+                    .values()
+                    .rev()
+                    .filter(|message| {
+                        message.channel_id == channel_id
+                            && message.id < before_id.unwrap_or(MessageId::MAX)
+                    })
+                    .take(count)
+                    .cloned()
+                    .collect::<Vec<_>>();
+                messages.sort_unstable_by_key(|message| message.id);
+                Ok(messages)
+            }
+            .boxed()
         }
 
-        async fn teardown(&self, _: &str) {}
+        fn teardown<'a>(&'a self, _: &'a str) -> BoxFuture<'a, ()> {
+            std::future::ready(()).boxed()
+        }
 
         #[cfg(test)]
         fn as_fake(&self) -> Option<&FakeDb> {
