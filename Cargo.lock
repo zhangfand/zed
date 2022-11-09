@@ -1063,6 +1063,7 @@ dependencies = [
  "rand 0.8.5",
  "reqwest",
  "rpc",
+ "rusqlite",
  "scrypt",
  "serde",
  "serde_json",

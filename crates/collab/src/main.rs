@@ -8,6 +8,8 @@ mod rpc;
 mod db_tests;
 #[cfg(test)]
 mod integration_tests;
+#[cfg(test)]
+mod test_db;
 
 use crate::rpc::ResultExt as _;
 use anyhow::anyhow;

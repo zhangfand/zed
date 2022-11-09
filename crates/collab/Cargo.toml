@@ -69,6 +69,7 @@ rpc = { path = "../rpc", features = ["test-support"] }
 settings = { path = "../settings", features = ["test-support"] }
 theme = { path = "../theme" }
 workspace = { path = "../workspace", features = ["test-support"] }
+rusqlite = { version = "0.28.0", features = ["bundled", "serde_json"] }
 
 ctor = "0.1"
 env_logger = "0.9"
