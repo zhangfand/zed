@@ -2,7 +2,7 @@ mod store;
 
 use crate::{
     auth,
-    db::{self, ChannelId, MessageId, ProjectId, User, UserId},
+    db::{self, ChannelId, MessageId, ProjectId, RoomId, User, UserId},
     AppState, Result,
 };
 use anyhow::anyhow;
@@ -507,7 +507,7 @@ impl Server {
         for project_id in projects_to_unshare {
             self.app_state
                 .db
-                .unregister_project(project_id)
+                .unshare_project(project_id)
                 .await
                 .trace_err();
         }
@@ -889,22 +889,20 @@ impl Server {
         request: Message<proto::ShareProject>,
         response: Response<proto::ShareProject>,
     ) -> Result<()> {
-        let project_id = self
+        let (project_id, room) = self
             .app_state
             .db
-            .register_project(request.sender_user_id)
+            .share_project(
+                request.sender_user_id,
+                request.sender_connection_id,
+                RoomId::from_proto(request.payload.room_id),
+                &request.payload.worktrees,
+            )
             .await?;
-        let mut store = self.store().await;
-        let room = store.share_project(
-            request.payload.room_id,
-            project_id,
-            request.payload.worktrees,
-            request.sender_connection_id,
-        )?;
         response.send(proto::ShareProjectResponse {
             project_id: project_id.to_proto(),
         })?;
-        self.room_updated(room);
+        self.room_updated(&room);
 
         Ok(())
     }

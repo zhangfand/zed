@@ -1,3 +1,17 @@
+ALTER TABLE "projects"
+    ADD "room_id" INTEGER NOT NULL REFERENCES rooms (id),
+    DROP COLUMN "unregistered";
+
+CREATE TABLE "project_collaborators" (
+    "id" SERIAL PRIMARY KEY,
+    "project_id" INTEGER NOT NULL REFERENCES projects (id),
+    "connection_id" INTEGER NOT NULL,
+    "user_id" INTEGER NOT NULL,
+    "replica_id" INTEGER NOT NULL,
+    "is_host" BOOLEAN NOT NULL
+);
+CREATE INDEX "index_project_collaborators_on_project_id" ON "project_collaborators" ("project_id");
+
 CREATE TABLE IF NOT EXISTS "worktrees" (
     "id" INTEGER NOT NULL,
     "project_id" INTEGER NOT NULL REFERENCES projects (id),
@@ -21,13 +35,6 @@ CREATE TABLE IF NOT EXISTS "room_participants" (
     "location_project_id" INTEGER REFERENCES projects (id)
 );
 CREATE UNIQUE INDEX "index_room_participants_on_user_id_and_room_id" ON "room_participants" ("user_id", "room_id");
-
-CREATE TABLE IF NOT EXISTS "room_participant_projects" (
-    "id" SERIAL PRIMARY KEY,
-    "participant_id" INTEGER NOT NULL REFERENCES room_participants (id),
-    "project_id" INTEGER NOT NULL REFERENCES projects (id)
-);
-CREATE INDEX "index_room_participant_projects_on_participant_id" ON "room_participant_projects" ("participant_id");
 
 CREATE TABLE IF NOT EXISTS "calls" (
     "id" SERIAL PRIMARY KEY,

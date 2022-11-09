@@ -670,66 +670,6 @@ impl Store {
         Ok(room)
     }
 
-    pub fn share_project(
-        &mut self,
-        room_id: RoomId,
-        project_id: ProjectId,
-        worktrees: Vec<proto::WorktreeMetadata>,
-        host_connection_id: ConnectionId,
-    ) -> Result<&proto::Room> {
-        let connection = self
-            .connections
-            .get_mut(&host_connection_id)
-            .ok_or_else(|| anyhow!("no such connection"))?;
-
-        let room = self
-            .rooms
-            .get_mut(&room_id)
-            .ok_or_else(|| anyhow!("no such room"))?;
-        let participant = room
-            .participants
-            .iter_mut()
-            .find(|participant| participant.peer_id == host_connection_id.0)
-            .ok_or_else(|| anyhow!("no such room"))?;
-
-        connection.projects.insert(project_id);
-        self.projects.insert(
-            project_id,
-            Project {
-                id: project_id,
-                room_id,
-                host_connection_id,
-                host: Collaborator {
-                    user_id: connection.user_id,
-                    replica_id: 0,
-                    admin: connection.admin,
-                },
-                guests: Default::default(),
-                active_replica_ids: Default::default(),
-                worktrees: worktrees
-                    .into_iter()
-                    .map(|worktree| {
-                        (
-                            worktree.id,
-                            Worktree {
-                                root_name: worktree.root_name,
-                                visible: worktree.visible,
-                                ..Default::default()
-                            },
-                        )
-                    })
-                    .collect(),
-                language_servers: Default::default(),
-            },
-        );
-
-        participant
-            .projects
-            .extend(Self::build_participant_project(project_id, &self.projects));
-
-        Ok(room)
-    }
-
     pub fn unshare_project(
         &mut self,
         project_id: ProjectId,

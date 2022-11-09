@@ -9,7 +9,7 @@ pub use sqlx::postgres::PgPoolOptions as DbOptions;
 use sqlx::{
     migrate::{Migrate as _, Migration, MigrationSource},
     types::Uuid,
-    FromRow, Postgres, Transaction,
+    FromRow, Postgres, QueryBuilder, Transaction,
 };
 use std::{path::Path, time::Duration};
 use time::OffsetDateTime;
@@ -85,11 +85,14 @@ pub trait Db: Send + Sync {
         initial_project_id: Option<ProjectId>,
     ) -> BoxFuture<'a, Result<proto::Room>>;
 
-    /// Registers a new project for the given user.
-    fn register_project<'a>(&'a self, host_user_id: UserId) -> BoxFuture<'a, Result<ProjectId>>;
-
-    /// Unregisters a project for the given project id.
-    fn unregister_project<'a>(&'a self, project_id: ProjectId) -> BoxFuture<'a, Result<()>>;
+    fn share_project<'a>(
+        &'a self,
+        user_id: UserId,
+        connection_id: ConnectionId,
+        room_id: RoomId,
+        worktrees: &'a [proto::WorktreeMetadata],
+    ) -> BoxFuture<'a, Result<(ProjectId, proto::Room)>>;
+    fn unshare_project<'a>(&'a self, project_id: ProjectId) -> BoxFuture<'a, Result<()>>;
 
     fn get_contacts<'a>(&'a self, id: UserId) -> BoxFuture<'a, Result<Vec<Contact>>>;
     fn has_contact<'a>(
@@ -319,6 +322,36 @@ impl PostgresDb {
             }
         }
         drop(db_participants);
+
+        for participant in &mut participants {
+            let mut entries = sqlx::query_as::<_, (ProjectId, String)>(
+                "
+                SELECT projects.id, worktrees.root_name
+                FROM projects
+                LEFT JOIN worktrees ON projects.id = worktrees.project_id
+                WHERE room_id = $1 AND host_user_id = $2
+                ",
+            )
+            .bind(room_id)
+            .fetch(&mut tx);
+
+            let mut projects = HashMap::default();
+            while let Some(entry) = entries.next().await {
+                let (project_id, worktree_root_name) = entry?;
+                let participant_project =
+                    projects
+                        .entry(project_id)
+                        .or_insert(proto::ParticipantProject {
+                            id: project_id.to_proto(),
+                            worktree_root_names: Default::default(),
+                        });
+                participant_project
+                    .worktree_root_names
+                    .push(worktree_root_name);
+            }
+
+            participant.projects = projects.into_values().collect();
+        }
 
         tx.commit().await?;
 
@@ -1041,35 +1074,68 @@ impl Db for PostgresDb {
 
     // projects
 
-    fn register_project<'a>(&'a self, host_user_id: UserId) -> BoxFuture<'a, Result<ProjectId>> {
+    fn share_project<'a>(
+        &'a self,
+        user_id: UserId,
+        connection_id: ConnectionId,
+        room_id: RoomId,
+        worktrees: &'a [proto::WorktreeMetadata],
+    ) -> BoxFuture<'a, Result<(ProjectId, proto::Room)>> {
         async move {
-            Ok(sqlx::query_scalar(
+            let mut tx = self.pool.begin().await?;
+            let project_id = sqlx::query_scalar(
                 "
-                INSERT INTO projects(host_user_id)
+                INSERT INTO projects (host_user_id, room_id)
                 VALUES ($1)
                 RETURNING id
                 ",
             )
-            .bind(host_user_id)
-            .fetch_one(&self.pool)
+            .bind(user_id)
+            .bind(room_id)
+            .fetch_one(&mut tx)
             .await
-            .map(ProjectId)?)
+            .map(ProjectId)?;
+
+            QueryBuilder::new("INSERT INTO worktrees (id, project_id, root_name)")
+                .push_values(worktrees, |mut query, worktree| {
+                    query
+                        .push_bind(worktree.id as i32)
+                        .push_bind(project_id)
+                        .push_bind(&worktree.root_name);
+                })
+                .build()
+                .execute(&mut tx)
+                .await?;
+
+            sqlx::query(
+                "
+                INSERT INTO project_collaborators (
+                    project_id,
+                    connection_id,
+                    user_id,
+                    replica_id,
+                    is_host
+                )
+                VALUES ($1, $2, $3, $4, $5)
+                ",
+            )
+            .bind(project_id)
+            .bind(connection_id.0 as i32)
+            .bind(user_id)
+            .bind(0)
+            .bind(true)
+            .execute(&mut tx)
+            .await?;
+
+            let room = self.commit_room_transaction(room_id, tx).await?;
+            Ok((project_id, room))
         }
         .boxed()
     }
 
-    fn unregister_project<'a>(&'a self, project_id: ProjectId) -> BoxFuture<'a, Result<()>> {
+    fn unshare_project<'a>(&'a self, project_id: ProjectId) -> BoxFuture<'a, Result<()>> {
         async move {
-            sqlx::query(
-                "
-                UPDATE projects
-                SET unregistered = 't'
-                WHERE id = $1
-                ",
-            )
-            .bind(project_id)
-            .execute(&self.pool)
-            .await?;
+            todo!();
             Ok(())
         }
         .boxed()
@@ -1712,8 +1778,22 @@ id_type!(ProjectId);
 #[derive(Clone, Debug, Default, FromRow, Serialize, PartialEq)]
 pub struct Project {
     pub id: ProjectId,
+    pub room_id: RoomId,
     pub host_user_id: UserId,
-    pub unregistered: bool,
+}
+
+#[derive(Clone, Debug, Default, FromRow, PartialEq)]
+pub struct ProjectCollaborator {
+    pub project_id: ProjectId,
+    pub connection_id: i32,
+    pub user_id: UserId,
+    pub replica_id: i32,
+    pub is_host: bool,
+}
+
+#[derive(Clone, Debug, Default, FromRow, Serialize, PartialEq)]
+pub struct Worktree {
+    pub root_name: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -1877,6 +1957,8 @@ mod test {
         pub room_participants: Mutex<BTreeMap<RoomId, Vec<RoomParticipant>>>,
         pub calls: Mutex<BTreeMap<UserId, Call>>,
         pub projects: Mutex<BTreeMap<ProjectId, Project>>,
+        pub project_collaborators: Mutex<BTreeMap<ProjectId, Vec<ProjectCollaborator>>>,
+        pub worktrees: Mutex<BTreeMap<(ProjectId, i32), Worktree>>,
         pub orgs: Mutex<BTreeMap<OrgId, Org>>,
         pub org_memberships: Mutex<BTreeMap<(OrgId, UserId), bool>>,
         pub channels: Mutex<BTreeMap<ChannelId, Channel>>,
@@ -1904,21 +1986,23 @@ mod test {
             Self {
                 background,
                 users: Default::default(),
-                next_user_id: Mutex::new(0),
+                next_user_id: Default::default(),
                 rooms: Default::default(),
-                next_room_id: Mutex::new(0),
+                next_room_id: Default::default(),
                 room_participants: Default::default(),
                 calls: Default::default(),
                 projects: Default::default(),
-                next_project_id: Mutex::new(1),
+                next_project_id: Default::default(),
+                project_collaborators: Default::default(),
+                worktrees: Default::default(),
                 orgs: Default::default(),
-                next_org_id: Mutex::new(1),
+                next_org_id: Default::default(),
                 org_memberships: Default::default(),
                 channels: Default::default(),
-                next_channel_id: Mutex::new(1),
+                next_channel_id: Default::default(),
                 channel_memberships: Default::default(),
                 channel_messages: Default::default(),
-                next_channel_message_id: Mutex::new(1),
+                next_channel_message_id: Default::default(),
                 contacts: Default::default(),
             }
         }
@@ -1934,10 +2018,32 @@ mod test {
             let mut pending_participant_user_ids = Vec::new();
             for participant in self.room_participants.lock().get(&room_id).unwrap() {
                 if let Some(connection_id) = participant.connection_id {
+                    let projects = self
+                        .projects
+                        .lock()
+                        .values()
+                        .filter(|project| {
+                            project.host_user_id == participant.user_id
+                                && project.room_id == room_id
+                        })
+                        .map(|project| {
+                            let worktrees = self.worktrees.lock();
+                            proto::ParticipantProject {
+                                id: project.id.to_proto(),
+                                worktree_root_names: worktrees
+                                    .iter()
+                                    .filter(|((worktree_project_id, _), _)| {
+                                        *worktree_project_id == project.id
+                                    })
+                                    .map(|(_, worktree)| worktree.root_name.clone())
+                                    .collect(),
+                            }
+                        })
+                        .collect();
                     participants.push(proto::Participant {
                         user_id: participant.user_id.to_proto(),
                         peer_id: connection_id as u32,
-                        projects: Default::default(),
+                        projects,
                         location: Some(proto::ParticipantLocation {
                             variant: Some(proto::participant_location::Variant::External(
                                 Default::default(),
@@ -2267,14 +2373,32 @@ mod test {
 
         // projects
 
-        fn register_project<'a>(
+        fn share_project<'a>(
             &'a self,
-            host_user_id: UserId,
-        ) -> BoxFuture<'a, Result<ProjectId>> {
+            user_id: UserId,
+            connection_id: ConnectionId,
+            room_id: RoomId,
+            worktrees: &'a [proto::WorktreeMetadata],
+        ) -> BoxFuture<'a, Result<(ProjectId, proto::Room)>> {
             async move {
                 self.background.simulate_random_delay().await;
-                if !self.users.lock().contains_key(&host_user_id) {
+                if !self.users.lock().contains_key(&user_id) {
                     Err(anyhow!("no such user"))?;
+                }
+
+                if !self.rooms.lock().contains_key(&room_id) {
+                    Err(anyhow!("no such room"))?;
+                }
+
+                if !self
+                    .room_participants
+                    .lock()
+                    .get(&room_id)
+                    .unwrap()
+                    .iter()
+                    .any(|participant| participant.user_id == user_id)
+                {
+                    return Err(anyhow!("no such room participant"))?;
                 }
 
                 let project_id = ProjectId(post_inc(&mut *self.next_project_id.lock()));
@@ -2282,23 +2406,37 @@ mod test {
                     project_id,
                     Project {
                         id: project_id,
-                        host_user_id,
-                        unregistered: false,
+                        host_user_id: user_id,
+                        room_id,
                     },
                 );
-                Ok(project_id)
+                self.project_collaborators.lock().insert(
+                    project_id,
+                    vec![ProjectCollaborator {
+                        project_id,
+                        connection_id: connection_id.0 as i32,
+                        user_id,
+                        replica_id: 0,
+                        is_host: true,
+                    }],
+                );
+                for worktree in worktrees {
+                    self.worktrees.lock().insert(
+                        (project_id, worktree.id as i32),
+                        Worktree {
+                            root_name: worktree.root_name.clone(),
+                        },
+                    );
+                }
+
+                Ok((project_id, self.room_snapshot(room_id)?))
             }
             .boxed()
         }
 
-        fn unregister_project<'a>(&'a self, project_id: ProjectId) -> BoxFuture<'a, Result<()>> {
+        fn unshare_project<'a>(&'a self, project_id: ProjectId) -> BoxFuture<'a, Result<()>> {
             async move {
-                self.background.simulate_random_delay().await;
-                self.projects
-                    .lock()
-                    .get_mut(&project_id)
-                    .ok_or_else(|| anyhow!("no such project"))?
-                    .unregistered = true;
+                todo!();
                 Ok(())
             }
             .boxed()
