@@ -88,6 +88,12 @@ pub trait Db: Send + Sync {
         room_id: RoomId,
         called_user_id: UserId,
     ) -> BoxFuture<'a, Result<proto::Room>>;
+    fn update_room_participant_location<'a>(
+        &'a self,
+        room_id: RoomId,
+        user_id: UserId,
+        location: proto::ParticipantLocation,
+    ) -> BoxFuture<'a, Result<proto::Room>>;
 
     fn share_project<'a>(
         &'a self,
@@ -1110,6 +1116,35 @@ impl Db for PostgresDb {
         .boxed()
     }
 
+    fn update_room_participant_location<'a>(
+        &'a self,
+        room_id: RoomId,
+        user_id: UserId,
+        location: proto::ParticipantLocation,
+    ) -> BoxFuture<'a, Result<proto::Room>> {
+        async move {
+            let mut tx = self.pool.begin().await?;
+
+            let (location_kind, location_project_id) = serialize_participant_location(location)?;
+            sqlx::query(
+                "
+                UPDATE room_participants
+                SET location_kind = $1 AND location_project_id = $2
+                WHERE room_id = $1 AND user_id = $2
+                ",
+            )
+            .bind(location_kind)
+            .bind(location_project_id)
+            .bind(room_id)
+            .bind(user_id)
+            .execute(&mut tx)
+            .await?;
+
+            self.commit_room_transaction(room_id, tx).await
+        }
+        .boxed()
+    }
+
     // projects
 
     fn share_project<'a>(
@@ -1971,6 +2006,31 @@ fn random_email_confirmation_code() -> String {
     nanoid::nanoid!(64)
 }
 
+fn serialize_participant_location(
+    location: proto::ParticipantLocation,
+) -> Result<(i32, Option<ProjectId>)> {
+    let location_kind;
+    let location_project_id;
+    match location
+        .variant
+        .ok_or_else(|| anyhow!("invalid location"))?
+    {
+        proto::participant_location::Variant::SharedProject(project) => {
+            location_kind = 0;
+            location_project_id = Some(ProjectId::from_proto(project.id));
+        }
+        proto::participant_location::Variant::UnsharedProject(_) => {
+            location_kind = 1;
+            location_project_id = None;
+        }
+        proto::participant_location::Variant::External(_) => {
+            location_kind = 2;
+            location_project_id = None;
+        }
+    }
+    Ok((location_kind, location_project_id))
+}
+
 #[cfg(test)]
 pub use test::*;
 
@@ -2418,6 +2478,34 @@ mod test {
             async move {
                 self.background.simulate_random_delay().await;
                 todo!()
+            }
+            .boxed()
+        }
+
+        fn update_room_participant_location<'a>(
+            &'a self,
+            room_id: RoomId,
+            user_id: UserId,
+            location: proto::ParticipantLocation,
+        ) -> BoxFuture<'a, Result<proto::Room>> {
+            async move {
+                self.background.simulate_random_delay().await;
+
+                let mut participants = self.room_participants.lock();
+                let (location_kind, location_project_id) =
+                    serialize_participant_location(location)?;
+
+                let participant = participants
+                    .get_mut(&room_id)
+                    .ok_or_else(|| anyhow!("no such room"))?
+                    .iter_mut()
+                    .find(|participant| participant.user_id == user_id)
+                    .ok_or_else(|| anyhow!("no such participant"))?;
+                participant.location_kind = Some(location_kind);
+                participant.location_project_id = location_project_id;
+                drop(participants);
+
+                self.room_snapshot(room_id)
             }
             .boxed()
         }

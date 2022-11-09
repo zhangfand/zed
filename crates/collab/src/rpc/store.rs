@@ -543,38 +543,6 @@ impl Store {
         }
     }
 
-    pub fn update_participant_location(
-        &mut self,
-        room_id: RoomId,
-        location: proto::ParticipantLocation,
-        connection_id: ConnectionId,
-    ) -> Result<&proto::Room> {
-        let room = self
-            .rooms
-            .get_mut(&room_id)
-            .ok_or_else(|| anyhow!("no such room"))?;
-        if let Some(proto::participant_location::Variant::SharedProject(project)) =
-            location.variant.as_ref()
-        {
-            anyhow::ensure!(
-                room.participants
-                    .iter()
-                    .flat_map(|participant| &participant.projects)
-                    .any(|participant_project| participant_project.id == project.id),
-                "no such project"
-            );
-        }
-
-        let participant = room
-            .participants
-            .iter_mut()
-            .find(|participant| participant.peer_id == connection_id.0)
-            .ok_or_else(|| anyhow!("no such room"))?;
-        participant.location = Some(location);
-
-        Ok(room)
-    }
-
     pub fn unshare_project(
         &mut self,
         project_id: ProjectId,

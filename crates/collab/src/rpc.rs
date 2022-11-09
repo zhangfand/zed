@@ -755,7 +755,7 @@ impl Server {
         self.room_updated(&room);
         let incoming_call = proto::IncomingCall {
             room_id: room_id.to_proto(),
-            caller_user_id: called_user_id.to_proto(),
+            caller_user_id: calling_user_id.to_proto(),
             participant_user_ids: room
                 .participants
                 .iter()
@@ -850,15 +850,17 @@ impl Server {
         request: Message<proto::UpdateParticipantLocation>,
         response: Response<proto::UpdateParticipantLocation>,
     ) -> Result<()> {
-        let room_id = request.payload.room_id;
+        let room_id = RoomId::from_proto(request.payload.room_id);
         let location = request
             .payload
             .location
             .ok_or_else(|| anyhow!("invalid location"))?;
-        let mut store = self.store().await;
-        let room =
-            store.update_participant_location(room_id, location, request.sender_connection_id)?;
-        self.room_updated(room);
+        let room = self
+            .app_state
+            .db
+            .update_room_participant_location(room_id, request.sender_user_id, location)
+            .await?;
+        self.room_updated(&room);
         response.send(proto::Ack {})?;
         Ok(())
     }
