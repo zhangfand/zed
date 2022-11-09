@@ -76,13 +76,17 @@ pub trait Db: Send + Sync {
         user_id: UserId,
         connection_id: ConnectionId,
     ) -> BoxFuture<'a, Result<proto::Room>>;
-
     fn call<'a>(
         &'a self,
         room_id: RoomId,
         calling_user_id: UserId,
         called_user_id: UserId,
         initial_project_id: Option<ProjectId>,
+    ) -> BoxFuture<'a, Result<proto::Room>>;
+    fn call_failed<'a>(
+        &'a self,
+        room_id: RoomId,
+        called_user_id: UserId,
     ) -> BoxFuture<'a, Result<proto::Room>>;
 
     fn share_project<'a>(
@@ -1060,6 +1064,40 @@ impl Db for PostgresDb {
                 "
                 INSERT INTO room_participants (room_id, user_id)
                 VALUES ($1, $2)
+                ",
+            )
+            .bind(room_id)
+            .bind(called_user_id)
+            .execute(&mut tx)
+            .await?;
+
+            self.commit_room_transaction(room_id, tx).await
+        }
+        .boxed()
+    }
+
+    fn call_failed<'a>(
+        &'a self,
+        room_id: RoomId,
+        called_user_id: UserId,
+    ) -> BoxFuture<'a, Result<proto::Room>> {
+        async move {
+            let mut tx = self.pool.begin().await?;
+            sqlx::query(
+                "
+                DELETE FROM calls
+                WHERE room_id = $1 AND called_user_id = $2
+                ",
+            )
+            .bind(room_id)
+            .bind(called_user_id)
+            .execute(&mut tx)
+            .await?;
+
+            sqlx::query(
+                "
+                DELETE FROM room_participants
+                WHERE room_id = $1 AND user_id = $2
                 ",
             )
             .bind(room_id)
@@ -2332,13 +2370,13 @@ mod test {
                 self.background.simulate_random_delay().await;
 
                 let mut calls = self.calls.lock();
-                let mut room_participants = self.room_participants.lock();
+                let mut participants = self.room_participants.lock();
 
                 if calls.contains_key(&called_user_id) {
                     Err(anyhow!("called user is already on another call"))?
                 }
 
-                let room_participants = room_participants
+                let room_participants = participants
                     .get_mut(&room_id)
                     .ok_or_else(|| anyhow!("room does not exist"))?;
                 if room_participants
@@ -2365,8 +2403,21 @@ mod test {
                     location_project_id: None,
                     connection_id: None,
                 });
+                drop(participants);
 
                 self.room_snapshot(room_id)
+            }
+            .boxed()
+        }
+
+        fn call_failed<'a>(
+            &'a self,
+            room_id: RoomId,
+            called_user_id: UserId,
+        ) -> BoxFuture<'a, Result<proto::Room>> {
+            async move {
+                self.background.simulate_random_delay().await;
+                todo!()
             }
             .boxed()
         }

@@ -3,8 +3,7 @@ use anyhow::{anyhow, Result};
 use collections::{btree_map, BTreeMap, BTreeSet, HashMap, HashSet};
 use rpc::{proto, ConnectionId};
 use serde::Serialize;
-use std::{borrow::Cow, mem, path::PathBuf, str, time::Duration};
-use time::OffsetDateTime;
+use std::{borrow::Cow, mem, path::PathBuf, str};
 use tracing::instrument;
 
 pub type RoomId = u64;
@@ -113,9 +112,6 @@ pub struct Metrics {
 
 impl Store {
     pub fn metrics(&self) -> Metrics {
-        const ACTIVE_PROJECT_TIMEOUT: Duration = Duration::from_secs(60);
-        let active_window_start = OffsetDateTime::now_utc() - ACTIVE_PROJECT_TIMEOUT;
-
         let connections = self.connections.values().filter(|c| !c.admin).count();
         let mut shared_projects = 0;
         for project in self.projects.values() {
@@ -463,97 +459,6 @@ impl Store {
 
     pub fn rooms(&self) -> &BTreeMap<RoomId, proto::Room> {
         &self.rooms
-    }
-
-    pub fn call(
-        &mut self,
-        room_id: RoomId,
-        recipient_user_id: UserId,
-        initial_project_id: Option<ProjectId>,
-        from_connection_id: ConnectionId,
-    ) -> Result<(&proto::Room, Vec<ConnectionId>, proto::IncomingCall)> {
-        let caller_user_id = self.user_id_for_connection(from_connection_id)?;
-
-        let recipient_connection_ids = self
-            .connection_ids_for_user(recipient_user_id)
-            .collect::<Vec<_>>();
-        let mut recipient = self
-            .connected_users
-            .get_mut(&recipient_user_id)
-            .ok_or_else(|| anyhow!("no such connection"))?;
-        anyhow::ensure!(
-            recipient.active_call.is_none(),
-            "recipient is already on another call"
-        );
-
-        let room = self
-            .rooms
-            .get_mut(&room_id)
-            .ok_or_else(|| anyhow!("no such room"))?;
-        anyhow::ensure!(
-            room.participants
-                .iter()
-                .any(|participant| participant.peer_id == from_connection_id.0),
-            "no such room"
-        );
-        anyhow::ensure!(
-            room.pending_participant_user_ids
-                .iter()
-                .all(|user_id| UserId::from_proto(*user_id) != recipient_user_id),
-            "cannot call the same user more than once"
-        );
-        room.pending_participant_user_ids
-            .push(recipient_user_id.to_proto());
-
-        if let Some(initial_project_id) = initial_project_id {
-            let project = self
-                .projects
-                .get(&initial_project_id)
-                .ok_or_else(|| anyhow!("no such project"))?;
-            anyhow::ensure!(project.room_id == room_id, "no such project");
-        }
-
-        recipient.active_call = Some(Call {
-            caller_user_id,
-            room_id,
-            connection_id: None,
-            initial_project_id,
-        });
-
-        Ok((
-            room,
-            recipient_connection_ids,
-            proto::IncomingCall {
-                room_id,
-                caller_user_id: caller_user_id.to_proto(),
-                participant_user_ids: room
-                    .participants
-                    .iter()
-                    .map(|participant| participant.user_id)
-                    .collect(),
-                initial_project: initial_project_id
-                    .and_then(|id| Self::build_participant_project(id, &self.projects)),
-            },
-        ))
-    }
-
-    pub fn call_failed(&mut self, room_id: RoomId, to_user_id: UserId) -> Result<&proto::Room> {
-        let mut recipient = self
-            .connected_users
-            .get_mut(&to_user_id)
-            .ok_or_else(|| anyhow!("no such connection"))?;
-        anyhow::ensure!(recipient
-            .active_call
-            .map_or(false, |call| call.room_id == room_id
-                && call.connection_id.is_none()));
-        recipient.active_call = None;
-        let room = self
-            .rooms
-            .get_mut(&room_id)
-            .ok_or_else(|| anyhow!("no such room"))?;
-        room.pending_participant_user_ids
-            .retain(|user_id| UserId::from_proto(*user_id) != to_user_id);
-        Ok(room)
     }
 
     pub fn cancel_call(

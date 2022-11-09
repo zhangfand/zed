@@ -731,8 +731,8 @@ impl Server {
         request: Message<proto::Call>,
         response: Response<proto::Call>,
     ) -> Result<()> {
-        let caller_user_id = request.sender_user_id;
-        let recipient_user_id = UserId::from_proto(request.payload.recipient_user_id);
+        let calling_user_id = request.sender_user_id;
+        let called_user_id = UserId::from_proto(request.payload.recipient_user_id);
         let initial_project_id = request
             .payload
             .initial_project_id
@@ -740,31 +740,45 @@ impl Server {
         if !self
             .app_state
             .db
-            .has_contact(caller_user_id, recipient_user_id)
+            .has_contact(calling_user_id, called_user_id)
             .await?
         {
             return Err(anyhow!("cannot call a user who isn't a contact"))?;
         }
 
-        let room_id = request.payload.room_id;
-        let mut calls = {
-            let mut store = self.store().await;
-            let (room, recipient_connection_ids, incoming_call) = store.call(
-                room_id,
-                recipient_user_id,
-                initial_project_id,
-                request.sender_connection_id,
-            )?;
-            self.room_updated(room);
-            recipient_connection_ids
-                .into_iter()
-                .map(|recipient_connection_id| {
-                    self.peer
-                        .request(recipient_connection_id, incoming_call.clone())
-                })
-                .collect::<FuturesUnordered<_>>()
+        let room_id = RoomId::from_proto(request.payload.room_id);
+        let room = self
+            .app_state
+            .db
+            .call(room_id, calling_user_id, called_user_id, initial_project_id)
+            .await?;
+        self.room_updated(&room);
+        let incoming_call = proto::IncomingCall {
+            room_id: room_id.to_proto(),
+            caller_user_id: called_user_id.to_proto(),
+            participant_user_ids: room
+                .participants
+                .iter()
+                .map(|participant| participant.user_id)
+                .collect(),
+            initial_project: initial_project_id.and_then(|initial_project_id| {
+                room.participants
+                    .iter()
+                    .flat_map(|participant| &participant.projects)
+                    .find(|project| project.id == initial_project_id.to_proto())
+                    .cloned()
+            }),
         };
-        self.update_user_contacts(recipient_user_id).await?;
+        let mut calls = self
+            .store()
+            .await
+            .connection_ids_for_user(called_user_id)
+            .map(|recipient_connection_id| {
+                self.peer
+                    .request(recipient_connection_id, incoming_call.clone())
+            })
+            .collect::<FuturesUnordered<_>>();
+        self.update_user_contacts(called_user_id).await?;
 
         while let Some(call_response) = calls.next().await {
             match call_response.as_ref() {
@@ -778,12 +792,13 @@ impl Server {
             }
         }
 
-        {
-            let mut store = self.store().await;
-            let room = store.call_failed(room_id, recipient_user_id)?;
-            self.room_updated(&room);
-        }
-        self.update_user_contacts(recipient_user_id).await?;
+        let room = self
+            .app_state
+            .db
+            .call_failed(room_id, called_user_id)
+            .await?;
+        self.room_updated(&room);
+        self.update_user_contacts(called_user_id).await?;
 
         Err(anyhow!("failed to ring call recipient"))?
     }
