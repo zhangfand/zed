@@ -1,27 +1,30 @@
 // TODO: Colors should be ZDSColor or Chroma color, not string
 
+export interface ZDSShadow {
+  x: number,
+  y: number,
+  blur: number,
+  opacity: number,
+  color: string
+}
+
 export interface ZDSComponentElement {
   color: string,
   border: {
     radius: number,
     color: string
   }
-  shadow: {
-    x: number,
-    y: number,
-    blur: number,
-    opacity: number,
-    color: string
-  }
+  shadow: ZDSShadow
 }
 
 export interface ZDSText {
+  text: string,
   color: string,
   family: string,
   size: number,
   weight: string,
-  lineHeight: string,
-  tracking: string,
+  lineHeight: number,
+  tracking: number,
 }
 
 export interface ZDSIcon {

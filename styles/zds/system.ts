@@ -114,7 +114,16 @@ interface SystemRadii {
   lg: number
 }
 
+interface SystemFonts {
+  mono: string,
+  sans: string
+}
+
 const ref = {
+  font: {
+    mono: "Fira Code",
+    sans: "Fira Sans"
+  },
   palette: {
     neutral: chroma.scale(['#fafafa', '#171717']).colors(101),
     red: chroma.scale(['#fef2f2', '#7f1d1d']).colors(101),
@@ -157,7 +166,8 @@ function buildSurface(appearance: Appearance, name: string, level: number) {
 
 interface System {
   color: Partial<SystemColors>
-  borderRadius: SystemRadii
+  borderRadius: SystemRadii,
+  font: SystemFonts,
 }
 
 export function useSystem(appearance: Appearance) {
@@ -203,10 +213,9 @@ export function useSystem(appearance: Appearance) {
       ...buildSurface(appearance, "surface", 3),
       ...buildSurface(appearance, "surface", 4),
     },
-    borderRadius: ref.radius
+    borderRadius: ref.radius,
+    font: ref.font
   }
 
   return system
 }
-
-export default console.log(useSystem(Appearance.Light))

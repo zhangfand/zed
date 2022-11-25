@@ -1,15 +1,17 @@
 import { Appearance, useSystem } from "../system";
-import { ZDSComponentElement, ZDSText } from "../zdsComponent";
+import { ZDSComponentElement, ZDSIcon, ZDSText } from "../zdsComponent";
+import { defaultIcon, defaultShadow, defaultText } from "./ZDSCommon";
 
 const system = useSystem(Appearance.Dark)
 
 interface ZDSButton {
   container: ZDSComponentElement
-  label: ZDSText
+  label: ZDSText,
+  icon: ZDSIcon
 }
 
-export default function zdsButton() {
-  const button = {
+export function zdsButton(text: string) {
+  const button: ZDSButton = {
     container: {
       color: system.color.primary,
       border: {
@@ -20,15 +22,19 @@ export default function zdsButton() {
         ...defaultShadow,
         color: system.color.shadow
       }
-      // level: system.level.level0
     },
     label: {
       ...defaultText,
+      text: text,
       color: system.color.primary
     },
     icon: {
       ...defaultIcon,
-      color: system.color.primary
+      color: system.color.accent
     }
   }
-})
+
+  return button
+}
+
+export default console.log(zdsButton("Hello World"))
