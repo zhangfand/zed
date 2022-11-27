@@ -1,6 +1,6 @@
-import { Color } from "chroma-js"
-import { Effect } from "./Effect"
+import { Effect, Shadow } from "./Effect"
 
+type Color = string
 
 export interface Size {
   width: number,
@@ -37,6 +37,7 @@ export interface Ring {
 }
 
 export interface Container {
+  fill: Color
   size: Size,
   padding: Padding
   margin: Margin
@@ -44,5 +45,5 @@ export interface Container {
   border: Border
   ring: Ring
   flex: Flex
-  effect: Effect
+  shadow: Shadow
 }
