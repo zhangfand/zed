@@ -1,5 +1,9 @@
 // TODO: Colors should be ZDSColor or Chroma color, not string
 
+// interface LayoutMixin {
+
+// }
+
 export interface ZDSShadow {
   x: number,
   y: number,
