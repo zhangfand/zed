@@ -20,21 +20,28 @@ struct ContiguousRowRanges<'snapshot, I: Iterator> {
     display_map: &'snapshot DisplaySnapshot,
 }
 
-impl<'snapshot, I: Iterator> ContiguousRowRanges<'snapshot, I> {
-    fn new(selections: I, display_map: &DisplaySnapshot) -> Self {
-        Self {
-            selections: selections.peekable(),
-            display_map,
-        }
-    }
+struct MergedOverlappingSelections<I: Iterator> {
+    selections: Peekable<I>,
 }
 
 pub trait IteratorExtension {
-    fn by_contiguous_rows<I>(self, display_map: &DisplaySnapshot) -> ContiguousRowRanges<Self>
+    fn by_contiguous_rows(self, display_map: &DisplaySnapshot) -> ContiguousRowRanges<Self>
     where
         Self: Sized + Iterator<Item = Selection<Point>>,
     {
-        ContiguousRowRanges::new(self, display_map)
+        ContiguousRowRanges {
+            selections: self.peekable(),
+            display_map,
+        }
+    }
+
+    fn overlapping_selections_merged<T>(self) -> MergedOverlappingSelections<Self>
+    where
+        Self: Sized + Iterator<Item = Selection<T>>,
+    {
+        MergedOverlappingSelections {
+            selections: self.peekable(),
+        }
     }
 }
 
@@ -67,5 +74,32 @@ impl<'snapshot, I: Iterator<Item = Selection<Point>>> Iterator
         } else {
             None
         }
+    }
+}
+
+impl<T: Ord, I: Iterator<Item = Selection<T>>> Iterator for MergedOverlappingSelections<I> {
+    type Item = Selection<T>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let selection = self.selections.next();
+
+        selection.map(|mut selection| {
+            while let Some(next_selection) = self.selections.peek() {
+                if selection.end >= next_selection.start {
+                    if next_selection.start < selection.start {
+                        selection.start = next_selection.start;
+                    }
+                    if next_selection.end > selection.end {
+                        selection.end = next_selection.end;
+                    }
+
+                    self.selections.next().unwrap();
+                } else {
+                    break;
+                }
+            }
+
+            selection
+        })
     }
 }
