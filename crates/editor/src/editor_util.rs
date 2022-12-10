@@ -7,20 +7,19 @@ use crate::display_map::DisplaySnapshot;
 type RowIndex = u32;
 
 pub fn end_row_for(selection: &Selection<Point>, display_map: &DisplaySnapshot) -> RowIndex {
-    let mut end_row = if selection.end.column > 0 || selection.is_empty() {
+    if selection.end.column > 0 || selection.is_empty() {
         display_map.next_line_boundary(selection.end).0.row + 1
     } else {
         selection.end.row
-    };
-    end_row
+    }
 }
 
-struct ContiguousRowRanges<'snapshot, I: Iterator> {
+pub struct ContiguousRowRanges<'snapshot, I: Iterator> {
     selections: Peekable<I>,
     display_map: &'snapshot DisplaySnapshot,
 }
 
-struct MergedOverlappingSelections<I: Iterator> {
+pub struct MergedOverlappingSelections<I: Iterator> {
     selections: Peekable<I>,
 }
 
@@ -54,13 +53,13 @@ impl<'snapshot, I: Iterator<Item = Selection<Point>>> Iterator
 
     fn next(&mut self) -> Option<Self::Item> {
         let next = self.selections.next();
-        let selections = Vec::new();
+        let mut selections = Vec::new();
 
         if let Some(selection) = next {
             selections.push(selection.clone());
             let start_row = selection.start.row;
 
-            let end_row = end_row_for(&selection, self.display_map);
+            let mut end_row = end_row_for(&selection, self.display_map);
 
             while let Some(next_selection) = self.selections.peek() {
                 if next_selection.start.row <= end_row {
@@ -77,7 +76,7 @@ impl<'snapshot, I: Iterator<Item = Selection<Point>>> Iterator
     }
 }
 
-impl<T: Ord, I: Iterator<Item = Selection<T>>> Iterator for MergedOverlappingSelections<I> {
+impl<T: Ord + Copy, I: Iterator<Item = Selection<T>>> Iterator for MergedOverlappingSelections<I> {
     type Item = Selection<T>;
 
     fn next(&mut self) -> Option<Self::Item> {

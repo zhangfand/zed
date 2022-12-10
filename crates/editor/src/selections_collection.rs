@@ -54,7 +54,7 @@ impl SelectionsCollection {
         }
     }
 
-    fn display_map(&self, cx: &mut MutableAppContext) -> DisplaySnapshot {
+    pub fn display_snapshot(&self, cx: &mut MutableAppContext) -> DisplaySnapshot {
         self.display_map.update(cx, |map, cx| map.snapshot(cx))
     }
 
@@ -156,7 +156,7 @@ impl SelectionsCollection {
         display_map: &'snapshot DisplaySnapshot,
         cx: &mut MutableAppContext,
     ) -> impl Iterator<Item = Selection<DisplayPoint>> + 'this {
-        let map = self.display_map(cx);
+        let map = self.display_snapshot(cx);
 
         self.all_adjusted(display_map, cx)
             .map(move |selection| selection.map(|point| point.to_display_point(&map)))
@@ -215,7 +215,7 @@ impl SelectionsCollection {
     }
 
     pub fn newest_display(&self, cx: &mut MutableAppContext) -> Selection<DisplayPoint> {
-        let display_map = self.display_map(cx);
+        let display_map = self.display_snapshot(cx);
         let selection = self
             .newest_anchor()
             .map(|point| point.to_display_point(&display_map));
@@ -267,7 +267,7 @@ impl SelectionsCollection {
 
     #[cfg(any(test, feature = "test-support"))]
     pub fn display_ranges(&self, cx: &mut MutableAppContext) -> Vec<Range<DisplayPoint>> {
-        let display_map = self.display_map(cx);
+        let display_map = self.display_snapshot(cx);
         self.disjoint_anchors()
             .iter()
             .chain(self.pending_anchor().as_ref())
@@ -337,7 +337,7 @@ pub struct MutableSelectionsCollection<'a> {
 
 impl<'a> MutableSelectionsCollection<'a> {
     fn display_map(&mut self) -> DisplaySnapshot {
-        self.collection.display_map(self.cx)
+        self.collection.display_snapshot(self.cx)
     }
 
     fn buffer(&self) -> Ref<MultiBufferSnapshot> {
@@ -458,6 +458,7 @@ impl<'a> MutableSelectionsCollection<'a> {
     where
         T: 'a + ToOffset + ToPoint + TextDimension + Ord + Sub<T, Output = T> + std::marker::Copy,
     {
+        let next_id = post_inc(&mut self.collection.next_selection_id);
         let selections = self.all::<usize>(self.cx);
         let mut start = range.start.to_offset(&self.buffer());
         let mut end = range.end.to_offset(&self.buffer());
@@ -469,25 +470,26 @@ impl<'a> MutableSelectionsCollection<'a> {
         };
 
         let selections = selections.chain(iter::once(Selection {
-            id: post_inc(&mut self.collection.next_selection_id),
+            id: next_id,
             start,
             end,
             reversed,
             goal: SelectionGoal::None,
         }));
 
-        self.select(selections);
+        self.select(selections.collect::<Vec<_>>());
     }
 
-    pub fn select<T>(&mut self, mut selections: impl Iterator<Item = Selection<T>>)
+    pub fn select<T>(&mut self, selections: impl IntoIterator<Item = Selection<T>>)
     where
         T: ToOffset + ToPoint + Ord + std::marker::Copy + std::fmt::Debug,
     {
-        let buffer = self.buffer.read(self.cx).snapshot(self.cx);
-
-        let mut selections = selections
+        let selections = selections
+            .into_iter()
             .sorted_unstable_by_key(|s| s.start)
             .overlapping_selections_merged();
+
+        let buffer = self.buffer.read(self.cx).snapshot(self.cx);
 
         self.collection.disjoint = Arc::from_iter(selections.map(|selection| {
             let end_bias = if selection.end > selection.start {
@@ -530,23 +532,26 @@ impl<'a> MutableSelectionsCollection<'a> {
     where
         I: IntoIterator<Item = Range<usize>>,
     {
-        let selections = ranges.into_iter().map(|range| {
-            let mut start = range.start;
-            let mut end = range.end;
-            let reversed = if start > end {
-                mem::swap(&mut start, &mut end);
-                true
-            } else {
-                false
-            };
-            Selection {
-                id: post_inc(&mut self.collection.next_selection_id),
-                start,
-                end,
-                reversed,
-                goal: SelectionGoal::None,
-            }
-        });
+        let selections = ranges
+            .into_iter()
+            .map(|range| {
+                let mut start = range.start;
+                let mut end = range.end;
+                let reversed = if start > end {
+                    mem::swap(&mut start, &mut end);
+                    true
+                } else {
+                    false
+                };
+                Selection {
+                    id: post_inc(&mut self.collection.next_selection_id),
+                    start,
+                    end,
+                    reversed,
+                    goal: SelectionGoal::None,
+                }
+            })
+            .collect::<Vec<_>>();
 
         self.select(selections)
     }
@@ -582,23 +587,26 @@ impl<'a> MutableSelectionsCollection<'a> {
         T: IntoIterator<Item = Range<DisplayPoint>>,
     {
         let display_map = self.display_map();
-        let selections = ranges.into_iter().map(|range| {
-            let mut start = range.start;
-            let mut end = range.end;
-            let reversed = if start > end {
-                mem::swap(&mut start, &mut end);
-                true
-            } else {
-                false
-            };
-            Selection {
-                id: post_inc(&mut self.collection.next_selection_id),
-                start: start.to_point(&display_map),
-                end: end.to_point(&display_map),
-                reversed,
-                goal: SelectionGoal::None,
-            }
-        });
+        let selections = ranges
+            .into_iter()
+            .map(|range| {
+                let mut start = range.start;
+                let mut end = range.end;
+                let reversed = if start > end {
+                    mem::swap(&mut start, &mut end);
+                    true
+                } else {
+                    false
+                };
+                Selection {
+                    id: post_inc(&mut self.collection.next_selection_id),
+                    start: start.to_point(&display_map),
+                    end: end.to_point(&display_map),
+                    reversed,
+                    goal: SelectionGoal::None,
+                }
+            })
+            .collect::<Vec<_>>();
 
         self.select(selections);
     }
@@ -607,21 +615,17 @@ impl<'a> MutableSelectionsCollection<'a> {
         &mut self,
         mut move_selection: impl FnMut(&DisplaySnapshot, &mut Selection<DisplayPoint>),
     ) {
-        let mut changed = false;
         let display_map = self.display_map();
-        let selections = self.all::<Point>(self.cx).into_iter().map(|selection| {
+        let mut selections = self.all::<Point>(self.cx).map(move |selection| {
             let mut moved_selection = selection.map(|point| point.to_display_point(&display_map));
             move_selection(&display_map, &mut moved_selection);
             let moved_selection =
                 moved_selection.map(|display_point| display_point.to_point(&display_map));
-            if selection != moved_selection {
-                changed = true;
-            }
-            moved_selection
+            (selection, moved_selection)
         });
 
-        if changed {
-            self.select(selections)
+        if selections.any(|(old, new)| old != new) {
+            self.select(selections.map(|(_old, new)| new).collect::<Vec<_>>())
         }
     }
 
@@ -682,7 +686,8 @@ impl<'a> MutableSelectionsCollection<'a> {
                     reversed: false,
                     goal: SelectionGoal::None,
                 }
-            });
+            })
+            .collect::<Vec<_>>();
 
         self.select(new_selections);
     }

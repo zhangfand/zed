@@ -215,7 +215,11 @@ pub fn paste(_: &mut Workspace, _: &VisualPaste, cx: &mut ViewContext<Workspace>
                     if let Some(mut clipboard_selections) =
                         item.metadata::<Vec<ClipboardSelection>>()
                     {
-                        let (display_map, selections) = editor.selections.all_adjusted_display(cx);
+                        let display_map = editor.selections.display_snapshot(cx);
+                        let selections = editor
+                            .selections
+                            .all_adjusted_display(&display_map, cx)
+                            .collect::<Vec<_>>();
                         let all_selections_were_entire_line =
                             clipboard_selections.iter().all(|s| s.is_entire_line);
                         if clipboard_selections.len() != selections.len() {

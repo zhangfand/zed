@@ -82,9 +82,9 @@ impl Editor {
             first_cursor_top = newest_selection.head().to_display_point(&display_map).row() as f32;
             last_cursor_bottom = first_cursor_top + 1.;
         } else {
-            let selections = self.selections.all::<Point>(cx);
+            let mut selections = self.selections.all::<Point>(cx);
             first_cursor_top = selections
-                .first()
+                .next()
                 .unwrap()
                 .head()
                 .to_display_point(&display_map)

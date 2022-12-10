@@ -232,7 +232,9 @@ impl<'a> EditorTestContext<'a> {
     ) {
         let actual_selections = self
             .editor
-            .read_with(self.cx, |editor, cx| editor.selections.all::<usize>(cx))
+            .read_with(self.cx, |editor, cx| {
+                editor.selections.all::<usize>(cx).collect::<Vec<_>>()
+            })
             .into_iter()
             .map(|s| {
                 if s.reversed {

@@ -166,14 +166,14 @@ fn test_undo_redo_with_selection_restoration(cx: &mut MutableAppContext) {
         editor.insert("cd", cx);
         editor.end_transaction_at(now, cx);
         assert_eq!(editor.text(cx), "12cd56");
-        assert_eq!(editor.selections.ranges(cx), vec![4..4]);
+        assert_eq!(editor.selections.ranges(cx).collect::<Vec<_>>(), vec![4..4]);
 
         editor.start_transaction_at(now, cx);
         editor.change_selections(None, cx, |s| s.select_ranges([4..5]));
         editor.insert("e", cx);
         editor.end_transaction_at(now, cx);
         assert_eq!(editor.text(cx), "12cde6");
-        assert_eq!(editor.selections.ranges(cx), vec![5..5]);
+        assert_eq!(editor.selections.ranges(cx).collect::<Vec<_>>(), vec![5..5]);
 
         now += group_interval + Duration::from_millis(1);
         editor.change_selections(None, cx, |s| s.select_ranges([2..2]));
@@ -187,30 +187,30 @@ fn test_undo_redo_with_selection_restoration(cx: &mut MutableAppContext) {
         });
 
         assert_eq!(editor.text(cx), "ab2cde6");
-        assert_eq!(editor.selections.ranges(cx), vec![3..3]);
+        assert_eq!(editor.selections.ranges(cx).collect::<Vec<_>>(), vec![3..3]);
 
         // Last transaction happened past the group interval in a different editor.
         // Undo it individually and don't restore selections.
         editor.undo(&Undo, cx);
         assert_eq!(editor.text(cx), "12cde6");
-        assert_eq!(editor.selections.ranges(cx), vec![2..2]);
+        assert_eq!(editor.selections.ranges(cx).collect::<Vec<_>>(), vec![2..2]);
 
         // First two transactions happened within the group interval in this editor.
         // Undo them together and restore selections.
         editor.undo(&Undo, cx);
         editor.undo(&Undo, cx); // Undo stack is empty here, so this is a no-op.
         assert_eq!(editor.text(cx), "123456");
-        assert_eq!(editor.selections.ranges(cx), vec![0..0]);
+        assert_eq!(editor.selections.ranges(cx).collect::<Vec<_>>(), vec![0..0]);
 
         // Redo the first two transactions together.
         editor.redo(&Redo, cx);
         assert_eq!(editor.text(cx), "12cde6");
-        assert_eq!(editor.selections.ranges(cx), vec![5..5]);
+        assert_eq!(editor.selections.ranges(cx).collect::<Vec<_>>(), vec![5..5]);
 
         // Redo the last transaction on its own.
         editor.redo(&Redo, cx);
         assert_eq!(editor.text(cx), "ab2cde6");
-        assert_eq!(editor.selections.ranges(cx), vec![6..6]);
+        assert_eq!(editor.selections.ranges(cx).collect::<Vec<_>>(), vec![6..6]);
 
         // Test empty transactions.
         editor.start_transaction_at(now, cx);
@@ -465,8 +465,12 @@ fn test_clone(cx: &mut gpui::MutableAppContext) {
         snapshot.folds_in_range(0..text.len()).collect::<Vec<_>>(),
     );
     assert_set_eq!(
-        cloned_editor.read(cx).selections.ranges::<Point>(cx),
-        editor.read(cx).selections.ranges(cx)
+        cloned_editor
+            .read(cx)
+            .selections
+            .ranges::<Point>(cx)
+            .collect::<Vec<_>>(),
+        editor.read(cx).selections.ranges(cx).collect::<Vec<_>>()
     );
     assert_set_eq!(
         cloned_editor.update(cx, |e, cx| e.selections.display_ranges(cx)),
@@ -1430,7 +1434,7 @@ fn test_newline_with_old_selections(cx: &mut gpui::MutableAppContext) {
 
     editor.update(cx, |editor, cx| {
         assert_eq!(
-            editor.selections.ranges(cx),
+            editor.selections.ranges(cx).collect::<Vec<_>>(),
             &[
                 Point::new(1, 2)..Point::new(1, 2),
                 Point::new(2, 2)..Point::new(2, 2),
@@ -1452,7 +1456,7 @@ fn test_newline_with_old_selections(cx: &mut gpui::MutableAppContext) {
 
         // The selections are moved after the inserted newlines
         assert_eq!(
-            editor.selections.ranges(cx),
+            editor.selections.ranges(cx).collect::<Vec<_>>(),
             &[
                 Point::new(2, 0)..Point::new(2, 0),
                 Point::new(4, 0)..Point::new(4, 0),
@@ -1527,13 +1531,19 @@ fn test_insert_with_old_selections(cx: &mut gpui::MutableAppContext) {
     });
 
     editor.update(cx, |editor, cx| {
-        assert_eq!(editor.selections.ranges(cx), &[2..2, 7..7, 12..12],);
+        assert_eq!(
+            editor.selections.ranges(cx).collect::<Vec<_>>(),
+            &[2..2, 7..7, 12..12],
+        );
 
         editor.insert("Z", cx);
         assert_eq!(editor.text(cx), "a(Z), b(Z), c(Z)");
 
         // The selections are moved after the inserted characters
-        assert_eq!(editor.selections.ranges(cx), &[3..3, 9..9, 15..15],);
+        assert_eq!(
+            editor.selections.ranges(cx).collect::<Vec<_>>(),
+            &[3..3, 9..9, 15..15],
+        );
     });
 }
 
@@ -2233,15 +2243,15 @@ fn test_transpose(cx: &mut gpui::MutableAppContext) {
             editor.change_selections(None, cx, |s| s.select_ranges([1..1]));
             editor.transpose(&Default::default(), cx);
             assert_eq!(editor.text(cx), "bac");
-            assert_eq!(editor.selections.ranges(cx), [2..2]);
+            assert_eq!(editor.selections.ranges(cx).collect::<Vec<_>>(), [2..2]);
 
             editor.transpose(&Default::default(), cx);
             assert_eq!(editor.text(cx), "bca");
-            assert_eq!(editor.selections.ranges(cx), [3..3]);
+            assert_eq!(editor.selections.ranges(cx).collect::<Vec<_>>(), [3..3]);
 
             editor.transpose(&Default::default(), cx);
             assert_eq!(editor.text(cx), "bac");
-            assert_eq!(editor.selections.ranges(cx), [3..3]);
+            assert_eq!(editor.selections.ranges(cx).collect::<Vec<_>>(), [3..3]);
 
             editor
         })
@@ -2254,20 +2264,20 @@ fn test_transpose(cx: &mut gpui::MutableAppContext) {
             editor.change_selections(None, cx, |s| s.select_ranges([3..3]));
             editor.transpose(&Default::default(), cx);
             assert_eq!(editor.text(cx), "acb\nde");
-            assert_eq!(editor.selections.ranges(cx), [3..3]);
+            assert_eq!(editor.selections.ranges(cx).collect::<Vec<_>>(), [3..3]);
 
             editor.change_selections(None, cx, |s| s.select_ranges([4..4]));
             editor.transpose(&Default::default(), cx);
             assert_eq!(editor.text(cx), "acbd\ne");
-            assert_eq!(editor.selections.ranges(cx), [5..5]);
+            assert_eq!(editor.selections.ranges(cx).collect::<Vec<_>>(), [5..5]);
 
             editor.transpose(&Default::default(), cx);
             assert_eq!(editor.text(cx), "acbde\n");
-            assert_eq!(editor.selections.ranges(cx), [6..6]);
+            assert_eq!(editor.selections.ranges(cx).collect::<Vec<_>>(), [6..6]);
 
             editor.transpose(&Default::default(), cx);
             assert_eq!(editor.text(cx), "acbd\ne");
-            assert_eq!(editor.selections.ranges(cx), [6..6]);
+            assert_eq!(editor.selections.ranges(cx).collect::<Vec<_>>(), [6..6]);
 
             editor
         })
@@ -2280,23 +2290,38 @@ fn test_transpose(cx: &mut gpui::MutableAppContext) {
             editor.change_selections(None, cx, |s| s.select_ranges([1..1, 2..2, 4..4]));
             editor.transpose(&Default::default(), cx);
             assert_eq!(editor.text(cx), "bacd\ne");
-            assert_eq!(editor.selections.ranges(cx), [2..2, 3..3, 5..5]);
+            assert_eq!(
+                editor.selections.ranges(cx).collect::<Vec<_>>(),
+                [2..2, 3..3, 5..5]
+            );
 
             editor.transpose(&Default::default(), cx);
             assert_eq!(editor.text(cx), "bcade\n");
-            assert_eq!(editor.selections.ranges(cx), [3..3, 4..4, 6..6]);
+            assert_eq!(
+                editor.selections.ranges(cx).collect::<Vec<_>>(),
+                [3..3, 4..4, 6..6]
+            );
 
             editor.transpose(&Default::default(), cx);
             assert_eq!(editor.text(cx), "bcda\ne");
-            assert_eq!(editor.selections.ranges(cx), [4..4, 6..6]);
+            assert_eq!(
+                editor.selections.ranges(cx).collect::<Vec<_>>(),
+                [4..4, 6..6]
+            );
 
             editor.transpose(&Default::default(), cx);
             assert_eq!(editor.text(cx), "bcade\n");
-            assert_eq!(editor.selections.ranges(cx), [4..4, 6..6]);
+            assert_eq!(
+                editor.selections.ranges(cx).collect::<Vec<_>>(),
+                [4..4, 6..6]
+            );
 
             editor.transpose(&Default::default(), cx);
             assert_eq!(editor.text(cx), "bcaed\n");
-            assert_eq!(editor.selections.ranges(cx), [5..5, 6..6]);
+            assert_eq!(
+                editor.selections.ranges(cx).collect::<Vec<_>>(),
+                [5..5, 6..6]
+            );
 
             editor
         })
@@ -2309,15 +2334,15 @@ fn test_transpose(cx: &mut gpui::MutableAppContext) {
             editor.change_selections(None, cx, |s| s.select_ranges([4..4]));
             editor.transpose(&Default::default(), cx);
             assert_eq!(editor.text(cx), "🏀🍐✋");
-            assert_eq!(editor.selections.ranges(cx), [8..8]);
+            assert_eq!(editor.selections.ranges(cx).collect::<Vec<_>>(), [8..8]);
 
             editor.transpose(&Default::default(), cx);
             assert_eq!(editor.text(cx), "🏀✋🍐");
-            assert_eq!(editor.selections.ranges(cx), [11..11]);
+            assert_eq!(editor.selections.ranges(cx).collect::<Vec<_>>(), [11..11]);
 
             editor.transpose(&Default::default(), cx);
             assert_eq!(editor.text(cx), "🏀🍐✋");
-            assert_eq!(editor.selections.ranges(cx), [11..11]);
+            assert_eq!(editor.selections.ranges(cx).collect::<Vec<_>>(), [11..11]);
 
             editor
         })
@@ -3040,7 +3065,7 @@ async fn test_autoindent_selections(cx: &mut gpui::TestAppContext) {
         editor.newline(&Newline, cx);
         assert_eq!(editor.text(cx), "fn a(\n    \n) {\n    \n}\n");
         assert_eq!(
-            editor.selections.ranges(cx),
+            editor.selections.ranges(cx).collect::<Vec<_>>(),
             &[
                 Point::new(1, 4)..Point::new(1, 4),
                 Point::new(3, 4)..Point::new(3, 4),
@@ -3313,7 +3338,6 @@ async fn test_autoclose_with_embedded_language(cx: &mut gpui::TestAppContext) {
         let snapshot = editor.snapshot(cx);
         let cursors = editor.selections.ranges::<usize>(cx);
         let languages = cursors
-            .iter()
             .map(|c| snapshot.language_at(c.start).unwrap().name())
             .collect::<Vec<_>>();
         assert_eq!(
@@ -3577,7 +3601,7 @@ async fn test_delete_autoclose_pair(cx: &mut gpui::TestAppContext) {
             .unindent()
         );
         assert_eq!(
-            editor.selections.ranges::<Point>(cx),
+            editor.selections.ranges::<Point>(cx).collect::<Vec<_>>(),
             [
                 Point::new(0, 4)..Point::new(0, 4),
                 Point::new(1, 4)..Point::new(1, 4),
@@ -3597,7 +3621,7 @@ async fn test_delete_autoclose_pair(cx: &mut gpui::TestAppContext) {
             .unindent()
         );
         assert_eq!(
-            editor.selections.ranges::<Point>(cx),
+            editor.selections.ranges::<Point>(cx).collect::<Vec<_>>(),
             [
                 Point::new(0, 2)..Point::new(0, 2),
                 Point::new(1, 2)..Point::new(1, 2),
@@ -3616,7 +3640,7 @@ async fn test_delete_autoclose_pair(cx: &mut gpui::TestAppContext) {
             .unindent()
         );
         assert_eq!(
-            editor.selections.ranges::<Point>(cx),
+            editor.selections.ranges::<Point>(cx).collect::<Vec<_>>(),
             [
                 Point::new(0, 1)..Point::new(0, 1),
                 Point::new(1, 1)..Point::new(1, 1),
@@ -3652,7 +3676,10 @@ async fn test_snippets(cx: &mut gpui::TestAppContext) {
         fn assert(editor: &mut Editor, cx: &mut ViewContext<Editor>, marked_text: &str) {
             let (expected_text, selection_ranges) = marked_text_ranges(marked_text, false);
             assert_eq!(editor.text(cx), expected_text);
-            assert_eq!(editor.selections.ranges::<usize>(cx), selection_ranges);
+            assert_eq!(
+                editor.selections.ranges::<usize>(cx).collect::<Vec<_>>(),
+                selection_ranges
+            );
         }
 
         assert(
@@ -4589,7 +4616,7 @@ fn test_editing_disjoint_excerpts(cx: &mut gpui::MutableAppContext) {
         view.handle_input("X", cx);
         assert_eq!(view.text(cx), "Xaaaa\nXbbbb");
         assert_eq!(
-            view.selections.ranges(cx),
+            view.selections.ranges(cx).collect::<Vec<_>>(),
             [
                 Point::new(0, 1)..Point::new(0, 1),
                 Point::new(1, 1)..Point::new(1, 1),
@@ -4650,7 +4677,10 @@ fn test_editing_overlapping_excerpts(cx: &mut gpui::MutableAppContext) {
             false,
         );
         assert_eq!(view.text(cx), expected_text);
-        assert_eq!(view.selections.ranges(cx), expected_selections);
+        assert_eq!(
+            view.selections.ranges(cx).collect::<Vec<_>>(),
+            expected_selections
+        );
 
         view.newline(&Newline, cx);
         let (expected_text, expected_selections) = marked_text_ranges(
@@ -4667,7 +4697,10 @@ fn test_editing_overlapping_excerpts(cx: &mut gpui::MutableAppContext) {
             false,
         );
         assert_eq!(view.text(cx), expected_text);
-        assert_eq!(view.selections.ranges(cx), expected_selections);
+        assert_eq!(
+            view.selections.ranges(cx).collect::<Vec<_>>(),
+            expected_selections
+        );
     });
 }
 
@@ -4709,7 +4742,7 @@ fn test_refresh_selections(cx: &mut gpui::MutableAppContext) {
         });
         editor.begin_selection(Point::new(2, 1).to_display_point(&snapshot), true, 1, cx);
         assert_eq!(
-            editor.selections.ranges(cx),
+            editor.selections.ranges(cx).collect::<Vec<_>>(),
             [
                 Point::new(1, 3)..Point::new(1, 3),
                 Point::new(2, 1)..Point::new(2, 1),
@@ -4722,7 +4755,7 @@ fn test_refresh_selections(cx: &mut gpui::MutableAppContext) {
     editor.update(cx, |editor, cx| {
         editor.change_selections(None, cx, |s| s.refresh());
         assert_eq!(
-            editor.selections.ranges(cx),
+            editor.selections.ranges(cx).collect::<Vec<_>>(),
             [
                 Point::new(1, 3)..Point::new(1, 3),
                 Point::new(2, 1)..Point::new(2, 1),
@@ -4736,7 +4769,7 @@ fn test_refresh_selections(cx: &mut gpui::MutableAppContext) {
     editor.update(cx, |editor, cx| {
         // Removing an excerpt causes the first selection to become degenerate.
         assert_eq!(
-            editor.selections.ranges(cx),
+            editor.selections.ranges(cx).collect::<Vec<_>>(),
             [
                 Point::new(0, 0)..Point::new(0, 0),
                 Point::new(0, 1)..Point::new(0, 1)
@@ -4747,7 +4780,7 @@ fn test_refresh_selections(cx: &mut gpui::MutableAppContext) {
         // location.
         editor.change_selections(None, cx, |s| s.refresh());
         assert_eq!(
-            editor.selections.ranges(cx),
+            editor.selections.ranges(cx).collect::<Vec<_>>(),
             [
                 Point::new(0, 1)..Point::new(0, 1),
                 Point::new(0, 3)..Point::new(0, 3)
@@ -4792,7 +4825,7 @@ fn test_refresh_selections_while_selecting_with_mouse(cx: &mut gpui::MutableAppC
         let snapshot = editor.snapshot(cx);
         editor.begin_selection(Point::new(1, 3).to_display_point(&snapshot), false, 1, cx);
         assert_eq!(
-            editor.selections.ranges(cx),
+            editor.selections.ranges(cx).collect::<Vec<_>>(),
             [Point::new(1, 3)..Point::new(1, 3)]
         );
         editor
@@ -4803,14 +4836,14 @@ fn test_refresh_selections_while_selecting_with_mouse(cx: &mut gpui::MutableAppC
     });
     editor.update(cx, |editor, cx| {
         assert_eq!(
-            editor.selections.ranges(cx),
+            editor.selections.ranges(cx).collect::<Vec<_>>(),
             [Point::new(0, 0)..Point::new(0, 0)]
         );
 
         // Ensure we don't panic when selections are refreshed and that the pending selection is finalized.
         editor.change_selections(None, cx, |s| s.refresh());
         assert_eq!(
-            editor.selections.ranges(cx),
+            editor.selections.ranges(cx).collect::<Vec<_>>(),
             [Point::new(0, 3)..Point::new(0, 3)]
         );
         assert!(editor.selections.pending_anchor().is_some());
@@ -5005,7 +5038,10 @@ fn test_following(cx: &mut gpui::MutableAppContext) {
             .apply_update_proto(pending_update.borrow_mut().take().unwrap(), cx)
             .unwrap();
     });
-    assert_eq!(follower.read(cx).selections.ranges(cx), vec![1..1]);
+    assert_eq!(
+        follower.read(cx).selections.ranges(cx).collect::<Vec<_>>(),
+        vec![1..1]
+    );
 
     // Update the scroll position only
     leader.update(cx, |leader, cx| {
@@ -5035,7 +5071,10 @@ fn test_following(cx: &mut gpui::MutableAppContext) {
         assert_eq!(follower.scroll_position(cx), initial_scroll_position);
         assert!(follower.scroll_manager.has_autoscroll_request());
     });
-    assert_eq!(follower.read(cx).selections.ranges(cx), vec![0..0]);
+    assert_eq!(
+        follower.read(cx).selections.ranges(cx).collect::<Vec<_>>(),
+        vec![0..0]
+    );
 
     // Creating a pending selection that precedes another selection
     leader.update(cx, |leader, cx| {
@@ -5047,7 +5086,10 @@ fn test_following(cx: &mut gpui::MutableAppContext) {
             .apply_update_proto(pending_update.borrow_mut().take().unwrap(), cx)
             .unwrap();
     });
-    assert_eq!(follower.read(cx).selections.ranges(cx), vec![0..0, 1..1]);
+    assert_eq!(
+        follower.read(cx).selections.ranges(cx).collect::<Vec<_>>(),
+        vec![0..0, 1..1]
+    );
 
     // Extend the pending selection so that it surrounds another selection
     leader.update(cx, |leader, cx| {
@@ -5058,7 +5100,10 @@ fn test_following(cx: &mut gpui::MutableAppContext) {
             .apply_update_proto(pending_update.borrow_mut().take().unwrap(), cx)
             .unwrap();
     });
-    assert_eq!(follower.read(cx).selections.ranges(cx), vec![0..2]);
+    assert_eq!(
+        follower.read(cx).selections.ranges(cx).collect::<Vec<_>>(),
+        vec![0..2]
+    );
 }
 
 #[test]
@@ -5244,7 +5289,7 @@ fn assert_selection_ranges(marked_text: &str, view: &mut Editor, cx: &mut ViewCo
     let (text, ranges) = marked_text_ranges(marked_text, true);
     assert_eq!(view.text(cx), text);
     assert_eq!(
-        view.selections.ranges(cx),
+        view.selections.ranges(cx).collect::<Vec<_>>(),
         ranges,
         "Assert selections are {}",
         marked_text

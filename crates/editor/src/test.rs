@@ -57,7 +57,10 @@ pub fn assert_text_with_selections(
 ) {
     let (unmarked_text, text_ranges) = marked_text_ranges(marked_text, true);
     assert_eq!(editor.text(cx), unmarked_text);
-    assert_eq!(editor.selections.ranges(cx), text_ranges);
+    assert_eq!(
+        editor.selections.ranges(cx).collect::<Vec<_>>(),
+        text_ranges
+    );
 }
 
 pub(crate) fn build_editor(

@@ -187,9 +187,10 @@ fn insert_line_above(_: &mut Workspace, _: &InsertLineAbove, cx: &mut ViewContex
         vim.switch_mode(Mode::Insert, false, cx);
         vim.update_active_editor(cx, |editor, cx| {
             editor.transact(cx, |editor, cx| {
-                let (map, old_selections) = editor.selections.all_display(cx);
+                let map = editor.selections.display_snapshot(cx);
+                let old_selections = editor.selections.all_display(&map, cx);
+
                 let selection_start_rows: HashSet<u32> = old_selections
-                    .into_iter()
                     .map(|selection| selection.start.row())
                     .collect();
                 let edits = selection_start_rows.into_iter().map(|row| {
@@ -219,9 +220,9 @@ fn insert_line_below(_: &mut Workspace, _: &InsertLineBelow, cx: &mut ViewContex
         vim.switch_mode(Mode::Insert, false, cx);
         vim.update_active_editor(cx, |editor, cx| {
             editor.transact(cx, |editor, cx| {
-                let (map, old_selections) = editor.selections.all_display(cx);
+                let map = editor.selections.display_snapshot(cx);
+                let old_selections = editor.selections.all_display(&map, cx);
                 let selection_end_rows: HashSet<u32> = old_selections
-                    .into_iter()
                     .map(|selection| selection.end.row())
                     .collect();
                 let edits = selection_end_rows.into_iter().map(|row| {
@@ -254,7 +255,11 @@ fn paste(_: &mut Workspace, _: &Paste, cx: &mut ViewContext<Workspace>) {
                     if let Some(mut clipboard_selections) =
                         item.metadata::<Vec<ClipboardSelection>>()
                     {
-                        let (display_map, selections) = editor.selections.all_display(cx);
+                        let display_map = editor.selections.display_snapshot(cx);
+                        let selections = editor
+                            .selections
+                            .all_display(&display_map, cx)
+                            .collect::<Vec<_>>();
                         let all_selections_were_entire_line =
                             clipboard_selections.iter().all(|s| s.is_entire_line);
                         if clipboard_selections.len() != selections.len() {
