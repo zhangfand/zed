@@ -83,15 +83,12 @@ impl Editor {
             last_cursor_bottom = first_cursor_top + 1.;
         } else {
             let mut selections = self.selections.all::<Point>(cx);
-            first_cursor_top = selections
-                .next()
-                .unwrap()
-                .head()
-                .to_display_point(&display_map)
-                .row() as f32;
+            let first_item = selections.next().unwrap();
+
+            first_cursor_top = first_item.head().to_display_point(&display_map).row() as f32;
             last_cursor_bottom = selections
                 .last()
-                .unwrap()
+                .unwrap_or(first_item)
                 .head()
                 .to_display_point(&display_map)
                 .row() as f32
