@@ -44,9 +44,6 @@ function writeThemes(colorSchemes: ColorScheme[], outputDirectory: string) {
     fs.writeFileSync(tempPath, styleTreeJSON);
     fs.renameSync(tempPath, outPath);
     console.log(`- ${outPath} created`);
-    console.log(`=============================================`);
-    console.log(JSON.stringify(colorScheme, null, 2))
-    console.log(`=============================================`);
   }
 }
 
