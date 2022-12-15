@@ -1,6 +1,7 @@
 mod ignore;
 mod lsp_command;
 pub mod search;
+pub mod shared_model_handle;
 pub mod worktree;
 
 #[cfg(test)]
@@ -44,6 +45,7 @@ use search::SearchQuery;
 use serde::Serialize;
 use settings::{FormatOnSave, Formatter, Settings};
 use sha2::{Digest, Sha256};
+use shared_model_handle::RemoteModelHandleManager;
 use similar::{ChangeTag, TextDiff};
 use std::{
     cell::RefCell,
@@ -120,6 +122,7 @@ pub struct Project {
     incomplete_buffers: HashMap<u64, ModelHandle<Buffer>>,
     buffer_snapshots: HashMap<u64, Vec<(i32, TextBufferSnapshot)>>,
     buffers_being_formatted: HashSet<usize>,
+    remote_model_manager: RemoteModelHandleManager,
     nonce: u128,
     _maintain_buffer_languages: Task<()>,
 }
@@ -444,6 +447,7 @@ impl Project {
             language_server_settings: Default::default(),
             buffers_being_formatted: Default::default(),
             next_language_server_id: 0,
+            remote_model_manager: Default::default(),
             nonce: StdRng::from_entropy().gen(),
         })
     }
@@ -536,6 +540,7 @@ impl Project {
                 opened_buffers: Default::default(),
                 buffers_being_formatted: Default::default(),
                 buffer_snapshots: Default::default(),
+                remote_model_manager: Default::default(),
                 nonce: StdRng::from_entropy().gen(),
             };
             for worktree in worktrees {
@@ -2799,7 +2804,9 @@ impl Project {
                         local_buffers.push((buffer_handle, buffer_abs_path, server.clone()));
                     }
                 } else {
-                    remote_buffers.get_or_insert(Vec::new()).push(buffer_handle);
+                    remote_buffers
+                        .get_or_insert_with(|| Vec::new())
+                        .push(buffer_handle);
                 }
             } else {
                 return Task::ready(Ok(Default::default()));

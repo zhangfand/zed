@@ -4889,6 +4889,10 @@ impl AnyModelHandle {
     pub fn model_type(&self) -> TypeId {
         self.model_type
     }
+
+    pub fn id(&self) -> usize {
+        self.model_id
+    }
 }
 
 impl<T: Entity> From<ModelHandle<T>> for AnyModelHandle {
