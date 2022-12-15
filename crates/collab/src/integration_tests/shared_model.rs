@@ -1,6 +1,8 @@
 use call::ActiveCall;
-use gpui::{executor::Deterministic, Entity, TestAppContext};
-use project::shared_model_handle::{SharedModel, SharedModelHandleExtension};
+use gpui::{executor::Deterministic, Entity, ModelContext, TestAppContext};
+use project::shared_model_handle::{
+    register_shared_model, CreateMessage, SharedModel, SharedModelHandleExtension,
+};
 use serde_json::json;
 
 use crate::integration_tests::TestServer;
@@ -17,7 +19,24 @@ async fn test_model_sharing(
     impl Entity for TestModel {
         type Event = ();
     }
-    impl SharedModel for TestModel {}
+    impl SharedModel for TestModel {
+        fn type_key() -> &'static str {
+            "TestModel"
+        }
+        fn create_message(&self) -> CreateMessage {
+            CreateMessage(self.num)
+        }
+        fn create_from_create_message(msg: CreateMessage, _cx: &mut ModelContext<Self>) -> Self {
+            TestModel { num: msg.0 }
+        }
+    }
+
+    cx_a.update(|cx| {
+        register_shared_model::<TestModel>(cx);
+    });
+    cx_b.update(|cx| {
+        register_shared_model::<TestModel>(cx);
+    });
 
     deterministic.forbid_parking();
 
@@ -41,22 +60,13 @@ async fn test_model_sharing(
 
     deterministic.run_until_parked();
 
-    let client_a_id = project_b.read_with(cx_b, |project, _| {
-        project.collaborators().values().next().unwrap().peer_id
-    });
-    let client_b_id = project_a.read_with(cx_a, |project, _| {
-        project.collaborators().values().next().unwrap().peer_id
-    });
-
     let a_model = cx_a.add_model(|_cx| TestModel { num: 999 });
 
-    let a_remote_model = project_a.update(cx_a, |project, cx| a_model.clone_remote(project, cx));
-    let a_weak_remote_handle = a_remote_model.downgrade();
+    let a_remote_model = project_a.update(cx_a, |project, _cx| a_model.to_remote(project));
 
+    // Simulate transmitting a_remote_model to b with the closure
     let b_model = project_b
-        .update(cx_b, |project, cx| {
-            a_weak_remote_handle.upgrade(project, cx)
-        })
+        .update(cx_b, |project, cx| a_remote_model.upgrade(project, cx))
         .await
         .unwrap();
 
@@ -64,6 +74,6 @@ async fn test_model_sharing(
 
     assert_eq!(
         a_model.read_with(cx_a, |m, _| m.num),
-        b_model.read_with(cx_b, |m, _| m.num),
+        cx_b.read(|cx| b_model.read_with(cx, |m, _| m.num))
     )
 }

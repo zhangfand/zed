@@ -18,7 +18,7 @@ use editor::{
 use fs::{FakeFs, Fs as _, HomeDir, LineEnding};
 use futures::{channel::oneshot, StreamExt as _};
 use gpui::{
-    executor::Deterministic, geometry::vector::vec2f, test::EmptyView, Entity, ModelHandle, Task,
+    executor::Deterministic, geometry::vector::vec2f, test::EmptyView, ModelHandle, Task,
     TestAppContext, ViewHandle,
 };
 use language::{
@@ -28,10 +28,7 @@ use language::{
 use live_kit_client::MacOSDisplay;
 use lsp::{self, FakeLanguageServer};
 use parking_lot::Mutex;
-use project::{
-    search::SearchQuery, shared_model_handle::SharedModel, DiagnosticSummary, Project, ProjectPath,
-    WorktreeId,
-};
+use project::{search::SearchQuery, DiagnosticSummary, Project, ProjectPath, WorktreeId};
 use rand::prelude::*;
 use serde_json::json;
 use settings::{Formatter, Settings};
