@@ -85,51 +85,14 @@ impl<M: SharedModel> Drop for RemoteModelHandle<M> {
 }
 
 pub trait SharedModelHandleExtension<M: SharedModel> {
-    fn clone_remote(
-        &self,
-        project: &mut Project,
-        cx: &mut ModelContext<Project>,
-    ) -> RemoteModelHandle<M>;
+    fn to_remote(&self, project: &Project) -> WeakRemoteModelHandle<M>;
 }
 
 impl<M: SharedModel> SharedModelHandleExtension<M> for ModelHandle<M> {
-    fn clone_remote(
-        &self,
-        project: &mut Project,
-        cx: &mut ModelContext<Project>,
-    ) -> RemoteModelHandle<M> {
-        let model_id = self.id();
-
-        project
-            .remote_model_manager
-            .remote_models
-            .push(self.clone().into());
-
-        let remote_id = project
-            .remote_id()
-            .context("Project didn't have a remote id")
-            .unwrap();
-
-        let (sender, mut receiver) = postage::oneshot::channel();
-
-        cx.spawn_weak(|project, mut cx| async move {
-            if let Some(()) = receiver.recv().await {
-                if let Some(project_handle) = project.upgrade(&mut cx) {
-                    project_handle.update(&mut cx, |project, _cx| {
-                        project
-                            .remote_model_manager
-                            .remote_models
-                            .retain(|model_handle| model_handle.id() != model_id)
-                    })
-                }
-            }
-        })
-        .detach();
-
-        RemoteModelHandle {
-            remote_id,
-            model_id,
-            remove_channel: sender,
+    fn to_remote(&self, project: &Project) -> WeakRemoteModelHandle<M> {
+        WeakRemoteModelHandle {
+            remote_id: project.remote_id().unwrap(),
+            model_id: self.id(),
             _pd: PhantomData,
         }
     }
