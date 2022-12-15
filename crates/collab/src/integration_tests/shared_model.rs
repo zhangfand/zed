@@ -62,7 +62,7 @@ async fn test_model_sharing(
 
     let a_model = cx_a.add_model(|_cx| TestModel { num: 999 });
 
-    let a_remote_model = project_a.update(cx_a, |project, _cx| a_model.to_remote(project));
+    let a_remote_model = project_a.update(cx_a, |project, _cx| a_model.as_remote(project));
 
     // Simulate transmitting a_remote_model to b with the closure
     let b_model = project_b
@@ -73,7 +73,7 @@ async fn test_model_sharing(
     deterministic.run_until_parked();
 
     assert_eq!(
-        a_model.read_with(cx_a, |m, _| m.num),
-        cx_b.read(|cx| b_model.read_with(cx, |m, _| m.num))
+        cx_a.read(|cx| a_model.read(cx).num),
+        cx_b.read(|cx| b_model.read(cx).num)
     )
 }

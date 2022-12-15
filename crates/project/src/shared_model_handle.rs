@@ -76,12 +76,8 @@ impl<M: SharedModel> RemoteModelHandle<M> {
         }
     }
 
-    pub fn read_with<F, R>(&self, cx: &AppContext, f: F) -> R
-    where
-        F: FnOnce(&M, &AppContext) -> R,
-    {
-        let m = self.model.read(cx);
-        f(m, cx)
+    pub fn read<'this, 'cx: 'this>(&'this self, cx: &'cx AppContext) -> &'cx M {
+        self.model.read(cx)
     }
 }
 
@@ -186,18 +182,18 @@ impl<M: SharedModel> WeakRemoteModelHandle<M> {
 impl<M: SharedModel> Drop for RemoteModelHandle<M> {
     fn drop(&mut self) {
         self.remove_channel
-            .blocking_send(())
+            .blocking_send(()) // TODO: is this ok?
             .context("RemoteModelHandle failed to send it's drop message")
             .log_err();
     }
 }
 
 pub trait SharedModelHandleExtension<M: SharedModel> {
-    fn to_remote(&self, project: &Project) -> WeakRemoteModelHandle<M>;
+    fn as_remote(&self, project: &Project) -> WeakRemoteModelHandle<M>;
 }
 
 impl<M: SharedModel> SharedModelHandleExtension<M> for ModelHandle<M> {
-    fn to_remote(&self, project: &Project) -> WeakRemoteModelHandle<M> {
+    fn as_remote(&self, project: &Project) -> WeakRemoteModelHandle<M> {
         WeakRemoteModelHandle {
             remote_id: project.remote_id().unwrap(),
             model_id: self.id(),
@@ -205,6 +201,10 @@ impl<M: SharedModel> SharedModelHandleExtension<M> for ModelHandle<M> {
         }
     }
 }
+
+////////////////////////////
+// DUMMY CODE MUST REMOVE //
+////////////////////////////
 
 pub struct CreateMessage(pub u64);
 
@@ -233,11 +233,6 @@ async fn send_drop_notification_to_peer<F, E: SharedModel>(
     F: FnOnce(ModelId),
 {
     unimplemented!()
-}
-
-lazy_static::lazy_static! {
-    static ref TYPE_MAP: HashMap<TypeKey, fn(AnyModelHandle) -> Box<dyn SharedModelHandle>> =
-        HashMap::default();
 }
 
 type TypeMap = HashMap<TypeKey, fn(AnyModelHandle) -> Box<dyn SharedModelHandle>>;
