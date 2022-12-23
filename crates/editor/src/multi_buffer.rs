@@ -2686,23 +2686,74 @@ impl MultiBufferSnapshot {
             .flat_map(move |(_, _, buffer)| buffer.diagnostic_group(group_id))
     }
 
-    pub fn diagnostics_in_range<'a, T, O>(
+    pub fn diagnostics_in_range<'a, T>(
         &'a self,
         range: Range<T>,
         reversed: bool,
-    ) -> impl Iterator<Item = DiagnosticEntry<O>> + 'a
+    ) -> impl Iterator<Item = DiagnosticEntry<usize>> + 'a
     where
         T: 'a + ToOffset,
-        O: 'a + text::FromAnchor,
     {
-        self.as_singleton()
-            .into_iter()
-            .flat_map(move |(_, _, buffer)| {
-                buffer.diagnostics_in_range(
-                    range.start.to_offset(self)..range.end.to_offset(self),
-                    reversed,
-                )
-            })
+        let range = range.start.to_offset(self)..range.end.to_offset(self);
+        let mut cursor = self.excerpts.cursor::<usize>();
+
+        if reversed {
+            cursor.seek(&range.end, Bias::Left, &());
+            if cursor.item().is_none() {
+                cursor.prev(&());
+            }
+        } else {
+            cursor.seek(&range.start, Bias::Right, &());
+        }
+
+        std::iter::from_fn(move || {
+            let excerpt = cursor.item()?;
+            let multibuffer_excerpt_start = *cursor.start();
+            let multibuffer_excerpt_end = multibuffer_excerpt_start + excerpt.text_summary.len;
+            if multibuffer_excerpt_start >= range.end {
+                return None;
+            }
+
+            let excerpt_start_offset = excerpt.range.context.start.to_offset(&excerpt.buffer);
+            let excerpt_end_offset = excerpt_start_offset + excerpt.text_summary.len;
+
+            let mut start = excerpt_start_offset;
+            let mut end = excerpt.range.context.end.to_offset(&excerpt.buffer);
+
+            if range.start > multibuffer_excerpt_start {
+                start += range.start - multibuffer_excerpt_start;
+            }
+
+            if range.end < multibuffer_excerpt_end {
+                end = excerpt_start_offset + range.end - multibuffer_excerpt_start;
+            }
+
+            let diagnostic_entries = excerpt
+                .buffer
+                .diagnostics_in_range::<_, usize>(start..end, reversed)
+                .filter_map(move |mut entry| {
+                    entry.range.start = multibuffer_excerpt_start
+                        + entry.range.start.saturating_sub(excerpt_start_offset);
+
+                    entry.range.end = multibuffer_excerpt_start
+                        + entry
+                            .range
+                            .end
+                            .min(excerpt_end_offset)
+                            .saturating_sub(excerpt_start_offset);
+
+                    Some(entry)
+                });
+
+            if reversed {
+                cursor.prev(&());
+            } else {
+                cursor.next(&());
+            }
+
+            Some(diagnostic_entries)
+        })
+        .flatten()
     }
 
     pub fn git_diff_hunks_in_range<'a>(

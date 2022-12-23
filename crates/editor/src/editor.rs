@@ -4809,9 +4809,9 @@ impl Editor {
 
         loop {
             let mut diagnostics = if direction == Direction::Prev {
-                buffer.diagnostics_in_range::<_, usize>(0..search_start, true)
+                buffer.diagnostics_in_range(0..search_start, true)
             } else {
-                buffer.diagnostics_in_range::<_, usize>(search_start..buffer.len(), false)
+                buffer.diagnostics_in_range(search_start..buffer.len(), false)
             };
             let group = diagnostics.find_map(|entry| {
                 if entry.diagnostic.is_primary
@@ -5363,7 +5363,7 @@ impl Editor {
             let buffer = self.buffer.read(cx).snapshot(cx);
             let primary_range_start = active_diagnostics.primary_range.start.to_offset(&buffer);
             let is_valid = buffer
-                .diagnostics_in_range::<_, usize>(active_diagnostics.primary_range.clone(), false)
+                .diagnostics_in_range(active_diagnostics.primary_range.clone(), false)
                 .any(|entry| {
                     entry.diagnostic.is_primary
                         && !entry.range.is_empty()
@@ -5388,6 +5388,7 @@ impl Editor {
 
     fn activate_diagnostics(&mut self, group_id: usize, cx: &mut ViewContext<Self>) -> bool {
         self.dismiss_diagnostics(cx);
+
         self.active_diagnostics = self.display_map.update(cx, |display_map, cx| {
             let buffer = self.buffer.read(cx).snapshot(cx);
 
@@ -5438,6 +5439,7 @@ impl Editor {
                 is_valid: true,
             })
         });
+
         self.active_diagnostics.is_some()
     }
 
