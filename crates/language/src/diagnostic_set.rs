@@ -157,14 +157,13 @@ impl DiagnosticSet {
         });
     }
 
-    pub fn group<'a, O: FromAnchor>(
+    pub fn group<'a>(
         &'a self,
         group_id: usize,
-        buffer: &'a text::BufferSnapshot,
-    ) -> impl 'a + Iterator<Item = DiagnosticEntry<O>> {
+    ) -> impl 'a + Iterator<Item = DiagnosticEntry<Anchor>> {
         self.iter()
             .filter(move |entry| entry.diagnostic.group_id == group_id)
-            .map(|entry| entry.resolve(buffer))
+            .cloned()
     }
 }
 impl sum_tree::Item for DiagnosticEntry<Anchor> {

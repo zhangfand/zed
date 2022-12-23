@@ -2824,7 +2824,10 @@ async fn test_grouped_diagnostics(cx: &mut gpui::TestAppContext) {
     );
 
     assert_eq!(
-        buffer.diagnostic_group::<Point>(0).collect::<Vec<_>>(),
+        buffer
+            .diagnostic_group(0)
+            .map(|g| g.resolve(&buffer))
+            .collect::<Vec<_>>(),
         &[
             DiagnosticEntry {
                 range: Point::new(1, 8)..Point::new(1, 9),
@@ -2849,7 +2852,10 @@ async fn test_grouped_diagnostics(cx: &mut gpui::TestAppContext) {
         ]
     );
     assert_eq!(
-        buffer.diagnostic_group::<Point>(1).collect::<Vec<_>>(),
+        buffer
+            .diagnostic_group(1)
+            .map(|g| g.resolve(&buffer))
+            .collect::<Vec<_>>(),
         &[
             DiagnosticEntry {
                 range: Point::new(1, 13)..Point::new(1, 15),

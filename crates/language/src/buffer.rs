@@ -2345,14 +2345,11 @@ impl BufferSnapshot {
         groups
     }
 
-    pub fn diagnostic_group<'a, O>(
+    pub fn diagnostic_group<'a>(
         &'a self,
         group_id: usize,
-    ) -> impl 'a + Iterator<Item = DiagnosticEntry<O>>
-    where
-        O: 'a + FromAnchor,
-    {
-        self.diagnostics.group(group_id, self)
+    ) -> impl 'a + Iterator<Item = DiagnosticEntry<Anchor>> {
+        self.diagnostics.group(group_id)
     }
 
     pub fn diagnostics_update_count(&self) -> usize {

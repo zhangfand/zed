@@ -104,6 +104,10 @@ pub trait ToPointUtf16: 'static + fmt::Debug {
     fn to_point_utf16(&self, snapshot: &MultiBufferSnapshot) -> PointUtf16;
 }
 
+pub trait FromAnchor: 'static + fmt::Debug {
+    fn from_anchor(anchor: &Anchor, snapshot: &MultiBufferSnapshot) -> Self;
+}
+
 struct BufferState {
     buffer: ModelHandle<Buffer>,
     last_version: clock::Global,
@@ -2679,11 +2683,27 @@ impl MultiBufferSnapshot {
         group_id: usize,
     ) -> impl Iterator<Item = DiagnosticEntry<O>> + 'a
     where
-        O: text::FromAnchor + 'a,
+        O: FromAnchor + 'a,
     {
-        self.as_singleton()
-            .into_iter()
-            .flat_map(move |(_, _, buffer)| buffer.diagnostic_group(group_id))
+        self.excerpts
+            .iter()
+            .flat_map(move |e| e.buffer.diagnostic_group(group_id).map(|g| (g, e.id)))
+            .map(|(entry, id)| {
+                let start = Anchor {
+                    buffer_id: None,
+                    excerpt_id: id,
+                    text_anchor: entry.range.start,
+                };
+                let end = Anchor {
+                    buffer_id: None,
+                    excerpt_id: id,
+                    text_anchor: entry.range.end,
+                };
+                DiagnosticEntry {
+                    range: O::from_anchor(&start, self)..O::from_anchor(&end, self),
+                    diagnostic: entry.diagnostic.clone(),
+                }
+            })
     }
 
     pub fn diagnostics_in_range<'a, T>(
@@ -3653,6 +3673,18 @@ impl ToPointUtf16 for Point {
 impl ToPointUtf16 for PointUtf16 {
     fn to_point_utf16<'a>(&self, _: &MultiBufferSnapshot) -> PointUtf16 {
         *self
+    }
+}
+
+impl FromAnchor for usize {
+    fn from_anchor(anchor: &Anchor, snapshot: &MultiBufferSnapshot) -> Self {
+        anchor.to_offset(snapshot)
+    }
+}
+
+impl FromAnchor for Point {
+    fn from_anchor(anchor: &Anchor, snapshot: &MultiBufferSnapshot) -> Self {
+        anchor.to_point(snapshot)
     }
 }
 
