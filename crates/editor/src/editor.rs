@@ -218,6 +218,7 @@ actions!(
         ToggleComments,
         ShowCharacterPalette,
         SelectLargerSyntaxNode,
+        SelectNextSyntaxNode,
         SelectSmallerSyntaxNode,
         GoToDefinition,
         GoToTypeDefinition,
@@ -4709,6 +4710,46 @@ impl Editor {
             });
         }
         self.select_larger_syntax_node_stack = stack;
+    }
+
+    pub fn select_next_syntax_node(
+        &mut self,
+        _: &SelectNextSyntaxNode,
+        cx: &mut ViewContext<Self>,
+    ) {
+        let display_map = self.display_map.update(cx, |map, cx| map.snapshot(cx));
+        let buffer = self.buffer.read(cx).snapshot(cx);
+        let old_selections = self.selections.all::<usize>(cx).into_boxed_slice();
+
+        let new_selections = old_selections
+            .iter()
+            .map(|selection| {
+                let old_range = selection.start..selection.end;
+                let mut new_range = old_range.clone();
+                while let Some(containing_range) =
+                    buffer.range_for_syntax_node_after(new_range.clone())
+                {
+                    new_range = containing_range;
+                    if !display_map.intersects_fold(new_range.start)
+                        && !display_map.intersects_fold(new_range.end)
+                    {
+                        break;
+                    }
+                }
+
+                Selection {
+                    id: selection.id,
+                    start: new_range.start,
+                    end: new_range.end,
+                    goal: SelectionGoal::None,
+                    reversed: false,
+                }
+            })
+            .collect::<Vec<_>>();
+
+        self.change_selections(Some(Autoscroll::fit()), cx, |s| {
+            s.select(new_selections);
+        });
     }
 
     pub fn move_to_enclosing_bracket(

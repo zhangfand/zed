@@ -2779,7 +2779,26 @@ impl MultiBufferSnapshot {
         .flatten()
     }
 
+    pub fn range_for_syntax_node_after<T: ToOffset>(
+        &self,
+        range: Range<T>,
+    ) -> Option<Range<usize>> {
+        self.transform_buffer_range(range, |buffer, range| {
+            buffer.range_for_syntax_node_after(range)
+        })
+    }
+
     pub fn range_for_syntax_ancestor<T: ToOffset>(&self, range: Range<T>) -> Option<Range<usize>> {
+        self.transform_buffer_range(range, |buffer, range| {
+            buffer.range_for_syntax_ancestor(range)
+        })
+    }
+
+    fn transform_buffer_range<T, F>(&self, range: Range<T>, callback: F) -> Option<Range<usize>>
+    where
+        T: ToOffset,
+        F: Fn(&BufferSnapshot, Range<usize>) -> Option<Range<usize>>,
+    {
         let range = range.start.to_offset(self)..range.end.to_offset(self);
 
         let mut cursor = self.excerpts.cursor::<usize>();
@@ -2807,15 +2826,13 @@ impl MultiBufferSnapshot {
                     excerpt_buffer_start + range.start.saturating_sub(*cursor.start());
                 let end_in_buffer =
                     excerpt_buffer_start + range.end.saturating_sub(*cursor.start());
-                let mut ancestor_buffer_range = start_excerpt
-                    .buffer
-                    .range_for_syntax_ancestor(start_in_buffer..end_in_buffer)?;
-                ancestor_buffer_range.start =
-                    cmp::max(ancestor_buffer_range.start, excerpt_buffer_start);
-                ancestor_buffer_range.end = cmp::min(ancestor_buffer_range.end, excerpt_buffer_end);
+                let mut buffer_range =
+                    callback(&start_excerpt.buffer, start_in_buffer..end_in_buffer)?;
+                buffer_range.start = cmp::max(buffer_range.start, excerpt_buffer_start);
+                buffer_range.end = cmp::min(buffer_range.end, excerpt_buffer_end);
 
-                let start = cursor.start() + (ancestor_buffer_range.start - excerpt_buffer_start);
-                let end = cursor.start() + (ancestor_buffer_range.end - excerpt_buffer_start);
+                let start = cursor.start() + (buffer_range.start - excerpt_buffer_start);
+                let end = cursor.start() + (buffer_range.end - excerpt_buffer_start);
                 Some(start..end)
             })
     }

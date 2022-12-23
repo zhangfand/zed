@@ -2019,6 +2019,50 @@ impl BufferSnapshot {
         (start..end, word_kind)
     }
 
+    pub fn range_for_syntax_node_after<T: ToOffset>(
+        &self,
+        range: Range<T>,
+    ) -> Option<Range<usize>> {
+        let range = range.start.to_offset(self)..range.end.to_offset(self);
+        let mut result: Option<Range<usize>> = None;
+        'outer: for layer in self.syntax.layers_for_range(range.clone(), &self.text) {
+            let mut cursor = layer.node.walk();
+
+            // Descend to the first leaf that touches the start of the range,
+            // and if the range is non-empty, extends beyond the start.
+            while cursor.goto_first_child_for_byte(range.end).is_some() {
+                if cursor.node().start_byte() > range.start {
+                    cursor.goto_parent();
+                    break;
+                }
+            }
+
+            let mut node_range = cursor.node().byte_range();
+            if node_range == range {
+                while !cursor.goto_next_sibling() {
+                    if !cursor.goto_parent() {
+                        continue 'outer;
+                    }
+                    if cursor.node().end_byte() > node_range.end {
+                        break;
+                    }
+                }
+                node_range = cursor.node().byte_range();
+            }
+
+            if node_range.end > range.end {
+                if let Some(previous_result) = &result {
+                    if previous_result.len() < node_range.len() {
+                        continue;
+                    }
+                }
+                result = Some(node_range);
+            }
+        }
+
+        result
+    }
+
     pub fn range_for_syntax_ancestor<T: ToOffset>(&self, range: Range<T>) -> Option<Range<usize>> {
         let range = range.start.to_offset(self)..range.end.to_offset(self);
         let mut result: Option<Range<usize>> = None;

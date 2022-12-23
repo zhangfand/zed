@@ -2853,6 +2853,31 @@ async fn test_select_next(cx: &mut gpui::TestAppContext) {
 }
 
 #[gpui::test]
+async fn test_select_next_and_prev_syntax_node(cx: &mut gpui::TestAppContext) {
+    let mut cx = EditorTestContext::new(cx);
+    let language = Arc::new(Language::new(
+        LanguageConfig::default(),
+        Some(tree_sitter_rust::language()),
+    ));
+    cx.update_buffer(|buffer, cx| {
+        buffer.set_language(Some(language), cx);
+    });
+    cx.set_state("fn one() { two.thˇree(4, 5) }");
+
+    cx.update_editor(|e, cx| e.select_next_syntax_node(&SelectNextSyntaxNode, cx));
+    cx.assert_editor_state("fn one() { two.«threeˇ»(4, 5) }");
+
+    cx.update_editor(|e, cx| e.select_next_syntax_node(&SelectNextSyntaxNode, cx));
+    cx.assert_editor_state("fn one() { two.three«(4, 5)ˇ» }");
+
+    cx.update_editor(|e, cx| e.select_next_syntax_node(&SelectNextSyntaxNode, cx));
+    cx.assert_editor_state("fn one() { two.three(4, 5) «}ˇ»");
+
+    cx.update_editor(|e, cx| e.select_next_syntax_node(&SelectNextSyntaxNode, cx));
+    cx.assert_editor_state("fn one() { two.three(4, 5) «}ˇ»");
+}
+
+#[gpui::test]
 async fn test_select_larger_smaller_syntax_node(cx: &mut gpui::TestAppContext) {
     cx.update(|cx| cx.set_global(Settings::test(cx)));
     let language = Arc::new(Language::new(
