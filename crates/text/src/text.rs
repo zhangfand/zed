@@ -1469,12 +1469,12 @@ impl Buffer {
 
         let mut ops = Vec::new();
         for _ in 0..dbg!(rng.gen_range(1..=5)) {
+            dbg!(self.history.undo_stack.len());
             if let Some(entry) = self.history.undo_stack.choose(rng) {
                 let transaction = entry.transaction.clone();
-                log::info!(
+                eprintln!(
                     "undoing buffer {} transaction {:?}",
-                    self.replica_id,
-                    transaction
+                    self.replica_id, transaction
                 );
                 ops.push(self.undo_or_redo(transaction).unwrap());
             }
