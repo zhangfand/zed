@@ -17,8 +17,7 @@ use std::{
 
 use crate::{
     platform::{self, Dispatcher},
-    util::{self, CwdBacktrace},
-    MutableAppContext,
+    util, MutableAppContext,
 };
 
 pub enum Foreground {
@@ -81,10 +80,16 @@ struct DeterministicState {
     runnable_backtraces: collections::HashMap<usize, backtrace::Backtrace>,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub enum ExecutorEvent {
-    PollRunnable { id: usize },
-    EnqueuRunnable { id: usize },
+    PollRunnable {
+        id: usize,
+    },
+    EnqueueRunnable {
+        id: usize,
+        #[cfg(any(test, feature = "test-support"))]
+        backtrace: Option<backtrace::Backtrace>,
+    },
 }
 
 #[cfg(any(test, feature = "test-support"))]
@@ -198,9 +203,14 @@ impl Deterministic {
         let unparker = self.parker.lock().unparker();
         let (runnable, task) = async_task::spawn_local(future, move |runnable| {
             let mut state = state.lock();
+            let backtrace = if state.enable_runnable_backtraces {
+                Some(backtrace::Backtrace::new_unresolved())
+            } else {
+                None
+            };
             state
                 .poll_history
-                .push(ExecutorEvent::EnqueuRunnable { id });
+                .push(ExecutorEvent::EnqueueRunnable { id, backtrace });
             state
                 .scheduled_from_foreground
                 .entry(cx_id)
@@ -228,9 +238,12 @@ impl Deterministic {
         let unparker = self.parker.lock().unparker();
         let (runnable, task) = async_task::spawn(future, move |runnable| {
             let mut state = state.lock();
-            state
-                .poll_history
-                .push(ExecutorEvent::EnqueuRunnable { id });
+            let backtrace = if state.enable_runnable_backtraces {
+                Some(backtrace::Backtrace::new_unresolved())
+            } else {
+                None
+            };
+            state.push_to_history(ExecutorEvent::EnqueueRunnable { id, backtrace });
             state
                 .scheduled_from_background
                 .push(BackgroundRunnable { id, runnable });
@@ -551,32 +564,62 @@ impl Future for Timer {
 #[cfg(any(test, feature = "test-support"))]
 impl DeterministicState {
     fn push_to_history(&mut self, event: ExecutorEvent) {
-        self.poll_history.push(event);
-        if let Some(prev_history) = &self.previous_poll_history {
+        self.poll_history.push(event.clone());
+        if let Some(prev_history) = &mut self.previous_poll_history {
             let ix = self.poll_history.len() - 1;
-            let prev_event = prev_history[ix];
-            if event != prev_event {
+            let prev_event = &mut prev_history[ix];
+            if event != *prev_event {
+                let last_common_runnable = self.poll_history[self.poll_history.len() - 2].id();
+
                 let mut message = String::new();
                 writeln!(
                     &mut message,
-                    "current runnable backtrace:\n{:?}",
-                    self.runnable_backtraces.get_mut(&event.id()).map(|trace| {
-                        trace.resolve();
-                        CwdBacktrace(trace)
-                    })
-                )
-                .unwrap();
-                writeln!(
-                    &mut message,
-                    "previous runnable backtrace:\n{:?}",
+                    "last common recorded backtrace:\n{:?}",
                     self.runnable_backtraces
-                        .get_mut(&prev_event.id())
+                        .get_mut(&last_common_runnable)
                         .map(|trace| {
                             trace.resolve();
-                            CwdBacktrace(trace)
+                            util::CwdBacktrace(trace)
                         })
                 )
                 .unwrap();
+
+                // let mut message = String::new();
+                // writeln!(
+                //     &mut message,
+                //     "current runnable backtrace:\n{:?}",
+                //     self.runnable_backtraces.get_mut(&event.id()).map(|trace| {
+                //         trace.resolve();
+                //         util::CwdBacktrace(trace)
+                //     })
+                // )
+                // .unwrap();
+                // writeln!(
+                //     &mut message,
+                //     "previous runnable backtrace:\n{:?}",
+                //     self.runnable_backtraces
+                //         .get_mut(&prev_event.id())
+                //         .map(|trace| {
+                //             trace.resolve();
+                //             util::CwdBacktrace(trace)
+                //         })
+                // )
+                // .unwrap();
+
+                // if let ExecutorEvent::EnqueueRunnable {
+                //     backtrace: Some(trace),
+                //     ..
+                // } = prev_event
+                // {
+                //     trace.resolve();
+                //     writeln!(
+                //         &mut message,
+                //         "previous enqueue backtrace:\n{:?}",
+                //         util::CwdBacktrace(trace)
+                //     )
+                //     .unwrap();
+                // }
+
                 panic!("detected non-determinism after {ix}. {message}");
             }
         }
@@ -607,10 +650,20 @@ impl ExecutorEvent {
     pub fn id(&self) -> usize {
         match self {
             ExecutorEvent::PollRunnable { id } => *id,
-            ExecutorEvent::EnqueuRunnable { id } => *id,
+            ExecutorEvent::EnqueueRunnable { id, .. } => *id,
         }
     }
 }
+
+#[cfg(any(test, feature = "test-support"))]
+impl PartialEq for ExecutorEvent {
+    fn eq(&self, other: &Self) -> bool {
+        self.id() == other.id()
+    }
+}
+
+#[cfg(any(test, feature = "test-support"))]
+impl Eq for ExecutorEvent {}
 
 impl Foreground {
     pub fn platform(dispatcher: Arc<dyn platform::Dispatcher>) -> Result<Self> {

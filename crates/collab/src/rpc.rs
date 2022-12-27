@@ -491,9 +491,12 @@ impl Server {
 
             if !user.connected_once {
                 this.peer.send(connection_id, proto::ShowContacts {})?;
+                this.executor.record_backtrace();
                 this.app_state.db.set_user_connected_once(user_id, true).await?;
+                this.executor.record_backtrace();
             }
 
+            this.executor.record_backtrace();
             let (contacts, invite_code) = future::try_join(
                 this.app_state.db.get_contacts(user_id),
                 this.app_state.db.get_invite_code_for_user(user_id)
@@ -512,6 +515,7 @@ impl Server {
                 }
             }
 
+            this.executor.record_backtrace();
             if let Some(incoming_call) = this.app_state.db.incoming_call_for_user(user_id).await? {
                 this.peer.send(connection_id, incoming_call)?;
             }
@@ -525,6 +529,7 @@ impl Server {
                 live_kit_client: this.app_state.live_kit_client.clone(),
                 executor: executor.clone(),
             };
+            this.executor.record_backtrace();
             update_user_contacts(user_id, &session).await?;
 
             let handle_io = handle_io.fuse();
@@ -580,6 +585,7 @@ impl Server {
 
             drop(foreground_message_handlers);
             tracing::info!(%user_id, %login, %connection_id, %address, "signing out");
+            this.executor.record_backtrace();
             if let Err(error) = sign_out(session, teardown, executor).await {
                 tracing::error!(%user_id, %login, %connection_id, %address, ?error, "error signing out");
             }
@@ -1626,11 +1632,11 @@ async fn update_buffer(
     response: Response<proto::UpdateBuffer>,
     session: Session,
 ) -> Result<()> {
-    session.executor.record_backtrace();
     let project_id = ProjectId::from_proto(request.project_id);
-    let project_connection_ids = session
-        .db()
-        .await
+    session.executor.record_backtrace();
+    let db = session.db().await;
+    session.executor.record_backtrace();
+    let project_connection_ids = db
         .project_connection_ids(project_id, session.connection_id)
         .await?;
 

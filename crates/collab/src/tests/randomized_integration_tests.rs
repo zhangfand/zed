@@ -17,6 +17,36 @@ use project::{search::SearchQuery, Project};
 use rand::prelude::*;
 use std::{env, path::PathBuf, sync::Arc};
 
+struct RngMutex(Mutex<StdRng>);
+struct RngMutexGuard<'a>(parking_lot::MutexGuard<'a, StdRng>);
+
+impl RngMutex {
+    fn lock(&self) -> RngMutexGuard {
+        dbg!(">>> Lock RNG");
+        RngMutexGuard(self.0.lock())
+    }
+}
+
+impl<'a> Drop for RngMutexGuard<'a> {
+    fn drop(&mut self) {
+        dbg!("<<< Unlock RNG");
+    }
+}
+
+impl<'a> std::ops::Deref for RngMutexGuard<'a> {
+    type Target = StdRng;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<'a> std::ops::DerefMut for RngMutexGuard<'a> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
 #[gpui::test(iterations = 100, detect_nondeterminism = true)]
 async fn test_random_collaboration(
     cx: &mut TestAppContext,
@@ -24,7 +54,7 @@ async fn test_random_collaboration(
     rng: StdRng,
 ) {
     deterministic.forbid_parking();
-    let rng = Arc::new(Mutex::new(rng));
+    let rng = Arc::new(RngMutex(Mutex::new(rng)));
 
     let max_peers = env::var("MAX_PEERS")
         .map(|i| i.parse().expect("invalid `MAX_PEERS` variable"))
@@ -77,16 +107,16 @@ async fn test_random_collaboration(
     let mut user_ids = Vec::new();
     let mut op_start_signals = Vec::new();
     let mut next_entity_id = 100000;
-    let allow_server_restarts = rng.lock().gen_bool(0.7);
-    let allow_client_reconnection = rng.lock().gen_bool(0.7);
-    let allow_client_disconnection = rng.lock().gen_bool(0.1);
+    let allow_server_restarts = dbg!(rng.lock().gen_bool(0.7));
+    let allow_client_reconnection = dbg!(rng.lock().gen_bool(0.7));
+    let allow_client_disconnection = dbg!(rng.lock().gen_bool(0.1));
 
     let mut operations = 0;
     while operations < max_operations {
-        let distribution = rng.lock().gen_range(0..100);
+        let distribution = dbg!(rng.lock().gen_range(0..100));
         match distribution {
             0..=19 if !available_users.is_empty() => {
-                let client_ix = rng.lock().gen_range(0..available_users.len());
+                let client_ix = dbg!(rng.lock().gen_range(0..available_users.len()));
                 let (_, username) = available_users.remove(client_ix);
                 log::info!("Adding new connection for {}", username);
                 next_entity_id += 100000;
@@ -118,7 +148,7 @@ async fn test_random_collaboration(
             }
 
             20..=24 if clients.len() > 1 && allow_client_disconnection => {
-                let client_ix = rng.lock().gen_range(1..clients.len());
+                let client_ix = dbg!(rng.lock().gen_range(1..clients.len()));
                 log::info!(
                     "Simulating full disconnection of user {}",
                     user_ids[client_ix]
@@ -177,7 +207,7 @@ async fn test_random_collaboration(
             }
 
             25..=29 if clients.len() > 1 && allow_client_reconnection => {
-                let client_ix = rng.lock().gen_range(1..clients.len());
+                let client_ix = dbg!(rng.lock().gen_range(1..clients.len()));
                 let user_id = user_ids[client_ix];
                 log::info!("Simulating temporary disconnection of user {}", user_id);
                 let user_connection_ids = server
@@ -209,16 +239,16 @@ async fn test_random_collaboration(
             }
 
             _ if !op_start_signals.is_empty() => {
-                while operations < max_operations && rng.lock().gen_bool(0.7) {
-                    op_start_signals
+                while operations < max_operations && dbg!(rng.lock().gen_bool(0.7)) {
+                    dbg!(op_start_signals
                         .choose(&mut *rng.lock())
                         .unwrap()
                         .unbounded_send(())
-                        .unwrap();
+                        .unwrap());
                     operations += 1;
                 }
 
-                if rng.lock().gen_bool(0.8) {
+                if dbg!(rng.lock().gen_bool(0.8)) {
                     deterministic.run_until_parked();
                 }
             }
@@ -390,7 +420,7 @@ async fn simulate_client(
     mut client: TestClient,
     mut op_start_signal: futures::channel::mpsc::UnboundedReceiver<()>,
     can_hang_up: bool,
-    rng: Arc<Mutex<StdRng>>,
+    rng: Arc<RngMutex>,
     mut cx: TestAppContext,
 ) -> (TestClient, TestAppContext) {
     // Setup language server
@@ -456,7 +486,8 @@ async fn simulate_client(
                             async move {
                                 let files = fs.files().await;
                                 let mut rng = rng.lock();
-                                let count = rng.gen_range::<usize, _>(1..3);
+                                let count = dbg!(rng.gen_range::<usize, _>(1..3));
+                                dbg!(files.len());
                                 let files = (0..count)
                                     .map(|_| files.choose(&mut *rng).unwrap())
                                     .collect::<Vec<_>>();
@@ -478,13 +509,13 @@ async fn simulate_client(
                         let rng = rng.clone();
                         move |_, _| {
                             let mut highlights = Vec::new();
-                            let highlight_count = rng.lock().gen_range(1..=5);
+                            let highlight_count = dbg!(rng.lock().gen_range(1..=5));
                             for _ in 0..highlight_count {
-                                let start_row = rng.lock().gen_range(0..100);
-                                let start_column = rng.lock().gen_range(0..100);
+                                let start_row = dbg!(rng.lock().gen_range(0..100));
+                                let start_column = dbg!(rng.lock().gen_range(0..100));
                                 let start = PointUtf16::new(start_row, start_column);
-                                let end_row = rng.lock().gen_range(0..100);
-                                let end_column = rng.lock().gen_range(0..100);
+                                let end_row = dbg!(rng.lock().gen_range(0..100));
+                                let end_column = dbg!(rng.lock().gen_range(0..100));
                                 let end = PointUtf16::new(end_row, end_column);
                                 let range = if start > end { end..start } else { start..end };
                                 highlights.push(lsp::DocumentHighlight {
@@ -522,10 +553,11 @@ async fn simulate_client(
 async fn randomly_mutate_client(
     client: &mut TestClient,
     can_hang_up: bool,
-    rng: Arc<Mutex<StdRng>>,
+    rng: Arc<RngMutex>,
     cx: &mut TestAppContext,
 ) -> Result<()> {
-    let choice = rng.lock().gen_range(0..100);
+    let choice = dbg!(rng.lock().gen_range(0..100));
+    log::info!("randomly mutate client: {}", choice);
     match choice {
         0..=19 => randomly_mutate_active_call(client, can_hang_up, &rng, cx).await?,
         20..=49 => randomly_mutate_projects(client, &rng, cx).await?,
@@ -544,12 +576,12 @@ async fn randomly_mutate_client(
 async fn randomly_mutate_active_call(
     client: &mut TestClient,
     can_hang_up: bool,
-    rng: &Mutex<StdRng>,
+    rng: &RngMutex,
     cx: &mut TestAppContext,
 ) -> Result<()> {
     let active_call = cx.read(ActiveCall::global);
     if active_call.read_with(cx, |call, _| call.incoming().borrow().is_some()) {
-        if rng.lock().gen_bool(0.7) {
+        if dbg!(rng.lock().gen_bool(0.7)) {
             log::info!("{}: accepting incoming call", client.username);
             active_call
                 .update(cx, |call, cx| call.accept_incoming(cx))
@@ -568,9 +600,10 @@ async fn randomly_mutate_active_call(
                 .collect::<Vec<_>>()
         });
 
-        let distribution = rng.lock().gen_range(0..100);
+        let distribution = dbg!(rng.lock().gen_range(0..100));
         match distribution {
             0..=29 if !available_contacts.is_empty() => {
+                dbg!(available_contacts.len());
                 let contact = available_contacts.choose(&mut *rng.lock()).unwrap();
                 log::info!(
                     "{}: inviting {}",
@@ -594,8 +627,8 @@ async fn randomly_mutate_active_call(
     Ok(())
 }
 
-async fn randomly_mutate_fs(client: &mut TestClient, rng: &Mutex<StdRng>) {
-    let is_dir = rng.lock().gen::<bool>();
+async fn randomly_mutate_fs(client: &mut TestClient, rng: &RngMutex) {
+    let is_dir = dbg!(rng.lock().gen::<bool>());
     let mut new_path = client
         .fs
         .directories()
@@ -620,9 +653,11 @@ async fn randomly_mutate_fs(client: &mut TestClient, rng: &Mutex<StdRng>) {
 
 async fn randomly_mutate_projects(
     client: &mut TestClient,
-    rng: &Mutex<StdRng>,
+    rng: &RngMutex,
     cx: &mut TestAppContext,
 ) -> Result<()> {
+    log::info!("randomly mutate projects");
+
     let active_call = cx.read(ActiveCall::global);
     let remote_projects =
         if let Some(room) = active_call.read_with(cx, |call, _| call.room().cloned()) {
@@ -636,10 +671,10 @@ async fn randomly_mutate_projects(
             Default::default()
         };
 
-    let project = if remote_projects.is_empty() || rng.lock().gen() {
-        if client.local_projects.is_empty() || rng.lock().gen() {
+    let project = if remote_projects.is_empty() || dbg!(rng.lock().gen()) {
+        if client.local_projects.is_empty() || dbg!(rng.lock().gen()) {
             let paths = client.fs.paths().await;
-            let local_project = if paths.is_empty() || rng.lock().gen() {
+            let local_project = if paths.is_empty() || dbg!(rng.lock().gen()) {
                 let root_path = client.create_new_root_dir();
                 client.fs.create_dir(&root_path).await.unwrap();
                 client
@@ -665,6 +700,7 @@ async fn randomly_mutate_projects(
             client.local_projects.push(local_project.clone());
             local_project
         } else {
+            dbg!(client.local_projects.len());
             client
                 .local_projects
                 .choose(&mut *rng.lock())
@@ -672,8 +708,9 @@ async fn randomly_mutate_projects(
                 .clone()
         }
     } else {
-        if client.remote_projects.is_empty() || rng.lock().gen() {
-            let remote_project_id = remote_projects.choose(&mut *rng.lock()).unwrap().id;
+        if client.remote_projects.is_empty() || dbg!(rng.lock().gen()) {
+            dbg!(client.remote_projects.len());
+            let remote_project_id = dbg!(remote_projects.choose(&mut *rng.lock()).unwrap().id);
             let remote_project = if let Some(project) =
                 client.remote_projects.iter().find(|project| {
                     project.read_with(cx, |project, _| {
@@ -705,6 +742,7 @@ async fn randomly_mutate_projects(
 
             remote_project
         } else {
+            dbg!(client.remote_projects.len());
             client
                 .remote_projects
                 .choose(&mut *rng.lock())
@@ -729,10 +767,11 @@ async fn randomly_mutate_projects(
         }
     }
 
-    let choice = rng.lock().gen_range(0..100);
+    let choice = dbg!(rng.lock().gen_range(0..100));
     match choice {
         0..=19 if project.read_with(cx, |project, _| project.is_local()) => {
             let paths = client.fs.paths().await;
+            dbg!(paths.len());
             let path = paths.choose(&mut *rng.lock()).unwrap();
             log::info!(
                 "{}: finding/creating local worktree for path {:?}",
@@ -769,7 +808,7 @@ async fn randomly_mutate_projects(
 
 async fn randomly_mutate_worktrees(
     client: &mut TestClient,
-    rng: &Mutex<StdRng>,
+    rng: &RngMutex,
     cx: &mut TestAppContext,
 ) -> Result<()> {
     let project = choose_random_project(client, rng).unwrap();
@@ -784,14 +823,15 @@ async fn randomly_mutate_worktrees(
             })
             .choose(&mut *rng.lock())
     }) else {
+        dbg!("bail");
         return Ok(())
     };
 
     let (worktree_id, worktree_root_name) = worktree.read_with(cx, |worktree, _| {
-        (worktree.id(), worktree.root_name().to_string())
+        dbg!((worktree.id(), worktree.root_name().to_string()))
     });
 
-    let is_dir = rng.lock().gen::<bool>();
+    let is_dir = dbg!(rng.lock().gen::<bool>());
     let mut new_path = PathBuf::new();
     new_path.push(gen_file_name(rng));
     if !is_dir {
@@ -815,12 +855,12 @@ async fn randomly_mutate_worktrees(
 
 async fn randomly_query_and_mutate_buffers(
     client: &mut TestClient,
-    rng: &Mutex<StdRng>,
+    rng: &RngMutex,
     cx: &mut TestAppContext,
 ) -> Result<()> {
     let project = choose_random_project(client, rng).unwrap();
     let buffers = client.buffers.entry(project.clone()).or_default();
-    let buffer = if buffers.is_empty() || rng.lock().gen() {
+    let buffer = if buffers.is_empty() || dbg!(rng.lock().gen()) {
         let Some(worktree) = project.read_with(cx, |project, cx| {
             project
                 .worktrees(cx)
@@ -830,6 +870,7 @@ async fn randomly_query_and_mutate_buffers(
                 })
                 .choose(&mut *rng.lock())
         }) else {
+            dbg!("bail");
             return Ok(());
         };
 
@@ -841,7 +882,7 @@ async fn randomly_query_and_mutate_buffers(
                 .unwrap();
             (
                 worktree.root_name().to_string(),
-                (worktree.id(), entry.path.clone()),
+                dbg!((worktree.id(), entry.path.clone())),
             )
         });
         log::info!(
@@ -867,10 +908,11 @@ async fn randomly_query_and_mutate_buffers(
         buffers.insert(buffer.clone());
         buffer
     } else {
+        dbg!(buffers.len());
         buffers.iter().choose(&mut *rng.lock()).unwrap().clone()
     };
 
-    let choice = rng.lock().gen_range(0..100);
+    let choice = dbg!(rng.lock().gen_range(0..100));
     match choice {
         0..=9 => {
             cx.update(|cx| {
@@ -891,7 +933,7 @@ async fn randomly_query_and_mutate_buffers(
                     buffer.read(cx).remote_id(),
                     buffer.read(cx).file().unwrap().full_path(cx)
                 );
-                let offset = rng.lock().gen_range(0..=buffer.read(cx).len());
+                let offset = dbg!(rng.lock().gen_range(0..=buffer.read(cx).len()));
                 project.completions(&buffer, offset, cx)
             });
             let completions = cx.background().spawn(async move {
@@ -899,7 +941,7 @@ async fn randomly_query_and_mutate_buffers(
                     .await
                     .map_err(|err| anyhow!("completions request failed: {:?}", err))
             });
-            if rng.lock().gen_bool(0.3) {
+            if dbg!(rng.lock().gen_bool(0.3)) {
                 log::info!("{}: detaching completions request", client.username);
                 cx.update(|cx| completions.detach_and_log_err(cx));
             } else {
@@ -914,7 +956,7 @@ async fn randomly_query_and_mutate_buffers(
                     buffer.read(cx).remote_id(),
                     buffer.read(cx).file().unwrap().full_path(cx)
                 );
-                let range = buffer.read(cx).random_byte_range(0, &mut *rng.lock());
+                let range = dbg!(buffer.read(cx).random_byte_range(0, &mut *rng.lock()));
                 project.code_actions(&buffer, range, cx)
             });
             let code_actions = cx.background().spawn(async move {
@@ -922,7 +964,7 @@ async fn randomly_query_and_mutate_buffers(
                     .await
                     .map_err(|err| anyhow!("code actions request failed: {:?}", err))
             });
-            if rng.lock().gen_bool(0.3) {
+            if dbg!(rng.lock().gen_bool(0.3)) {
                 log::info!("{}: detaching code actions request", client.username);
                 cx.update(|cx| code_actions.detach_and_log_err(cx));
             } else {
@@ -946,7 +988,7 @@ async fn randomly_query_and_mutate_buffers(
                 assert!(saved_version.observed_all(&requested_version));
                 Ok::<_, anyhow::Error>(())
             });
-            if rng.lock().gen_bool(0.3) {
+            if dbg!(rng.lock().gen_bool(0.3)) {
                 log::info!("{}: detaching save request", client.username);
                 cx.update(|cx| save.detach_and_log_err(cx));
             } else {
@@ -961,7 +1003,7 @@ async fn randomly_query_and_mutate_buffers(
                     buffer.read(cx).remote_id(),
                     buffer.read(cx).file().unwrap().full_path(cx)
                 );
-                let offset = rng.lock().gen_range(0..=buffer.read(cx).len());
+                let offset = dbg!(rng.lock().gen_range(0..=buffer.read(cx).len()));
                 project.prepare_rename(buffer, offset, cx)
             });
             let prepare_rename = cx.background().spawn(async move {
@@ -969,7 +1011,7 @@ async fn randomly_query_and_mutate_buffers(
                     .await
                     .map_err(|err| anyhow!("prepare rename request failed: {:?}", err))
             });
-            if rng.lock().gen_bool(0.3) {
+            if dbg!(rng.lock().gen_bool(0.3)) {
                 log::info!("{}: detaching prepare rename request", client.username);
                 cx.update(|cx| prepare_rename.detach_and_log_err(cx));
             } else {
@@ -984,7 +1026,7 @@ async fn randomly_query_and_mutate_buffers(
                     buffer.read(cx).remote_id(),
                     buffer.read(cx).file().unwrap().full_path(cx)
                 );
-                let offset = rng.lock().gen_range(0..=buffer.read(cx).len());
+                let offset = dbg!(rng.lock().gen_range(0..=buffer.read(cx).len()));
                 project.definition(&buffer, offset, cx)
             });
             let definitions = cx.background().spawn(async move {
@@ -992,7 +1034,7 @@ async fn randomly_query_and_mutate_buffers(
                     .await
                     .map_err(|err| anyhow!("definitions request failed: {:?}", err))
             });
-            if rng.lock().gen_bool(0.3) {
+            if dbg!(rng.lock().gen_bool(0.3)) {
                 log::info!("{}: detaching definitions request", client.username);
                 cx.update(|cx| definitions.detach_and_log_err(cx));
             } else {
@@ -1007,7 +1049,7 @@ async fn randomly_query_and_mutate_buffers(
                     buffer.read(cx).remote_id(),
                     buffer.read(cx).file().unwrap().full_path(cx)
                 );
-                let offset = rng.lock().gen_range(0..=buffer.read(cx).len());
+                let offset = dbg!(rng.lock().gen_range(0..=buffer.read(cx).len()));
                 project.document_highlights(&buffer, offset, cx)
             });
             let highlights = cx.background().spawn(async move {
@@ -1015,7 +1057,7 @@ async fn randomly_query_and_mutate_buffers(
                     .await
                     .map_err(|err| anyhow!("highlights request failed: {:?}", err))
             });
-            if rng.lock().gen_bool(0.3) {
+            if dbg!(rng.lock().gen_bool(0.3)) {
                 log::info!("{}: detaching highlights request", client.username);
                 cx.update(|cx| highlights.detach_and_log_err(cx));
             } else {
@@ -1024,7 +1066,7 @@ async fn randomly_query_and_mutate_buffers(
         }
         55..=59 => {
             let search = project.update(cx, |project, cx| {
-                let query = rng.lock().gen_range('a'..='z');
+                let query = dbg!(rng.lock().gen_range('a'..='z'));
                 log::info!("{}: project-wide search {:?}", client.username, query);
                 project.search(SearchQuery::text(query, false, false), cx)
             });
@@ -1033,7 +1075,7 @@ async fn randomly_query_and_mutate_buffers(
                     .await
                     .map_err(|err| anyhow!("search request failed: {:?}", err))
             });
-            if rng.lock().gen_bool(0.3) {
+            if dbg!(rng.lock().gen_bool(0.3)) {
                 log::info!("{}: detaching search request", client.username);
                 cx.update(|cx| search.detach_and_log_err(cx));
             } else {
@@ -1048,7 +1090,7 @@ async fn randomly_query_and_mutate_buffers(
                     buffer.remote_id(),
                     buffer.file().unwrap().full_path(cx)
                 );
-                if rng.lock().gen_bool(0.7) {
+                if dbg!(rng.lock().gen_bool(0.7)) {
                     buffer.randomly_edit(&mut *rng.lock(), 5, cx);
                 } else {
                     buffer.randomly_undo_redo(&mut *rng.lock(), cx);
@@ -1060,22 +1102,19 @@ async fn randomly_query_and_mutate_buffers(
     Ok(())
 }
 
-fn choose_random_project(
-    client: &mut TestClient,
-    rng: &Mutex<StdRng>,
-) -> Option<ModelHandle<Project>> {
-    client
+fn choose_random_project(client: &mut TestClient, rng: &RngMutex) -> Option<ModelHandle<Project>> {
+    dbg!(client
         .local_projects
         .iter()
         .chain(&client.remote_projects)
         .choose(&mut *rng.lock())
-        .cloned()
+        .cloned())
 }
 
-fn gen_file_name(rng: &Mutex<StdRng>) -> String {
+fn gen_file_name(rng: &RngMutex) -> String {
     let mut name = String::new();
     for _ in 0..10 {
-        let letter = rng.lock().gen_range('a'..='z');
+        let letter = dbg!(rng.lock().gen_range('a'..='z'));
         name.push(letter);
     }
     name

@@ -114,18 +114,18 @@ pub fn run_test(
                         loop {
                             match (prev_entries.next(), curr_entries.next()) {
                                 (None, None) => break,
-                                (None, Some(curr_id)) => curr_history_suffix.push(*curr_id),
-                                (Some(prev_id), None) => prev_history_suffix.push(*prev_id),
+                                (None, Some(curr_id)) => curr_history_suffix.push(curr_id.clone()),
+                                (Some(prev_id), None) => prev_history_suffix.push(prev_id.clone()),
                                 (Some(prev_id), Some(curr_id)) => {
                                     if nondeterministic {
-                                        prev_history_suffix.push(*prev_id);
-                                        curr_history_suffix.push(*curr_id);
+                                        prev_history_suffix.push(prev_id.clone());
+                                        curr_history_suffix.push(curr_id.clone());
                                     } else if prev_id == curr_id {
-                                        common_history_prefix.push(*curr_id);
+                                        common_history_prefix.push(curr_id.clone());
                                     } else {
                                         nondeterministic = true;
-                                        prev_history_suffix.push(*prev_id);
-                                        curr_history_suffix.push(*curr_id);
+                                        prev_history_suffix.push(prev_id.clone());
+                                        curr_history_suffix.push(curr_id.clone());
                                     }
                                 }
                             }

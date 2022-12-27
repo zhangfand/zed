@@ -1468,7 +1468,7 @@ impl Buffer {
         use rand::prelude::*;
 
         let mut ops = Vec::new();
-        for _ in 0..rng.gen_range(1..=5) {
+        for _ in 0..dbg!(rng.gen_range(1..=5)) {
             if let Some(entry) = self.history.undo_stack.choose(rng) {
                 let transaction = entry.transaction.clone();
                 log::info!(

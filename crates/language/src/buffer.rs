@@ -1662,13 +1662,13 @@ impl Buffer {
             }
 
             let new_start = last_end.map_or(0, |last_end| last_end + 1);
-            let mut range = self.random_byte_range(new_start, rng);
-            if rng.gen_bool(0.2) {
+            let mut range = dbg!(self.random_byte_range(new_start, rng));
+            if dbg!(rng.gen_bool(0.2)) {
                 mem::swap(&mut range.start, &mut range.end);
             }
             last_end = Some(range.end);
 
-            let new_text_len = rng.gen_range(0..10);
+            let new_text_len = dbg!(rng.gen_range(0..10));
             let new_text: String = RandomCharIter::new(&mut *rng).take(new_text_len).collect();
 
             edits.push((range, new_text));
