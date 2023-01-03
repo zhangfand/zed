@@ -511,6 +511,7 @@ mod tests {
                     kind: "test".into(),
                 }],
             },
+            dock_width: None,
             left_sidebar_open: false,
         };
 

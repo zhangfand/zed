@@ -58,13 +58,14 @@ impl Column for WorkspaceLocation {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct SerializedWorkspace {
     pub id: WorkspaceId,
     pub location: WorkspaceLocation,
-    pub dock_position: DockPosition,
     pub center_group: SerializedPaneGroup,
+    pub dock_position: DockPosition,
     pub dock_pane: SerializedPane,
+    pub dock_width: Option<f32>,
     pub left_sidebar_open: bool,
 }
 
@@ -144,14 +145,21 @@ impl SerializedPaneGroup {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Default, Clone)]
+#[derive(Debug, PartialEq, Default, Clone)]
+pub struct SerializedDock {
+    pub(crate) pane: SerializedPane,
+    pub(crate) width: Option<f32>,
+}
+
+#[derive(Debug, PartialEq, Default, Clone)]
 pub struct SerializedPane {
-    pub(crate) active: bool,
     pub(crate) children: Vec<SerializedItem>,
+    pub(crate) active: bool,
+    pub(crate) width: Option<f32>,
 }
 
 impl SerializedPane {
-    pub fn new(children: Vec<SerializedItem>, active: bool) -> Self {
+    pub fn new(children: Vec<SerializedItem>, active: bool, width: Option<f32>) -> Self {
         SerializedPane { children, active }
     }
 

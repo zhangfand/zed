@@ -27,6 +27,7 @@ define_connection! {
                 dock_visible INTEGER, // Boolean
                 dock_anchor TEXT, // Enum: 'Bottom' / 'Right' / 'Expanded'
                 dock_pane INTEGER, // NULL indicates that we don't have a dock pane yet
+                dock_width REAL, // NULL indicates no saved width, use default if pane exists
                 left_sidebar_open INTEGER, //Boolean
                 timestamp TEXT DEFAULT CURRENT_TIMESTAMP NOT NULL,
                 FOREIGN KEY(dock_pane) REFERENCES panes(pane_id)
@@ -110,15 +111,15 @@ impl WorkspaceDb {
         Some(SerializedWorkspace {
             id: workspace_id,
             location: workspace_location.clone(),
-            dock_pane: self
-                .get_dock_pane(workspace_id)
-                .context("Getting dock pane")
-                .log_err()?,
             center_group: self
                 .get_center_pane_group(workspace_id)
                 .context("Getting center group")
                 .log_err()?,
             dock_position,
+            dock_pane: self
+                .get_dock_pane(workspace_id)
+                .context("Getting dock pane")
+                .log_err()?,
             left_sidebar_open,
         })
     }
@@ -337,18 +338,17 @@ impl WorkspaceDb {
         }
     }
 
-    fn get_dock_pane(&self, workspace_id: WorkspaceId) -> Result<SerializedPane> {
-        let (pane_id, active) = self.select_row_bound(sql!(
-            SELECT pane_id, active
+    fn get_dock_pane(&self, workspace_id: WorkspaceId) -> Result<SerializedDock> {
+        let (pane_id, active, width) = self.select_row_bound(sql!(
+            SELECT pane_id, active, width
             FROM panes
             WHERE pane_id = (SELECT dock_pane FROM workspaces WHERE workspace_id = ?)
         ))?(workspace_id)?
         .context("No dock pane for workspace")?;
 
-        Ok(SerializedPane::new(
-            self.get_items(pane_id).context("Reading items")?,
-            active,
-        ))
+        let children = self.get_items(pane_id).context("Reading items")?;
+        let pane = SerializedPane::new(children, active);
+        Ok()
     }
 
     fn save_pane(
@@ -497,6 +497,7 @@ mod tests {
             dock_position: crate::dock::DockPosition::Shown(DockAnchor::Bottom),
             center_group: Default::default(),
             dock_pane: Default::default(),
+            dock_width: Default::default(),
             left_sidebar_open: true,
         };
 
@@ -506,6 +507,7 @@ mod tests {
             dock_position: crate::dock::DockPosition::Hidden(DockAnchor::Expanded),
             center_group: Default::default(),
             dock_pane: Default::default(),
+            dock_width: Default::default(),
             left_sidebar_open: false,
         };
 
@@ -612,6 +614,7 @@ mod tests {
             dock_position: DockPosition::Shown(DockAnchor::Bottom),
             center_group,
             dock_pane,
+            dock_width: None,
             left_sidebar_open: true,
         };
 
@@ -640,6 +643,7 @@ mod tests {
             dock_position: crate::dock::DockPosition::Shown(DockAnchor::Bottom),
             center_group: Default::default(),
             dock_pane: Default::default(),
+            dock_width: Default::default(),
             left_sidebar_open: true,
         };
 
@@ -649,6 +653,7 @@ mod tests {
             dock_position: crate::dock::DockPosition::Hidden(DockAnchor::Expanded),
             center_group: Default::default(),
             dock_pane: Default::default(),
+            dock_width: Default::default(),
             left_sidebar_open: false,
         };
 
@@ -685,6 +690,7 @@ mod tests {
             dock_position: DockPosition::Shown(DockAnchor::Right),
             center_group: Default::default(),
             dock_pane: Default::default(),
+            dock_width: Default::default(),
             left_sidebar_open: false,
         };
 
