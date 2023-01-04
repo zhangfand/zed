@@ -51,7 +51,7 @@ settings = { path = "../settings" }
 sum_tree = { path = "../sum_tree" }
 sysinfo = "0.27.1"
 text = { path = "../text" }
-terminal_view = { path = "../terminal_view" }
+terminal = { path = "../terminal" }
 theme = { path = "../theme" }
 theme_selector = { path = "../theme_selector" }
 theme_testbench = { path = "../theme_testbench" }

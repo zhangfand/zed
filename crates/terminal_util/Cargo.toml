@@ -1,0 +1,15 @@
+[package]
+name = "terminal_util"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+path = "src/terminal_util.rs"
+doctest = false
+
+[dependencies]
+gpui = { path = "../gpui" }
+settings = { path = "../settings" }
+alacritty_terminal = { git = "https://github.com/zed-industries/alacritty", rev = "a51dbe25d67e84d6ed4261e640d3954fbdd9be45" }
+anyhow = "1"
+thiserror = "1.0"

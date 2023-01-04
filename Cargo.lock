@@ -4479,7 +4479,7 @@ dependencies = [
  "smol",
  "sum_tree",
  "tempdir",
- "terminal",
+ "terminal_zty",
  "text",
  "thiserror",
  "toml",
@@ -6310,32 +6310,6 @@ version = "0.1.0"
 dependencies = [
  "alacritty_terminal",
  "anyhow",
- "db",
- "dirs 4.0.0",
- "futures 0.3.25",
- "gpui",
- "itertools",
- "lazy_static",
- "libc",
- "mio-extras",
- "ordered-float",
- "procinfo",
- "rand 0.8.5",
- "serde",
- "settings",
- "shellexpand",
- "smallvec",
- "smol",
- "theme",
- "thiserror",
- "util",
-]
-
-[[package]]
-name = "terminal_view"
-version = "0.1.0"
-dependencies = [
- "anyhow",
  "client",
  "context_menu",
  "db",
@@ -6357,11 +6331,37 @@ dependencies = [
  "shellexpand",
  "smallvec",
  "smol",
- "terminal",
+ "terminal_util",
  "theme",
- "thiserror",
  "util",
  "workspace",
+]
+
+[[package]]
+name = "terminal_util"
+version = "0.1.0"
+dependencies = [
+ "alacritty_terminal",
+ "anyhow",
+ "gpui",
+ "settings",
+ "thiserror",
+]
+
+[[package]]
+name = "terminal_zty"
+version = "0.1.0"
+dependencies = [
+ "alacritty_terminal",
+ "anyhow",
+ "gpui",
+ "libc",
+ "procinfo",
+ "rand 0.8.5",
+ "serde",
+ "settings",
+ "terminal_util",
+ "util",
 ]
 
 [[package]]
@@ -8252,7 +8252,7 @@ dependencies = [
  "sum_tree",
  "sysinfo",
  "tempdir",
- "terminal_view",
+ "terminal",
  "text",
  "theme",
  "theme_selector",

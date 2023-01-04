@@ -1,12 +1,16 @@
-mod persistence;
-pub mod terminal_element;
-
 use std::{
     ops::RangeInclusive,
     path::{Path, PathBuf},
     time::Duration,
 };
 
+use crate::{
+    alacritty_terminal::{
+        index::Point,
+        term::{search::RegexSearch, TermMode},
+    },
+    Event, Terminal, TerminalBuilder,
+};
 use context_menu::{ContextMenu, ContextMenuItem};
 use dirs::home_dir;
 use gpui::{
@@ -23,13 +27,6 @@ use serde::Deserialize;
 use settings::{Settings, TerminalBlink, WorkingDirectory};
 use smallvec::SmallVec;
 use smol::Timer;
-use terminal::{
-    alacritty_terminal::{
-        index::Point,
-        term::{search::RegexSearch, TermMode},
-    },
-    Event, Terminal,
-};
 use util::{truncate_and_trailoff, ResultExt};
 use workspace::{
     item::{Item, ItemEvent},
@@ -114,8 +111,9 @@ impl TerminalView {
         let window_id = cx.window_id();
         let terminal = workspace
             .project()
-            .update(cx, |project, cx| {
-                project.create_terminal(working_directory, window_id, cx)
+            .update(cx, |_project, cx| {
+                //TODO: Add zty stuff
+                create_terminal(working_directory, window_id, cx)
             })
             .notify_err(workspace, cx);
 
@@ -697,7 +695,7 @@ impl Item for TerminalView {
     }
 
     fn deserialize(
-        project: ModelHandle<Project>,
+        _project: ModelHandle<Project>,
         _workspace: WeakViewHandle<Workspace>,
         workspace_id: workspace::WorkspaceId,
         item_id: workspace::ItemId,
@@ -712,9 +710,11 @@ impl Item for TerminalView {
                 .flatten();
 
             cx.update(|cx| {
-                let terminal = project.update(cx, |project, cx| {
-                    project.create_terminal(cwd, window_id, cx)
-                })?;
+                //TODO: Add zty stuff
+
+                let terminal =
+                    // project.update(cx, |project, cx| project.create_zty(cwd, window_id, cx))?;
+                    create_terminal(cwd, window_id, cx)?;
 
                 Ok(cx.add_view(pane, |cx| TerminalView::new(terminal, workspace_id, cx)))
             })
@@ -851,6 +851,27 @@ pub fn get_working_directory(
         }
     };
     res.or_else(home_dir)
+}
+
+pub fn create_terminal(
+    working_directory: Option<PathBuf>,
+    window_id: usize,
+    cx: &mut MutableAppContext,
+) -> anyhow::Result<ModelHandle<Terminal>> {
+    let settings = cx.global::<Settings>();
+    let shell = settings.terminal_shell();
+    let envs = settings.terminal_env();
+    let scroll = settings.terminal_scroll();
+
+    TerminalBuilder::new(
+        working_directory.clone(),
+        shell,
+        envs,
+        settings.terminal_overrides.blinking.clone(),
+        scroll,
+        window_id,
+    )
+    .map(|builder| cx.add_model(|cx| builder.subscribe(cx)))
 }
 
 ///Get's the first project's home directory, or the home directory

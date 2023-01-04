@@ -32,7 +32,7 @@ use settings::{
 use smol::process::Command;
 use std::fs::OpenOptions;
 use std::{env, ffi::OsStr, panic, path::PathBuf, sync::Arc, thread, time::Duration};
-use terminal_view::{get_working_directory, TerminalView};
+use terminal::terminal_view::{create_terminal, get_working_directory, TerminalView};
 
 use fs::RealFs;
 use settings::watched_json::{watch_keymap_file, watch_settings_file, WatchedJsonFile};
@@ -121,7 +121,7 @@ fn main() {
         diagnostics::init(cx);
         search::init(cx);
         vim::init(cx);
-        terminal_view::init(cx);
+        terminal::terminal_view::init(cx);
         theme_testbench::init(cx);
         recent_projects::init(cx);
 
@@ -610,8 +610,9 @@ pub fn dock_default_item_factory(
     let window_id = cx.window_id();
     let terminal = workspace
         .project()
-        .update(cx, |project, cx| {
-            project.create_terminal(working_directory, window_id, cx)
+        .update(cx, |_project, cx| {
+            // project.create_zty(working_directory, window_id, cx);
+            create_terminal(working_directory, window_id, cx)
         })
         .notify_err(workspace, cx)?;
 
