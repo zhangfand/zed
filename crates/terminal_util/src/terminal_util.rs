@@ -1,5 +1,12 @@
-use alacritty_terminal::{event::WindowSize, grid::Dimensions};
+use std::{fmt::Display, path::PathBuf};
+
+use alacritty_terminal::{
+    event::{Event, EventListener, WindowSize},
+    grid::Dimensions,
+};
+use futures::channel::mpsc::UnboundedSender;
 use gpui::geometry::vector::{vec2f, Vector2F};
+use settings::Shell;
 
 // These constants are mostly irrelevant. We need to put *some* number in for the initial size, but the terminal will
 // be resized immediately on the first draw.
@@ -89,7 +96,17 @@ impl Dimensions for TerminalSize {
     }
 }
 
-#[derive(Error, Debug)]
+///A translation struct for Alacritty to communicate with us from their event loop
+#[derive(Clone)]
+pub struct ZedListener(UnboundedSender<Event>);
+
+impl EventListener for ZedListener {
+    fn send_event(&self, event: Event) {
+        self.0.unbounded_send(event).ok();
+    }
+}
+
+#[derive(thiserror::Error, Debug)]
 pub struct TerminalError {
     pub directory: Option<PathBuf>,
     pub shell: Shell,

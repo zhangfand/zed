@@ -6343,6 +6343,8 @@ version = "0.1.0"
 dependencies = [
  "alacritty_terminal",
  "anyhow",
+ "dirs 4.0.0",
+ "futures 0.3.25",
  "gpui",
  "settings",
  "thiserror",
@@ -6354,6 +6356,7 @@ version = "0.1.0"
 dependencies = [
  "alacritty_terminal",
  "anyhow",
+ "futures 0.3.25",
  "gpui",
  "libc",
  "procinfo",

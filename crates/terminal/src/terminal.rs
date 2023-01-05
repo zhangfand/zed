@@ -104,16 +104,6 @@ enum InternalEvent {
     Copy,
 }
 
-///A translation struct for Alacritty to communicate with us from their event loop
-#[derive(Clone)]
-pub struct ZedListener(UnboundedSender<AlacTermEvent>);
-
-impl EventListener for ZedListener {
-    fn send_event(&self, event: AlacTermEvent) {
-        self.0.unbounded_send(event).ok();
-    }
-}
-
 pub struct TerminalBuilder {
     terminal: Terminal,
     events_rx: UnboundedReceiver<AlacTermEvent>,

@@ -13,3 +13,6 @@ settings = { path = "../settings" }
 alacritty_terminal = { git = "https://github.com/zed-industries/alacritty", rev = "a51dbe25d67e84d6ed4261e640d3954fbdd9be45" }
 anyhow = "1"
 thiserror = "1.0"
+dirs = "4.0.0"
+futures = "0.3"
+
