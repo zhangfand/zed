@@ -243,6 +243,8 @@ pub struct LanguageConfig {
     pub line_comment: Option<Arc<str>>,
     #[serde(default)]
     pub block_comment: Option<(Arc<str>, Arc<str>)>,
+    #[serde(default)]
+    pub overrides: HashMap<Arc<str>, LanguageConfigOverride>,
 }
 
 impl Default for LanguageConfig {
@@ -257,8 +259,17 @@ impl Default for LanguageConfig {
             autoclose_before: Default::default(),
             line_comment: Default::default(),
             block_comment: Default::default(),
+            overrides: Default::default(),
         }
     }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct LanguageConfigOverride {
+    #[serde(default)]
+    pub line_comment: Option<Arc<str>>,
+    #[serde(default)]
+    pub block_comment: Option<(Arc<str>, Arc<str>)>,
 }
 
 fn auto_indent_using_last_non_empty_line_default() -> bool {
@@ -334,6 +345,7 @@ struct InjectionConfig {
     content_capture_ix: u32,
     language_capture_ix: Option<u32>,
     patterns: Vec<InjectionPatternConfig>,
+    overrides: Vec<Arc<str>>,
 }
 
 #[derive(Default, Clone)]
@@ -747,10 +759,11 @@ impl Language {
                 ("content", &mut content_capture_ix),
             ],
         );
+
         let patterns = (0..query.pattern_count())
-            .map(|ix| {
+            .map(|index| {
                 let mut config = InjectionPatternConfig::default();
-                for setting in query.property_settings(ix) {
+                for setting in query.property_settings(index) {
                     match setting.key.as_ref() {
                         "language" => {
                             config.language = setting.value.clone();
@@ -764,12 +777,26 @@ impl Language {
                 config
             })
             .collect();
+
+        let overrides: Vec<_> = (0..query.pattern_count())
+            .flat_map(|index| {
+                query.property_settings(index).iter().filter_map(|setting| {
+                    if setting.key.as_ref() == "override" {
+                        Some(setting.value.as_ref().unwrap().clone().into())
+                    } else {
+                        None
+                    }
+                })
+            })
+            .collect();
+
         if let Some(content_capture_ix) = content_capture_ix {
             grammar.injection_config = Some(InjectionConfig {
                 query,
                 language_capture_ix,
                 content_capture_ix,
                 patterns,
+                overrides,
             });
         }
         Ok(self)

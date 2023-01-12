@@ -91,6 +91,7 @@ struct SyntaxLayer {
     range: Range<Anchor>,
     tree: tree_sitter::Tree,
     language: Arc<Language>,
+    override_name: Option<Arc<str>>,
 }
 
 #[derive(Debug)]
@@ -98,6 +99,7 @@ pub struct SyntaxLayerInfo<'a> {
     pub depth: usize,
     pub node: Node<'a>,
     pub language: &'a Arc<Language>,
+    pub override_name: Option<&'a Arc<str>>,
 }
 
 #[derive(Debug, Clone)]
@@ -134,6 +136,7 @@ struct ParseStep {
     range: Range<Anchor>,
     included_ranges: Vec<tree_sitter::Range>,
     mode: ParseMode,
+    override_name: Option<Arc<str>>,
 }
 
 enum ParseMode {
@@ -353,6 +356,7 @@ impl SyntaxSnapshot {
             }],
             range: Anchor::MIN..Anchor::MAX,
             mode: ParseMode::Single,
+            override_name: None,
         });
 
         loop {
@@ -479,6 +483,7 @@ impl SyntaxSnapshot {
                     range: step.range,
                     tree: tree.clone(),
                     language: step.language.clone(),
+                    override_name: step.override_name.clone(),
                 },
                 &text,
             );
@@ -527,6 +532,7 @@ impl SyntaxSnapshot {
                 language,
                 depth: 0,
                 node: tree.root_node(),
+                override_name: None,
             }]
             .into_iter(),
             query,
@@ -594,6 +600,7 @@ impl SyntaxSnapshot {
                         layer.range.start.to_offset(buffer),
                         layer.range.start.to_point(buffer).to_ts_point(),
                     ),
+                    override_name: layer.override_name.as_ref(),
                 };
                 cursor.next(buffer);
                 Some(info)
@@ -620,6 +627,7 @@ impl<'a> SyntaxMapCaptures<'a> {
             language,
             depth,
             node,
+            override_name,
         } in layers
         {
             let grammar = match &language.grammar {
@@ -743,6 +751,7 @@ impl<'a> SyntaxMapMatches<'a> {
             language,
             depth,
             node,
+            override_name,
         } in layers
         {
             let grammar = match &language.grammar {
@@ -1013,6 +1022,7 @@ fn get_injections(
                     let node = mat.nodes_for_capture_index(ix).next()?;
                     Some(Cow::Owned(text.text_for_range(node.byte_range()).collect()))
                 });
+            let override_name = config.overrides[mat.pattern_index].clone();
 
             if let Some(language_name) = language_name {
                 if let Some(language) = language_registry.get_language(language_name.as_ref()) {
@@ -1031,6 +1041,7 @@ fn get_injections(
                             included_ranges: content_ranges,
                             range,
                             mode: ParseMode::Single,
+                            override_name: Some(override_name),
                         });
                     }
                 }
@@ -1050,6 +1061,7 @@ fn get_injections(
                 parent_layer_range: node.start_byte()..node.end_byte(),
                 parent_layer_changed_ranges: changed_ranges.to_vec(),
             },
+            override_name: None,
         })
     }
 

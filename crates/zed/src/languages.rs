@@ -197,3 +197,12 @@ fn load_query(name: &str, filename_prefix: &str) -> Option<Cow<'static, str>> {
     }
     result
 }
+
+#[test]
+fn dump() {
+    let mut parser = Parser::new();
+    let language = tree_sitter_typescript::language_tsx();
+    parser.set_language(language).unwrap();
+    let tree = parser.parse("HelloWorld", None).unwrap();
+    panic!("{tree:#?}");
+}

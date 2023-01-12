@@ -12,3 +12,7 @@ brackets = [
     { start = "`", end = "`", close = true, newline = false },
     { start = "/*", end = " */", close = true, newline = false },
 ]
+
+[overrides]
+[overrides.element]
+block_comment = ["/* ", " */"]
