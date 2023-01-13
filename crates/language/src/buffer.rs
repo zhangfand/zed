@@ -343,6 +343,11 @@ impl CharKind {
     }
 }
 
+pub struct LanguageAt<'a> {
+    pub language: &'a Arc<Language>,
+    pub override_name: Option<&'a Arc<str>>,
+}
+
 impl Buffer {
     pub fn new<T: Into<String>>(
         replica_id: ReplicaId,
@@ -1708,7 +1713,7 @@ impl BufferSnapshot {
     }
 
     pub fn language_indent_size_at<T: ToOffset>(&self, position: T, cx: &AppContext) -> IndentSize {
-        let language_name = self.language_at(position).map(|language| language.name());
+        let language_name = self.language_at(position).map(|at| at.language.name());
         let settings = cx.global::<Settings>();
         if settings.hard_tabs(language_name.as_deref()) {
             IndentSize::tab()
@@ -1985,14 +1990,20 @@ impl BufferSnapshot {
         }
     }
 
-    pub fn language_at<D: ToOffset>(&self, position: D) -> Option<&Arc<Language>> {
+    pub fn language_at<'a, D: ToOffset>(&'a self, position: D) -> Option<LanguageAt<'a>> {
         let offset = position.to_offset(self);
         self.syntax
             .layers_for_range(offset..offset, &self.text)
             .filter(|l| l.node.end_byte() > offset)
             .last()
-            .map(|info| info.language)
-            .or(self.language.as_ref())
+            .map(|info| LanguageAt {
+                language: info.language,
+                override_name: info.override_name,
+            })
+            .or(self.language.as_ref().map(|lang| LanguageAt {
+                language: lang,
+                override_name: None,
+            }))
     }
 
     pub fn surrounding_word<T: ToOffset>(&self, start: T) -> (Range<usize>, Option<CharKind>) {

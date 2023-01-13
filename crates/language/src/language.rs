@@ -778,10 +778,11 @@ impl Language {
             })
             .collect();
 
-        let overrides: Vec<_> = (0..query.pattern_count())
+        let overrides = (0..query.pattern_count())
             .flat_map(|index| {
                 query.property_settings(index).iter().filter_map(|setting| {
                     if setting.key.as_ref() == "override" {
+                        println!("got override setting");
                         Some(setting.value.as_ref().unwrap().clone().into())
                     } else {
                         None
@@ -827,15 +828,35 @@ impl Language {
         self.config.name.clone()
     }
 
-    pub fn line_comment_prefix(&self) -> Option<&Arc<str>> {
-        self.config.line_comment.as_ref()
+    pub fn line_comment_prefix(&self, override_name: Option<&Arc<str>>) -> Option<&Arc<str>> {
+        if let Some(overide_name) = override_name {
+            self.config
+                .overrides
+                .get(&*overide_name)
+                .map(|o| o.line_comment.as_ref())
+                .flatten()
+        } else {
+            self.config.line_comment.as_ref()
+        }
     }
 
-    pub fn block_comment_delimiters(&self) -> Option<(&Arc<str>, &Arc<str>)> {
-        self.config
-            .block_comment
-            .as_ref()
-            .map(|(start, end)| (start, end))
+    pub fn block_comment_delimiters(
+        &self,
+        override_name: Option<&Arc<str>>,
+    ) -> Option<(&Arc<str>, &Arc<str>)> {
+        if let Some(overide_name) = override_name {
+            self.config
+                .overrides
+                .get(&*overide_name)
+                .map(|o| o.block_comment.as_ref())
+                .flatten()
+                .map(|(start, end)| (start, end))
+        } else {
+            self.config
+                .block_comment
+                .as_ref()
+                .map(|(start, end)| (start, end))
+        }
     }
 
     pub async fn disk_based_diagnostic_sources(&self) -> &[String] {

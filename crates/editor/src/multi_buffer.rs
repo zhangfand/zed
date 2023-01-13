@@ -6,13 +6,13 @@ use clock::ReplicaId;
 use collections::{BTreeMap, Bound, HashMap, HashSet};
 use git::diff::DiffHunk;
 use gpui::{AppContext, Entity, ModelContext, ModelHandle, Task};
-pub use language::Completion;
-use language::{
+    use language::{
     char_kind, AutoindentMode, Buffer, BufferChunks, BufferSnapshot, CharKind, Chunk, CursorShape,
     DiagnosticEntry, File, IndentSize, Language, OffsetRangeExt, OffsetUtf16, Outline, OutlineItem,
     Point, PointUtf16, Selection, TextDimension, ToOffset as _, ToOffsetUtf16 as _, ToPoint as _,
     ToPointUtf16 as _, TransactionId, Unclipped,
 };
+pub use language::{Completion, LanguageAt};
 use smallvec::SmallVec;
 use std::{
     borrow::Cow,
@@ -2661,7 +2661,7 @@ impl MultiBufferSnapshot {
         self.trailing_excerpt_update_count
     }
 
-    pub fn language_at<'a, T: ToOffset>(&'a self, point: T) -> Option<&'a Arc<Language>> {
+    pub fn language_at<'a, T: ToOffset>(&'a self, point: T) -> Option<LanguageAt<'a>> {
         self.point_to_buffer_offset(point)
             .and_then(|(buffer, offset)| buffer.language_at(offset))
     }

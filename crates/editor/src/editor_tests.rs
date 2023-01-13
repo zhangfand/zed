@@ -3317,7 +3317,7 @@ async fn test_autoclose_with_embedded_language(cx: &mut gpui::TestAppContext) {
         let cursors = editor.selections.ranges::<usize>(cx);
         let languages = cursors
             .iter()
-            .map(|c| snapshot.language_at(c.start).unwrap().name())
+            .map(|c| snapshot.language_at(c.start).unwrap().language.name())
             .collect::<Vec<_>>();
         assert_eq!(
             languages,

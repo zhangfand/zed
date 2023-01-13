@@ -50,8 +50,8 @@ use itertools::Itertools;
 pub use language::{char_kind, CharKind};
 use language::{
     AutoindentMode, BracketPair, Buffer, CodeAction, CodeLabel, Completion, CursorShape,
-    Diagnostic, DiagnosticSeverity, IndentKind, IndentSize, Language, OffsetRangeExt, OffsetUtf16,
-    Point, Selection, SelectionGoal, TransactionId,
+    Diagnostic, DiagnosticSeverity, IndentKind, IndentSize, Language, LanguageAt, OffsetRangeExt,
+    OffsetUtf16, Point, Selection, SelectionGoal, TransactionId,
 };
 use link_go_to_definition::{
     hide_link_definition, show_link_definition, LinkDefinitionKind, LinkGoToDefinitionState,
@@ -1736,6 +1736,11 @@ impl Editor {
             self.selections_with_autoclose_regions(selections, &snapshot)
         {
             if let Some(language) = snapshot.language_at(selection.head()) {
+                let LanguageAt {
+                    language,
+                    override_name,
+                } = language;
+
                 // Determine if the inserted text matches the opening or closing
                 // bracket of any of this language's bracket pairs.
                 let mut bracket_pair = None;
@@ -1897,6 +1902,11 @@ impl Editor {
 
                         let mut insert_extra_newline = false;
                         if let Some(language) = buffer.language_at(start) {
+                            let LanguageAt {
+                                language,
+                                override_name,
+                            } = language;
+
                             let leading_whitespace_len = buffer
                                 .reversed_chars_at(start)
                                 .take_while(|c| c.is_whitespace() && *c != '\n')
@@ -2804,7 +2814,7 @@ impl Editor {
                                 buffer.indent_size_for_line(line_buffer_range.start.row);
                             let language_name = buffer
                                 .language_at(line_buffer_range.start)
-                                .map(|language| language.name());
+                                .map(|at| at.language.name());
                             let indent_len = match indent_size.kind {
                                 IndentKind::Space => {
                                     cx.global::<Settings>().tab_size(language_name.as_deref())
@@ -4534,6 +4544,10 @@ impl Editor {
                 } else {
                     continue;
                 };
+                let LanguageAt {
+                    language,
+                    override_name,
+                } = language;
 
                 selection_edit_ranges.clear();
 
@@ -4556,7 +4570,7 @@ impl Editor {
                 }
 
                 // If the language has line comments, toggle those.
-                if let Some(full_comment_prefix) = language.line_comment_prefix() {
+                if let Some(full_comment_prefix) = language.line_comment_prefix(override_name) {
                     // Split the comment prefix's trailing whitespace into a separate string,
                     // as that portion won't be used for detecting if a line is a comment.
                     let comment_prefix = full_comment_prefix.trim_end_matches(' ');
@@ -4599,7 +4613,7 @@ impl Editor {
                         }));
                     }
                 } else if let Some((full_comment_prefix, comment_suffix)) =
-                    language.block_comment_delimiters()
+                    language.block_comment_delimiters(override_name)
                 {
                     let comment_prefix = full_comment_prefix.trim_end_matches(' ');
                     let comment_prefix_whitespace = &full_comment_prefix[comment_prefix.len()..];
@@ -6097,7 +6111,7 @@ impl Editor {
 }
 
 impl EditorSnapshot {
-    pub fn language_at<T: ToOffset>(&self, position: T) -> Option<&Arc<Language>> {
+    pub fn language_at<'a, T: ToOffset>(&'a self, position: T) -> Option<LanguageAt<'a>> {
         self.display_snapshot.buffer_snapshot.language_at(position)
     }
 

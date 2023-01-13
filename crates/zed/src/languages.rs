@@ -48,88 +48,88 @@ lazy_static! {
 
 pub async fn init(languages: Arc<LanguageRegistry>, _executor: Arc<Background>) {
     for (name, grammar, lsp_adapter) in [
-        (
-            "c",
-            tree_sitter_c::language(),
-            Some(CachedLspAdapter::new(c::CLspAdapter).await),
-        ),
-        (
-            "cpp",
-            tree_sitter_cpp::language(),
-            Some(CachedLspAdapter::new(c::CLspAdapter).await),
-        ),
-        (
-            "css",
-            tree_sitter_css::language(),
-            None, //
-        ),
-        (
-            "elixir",
-            tree_sitter_elixir::language(),
-            Some(CachedLspAdapter::new(elixir::ElixirLspAdapter).await),
-        ),
-        (
-            "go",
-            tree_sitter_go::language(),
-            Some(CachedLspAdapter::new(go::GoLspAdapter).await),
-        ),
-        (
-            "json",
-            tree_sitter_json::language(),
-            Some(CachedLspAdapter::new(json::JsonLspAdapter).await),
-        ),
-        (
-            "markdown",
-            tree_sitter_markdown::language(),
-            None, //
-        ),
-        (
-            "python",
-            tree_sitter_python::language(),
-            Some(CachedLspAdapter::new(python::PythonLspAdapter).await),
-        ),
-        (
-            "rust",
-            tree_sitter_rust::language(),
-            Some(CachedLspAdapter::new(rust::RustLspAdapter).await),
-        ),
-        (
-            "toml",
-            tree_sitter_toml::language(),
-            None, //
-        ),
+        // (
+        //     "c",
+        //     tree_sitter_c::language(),
+        //     Some(CachedLspAdapter::new(c::CLspAdapter).await),
+        // ),
+        // (
+        //     "cpp",
+        //     tree_sitter_cpp::language(),
+        //     Some(CachedLspAdapter::new(c::CLspAdapter).await),
+        // ),
+        // (
+        //     "css",
+        //     tree_sitter_css::language(),
+        //     None, //
+        // ),
+        // (
+        //     "elixir",
+        //     tree_sitter_elixir::language(),
+        //     Some(CachedLspAdapter::new(elixir::ElixirLspAdapter).await),
+        // ),
+        // (
+        //     "go",
+        //     tree_sitter_go::language(),
+        //     Some(CachedLspAdapter::new(go::GoLspAdapter).await),
+        // ),
+        // (
+        //     "json",
+        //     tree_sitter_json::language(),
+        //     Some(CachedLspAdapter::new(json::JsonLspAdapter).await),
+        // ),
+        // (
+        //     "markdown",
+        //     tree_sitter_markdown::language(),
+        //     None, //
+        // ),
+        // (
+        //     "python",
+        //     tree_sitter_python::language(),
+        //     Some(CachedLspAdapter::new(python::PythonLspAdapter).await),
+        // ),
+        // (
+        //     "rust",
+        //     tree_sitter_rust::language(),
+        //     Some(CachedLspAdapter::new(rust::RustLspAdapter).await),
+        // ),
+        // (
+        //     "toml",
+        //     tree_sitter_toml::language(),
+        //     None, //
+        // ),
         (
             "tsx",
             tree_sitter_typescript::language_tsx(),
             Some(CachedLspAdapter::new(typescript::TypeScriptLspAdapter).await),
         ),
-        (
-            "typescript",
-            tree_sitter_typescript::language_typescript(),
-            Some(CachedLspAdapter::new(typescript::TypeScriptLspAdapter).await),
-        ),
-        (
-            "javascript",
-            tree_sitter_typescript::language_tsx(),
-            Some(CachedLspAdapter::new(typescript::TypeScriptLspAdapter).await),
-        ),
-        (
-            "html",
-            tree_sitter_html::language(),
-            Some(CachedLspAdapter::new(html::HtmlLspAdapter).await),
-        ),
-        (
-            "ruby",
-            tree_sitter_ruby::language(),
-            Some(CachedLspAdapter::new(ruby::RubyLanguageServer).await),
-        ),
-        (
-            "erb",
-            tree_sitter_embedded_template::language(),
-            Some(CachedLspAdapter::new(ruby::RubyLanguageServer).await),
-        ),
-        ("scheme", tree_sitter_scheme::language(), None),
-        ("racket", tree_sitter_racket::language(), None),
+        // (
+        //     "typescript",
+        //     tree_sitter_typescript::language_typescript(),
+        //     Some(CachedLspAdapter::new(typescript::TypeScriptLspAdapter).await),
+        // ),
+        // (
+        //     "javascript",
+        //     tree_sitter_typescript::language_tsx(),
+        //     Some(CachedLspAdapter::new(typescript::TypeScriptLspAdapter).await),
+        // ),
+        // (
+        //     "html",
+        //     tree_sitter_html::language(),
+        //     Some(CachedLspAdapter::new(html::HtmlLspAdapter).await),
+        // ),
+        // (
+        //     "ruby",
+        //     tree_sitter_ruby::language(),
+        //     Some(CachedLspAdapter::new(ruby::RubyLanguageServer).await),
+        // ),
+        // (
+        //     "erb",
+        //     tree_sitter_embedded_template::language(),
+        //     Some(CachedLspAdapter::new(ruby::RubyLanguageServer).await),
+        // ),
+        // ("scheme", tree_sitter_scheme::language(), None),
+        // ("racket", tree_sitter_racket::language(), None),
     ] {
         languages.add(language(name, grammar, lsp_adapter));
     }
@@ -196,13 +196,4 @@ fn load_query(name: &str, filename_prefix: &str) -> Option<Cow<'static, str>> {
         }
     }
     result
-}
-
-#[test]
-fn dump() {
-    let mut parser = Parser::new();
-    let language = tree_sitter_typescript::language_tsx();
-    parser.set_language(language).unwrap();
-    let tree = parser.parse("HelloWorld", None).unwrap();
-    panic!("{tree:#?}");
 }

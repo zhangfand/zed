@@ -132,11 +132,19 @@ struct SyntaxLayerPositionBeforeChange {
 
 struct ParseStep {
     depth: usize,
-    language: Arc<Language>,
     range: Range<Anchor>,
     included_ranges: Vec<tree_sitter::Range>,
     mode: ParseMode,
-    override_name: Option<Arc<str>>,
+    kind: ParseStepKind,
+}
+
+impl ParseStep {
+    
+}
+
+enum ParseStepKind {
+    Language(Arc<Language>),
+    Override(Option<Arc<str>>),
 }
 
 enum ParseMode {
@@ -347,7 +355,6 @@ impl SyntaxSnapshot {
         let mut combined_injection_ranges = HashMap::default();
         queue.push(ParseStep {
             depth: 0,
-            language: root_language.clone(),
             included_ranges: vec![tree_sitter::Range {
                 start_byte: 0,
                 end_byte: text.len(),
@@ -356,16 +363,22 @@ impl SyntaxSnapshot {
             }],
             range: Anchor::MIN..Anchor::MAX,
             mode: ParseMode::Single,
-            override_name: None,
+            kind: ParseStepKind::Language(root_language.clone()),
         });
 
         loop {
             let step = queue.pop();
-            let position = if let Some(step) = &step {
+            let position = if let Some(
+                step @ ParseStep {
+                    kind: ParseStepKind::Language(language),
+                    ..
+                },
+            ) = &step
+            {
                 SyntaxLayerPosition {
                     depth: step.depth,
                     range: step.range.clone(),
-                    language: step.language.id(),
+                    language: language.id(),
                 }
             } else {
                 SyntaxLayerPosition {
@@ -477,6 +490,7 @@ impl SyntaxSnapshot {
                 changed_ranges = vec![step_start_byte..step_end_byte];
             }
 
+            dbg!(&step.override_name);
             layers.push(
                 SyntaxLayer {
                     depth: step.depth,
@@ -1023,18 +1037,23 @@ fn get_injections(
                     Some(Cow::Owned(text.text_for_range(node.byte_range()).collect()))
                 });
             let override_name = config.overrides[mat.pattern_index].clone();
+            dbg!(&override_name, &language_name);
 
             if let Some(language_name) = language_name {
+                dbg!(&language_name);
                 if let Some(language) = language_registry.get_language(language_name.as_ref()) {
+                    dbg!(&language);
                     result = true;
                     let range = text.anchor_before(content_range.start)
                         ..text.anchor_after(content_range.end);
+                    dbg!(combined);
                     if combined {
                         combined_injection_ranges
                             .get_mut(&language.clone())
                             .unwrap()
                             .extend(content_ranges);
                     } else {
+                        println!("made it");
                         queue.push(ParseStep {
                             depth,
                             language,
