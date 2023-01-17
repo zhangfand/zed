@@ -267,6 +267,8 @@ impl platform::Window for StatusItem {
 
     fn on_close(&mut self, _: Box<dyn FnOnce()>) {}
 
+    fn on_render(&mut self, _: Box<dyn FnMut()>) {}
+
     fn on_appearance_changed(&mut self, callback: Box<dyn FnMut()>) {
         self.0.borrow_mut().appearance_changed_callback = Some(callback);
     }

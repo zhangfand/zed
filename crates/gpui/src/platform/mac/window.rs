@@ -297,6 +297,7 @@ struct WindowState {
     should_close_callback: Option<Box<dyn FnMut() -> bool>>,
     close_callback: Option<Box<dyn FnOnce()>>,
     appearance_changed_callback: Option<Box<dyn FnMut()>>,
+    render_callback: Option<Box<dyn FnMut()>>,
     input_handler: Option<Box<dyn InputHandler>>,
     pending_key_down: Option<(KeyDownEvent, Option<InsertText>)>,
     performed_key_equivalent: bool,
@@ -497,6 +498,7 @@ impl Window {
                 fullscreen_callback: None,
                 moved_callback: None,
                 appearance_changed_callback: None,
+                render_callback: None,
                 input_handler: None,
                 pending_key_down: None,
                 performed_key_equivalent: false,
@@ -817,6 +819,10 @@ impl platform::Window for Window {
 
     fn on_close(&mut self, callback: Box<dyn FnOnce()>) {
         self.0.as_ref().borrow_mut().close_callback = Some(callback);
+    }
+
+    fn on_render(&mut self, callback: Box<dyn FnMut()>) {
+        self.0.as_ref().borrow_mut().render_callback = Some(callback);
     }
 
     fn on_appearance_changed(&mut self, callback: Box<dyn FnMut()>) {
@@ -1266,6 +1272,9 @@ extern "C" fn display_layer(this: &Object, _: Sel, _: id) {
         if let Some(scene) = window_state.scene_to_render.take() {
             window_state.renderer.render(&scene);
         };
+        if let Some(render_callback) = window_state.render_callback.as_mut() {
+            render_callback();
+        }
     }
 }
 

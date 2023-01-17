@@ -154,6 +154,7 @@ pub trait Window {
     fn on_moved(&mut self, callback: Box<dyn FnMut()>);
     fn on_should_close(&mut self, callback: Box<dyn FnMut() -> bool>);
     fn on_close(&mut self, callback: Box<dyn FnOnce()>);
+    fn on_render(&mut self, callback: Box<dyn FnMut()>);
     fn on_appearance_changed(&mut self, callback: Box<dyn FnMut()>);
     fn is_topmost_for_position(&self, position: Vector2F) -> bool;
 }

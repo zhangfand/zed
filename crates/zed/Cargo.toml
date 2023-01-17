@@ -42,6 +42,7 @@ journal = { path = "../journal" }
 language = { path = "../language" }
 lsp = { path = "../lsp" }
 outline = { path = "../outline" }
+perf = { path = "../perf" }
 plugin_runtime = { path = "../plugin_runtime" }
 project = { path = "../project" }
 project_panel = { path = "../project_panel" }

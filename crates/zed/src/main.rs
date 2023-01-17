@@ -24,6 +24,7 @@ use isahc::{config::Configurable, Request};
 use language::LanguageRegistry;
 use log::LevelFilter;
 use parking_lot::Mutex;
+use perf::{app_started, record_event};
 use project::Fs;
 use serde_json::json;
 use settings::{
@@ -46,6 +47,7 @@ use workspace::{
 use zed::{self, build_window_options, initialize_workspace, languages, menus};
 
 fn main() {
+    app_started();
     let http = http::client();
     init_paths();
     init_logger();
@@ -103,6 +105,12 @@ fn main() {
     });
 
     app.run(move |cx| {
+        cx.observe_renders(|window_id, _| {
+            record_event("Window Rendered", Some(window_id), None);
+            println!("Render");
+            true
+        })
+        .detach();
         cx.set_global(*RELEASE_CHANNEL);
 
         #[cfg(debug_assertions)]
@@ -248,6 +256,7 @@ fn init_paths() {
     std::fs::create_dir_all(&*util::paths::CONFIG_DIR).expect("could not create config path");
     std::fs::create_dir_all(&*util::paths::LANGUAGES_DIR).expect("could not create languages path");
     std::fs::create_dir_all(&*util::paths::DB_DIR).expect("could not create database path");
+    std::fs::create_dir_all(&*util::paths::PERF_DIR).expect("could not create performance DB path");
     std::fs::create_dir_all(&*util::paths::LOGS_DIR).expect("could not create logs path");
 }
 

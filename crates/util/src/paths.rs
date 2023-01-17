@@ -6,6 +6,7 @@ lazy_static::lazy_static! {
     pub static ref LOGS_DIR: PathBuf = HOME.join("Library/Logs/Zed");
     pub static ref LANGUAGES_DIR: PathBuf = HOME.join("Library/Application Support/Zed/languages");
     pub static ref DB_DIR: PathBuf = HOME.join("Library/Application Support/Zed/db");
+    pub static ref PERF_DIR: PathBuf = HOME.join("Library/Application Support/Zed/perf");
     pub static ref SETTINGS: PathBuf = CONFIG_DIR.join("settings.json");
     pub static ref KEYMAP: PathBuf = CONFIG_DIR.join("keymap.json");
     pub static ref LAST_USERNAME: PathBuf = CONFIG_DIR.join("last-username.txt");

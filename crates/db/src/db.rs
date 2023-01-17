@@ -6,6 +6,7 @@ pub use anyhow;
 use anyhow::Context;
 pub use indoc::indoc;
 pub use lazy_static;
+pub use log;
 use parking_lot::{Mutex, RwLock};
 pub use smol;
 pub use sqlez;
@@ -23,11 +24,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use util::channel::ReleaseChannel;
 use util::{async_iife, ResultExt};
 
-const CONNECTION_INITIALIZE_QUERY: &'static str = sql!(
+pub const CONNECTION_INITIALIZE_QUERY: &'static str = sql!(
     PRAGMA foreign_keys=TRUE;
 );
 
-const DB_INITIALIZE_QUERY: &'static str = sql!(
+pub const DB_INITIALIZE_QUERY: &'static str = sql!(
     PRAGMA journal_mode=WAL;
     PRAGMA busy_timeout=1;
     PRAGMA case_sensitive_like=TRUE;

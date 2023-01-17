@@ -1,5 +1,16 @@
 #[macro_export]
 macro_rules! query {
+    ($vis:vis fn $id:ident() { $($sql:tt)+ }) => {
+        $vis fn $id(&self) {
+            let sql_stmt = $crate::sqlez_macros::sql!($($sql)+);
+            self.schedule_write(move |connection| {
+                if let Err(err) = connection.exec(sql_stmt).and_then(|mut stmt| stmt()).ok(); {
+                    $crate::log::error!("Scheduled write error: {}", err);
+                }
+
+            });
+        }
+    };
     ($vis:vis fn $id:ident() -> Result<()> { $($sql:tt)+ }) => {
         $vis fn $id(&self) -> $crate::anyhow::Result<()> {
             use $crate::anyhow::Context;
@@ -26,6 +37,16 @@ macro_rules! query {
                     sql_stmt
                 ))
             }).await
+        }
+    };
+    ($vis:vis fn $id:ident($($arg:ident: $arg_type:ty),+) { $($sql:tt)+ }) => {
+        $vis fn $id(&self, $($arg: $arg_type),+) {
+            let sql_stmt = $crate::sqlez_macros::sql!($($sql)+);
+            self.schedule_write(move |connection| {
+                if let Err(err) = connection.exec_bound::<($($arg_type),+)>(sql_stmt).and_then(|mut stmt| stmt(($($arg), +))) {
+                    $crate::log::error!("Scheduled write error: {}", err);
+                }
+            });
         }
     };
     ($vis:vis fn $id:ident($($arg:ident: $arg_type:ty),+) -> Result<()> { $($sql:tt)+ }) => {

@@ -597,6 +597,7 @@ type ActionObservationCallback = Box<dyn FnMut(TypeId, &mut MutableAppContext)>;
 type WindowActivationCallback = Box<dyn FnMut(bool, &mut MutableAppContext) -> bool>;
 type WindowFullscreenCallback = Box<dyn FnMut(bool, &mut MutableAppContext) -> bool>;
 type WindowBoundsCallback = Box<dyn FnMut(WindowBounds, Uuid, &mut MutableAppContext) -> bool>;
+type WindowRenderCallback = Box<dyn FnMut(usize, &mut MutableAppContext) -> bool>;
 type KeystrokeCallback = Box<
     dyn FnMut(&Keystroke, &MatchResult, Option<&Box<dyn Action>>, &mut MutableAppContext) -> bool,
 >;
@@ -628,6 +629,7 @@ pub struct MutableAppContext {
     window_activation_observations: CallbackCollection<usize, WindowActivationCallback>,
     window_fullscreen_observations: CallbackCollection<usize, WindowFullscreenCallback>,
     window_bounds_observations: CallbackCollection<usize, WindowBoundsCallback>,
+    window_render_observations: CallbackCollection<(), WindowRenderCallback>,
     keystroke_observations: CallbackCollection<usize, KeystrokeCallback>,
 
     #[allow(clippy::type_complexity)]
@@ -686,6 +688,7 @@ impl MutableAppContext {
             window_activation_observations: Default::default(),
             window_fullscreen_observations: Default::default(),
             window_bounds_observations: Default::default(),
+            window_render_observations: Default::default(),
             keystroke_observations: Default::default(),
             action_dispatch_observations: Default::default(),
             presenters_and_platform_windows: Default::default(),
@@ -1288,6 +1291,19 @@ impl MutableAppContext {
         )
     }
 
+    pub fn observe_renders<F>(&mut self, callback: F) -> Subscription
+    where
+        F: 'static + FnMut(usize, &mut MutableAppContext) -> bool,
+    {
+        let subscription_id = post_inc(&mut self.next_subscription_id);
+        self.window_render_observations
+            .add_callback((), subscription_id, Box::new(callback));
+        Subscription::WindowRenderObservation(
+            self.window_render_observations
+                .subscribe((), subscription_id),
+        )
+    }
+
     pub fn defer(&mut self, callback: impl 'static + FnOnce(&mut MutableAppContext)) {
         self.pending_effects.push_back(Effect::Deferred {
             callback: Box::new(callback),
@@ -1812,6 +1828,17 @@ impl MutableAppContext {
         {
             let mut app = self.upgrade();
             window.on_appearance_changed(Box::new(move || app.update(|cx| cx.refresh_windows())));
+        }
+
+        {
+            let mut app = self.upgrade();
+            window.on_render(Box::new(move || {
+                app.update(|cx| {
+                    // Execxute window_render callbacks eagerly ignoring updates
+                    let mut window_render_observations = cx.window_render_observations.clone();
+                    window_render_observations.emit((), cx, |callback, cx| callback(window_id, cx))
+                })
+            }))
         }
 
         window.set_input_handler(Box::new(WindowInputHandler {
@@ -5218,6 +5245,7 @@ pub enum Subscription {
     WindowActivationObservation(callback_collection::Subscription<usize, WindowActivationCallback>),
     WindowFullscreenObservation(callback_collection::Subscription<usize, WindowFullscreenCallback>),
     WindowBoundsObservation(callback_collection::Subscription<usize, WindowBoundsCallback>),
+    WindowRenderObservation(callback_collection::Subscription<(), WindowRenderCallback>),
     KeystrokeObservation(callback_collection::Subscription<usize, KeystrokeCallback>),
     ReleaseObservation(callback_collection::Subscription<usize, ReleaseObservationCallback>),
     ActionObservation(callback_collection::Subscription<(), ActionObservationCallback>),
@@ -5234,6 +5262,7 @@ impl Subscription {
             Subscription::WindowActivationObservation(subscription) => subscription.id(),
             Subscription::WindowFullscreenObservation(subscription) => subscription.id(),
             Subscription::WindowBoundsObservation(subscription) => subscription.id(),
+            Subscription::WindowRenderObservation(subscription) => subscription.id(),
             Subscription::KeystrokeObservation(subscription) => subscription.id(),
             Subscription::ReleaseObservation(subscription) => subscription.id(),
             Subscription::ActionObservation(subscription) => subscription.id(),
@@ -5251,6 +5280,7 @@ impl Subscription {
             Subscription::WindowActivationObservation(subscription) => subscription.detach(),
             Subscription::WindowFullscreenObservation(subscription) => subscription.detach(),
             Subscription::WindowBoundsObservation(subscription) => subscription.detach(),
+            Subscription::WindowRenderObservation(subscription) => subscription.detach(),
             Subscription::ReleaseObservation(subscription) => subscription.detach(),
             Subscription::ActionObservation(subscription) => subscription.detach(),
         }

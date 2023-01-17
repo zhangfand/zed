@@ -148,27 +148,39 @@ impl<M: Migrator> ThreadSafeConnection<M> {
         Connection::open_memory(Some(uri))
     }
 
+    /// Schedules a write and returns a OneShot reciever that gets a value when the write has
+    /// been completed. The scheduled write runs regardless of whether the reciever is polled.
+    /// Eg: dropping the returned future does not cancel the write.
     pub fn write<T: 'static + Send + Sync>(
         &self,
         callback: impl 'static + Send + FnOnce(&Connection) -> T,
     ) -> impl Future<Output = T> {
-        // Check and invalidate queue and maybe recreate queue
+        // Create a one shot channel for the result of the queued write
+        // so we can await on the result
+        let (sender, reciever) = oneshot::channel();
+
+        self.schedule_write(|connection| {
+            sender.send(callback(connection)).ok();
+        });
+
+        reciever.map(|response| response.expect("Write queue unexpectedly closed"))
+    }
+
+    /// Sends a write to the database that will probably complete eventually.
+    /// This is used when you don't need confirmation that a write has completed,
+    /// or don't need a result from the write enabled query.
+    pub fn schedule_write(&self, callback: impl 'static + Send + FnOnce(&Connection)) {
         let queues = QUEUES.read();
         let write_channel = queues
             .get(&self.uri)
             .expect("Queues are inserted when build is called. This should always succeed");
 
-        // Create a one shot channel for the result of the queued write
-        // so we can await on the result
-        let (sender, reciever) = oneshot::channel();
-
         let thread_safe_connection = (*self).clone();
         write_channel(Box::new(move || {
-            let connection = thread_safe_connection.deref();
-            let result = connection.with_write(|connection| callback(connection));
-            sender.send(result).ok();
+            thread_safe_connection
+                .deref()
+                .with_write(|connection| callback(connection));
         }));
-        reciever.map(|response| response.expect("Write queue unexpectedly closed"))
     }
 
     pub(crate) fn create_connection(
