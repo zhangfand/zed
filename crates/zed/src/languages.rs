@@ -11,6 +11,7 @@ mod html;
 mod installation;
 mod json;
 mod language_plugin;
+mod markdown;
 mod python;
 mod ruby;
 mod rust;
@@ -81,7 +82,7 @@ pub async fn init(languages: Arc<LanguageRegistry>, _executor: Arc<Background>) 
         (
             "markdown",
             tree_sitter_markdown::language(),
-            None, //
+            Some(CachedLspAdapter::new(markdown::MarkdownLspAdapter).await),
         ),
         (
             "python",

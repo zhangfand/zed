@@ -346,7 +346,81 @@ pub fn initialize_workspace(
                         "schema": keymap_file_json_schema(&action_names),
                     }
                 ]
-            }
+            },
+            "markdown": {
+                        "styles": [],
+                        "preview": {
+                            "breaks": false,
+                            "linkify": true,
+                            "typographer": false,
+                            "fontFamily": "-apple-system, BlinkMacSystemFont, 'Segoe WPC', 'Segoe UI', system-ui, 'Ubuntu', 'Droid Sans', sans-serif",
+                            "fontSize": 14,
+                            "lineHeight": 1.6,
+                            "scrollPreviewWithEditor": true,
+                            "markEditorSelection": true,
+                            "scrollEditorWithPreview": true,
+                            "doubleClickToSwitchToEditor": true,
+                            "openMarkdownLinks": "inPreview"
+                        },
+                        "links": {
+                            "openLocation": "currentGroup"
+                        },
+                        "suggest": {
+                            "paths": {
+                                "enabled": true
+                            }
+                        },
+                        "trace": {
+                            "extension": "verbose",
+                            "server": "verbose"
+                        },
+                        "editor": {
+                            "drop": {
+                                "enabled": true
+                            }
+                        },
+                        "experimental": {
+                            "editor": {
+                                "pasteLinks": {
+                                    "enabled": true
+                                }
+                            }
+                        },
+                        "validate": {
+                            "enabled": false,
+                            "referenceLinks": {
+                                "enabled": "warning"
+                            },
+                            "fragmentLinks": {
+                                "enabled": "warning"
+                            },
+                            "fileLinks": {
+                                "enabled": "warning",
+                                "markdownFragmentLinks": "inherit"
+                            },
+                            "ignoredLinks": [],
+                            "unusedLinkDefinitions": {
+                                "enabled": "hint"
+                            },
+                            "duplicateLinkDefinitions": {
+                                "enabled": "warning"
+                            }
+                        },
+                        "updateLinksOnFileMove": {
+                            "enabled": "never",
+                            "include": [
+                                "**/*.{md,mkd,mdwn,mdown,markdown,markdn,mdtxt,mdtext,workbook}",
+                                "**/*.{jpg,jpe,jpeg,png,bmp,gif,ico,webp,avif,tiff,svg,mp4}"
+                            ],
+                            "enableForDirectories": true
+                        },
+                        "occurrencesHighlight": {
+                            "enabled": false
+                        },
+                        "math": {
+                            "enabled": true
+                        }
+                    }
         }));
     });
 
