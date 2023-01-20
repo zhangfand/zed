@@ -1984,6 +1984,13 @@ impl Project {
                             })
                             .detach();
 
+                        language_server
+                            .on_request::<lsp::WorkspaceDiagnosticRefresh, _, _>(|_, _| async {
+                                dbg!("!!!!!!!!!!!!!");
+                                Ok(())
+                            })
+                            .detach();
+
                         let disk_based_diagnostics_progress_token =
                             adapter.disk_based_diagnostics_progress_token.clone();
 

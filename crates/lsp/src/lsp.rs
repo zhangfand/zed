@@ -97,6 +97,14 @@ struct AnyNotification<'a> {
     params: &'a RawValue,
 }
 
+#[derive(Deserialize)]
+struct AnyNotificationWithoutParams<'a> {
+    #[serde(default)]
+    id: Option<usize>,
+    #[serde(borrow)]
+    method: &'a str,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 struct Error {
     message: String,
@@ -198,14 +206,24 @@ impl LanguageServer {
                     log::trace!("incoming message:{}", String::from_utf8_lossy(&buffer));
 
                     if let Ok(msg) = serde_json::from_slice::<AnyNotification>(&buffer) {
+                        dbg!("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
                         if let Some(handler) = notification_handlers.lock().get_mut(msg.method) {
                             handler(msg.id, msg.params.get(), cx.clone());
                         } else {
                             on_unhandled_notification(msg);
                         }
+                    } else if let Ok(msg) =
+                        serde_json::from_slice::<AnyNotificationWithoutParams>(&buffer)
+                    {
+                        if let Some(handler) = notification_handlers.lock().get_mut(msg.method) {
+                            handler(msg.id, "", cx.clone());
+                        } else {
+                            dbg!("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+                        }
                     } else if let Ok(AnyResponse { id, error, result }) =
                         serde_json::from_slice(&buffer)
                     {
+                        dbg!("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
                         if let Some(handler) = response_handlers
                             .lock()
                             .as_mut()
@@ -220,6 +238,7 @@ impl LanguageServer {
                             }
                         }
                     } else {
+                        dbg!("!!!!!!!!!!!!!!!!!!!!!!!!!!");
                         return Err(anyhow!(
                             "failed to deserialize message:\n{}",
                             std::str::from_utf8(&buffer)?
@@ -781,6 +800,14 @@ impl FakeLanguageServer {
             value: ProgressParamsValue::WorkDone(WorkDoneProgress::End(Default::default())),
         });
     }
+}
+
+pub enum WorkspaceDiagnosticRefresh {}
+
+impl lsp_types::request::Request for WorkspaceDiagnosticRefresh {
+    type Params = ();
+    type Result = ();
+    const METHOD: &'static str = "workspace/diagnostic/refresh";
 }
 
 #[cfg(test)]

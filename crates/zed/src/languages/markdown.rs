@@ -116,9 +116,9 @@ impl LspAdapter for MarkdownLspAdapter {
         }))
     }
 
-    // async fn language_ids(&self) -> HashMap<String, String> {
-    //     [("MARKDOWN".into(), "markdown".into())]
-    //         .into_iter()
-    //         .collect()
-    // }
+    async fn language_ids(&self) -> HashMap<String, String> {
+        [("Markdown".into(), "markdown".into())]
+            .into_iter()
+            .collect()
+    }
 }
