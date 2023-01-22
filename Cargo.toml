@@ -32,6 +32,7 @@ members = [
     "crates/lsp",
     "crates/media",
     "crates/menu",
+    "crates/notebook",
     "crates/outline",
     "crates/picker",
     "crates/plugin",
