@@ -36,9 +36,9 @@ pub enum Output {
         data: HashMap<String, Vec<String>>,
     },
     #[serde(rename = "display_data")]
-    DisplayData { data: HashMap<String, Text> },
+    DisplayData { data: HashMap<String, Vec<String>> },
     #[serde(rename = "stream")]
-    Stream { name: StreamName, text: Text },
+    Stream { name: StreamName, text: Vec<String> },
     #[serde(rename = "error")]
     Error {
         ename: String,
@@ -53,13 +53,6 @@ pub enum StreamName {
     Stdout,
     #[serde(rename = "stderr")]
     Stderr,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-#[serde(untagged)]
-pub enum Text {
-    One(String),
-    Many(Vec<String>),
 }
 
 struct TextMapVisitor;
