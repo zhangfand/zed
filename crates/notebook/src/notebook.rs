@@ -62,13 +62,6 @@ pub enum Text {
     Many(Vec<String>),
 }
 
-#[test]
-fn test_deserialize_micrograd() {
-    let s = std::fs::read("/Users/nathan/src/micrograd/demo.ipynb").unwrap();
-    let notebook: Notebook = serde_json::from_slice(&s).unwrap();
-    println!("{:?}", notebook);
-}
-
 struct TextMapVisitor;
 
 impl<'de> de::Visitor<'de> for TextMapVisitor {
@@ -143,4 +136,16 @@ where
     D: Deserializer<'de>,
 {
     deserializer.deserialize_any(TextVisitor)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_deserialize_micrograd() {
+        let s = std::fs::read("/Users/nathan/src/micrograd/demo.ipynb").unwrap();
+        let notebook: Notebook = serde_json::from_slice(&s).unwrap();
+        println!("{:?}", notebook);
+    }
 }
