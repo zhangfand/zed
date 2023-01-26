@@ -131,6 +131,7 @@ float blur_along_x(float x, float y, float sigma, float corner, float2 halfSize)
 
 struct QuadFragmentInput {
     float4 position [[position]];
+    float2 pixel_position;
     float2 atlas_position; // only used in the image shader
     float2 origin;
     float2 size;
@@ -147,7 +148,7 @@ struct QuadFragmentInput {
 float4 quad_sdf(QuadFragmentInput input) {
     float2 half_size = input.size / 2.;
     float2 center = input.origin + half_size;
-    float2 center_to_point = input.position.xy - center;
+    float2 center_to_point = input.pixel_position.xy - center;
     float2 rounded_edge_to_point = abs(center_to_point) - half_size + input.corner_radius;
     float distance = length(max(0., rounded_edge_to_point)) + min(0., max(rounded_edge_to_point.x, rounded_edge_to_point.y)) - input.corner_radius;
 
@@ -198,6 +199,7 @@ vertex QuadFragmentInput quad_vertex(
 
     return QuadFragmentInput {
         device_position,
+        position,
         float2(0., 0.),
         quad.origin,
         quad.size,
@@ -340,6 +342,7 @@ vertex QuadFragmentInput image_vertex(
 
     return QuadFragmentInput {
         device_position,
+        position,
         atlas_position,
         image.origin,
         image.target_size,
@@ -386,6 +389,7 @@ vertex QuadFragmentInput surface_vertex(
 
     return QuadFragmentInput {
         device_position,
+        position,
         atlas_position,
         image.origin,
         image.target_size,
