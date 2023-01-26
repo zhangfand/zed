@@ -206,10 +206,8 @@ impl Renderer {
 
         let mut offset = 0;
 
-        let path_sprites = self.render_path_atlases(scene, &mut offset, command_buffer);
         self.render_layers(
             scene,
-            path_sprites,
             &mut offset,
             vec2f(drawable_size.width as f32, drawable_size.height as f32),
             command_buffer,
@@ -226,140 +224,9 @@ impl Renderer {
         drawable.present();
     }
 
-    fn render_path_atlases(
-        &mut self,
-        scene: &Scene,
-        offset: &mut usize,
-        command_buffer: &metal::CommandBufferRef,
-    ) -> Vec<PathSprite> {
-        self.path_atlases.clear();
-        let mut sprites = Vec::new();
-        let mut vertices = Vec::<shaders::GPUIPathVertex>::new();
-        let mut current_atlas_id = None;
-        for (layer_id, layer) in scene.layers().enumerate() {
-            for path in layer.paths() {
-                let origin = path.bounds.origin() * scene.scale_factor();
-                let size = (path.bounds.size() * scene.scale_factor()).ceil();
-
-                let path_allocation = self.path_atlases.allocate(size.to_i32());
-                if path_allocation.is_none() {
-                    // Path size was likely zero.
-                    warn!("could not allocate path texture of size {:?}", size);
-                    continue;
-                }
-                let (alloc_id, atlas_origin) = path_allocation.unwrap();
-                let atlas_origin = atlas_origin.to_f32();
-                sprites.push(PathSprite {
-                    layer_id,
-                    atlas_id: alloc_id.atlas_id,
-                    shader_data: shaders::GPUISprite {
-                        origin: origin.floor().to_float2(),
-                        target_size: size.to_float2(),
-                        source_size: size.to_float2(),
-                        atlas_origin: atlas_origin.to_float2(),
-                        color: path.color.to_uchar4(),
-                        compute_winding: 1,
-                        z: layer_id as f32 / 70.,
-                    },
-                });
-
-                if let Some(current_atlas_id) = current_atlas_id {
-                    if alloc_id.atlas_id != current_atlas_id {
-                        self.render_paths_to_atlas(
-                            offset,
-                            &vertices,
-                            current_atlas_id,
-                            command_buffer,
-                        );
-                        vertices.clear();
-                    }
-                }
-
-                current_atlas_id = Some(alloc_id.atlas_id);
-
-                for vertex in &path.vertices {
-                    let xy_position =
-                        (vertex.xy_position - path.bounds.origin()) * scene.scale_factor();
-                    vertices.push(shaders::GPUIPathVertex {
-                        xy_position: (atlas_origin + xy_position).to_float2(),
-                        st_position: vertex.st_position.to_float2(),
-                        clip_rect_origin: atlas_origin.to_float2(),
-                        clip_rect_size: size.to_float2(),
-                    });
-                }
-            }
-        }
-
-        if let Some(atlas_id) = current_atlas_id {
-            self.render_paths_to_atlas(offset, &vertices, atlas_id, command_buffer);
-        }
-
-        sprites
-    }
-
-    fn render_paths_to_atlas(
-        &mut self,
-        offset: &mut usize,
-        vertices: &[shaders::GPUIPathVertex],
-        atlas_id: usize,
-        command_buffer: &metal::CommandBufferRef,
-    ) {
-        align_offset(offset);
-        let next_offset = *offset + vertices.len() * mem::size_of::<shaders::GPUIPathVertex>();
-        assert!(
-            next_offset <= INSTANCE_BUFFER_SIZE,
-            "instance buffer exhausted"
-        );
-
-        let render_pass_descriptor = metal::RenderPassDescriptor::new();
-        let color_attachment = render_pass_descriptor
-            .color_attachments()
-            .object_at(0)
-            .unwrap();
-        let texture = self.path_atlases.texture(atlas_id).unwrap();
-        color_attachment.set_texture(Some(texture));
-        color_attachment.set_load_action(metal::MTLLoadAction::Clear);
-        color_attachment.set_store_action(metal::MTLStoreAction::Store);
-        color_attachment.set_clear_color(metal::MTLClearColor::new(0., 0., 0., 1.));
-
-        let path_atlas_command_encoder =
-            command_buffer.new_render_command_encoder(render_pass_descriptor);
-        path_atlas_command_encoder.set_render_pipeline_state(&self.path_atlas_pipeline_state);
-        path_atlas_command_encoder.set_vertex_buffer(
-            shaders::GPUIPathAtlasVertexInputIndex_GPUIPathAtlasVertexInputIndexVertices as u64,
-            Some(&self.instances),
-            *offset as u64,
-        );
-        path_atlas_command_encoder.set_vertex_bytes(
-            shaders::GPUIPathAtlasVertexInputIndex_GPUIPathAtlasVertexInputIndexAtlasSize as u64,
-            mem::size_of::<shaders::vector_float2>() as u64,
-            [vec2i(texture.width() as i32, texture.height() as i32).to_float2()].as_ptr()
-                as *const c_void,
-        );
-
-        let buffer_contents = unsafe {
-            (self.instances.contents() as *mut u8).add(*offset) as *mut shaders::GPUIPathVertex
-        };
-
-        for (ix, vertex) in vertices.iter().enumerate() {
-            unsafe {
-                *buffer_contents.add(ix) = *vertex;
-            }
-        }
-
-        path_atlas_command_encoder.draw_primitives(
-            metal::MTLPrimitiveType::Triangle,
-            0,
-            vertices.len() as u64,
-        );
-        path_atlas_command_encoder.end_encoding();
-        *offset = next_offset;
-    }
-
     fn render_layers(
         &mut self,
         scene: &Scene,
-        path_sprites: Vec<PathSprite>,
         offset: &mut usize,
         drawable_size: Vector2F,
         command_buffer: &metal::CommandBufferRef,
@@ -387,33 +254,21 @@ impl Renderer {
         });
 
         let scale_factor = scene.scale_factor();
-        let mut path_sprites = path_sprites.into_iter().peekable();
         for (layer_id, layer) in scene.layers().enumerate() {
-            let z = layer_id as f32 / 70.;
+            let z_id = layer_id * 3;
+            let z_quads = z_id as f32 * scene.layer_z_factor();
+            let z_sprites = (z_id + 1) as f32 * scene.layer_z_factor();
+            let z_images = (z_id + 2) as f32 * scene.layer_z_factor();
             self.render_quads(
-                z,
+                z_quads,
                 layer.quads(),
                 scale_factor,
                 offset,
                 drawable_size,
                 command_encoder,
             );
-            self.render_path_sprites(
-                layer_id,
-                &mut path_sprites,
-                offset,
-                drawable_size,
-                command_encoder,
-            );
-            self.render_underlines(
-                layer.underlines(),
-                scale_factor,
-                offset,
-                drawable_size,
-                command_encoder,
-            );
             self.render_sprites(
-                z,
+                z_sprites,
                 layer.glyphs(),
                 layer.icons(),
                 scale_factor,
@@ -422,16 +277,9 @@ impl Renderer {
                 command_encoder,
             );
             self.render_images(
-                z,
+                z_images,
                 layer.images(),
                 layer.image_glyphs(),
-                scale_factor,
-                offset,
-                drawable_size,
-                command_encoder,
-            );
-            self.render_surfaces(
-                layer.surfaces(),
                 scale_factor,
                 offset,
                 drawable_size,
@@ -440,71 +288,6 @@ impl Renderer {
         }
 
         command_encoder.end_encoding();
-    }
-
-    fn render_shadows(
-        &mut self,
-        shadows: &[Shadow],
-        scale_factor: f32,
-        offset: &mut usize,
-        drawable_size: Vector2F,
-        command_encoder: &metal::RenderCommandEncoderRef,
-    ) {
-        if shadows.is_empty() {
-            return;
-        }
-
-        align_offset(offset);
-        let next_offset = *offset + shadows.len() * mem::size_of::<shaders::GPUIShadow>();
-        assert!(
-            next_offset <= INSTANCE_BUFFER_SIZE,
-            "instance buffer exhausted"
-        );
-
-        command_encoder.set_render_pipeline_state(&self.shadow_pipeline_state);
-        command_encoder.set_vertex_buffer(
-            shaders::GPUIShadowInputIndex_GPUIShadowInputIndexVertices as u64,
-            Some(&self.unit_vertices),
-            0,
-        );
-        command_encoder.set_vertex_buffer(
-            shaders::GPUIShadowInputIndex_GPUIShadowInputIndexShadows as u64,
-            Some(&self.instances),
-            *offset as u64,
-        );
-        command_encoder.set_vertex_bytes(
-            shaders::GPUIShadowInputIndex_GPUIShadowInputIndexUniforms as u64,
-            mem::size_of::<shaders::GPUIUniforms>() as u64,
-            [shaders::GPUIUniforms {
-                viewport_size: drawable_size.to_float2(),
-            }]
-            .as_ptr() as *const c_void,
-        );
-
-        let buffer_contents = unsafe {
-            (self.instances.contents() as *mut u8).add(*offset) as *mut shaders::GPUIShadow
-        };
-        for (ix, shadow) in shadows.iter().enumerate() {
-            let shape_bounds = shadow.bounds * scale_factor;
-            let shader_shadow = shaders::GPUIShadow {
-                origin: shape_bounds.origin().to_float2(),
-                size: shape_bounds.size().to_float2(),
-                corner_radius: shadow.corner_radius * scale_factor,
-                sigma: shadow.sigma,
-                color: shadow.color.to_uchar4(),
-            };
-            unsafe {
-                *(buffer_contents.add(ix)) = shader_shadow;
-            }
-        }
-
-        command_encoder.draw_primitives_instanced(
-            metal::MTLPrimitiveType::Triangle,
-            0,
-            6,
-            shadows.len() as u64,
-        );
-        *offset = next_offset;
     }
 
     fn render_quads(

@@ -31,7 +31,14 @@ use search::{BufferSearchBar, ProjectSearchBar};
 use serde::Deserialize;
 use serde_json::to_string_pretty;
 use settings::{keymap_file_json_schema, settings_file_json_schema, Settings};
-use std::{borrow::Cow, env, path::Path, str, sync::Arc};
+use std::{
+    borrow::Cow,
+    env,
+    path::Path,
+    str,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 use util::{channel::ReleaseChannel, paths, ResultExt};
 pub use workspace;
 use workspace::{sidebar::SidebarSide, AppState, Workspace};
@@ -67,6 +74,7 @@ actions!(
         ResetBufferFontSize,
         InstallCommandLineInterface,
         ResetDatabase,
+        StartAnimation,
     ]
 );
 
@@ -85,6 +93,7 @@ lazy_static! {
 
 pub fn init(app_state: &Arc<AppState>, cx: &mut gpui::MutableAppContext) {
     cx.add_action(about);
+    cx.add_action(start_animation);
     cx.add_global_action(|_: &Hide, cx: &mut gpui::MutableAppContext| {
         cx.platform().hide();
     });
@@ -442,6 +451,29 @@ fn about(_: &mut Workspace, _: &About, cx: &mut gpui::ViewContext<Workspace>) {
         &format!("{app_name} {version}"),
         &["OK"],
     );
+}
+
+fn start_animation(_: &mut Workspace, _: &StartAnimation, cx: &mut ViewContext<Workspace>) {
+    cx.spawn(|_, mut cx| async move {
+        const FRAME_INTERVAL: Duration = Duration::from_millis(8);
+        const Z_SCALE_ANIMATION_DURATION: Duration = Duration::from_millis(600);
+
+        let animation_start = Instant::now();
+        loop {
+            cx.background().timer(FRAME_INTERVAL).await;
+            let time = (animation_start.elapsed().as_secs_f32()
+                / Z_SCALE_ANIMATION_DURATION.as_secs_f32())
+            .min(1.);
+            let z_scale_factor =
+                keyframe::ease(keyframe::functions::EaseOutCubic, 0., 1. / 150., time);
+            cx.update(|cx| cx.set_layer_z_factor(z_scale_factor));
+
+            if time == 1. {
+                break;
+            }
+        }
+    })
+    .detach();
 }
 
 async fn install_cli(cx: &AsyncAppContext) -> Result<()> {

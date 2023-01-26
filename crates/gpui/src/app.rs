@@ -600,6 +600,7 @@ type DeserializeActionCallback = fn(json: &str) -> anyhow::Result<Box<dyn Action
 type WindowShouldCloseSubscriptionCallback = Box<dyn FnMut(&mut MutableAppContext) -> bool>;
 
 pub struct MutableAppContext {
+    pub layer_z_factor: f32,
     weak_self: Option<rc::Weak<RefCell<Self>>>,
     foreground_platform: Rc<dyn platform::ForegroundPlatform>,
     assets: Arc<AssetCache>,
@@ -648,6 +649,7 @@ impl MutableAppContext {
         asset_source: impl AssetSource,
     ) -> Self {
         Self {
+            layer_z_factor: 0.,
             weak_self: None,
             foreground_platform,
             assets: Arc::new(AssetCache::new(asset_source)),
@@ -691,6 +693,11 @@ impl MutableAppContext {
             flushing_effects: false,
             halt_action_dispatch: false,
         }
+    }
+
+    pub fn set_layer_z_factor(&mut self, factor: f32) {
+        self.layer_z_factor = factor;
+        self.perform_window_refresh();
     }
 
     pub fn upgrade(&self) -> App {
@@ -2241,19 +2248,19 @@ impl MutableAppContext {
     fn perform_window_refresh(&mut self) {
         let mut presenters = mem::take(&mut self.presenters_and_platform_windows);
         for (window_id, (presenter, window)) in &mut presenters {
-            let mut invalidation = self
-                .cx
-                .windows
-                .get_mut(window_id)
-                .unwrap()
-                .invalidation
-                .take();
+            // let mut invalidation = self
+            //     .cx
+            //     .windows
+            //     .get_mut(window_id)
+            //     .unwrap()
+            //     .invalidation
+            //     .take();
             let mut presenter = presenter.borrow_mut();
-            presenter.refresh(
-                invalidation.as_mut().unwrap_or(&mut Default::default()),
-                window.appearance(),
-                self,
-            );
+            // presenter.refresh(
+            //     invalidation.as_mut().unwrap_or(&mut Default::default()),
+            //     window.appearance(),
+            //     self,
+            // );
             let scene =
                 presenter.build_scene(window.content_size(), window.scale_factor(), true, self);
             window.present_scene(scene);

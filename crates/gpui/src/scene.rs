@@ -20,6 +20,7 @@ pub use mouse_region::*;
 
 pub struct SceneBuilder {
     scale_factor: f32,
+    layer_z_factor: f32,
     stacking_contexts: Vec<StackingContext>,
     active_stacking_context_stack: Vec<usize>,
     #[cfg(debug_assertions)]
@@ -28,6 +29,7 @@ pub struct SceneBuilder {
 
 pub struct Scene {
     scale_factor: f32,
+    layer_z_factor: f32,
     stacking_contexts: Vec<StackingContext>,
 }
 
@@ -186,6 +188,10 @@ impl Scene {
         self.scale_factor
     }
 
+    pub fn layer_z_factor(&self) -> f32 {
+        self.layer_z_factor
+    }
+
     pub fn layers(&self) -> impl Iterator<Item = &Layer> {
         self.stacking_contexts.iter().flat_map(|s| &s.layers)
     }
@@ -212,10 +218,11 @@ impl Scene {
 }
 
 impl SceneBuilder {
-    pub fn new(scale_factor: f32) -> Self {
+    pub fn new(scale_factor: f32, layer_z_factor: f32) -> Self {
         let stacking_context = StackingContext::new(None, 0);
         SceneBuilder {
             scale_factor,
+            layer_z_factor,
             stacking_contexts: vec![stacking_context],
             active_stacking_context_stack: vec![0],
             #[cfg(debug_assertions)]
@@ -228,6 +235,7 @@ impl SceneBuilder {
             .sort_by_key(|context| context.z_index);
         Scene {
             scale_factor: self.scale_factor,
+            layer_z_factor: self.layer_z_factor,
             stacking_contexts: self.stacking_contexts,
         }
     }
