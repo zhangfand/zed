@@ -20,6 +20,7 @@ typedef struct {
   float border_left;
   vector_uchar4 border_color;
   float corner_radius;
+  float z;
 } GPUIQuad;
 
 typedef enum {
@@ -54,6 +55,7 @@ typedef struct {
   vector_float2 atlas_origin;
   vector_uchar4 color;
   uint8_t compute_winding;
+  float z;
 } GPUISprite;
 
 typedef enum {

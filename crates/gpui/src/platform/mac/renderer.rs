@@ -259,6 +259,7 @@ impl Renderer {
                         atlas_origin: atlas_origin.to_float2(),
                         color: path.color.to_uchar4(),
                         compute_winding: 1,
+                        z: layer_id as f32 / 70.,
                     },
                 });
 
@@ -373,7 +374,7 @@ impl Renderer {
         color_attachment.set_load_action(metal::MTLLoadAction::Clear);
         color_attachment.set_store_action(metal::MTLStoreAction::Store);
         let alpha = if self.layer.is_opaque() { 1. } else { 0. };
-        color_attachment.set_clear_color(metal::MTLClearColor::new(0., 0., 0., alpha));
+        color_attachment.set_clear_color(metal::MTLClearColor::new(0.7, 0.7, 0.7, alpha));
         let command_encoder = command_buffer.new_render_command_encoder(render_pass_descriptor);
 
         command_encoder.set_viewport(metal::MTLViewport {
@@ -388,15 +389,9 @@ impl Renderer {
         let scale_factor = scene.scale_factor();
         let mut path_sprites = path_sprites.into_iter().peekable();
         for (layer_id, layer) in scene.layers().enumerate() {
-            self.clip(scene, layer, drawable_size, command_encoder);
-            self.render_shadows(
-                layer.shadows(),
-                scale_factor,
-                offset,
-                drawable_size,
-                command_encoder,
-            );
+            let z = layer_id as f32 / 70.;
             self.render_quads(
+                z,
                 layer.quads(),
                 scale_factor,
                 offset,
@@ -418,6 +413,7 @@ impl Renderer {
                 command_encoder,
             );
             self.render_sprites(
+                z,
                 layer.glyphs(),
                 layer.icons(),
                 scale_factor,
@@ -426,6 +422,7 @@ impl Renderer {
                 command_encoder,
             );
             self.render_images(
+                z,
                 layer.images(),
                 layer.image_glyphs(),
                 scale_factor,
@@ -443,26 +440,6 @@ impl Renderer {
         }
 
         command_encoder.end_encoding();
-    }
-
-    fn clip(
-        &mut self,
-        scene: &Scene,
-        layer: &Layer,
-        drawable_size: Vector2F,
-        command_encoder: &metal::RenderCommandEncoderRef,
-    ) {
-        let clip_bounds = (layer
-            .clip_bounds()
-            .unwrap_or_else(|| RectF::new(vec2f(0., 0.), drawable_size / scene.scale_factor()))
-            * scene.scale_factor())
-        .round();
-        command_encoder.set_scissor_rect(metal::MTLScissorRect {
-            x: clip_bounds.origin_x() as NSUInteger,
-            y: clip_bounds.origin_y() as NSUInteger,
-            width: clip_bounds.width() as NSUInteger,
-            height: clip_bounds.height() as NSUInteger,
-        });
     }
 
     fn render_shadows(
@@ -532,6 +509,7 @@ impl Renderer {
 
     fn render_quads(
         &mut self,
+        z: f32,
         quads: &[Quad],
         scale_factor: f32,
         offset: &mut usize,
@@ -587,6 +565,7 @@ impl Renderer {
                 border_left: border_width * (quad.border.left as usize as f32),
                 border_color: quad.border.color.to_uchar4(),
                 corner_radius: quad.corner_radius * scale_factor,
+                z,
             };
             unsafe {
                 *(buffer_contents.add(ix)) = shader_quad;
@@ -604,6 +583,7 @@ impl Renderer {
 
     fn render_sprites(
         &mut self,
+        z: f32,
         glyphs: &[Glyph],
         icons: &[Icon],
         scale_factor: f32,
@@ -636,6 +616,7 @@ impl Renderer {
                         atlas_origin: sprite.atlas_origin.to_float2(),
                         color: glyph.color.to_uchar4(),
                         compute_winding: 0,
+                        z,
                     });
             }
         }
@@ -664,6 +645,7 @@ impl Renderer {
                     atlas_origin: sprite.atlas_origin.to_float2(),
                     color: icon.color.to_uchar4(),
                     compute_winding: 0,
+                    z,
                 });
         }
 
@@ -723,6 +705,7 @@ impl Renderer {
 
     fn render_images(
         &mut self,
+        z: f32,
         images: &[Image],
         image_glyphs: &[ImageGlyph],
         scale_factor: f32,

@@ -7,8 +7,105 @@ float4 coloru_to_colorf(uchar4 coloru) {
     return float4(coloru) / float4(0xff, 0xff, 0xff, 0xff);
 }
 
-float4 to_device_position(float2 pixel_position, float2 viewport_size) {
-    return float4(pixel_position / viewport_size * float2(2., -2.) + float2(-1., 1.), 0., 1.);
+
+float deg_to_rad(float deg)
+{
+    return deg * (3.14 / 180);
+}
+
+float4x4 identity()
+{
+    float4 X = float4(1, 0, 0, 0);
+    float4 Y = float4(0, 1, 0, 0);
+    float4 Z = float4(0, 0, 1, 0);
+    float4 W = float4(0, 0, 0, 1);
+    float4x4 mat = float4x4(X, Y, Z, W);
+    return mat;
+}
+
+
+float4x4 perspective_projection(float aspect, float fovy, float near, float far)
+{
+    float yScale = 1 / tan(fovy * 0.5);
+    float xScale = yScale / aspect;
+    float zRange = far - near;
+    float zScale = -(far + near) / zRange;
+    float wzScale = -far * near / zRange;
+    
+    float4 P = float4(xScale, 0, 0, 0);
+    float4 Q = float4(0, yScale, 0, 0);
+    float4 R = float4(0, 0, zScale, -1);
+    float4 S = float4(0, 0, wzScale, 0);
+    
+    float4x4 mat = float4x4(P, Q, R, S);
+    return mat;
+}
+
+float4x4 rotation(float3 axis, float angle)
+{
+    float c = cos(angle);
+    float s = sin(angle);
+    
+    float4 X;
+    X.x = axis.x * axis.x + (1 - axis.x * axis.x) * c;
+    X.y = axis.x * axis.y * (1 - c) - axis.z*s;
+    X.z = axis.x * axis.z * (1 - c) + axis.y * s;
+    X.w = 0.0;
+    
+    float4 Y;
+    Y.x = axis.x * axis.y * (1 - c) + axis.z * s;
+    Y.y = axis.y * axis.y + (1 - axis.y * axis.y) * c;
+    Y.z = axis.y * axis.z * (1 - c) - axis.x * s;
+    Y.w = 0.0;
+    
+    float4 Z;
+    Z.x = axis.x * axis.z * (1 - c) - axis.y * s;
+    Z.y = axis.y * axis.z * (1 - c) + axis.x * s;
+    Z.z = axis.z * axis.z + (1 - axis.z * axis.z) * c;
+    Z.w = 0.0;
+    
+    float4 W;
+    W.x = 0.0;
+    W.y = 0.0;
+    W.z = 0.0;
+    W.w = 1.0;
+    
+    float4x4 mat = float4x4(X, Y, Z, W);
+    return mat;
+}
+
+float4 to_device_position(float2 pixel_position_, float2 viewport_size) {
+    float4 pixel_position = float4(pixel_position_ / viewport_size * float2(2., -2.) + float2(-1., 1.), 0., 1.);
+    
+    float4x4 model_matrix = rotation(float3(0., 1., 0.), -deg_to_rad(30.));
+    float4x4 view_matrix = identity();
+    view_matrix.columns[3].z = -2;
+    
+    float near = 0.1;
+    float far = 100.;
+    float aspect = viewport_size.x / viewport_size.y;
+    float4x4 projection_matrix = perspective_projection(aspect, deg_to_rad(75.), near, far);
+
+    float4x4 model_view = view_matrix * model_matrix;
+    float4x4 model_view_proj = projection_matrix * model_view;
+    return model_view_proj * pixel_position;
+}
+
+float4 to_device_position_3d(float2 pixel_position_, float2 viewport_size, float z) {
+    float4 pixel_position = float4(pixel_position_ / viewport_size * float2(2., -2.) + float2(-1., 1.), z, 1.);
+    
+    float4x4 model_matrix = rotation(float3(1., 0., 0.), deg_to_rad(50.)) * rotation(float3(0., 1., 0.), -deg_to_rad(30.)) * rotation(float3(0., 0., 1.), -deg_to_rad(80.));
+    float4x4 view_matrix = identity();
+    view_matrix.columns[3].z = -2.5;
+    
+    float near = 0.1;
+    float far = 100.;
+    float aspect = viewport_size.x / viewport_size.y;
+    float4x4 projection_matrix = perspective_projection(aspect, deg_to_rad(75.), near, far);
+
+    float4x4 model_view = view_matrix * model_matrix;
+    float4x4 model_view_proj = projection_matrix * model_view;
+    return model_view_proj * pixel_position;
 }
 
 // A standard gaussian function, used for weighting samples
@@ -97,7 +194,7 @@ vertex QuadFragmentInput quad_vertex(
     float2 unit_vertex = unit_vertices[unit_vertex_id];
     GPUIQuad quad = quads[quad_id];
     float2 position = unit_vertex * quad.size + quad.origin;
-    float4 device_position = to_device_position(position, uniforms->viewport_size);
+    float4 device_position = to_device_position_3d(position, uniforms->viewport_size, quad.z);
 
     return QuadFragmentInput {
         device_position,
@@ -199,7 +296,7 @@ vertex SpriteFragmentInput sprite_vertex(
     float2 unit_vertex = unit_vertices[unit_vertex_id];
     GPUISprite sprite = sprites[sprite_id];
     float2 position = unit_vertex * sprite.target_size + sprite.origin;
-    float4 device_position = to_device_position(position, *viewport_size);
+    float4 device_position = to_device_position_3d(position, *viewport_size, sprite.z);
     float2 atlas_position = (unit_vertex * sprite.source_size + sprite.atlas_origin) / *atlas_size;
 
     return SpriteFragmentInput {
