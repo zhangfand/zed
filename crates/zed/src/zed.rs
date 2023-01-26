@@ -456,17 +456,22 @@ fn about(_: &mut Workspace, _: &About, cx: &mut gpui::ViewContext<Workspace>) {
 fn start_animation(_: &mut Workspace, _: &StartAnimation, cx: &mut ViewContext<Workspace>) {
     cx.spawn(|_, mut cx| async move {
         const FRAME_INTERVAL: Duration = Duration::from_millis(8);
-        const Z_SCALE_ANIMATION_DURATION: Duration = Duration::from_millis(600);
+        const Z_SCALE_ANIMATION_DURATION: Duration = Duration::from_millis(2000);
 
         let animation_start = Instant::now();
+        let mut previous_frame = Instant::now();
         loop {
-            cx.background().timer(FRAME_INTERVAL).await;
-            let time = (animation_start.elapsed().as_secs_f32()
-                / Z_SCALE_ANIMATION_DURATION.as_secs_f32())
+            let next_frame = previous_frame + FRAME_INTERVAL;
+            if let Some(sleep) = next_frame.checked_duration_since(previous_frame) {
+                cx.background().timer(sleep).await;
+            }
+            previous_frame = Instant::now();
+            let time = (animation_start.elapsed().as_secs_f64()
+                / Z_SCALE_ANIMATION_DURATION.as_secs_f64())
             .min(1.);
-            let z_scale_factor =
+            let z_scale_factor: f64 =
                 keyframe::ease(keyframe::functions::EaseOutCubic, 0., 1. / 150., time);
-            cx.update(|cx| cx.set_layer_z_factor(z_scale_factor));
+            cx.update(|cx| cx.set_layer_z_factor(z_scale_factor as f32));
 
             if time == 1. {
                 break;
