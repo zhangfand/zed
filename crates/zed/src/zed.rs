@@ -75,6 +75,13 @@ actions!(
         InstallCommandLineInterface,
         ResetDatabase,
         StartAnimation,
+        RotateX,
+        RotateY,
+        RotateZ,
+        IncreaseScale,
+        DecreaseScale,
+        IncreaseFov,
+        DecreaseFov
     ]
 );
 
@@ -94,6 +101,13 @@ lazy_static! {
 pub fn init(app_state: &Arc<AppState>, cx: &mut gpui::MutableAppContext) {
     cx.add_action(about);
     cx.add_action(start_animation);
+    cx.add_action(increase_scale);
+    cx.add_action(decrease_scale);
+    cx.add_action(rotate_x);
+    cx.add_action(rotate_y);
+    cx.add_action(rotate_z);
+    cx.add_action(increase_fov);
+    cx.add_action(decrease_fov);
     cx.add_global_action(|_: &Hide, cx: &mut gpui::MutableAppContext| {
         cx.platform().hide();
     });
@@ -453,10 +467,109 @@ fn about(_: &mut Workspace, _: &About, cx: &mut gpui::ViewContext<Workspace>) {
     );
 }
 
+fn increase_scale(_: &mut Workspace, _: &IncreaseScale, cx: &mut ViewContext<Workspace>) {
+    cx.update(|cx| {
+        cx.transform(
+            cx.layer_z_factor,
+            cx.scale + 0.1,
+            cx.rotate_x,
+            cx.rotate_y,
+            cx.rotate_z,
+            cx.fov,
+        );
+        dbg!(cx.scale);
+    });
+}
+
+fn decrease_scale(_: &mut Workspace, _: &DecreaseScale, cx: &mut ViewContext<Workspace>) {
+    cx.update(|cx| {
+        cx.transform(
+            cx.layer_z_factor,
+            cx.scale - 0.1,
+            cx.rotate_x,
+            cx.rotate_y,
+            cx.rotate_z,
+            cx.fov,
+        );
+        dbg!(cx.scale);
+    });
+}
+
+fn increase_fov(_: &mut Workspace, _: &IncreaseFov, cx: &mut ViewContext<Workspace>) {
+    cx.update(|cx| {
+        cx.transform(
+            cx.layer_z_factor,
+            cx.scale,
+            cx.rotate_x,
+            cx.rotate_y,
+            cx.rotate_z,
+            cx.fov + 1.,
+        );
+        dbg!(cx.fov);
+    });
+}
+
+fn decrease_fov(_: &mut Workspace, _: &DecreaseFov, cx: &mut ViewContext<Workspace>) {
+    cx.update(|cx| {
+        cx.transform(
+            cx.layer_z_factor,
+            cx.scale,
+            cx.rotate_x,
+            cx.rotate_y,
+            cx.rotate_z,
+            cx.fov - 1.,
+        );
+        dbg!(cx.fov);
+    });
+}
+
+fn rotate_x(_: &mut Workspace, _: &RotateX, cx: &mut ViewContext<Workspace>) {
+    cx.update(|cx| {
+        cx.transform(
+            cx.layer_z_factor,
+            cx.scale,
+            cx.rotate_x + 1.,
+            cx.rotate_y,
+            cx.rotate_z,
+            cx.fov,
+        );
+        dbg!(cx.rotate_x);
+    });
+}
+
+fn rotate_y(_: &mut Workspace, _: &RotateY, cx: &mut ViewContext<Workspace>) {
+    cx.update(|cx| {
+        cx.transform(
+            cx.layer_z_factor,
+            cx.scale,
+            cx.rotate_x,
+            cx.rotate_y + 1.,
+            cx.rotate_z,
+            cx.fov,
+        );
+        dbg!(cx.rotate_y);
+    });
+}
+
+fn rotate_z(_: &mut Workspace, _: &RotateZ, cx: &mut ViewContext<Workspace>) {
+    cx.update(|cx| {
+        cx.transform(
+            cx.layer_z_factor,
+            cx.scale,
+            cx.rotate_x,
+            cx.rotate_y,
+            cx.rotate_z + 1.,
+            cx.fov,
+        );
+        dbg!(cx.rotate_z);
+    });
+}
+
 fn start_animation(_: &mut Workspace, _: &StartAnimation, cx: &mut ViewContext<Workspace>) {
     cx.spawn(|_, mut cx| async move {
         const FRAME_INTERVAL: Duration = Duration::from_millis(8);
-        const Z_SCALE_ANIMATION_DURATION: Duration = Duration::from_millis(2000);
+
+        let initial_start = Instant::now();
 
         let animation_start = Instant::now();
         let mut previous_frame = Instant::now();
@@ -466,14 +579,90 @@ fn start_animation(_: &mut Workspace, _: &StartAnimation, cx: &mut ViewContext<W
                 cx.background().timer(sleep).await;
             }
             previous_frame = Instant::now();
-            let time = (animation_start.elapsed().as_secs_f64()
-                / Z_SCALE_ANIMATION_DURATION.as_secs_f64())
-            .min(1.);
+            let time = (animation_start.elapsed().as_secs_f64() / 2.).min(1.);
+            let time_z = (initial_start.elapsed().as_secs_f64() / 10.).min(1.);
+
             let z_scale_factor: f64 =
-                keyframe::ease(keyframe::functions::EaseOutCubic, 0., 1. / 150., time);
-            cx.update(|cx| cx.set_layer_z_factor(z_scale_factor as f32));
+                keyframe::ease(keyframe::functions::EaseOutCubic, 0., 1. / 180., time);
+            let rotate_x = keyframe::ease(keyframe::functions::EaseOutCubic, 0., 55., time);
+            let rotate_z = keyframe::ease(keyframe::functions::EaseOutCubic, 0., -360., time_z);
+            cx.update(|cx| {
+                cx.transform(
+                    z_scale_factor as f32,
+                    cx.scale,
+                    rotate_x,
+                    cx.rotate_y,
+                    rotate_z,
+                    cx.fov,
+                )
+            });
 
             if time == 1. {
+                break;
+            }
+        }
+
+        let mut previous_frame = Instant::now();
+        loop {
+            let next_frame = previous_frame + FRAME_INTERVAL;
+            if let Some(sleep) = next_frame.checked_duration_since(previous_frame) {
+                cx.background().timer(sleep).await;
+            }
+            previous_frame = Instant::now();
+            let time_z = (initial_start.elapsed().as_secs_f64() / 10.).min(1.);
+
+            let rotate_z = keyframe::ease(keyframe::functions::EaseOutCubic, 0., -360., time_z);
+            cx.update(|cx| {
+                cx.transform(
+                    cx.layer_z_factor,
+                    cx.scale,
+                    cx.rotate_x,
+                    cx.rotate_y,
+                    rotate_z,
+                    cx.fov,
+                )
+            });
+
+            if rotate_z <= -270. {
+                break;
+            }
+        }
+
+        let prev_scale_factor = cx.update(|cx| cx.layer_z_factor);
+        let prev_rotate_x = cx.update(|cx| cx.rotate_x);
+
+        let animation_start = Instant::now();
+        let mut previous_frame = Instant::now();
+        loop {
+            let next_frame = previous_frame + FRAME_INTERVAL;
+            if let Some(sleep) = next_frame.checked_duration_since(previous_frame) {
+                cx.background().timer(sleep).await;
+            }
+            previous_frame = Instant::now();
+            let time = (animation_start.elapsed().as_secs_f64() / 2.).min(1.);
+            let time_z = (initial_start.elapsed().as_secs_f64() / 10.).min(1.);
+
+            let z_scale_factor = keyframe::ease(
+                keyframe::functions::EaseOutCubic,
+                prev_scale_factor,
+                0.,
+                time,
+            );
+            let rotate_x =
+                keyframe::ease(keyframe::functions::EaseOutCubic, prev_rotate_x, 0., time);
+            let rotate_z = keyframe::ease(keyframe::functions::EaseOutCubic, 0., -360., time_z);
+            cx.update(|cx| {
+                cx.transform(
+                    z_scale_factor as f32,
+                    cx.scale,
+                    rotate_x,
+                    cx.rotate_y,
+                    rotate_z,
+                    cx.fov,
+                )
+            });
+
+            if time_z == 1. {
                 break;
             }
         }

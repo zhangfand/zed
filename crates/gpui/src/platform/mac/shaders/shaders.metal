@@ -91,17 +91,21 @@ float4 to_device_position(float2 pixel_position_, float2 viewport_size) {
     return model_view_proj * pixel_position;
 }
 
-float4 to_device_position_3d(float2 pixel_position_, float2 viewport_size, float z) {
+float4 to_device_position_3d(float2 pixel_position_, GPUIUniforms uniforms, float z) {
+    float2 viewport_size = uniforms.viewport_size;
     float4 pixel_position = float4(pixel_position_ / viewport_size * float2(2., -2.) + float2(-1., 1.), z, 1.);
     
-    float4x4 model_matrix = rotation(float3(1., 0., 0.), deg_to_rad(50.)) * rotation(float3(0., 1., 0.), -deg_to_rad(30.)) * rotation(float3(0., 0., 1.), -deg_to_rad(80.));
+    float4x4 model_matrix = 
+        rotation(float3(1., 0., 0.), deg_to_rad(uniforms.rotate_x)) * 
+        rotation(float3(0., 1., 0.), deg_to_rad(uniforms.rotate_y)) * 
+        rotation(float3(0., 0., 1.), deg_to_rad(uniforms.rotate_z));
     float4x4 view_matrix = identity();
-    view_matrix.columns[3].z = -2.5;
+    view_matrix.columns[3].z = uniforms.scale;
     
     float near = 0.1;
     float far = 100.;
     float aspect = viewport_size.x / viewport_size.y;
-    float4x4 projection_matrix = perspective_projection(aspect, deg_to_rad(75.), near, far);
+    float4x4 projection_matrix = perspective_projection(aspect, deg_to_rad(uniforms.fov), near, far);
 
     float4x4 model_view = view_matrix * model_matrix;
     float4x4 model_view_proj = projection_matrix * model_view;
@@ -195,7 +199,7 @@ vertex QuadFragmentInput quad_vertex(
     float2 unit_vertex = unit_vertices[unit_vertex_id];
     GPUIQuad quad = quads[quad_id];
     float2 position = unit_vertex * quad.size + quad.origin;
-    float4 device_position = to_device_position_3d(position, uniforms->viewport_size, quad.z);
+    float4 device_position = to_device_position_3d(position, *uniforms, quad.z);
 
     return QuadFragmentInput {
         device_position,
@@ -292,13 +296,13 @@ vertex SpriteFragmentInput sprite_vertex(
     uint sprite_id [[instance_id]],
     constant float2 *unit_vertices [[buffer(GPUISpriteVertexInputIndexVertices)]],
     constant GPUISprite *sprites [[buffer(GPUISpriteVertexInputIndexSprites)]],
-    constant float2 *viewport_size [[buffer(GPUISpriteVertexInputIndexViewportSize)]],
+    constant GPUIUniforms *uniforms [[buffer(GPUISpriteVertexInputIndexUniforms)]],
     constant float2 *atlas_size [[buffer(GPUISpriteVertexInputIndexAtlasSize)]]
 ) {
     float2 unit_vertex = unit_vertices[unit_vertex_id];
     GPUISprite sprite = sprites[sprite_id];
     float2 position = unit_vertex * sprite.target_size + sprite.origin;
-    float4 device_position = to_device_position_3d(position, *viewport_size, sprite.z);
+    float4 device_position = to_device_position_3d(position, *uniforms, sprite.z);
     float2 atlas_position = (unit_vertex * sprite.source_size + sprite.atlas_origin) / *atlas_size;
 
     return SpriteFragmentInput {

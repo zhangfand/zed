@@ -2343,7 +2343,7 @@ mod tests {
 
         let mut element = EditorElement::new(editor.downgrade(), editor.read(cx).style(cx));
 
-        let mut scene = SceneBuilder::new(1.0, 1.0);
+        let mut scene = SceneBuilder::new(1.0, 1.0, 0., 0., 0., 0., 0.);
         let mut presenter = cx.build_presenter(window_id, 30., Default::default());
         let mut layout_cx = presenter.build_layout_context(Vector2F::zero(), false, cx);
         let (size, mut state) = element.layout(

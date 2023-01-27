@@ -414,7 +414,14 @@
             "ctrl-alt-cmd-f": "workspace::FollowNextCollaborator",
             "cmd-shift-c": "collab::ToggleCollaborationMenu",
             "cmd-alt-i": "zed::DebugElements",
-            "ctrl-alt-cmd-a": "zed::StartAnimation"
+            "ctrl-alt-cmd-a": "zed::StartAnimation",
+            "ctrl-alt-cmd-x": "zed::RotateX",
+            "ctrl-alt-cmd-y": "zed::RotateY",
+            "ctrl-alt-cmd-z": "zed::RotateZ",
+            "ctrl-alt-cmd--": "zed::DecreaseScale",
+            "ctrl-alt-cmd-=": "zed::IncreaseScale",
+            "ctrl-alt-cmd-,": "zed::DecreaseFov",
+            "ctrl-alt-cmd-.": "zed::IncreaseFov"
         }
     },
     {

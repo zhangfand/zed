@@ -601,6 +601,11 @@ type WindowShouldCloseSubscriptionCallback = Box<dyn FnMut(&mut MutableAppContex
 
 pub struct MutableAppContext {
     pub layer_z_factor: f32,
+    pub scale: f32,
+    pub rotate_x: f32,
+    pub rotate_y: f32,
+    pub rotate_z: f32,
+    pub fov: f32,
     weak_self: Option<rc::Weak<RefCell<Self>>>,
     foreground_platform: Rc<dyn platform::ForegroundPlatform>,
     assets: Arc<AssetCache>,
@@ -650,6 +655,11 @@ impl MutableAppContext {
     ) -> Self {
         Self {
             layer_z_factor: 0.,
+            scale: -2.5,
+            rotate_x: 0.,
+            rotate_y: 0.,
+            rotate_z: 0.,
+            fov: 70.,
             weak_self: None,
             foreground_platform,
             assets: Arc::new(AssetCache::new(asset_source)),
@@ -695,8 +705,21 @@ impl MutableAppContext {
         }
     }
 
-    pub fn set_layer_z_factor(&mut self, factor: f32) {
-        self.layer_z_factor = factor;
+    pub fn transform(
+        &mut self,
+        layer_z_factor: f32,
+        scale: f32,
+        rotate_x: f32,
+        rotate_y: f32,
+        rotate_z: f32,
+        fov: f32,
+    ) {
+        self.layer_z_factor = layer_z_factor;
+        self.scale = scale;
+        self.rotate_x = rotate_x;
+        self.rotate_y = rotate_y;
+        self.rotate_z = rotate_z;
+        self.fov = fov;
         self.perform_window_refresh();
     }
 

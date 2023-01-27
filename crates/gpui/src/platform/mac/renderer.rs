@@ -6,21 +6,19 @@ use crate::{
         vector::{vec2f, vec2i, Vector2F},
     },
     platform,
-    scene::{Glyph, Icon, Image, ImageGlyph, Layer, Quad, Scene, Shadow, Underline},
+    scene::{Glyph, Icon, Quad, Scene},
 };
 use cocoa::{
     base::{NO, YES},
     foundation::NSUInteger,
     quartzcore::AutoresizingMask,
 };
-use core_foundation::base::TCFType;
 use foreign_types::ForeignTypeRef;
-use log::warn;
 use media::core_video::{self, CVMetalTextureCache};
 use metal::{CommandQueue, MTLPixelFormat, MTLResourceOptions, NSRange};
 use objc::{self, msg_send, sel, sel_impl};
 use shaders::ToFloat2 as _;
-use std::{collections::HashMap, ffi::c_void, iter::Peekable, mem, ptr, sync::Arc, vec};
+use std::{collections::HashMap, ffi::c_void, mem, sync::Arc};
 
 const SHADERS_METALLIB: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/shaders.metallib"));
 const INSTANCE_BUFFER_SIZE: usize = 8192 * 1024; // This is an arbitrary decision. There's probably a more optimal value.
@@ -260,6 +258,11 @@ impl Renderer {
             let z_sprites = (z_id + 2) as f32 * scene.layer_z_factor();
             self.render_quads(
                 z_quads,
+                scene.scale,
+                scene.rotate_x,
+                scene.rotate_y,
+                scene.rotate_z,
+                scene.fov,
                 layer.quads(),
                 scale_factor,
                 offset,
@@ -268,6 +271,11 @@ impl Renderer {
             );
             self.render_sprites(
                 z_sprites,
+                scene.scale,
+                scene.rotate_x,
+                scene.rotate_y,
+                scene.rotate_z,
+                scene.fov,
                 layer.glyphs(),
                 layer.icons(),
                 scale_factor,
@@ -283,6 +291,11 @@ impl Renderer {
     fn render_quads(
         &mut self,
         z: f32,
+        scale: f32,
+        rotate_x: f32,
+        rotate_y: f32,
+        rotate_z: f32,
+        fov: f32,
         quads: &[Quad],
         scale_factor: f32,
         offset: &mut usize,
@@ -315,6 +328,11 @@ impl Renderer {
             mem::size_of::<shaders::GPUIUniforms>() as u64,
             [shaders::GPUIUniforms {
                 viewport_size: drawable_size.to_float2(),
+                scale,
+                rotate_x,
+                rotate_y,
+                rotate_z,
+                fov,
             }]
             .as_ptr() as *const c_void,
         );
@@ -357,6 +375,11 @@ impl Renderer {
     fn render_sprites(
         &mut self,
         z: f32,
+        scale: f32,
+        rotate_x: f32,
+        rotate_y: f32,
+        rotate_z: f32,
+        fov: f32,
         glyphs: &[Glyph],
         icons: &[Icon],
         scale_factor: f32,
@@ -429,9 +452,17 @@ impl Renderer {
             0,
         );
         command_encoder.set_vertex_bytes(
-            shaders::GPUISpriteVertexInputIndex_GPUISpriteVertexInputIndexViewportSize as u64,
-            mem::size_of::<shaders::vector_float2>() as u64,
-            [drawable_size.to_float2()].as_ptr() as *const c_void,
+            shaders::GPUISpriteVertexInputIndex_GPUISpriteVertexInputIndexUniforms as u64,
+            mem::size_of::<shaders::GPUIUniforms>() as u64,
+            [shaders::GPUIUniforms {
+                viewport_size: drawable_size.to_float2(),
+                scale,
+                rotate_x,
+                rotate_y,
+                rotate_z,
+                fov,
+            }]
+            .as_ptr() as *const c_void,
         );
 
         for (atlas_id, sprites) in sprites_by_atlas {

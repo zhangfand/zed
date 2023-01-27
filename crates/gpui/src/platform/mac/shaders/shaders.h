@@ -2,6 +2,11 @@
 
 typedef struct {
   vector_float2 viewport_size;
+  float scale;
+  float rotate_x;
+  float rotate_y;
+  float rotate_z;
+  float fov;
 } GPUIUniforms;
 
 typedef enum {
@@ -40,7 +45,7 @@ typedef struct {
 typedef enum {
   GPUISpriteVertexInputIndexVertices = 0,
   GPUISpriteVertexInputIndexSprites = 1,
-  GPUISpriteVertexInputIndexViewportSize = 2,
+  GPUISpriteVertexInputIndexUniforms = 2,
   GPUISpriteVertexInputIndexAtlasSize = 3,
 } GPUISpriteVertexInputIndex;
 

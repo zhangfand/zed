@@ -141,7 +141,15 @@ impl Presenter {
         refreshing: bool,
         cx: &mut MutableAppContext,
     ) -> Scene {
-        let mut scene_builder = SceneBuilder::new(scale_factor, cx.layer_z_factor);
+        let mut scene_builder = SceneBuilder::new(
+            scale_factor,
+            cx.layer_z_factor,
+            cx.scale,
+            cx.rotate_x,
+            cx.rotate_y,
+            cx.rotate_z,
+            cx.fov,
+        );
 
         if let Some(root_view_id) = cx.root_view_id(self.window_id) {
             self.layout(window_size, refreshing, cx);
