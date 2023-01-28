@@ -20,6 +20,7 @@ use crate::{
 use anyhow::bail;
 use collections::{HashMap, HashSet};
 use pathfinder_geometry::vector::{vec2f, Vector2F};
+use perf::measure_lifetime;
 use serde_json::json;
 use smallvec::SmallVec;
 use sqlez::{
@@ -141,6 +142,7 @@ impl Presenter {
         refreshing: bool,
         cx: &mut MutableAppContext,
     ) -> Scene {
+        let _lifetime = measure_lifetime("Build Scene", Some(self.window_id), None);
         let mut scene_builder = SceneBuilder::new(scale_factor);
 
         if let Some(root_view_id) = cx.root_view_id(self.window_id) {
@@ -171,6 +173,7 @@ impl Presenter {
     }
 
     fn layout(&mut self, window_size: Vector2F, refreshing: bool, cx: &mut MutableAppContext) {
+        let _lifetime = measure_lifetime("Layout", Some(self.window_id), None);
         if let Some(root_view_id) = cx.root_view_id(self.window_id) {
             self.build_layout_context(window_size, refreshing, cx)
                 .layout(root_view_id, SizeConstraint::strict(window_size));
@@ -210,6 +213,7 @@ impl Presenter {
         cx: &'a mut MutableAppContext,
     ) -> PaintContext {
         PaintContext {
+            window_id: self.window_id,
             scene,
             window_size,
             font_cache: &self.font_cache,
@@ -734,6 +738,7 @@ impl<'a> UpgradeViewHandle for LayoutContext<'a> {
 }
 
 pub struct PaintContext<'a> {
+    window_id: usize,
     rendered_views: &'a mut HashMap<usize, ElementBox>,
     view_stack: Vec<usize>,
     pub window_size: Vector2F,
@@ -745,6 +750,7 @@ pub struct PaintContext<'a> {
 
 impl<'a> PaintContext<'a> {
     fn paint(&mut self, view_id: usize, origin: Vector2F, visible_bounds: RectF) {
+        let _lifetime = measure_lifetime("Paint", Some(self.window_id), None);
         if let Some(mut tree) = self.rendered_views.remove(&view_id) {
             self.view_stack.push(view_id);
             tree.paint(origin, visible_bounds, self);

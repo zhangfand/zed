@@ -2576,6 +2576,7 @@ dependencies = [
  "parking_lot 0.11.2",
  "pathfinder_color",
  "pathfinder_geometry",
+ "perf",
  "png",
  "postage",
  "rand 0.8.5",

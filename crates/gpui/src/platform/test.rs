@@ -370,8 +370,6 @@ impl super::Window for Window {
         self.close_handlers.push(callback);
     }
 
-    fn on_render(&mut self, _: Box<dyn FnMut()>) {}
-
     fn on_appearance_changed(&mut self, _: Box<dyn FnMut()>) {}
 
     fn is_topmost_for_position(&self, _position: Vector2F) -> bool {

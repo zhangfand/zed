@@ -24,7 +24,7 @@ use isahc::{config::Configurable, Request};
 use language::LanguageRegistry;
 use log::LevelFilter;
 use parking_lot::Mutex;
-use perf::{app_started, record_event};
+use perf::app_started;
 use project::Fs;
 use serde_json::json;
 use settings::{
@@ -105,12 +105,6 @@ fn main() {
     });
 
     app.run(move |cx| {
-        cx.observe_renders(|window_id, _| {
-            record_event("Window Rendered", Some(window_id), None);
-            println!("Render");
-            true
-        })
-        .detach();
         cx.set_global(*RELEASE_CHANNEL);
 
         #[cfg(debug_assertions)]

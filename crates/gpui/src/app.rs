@@ -22,6 +22,7 @@ use anyhow::{anyhow, Context, Result};
 use lazy_static::lazy_static;
 use parking_lot::Mutex;
 use pathfinder_geometry::vector::Vector2F;
+use perf::{measure_lifetime, record_event};
 use postage::oneshot;
 use smallvec::SmallVec;
 use smol::prelude::*;
@@ -629,7 +630,6 @@ pub struct MutableAppContext {
     window_activation_observations: CallbackCollection<usize, WindowActivationCallback>,
     window_fullscreen_observations: CallbackCollection<usize, WindowFullscreenCallback>,
     window_bounds_observations: CallbackCollection<usize, WindowBoundsCallback>,
-    window_render_observations: CallbackCollection<(), WindowRenderCallback>,
     keystroke_observations: CallbackCollection<usize, KeystrokeCallback>,
 
     #[allow(clippy::type_complexity)]
@@ -688,7 +688,6 @@ impl MutableAppContext {
             window_activation_observations: Default::default(),
             window_fullscreen_observations: Default::default(),
             window_bounds_observations: Default::default(),
-            window_render_observations: Default::default(),
             keystroke_observations: Default::default(),
             action_dispatch_observations: Default::default(),
             presenters_and_platform_windows: Default::default(),
@@ -982,6 +981,7 @@ impl MutableAppContext {
     }
 
     pub fn update<T, F: FnOnce(&mut Self) -> T>(&mut self, callback: F) -> T {
+        let _measure = measure_lifetime("Update", None, Some(self.pending_flushes.to_string()));
         self.pending_flushes += 1;
         let result = callback(self);
         self.flush_effects();
@@ -1288,19 +1288,6 @@ impl MutableAppContext {
         Subscription::KeystrokeObservation(
             self.keystroke_observations
                 .subscribe(window_id, subscription_id),
-        )
-    }
-
-    pub fn observe_renders<F>(&mut self, callback: F) -> Subscription
-    where
-        F: 'static + FnMut(usize, &mut MutableAppContext) -> bool,
-    {
-        let subscription_id = post_inc(&mut self.next_subscription_id);
-        self.window_render_observations
-            .add_callback((), subscription_id, Box::new(callback));
-        Subscription::WindowRenderObservation(
-            self.window_render_observations
-                .subscribe((), subscription_id),
         )
     }
 
@@ -1830,17 +1817,6 @@ impl MutableAppContext {
             window.on_appearance_changed(Box::new(move || app.update(|cx| cx.refresh_windows())));
         }
 
-        {
-            let mut app = self.upgrade();
-            window.on_render(Box::new(move || {
-                app.update(|cx| {
-                    // Execxute window_render callbacks eagerly ignoring updates
-                    let mut window_render_observations = cx.window_render_observations.clone();
-                    window_render_observations.emit((), cx, |callback, cx| callback(window_id, cx))
-                })
-            }))
-        }
-
         window.set_input_handler(Box::new(WindowInputHandler {
             app: self.upgrade().0,
             window_id,
@@ -2238,6 +2214,7 @@ impl MutableAppContext {
             if let Some((presenter, mut window)) =
                 self.presenters_and_platform_windows.remove(&window_id)
             {
+                record_event("Window Update", Some(window_id), None);
                 {
                     let mut presenter = presenter.borrow_mut();
                     presenter.invalidate(&mut invalidation, window.appearance(), self);
@@ -2318,6 +2295,7 @@ impl MutableAppContext {
     fn perform_window_refresh(&mut self) {
         let mut presenters = mem::take(&mut self.presenters_and_platform_windows);
         for (window_id, (presenter, window)) in &mut presenters {
+            record_event("Window Refresh", Some(*window_id), None);
             let mut invalidation = self
                 .cx
                 .windows
@@ -2521,6 +2499,12 @@ impl MutableAppContext {
         view_id: Option<usize>,
         action: &dyn Action,
     ) -> bool {
+        record_event(
+            "Action Dispatched",
+            Some(window_id),
+            Some(format!("{}::{}", action.namespace(), action.name()).to_string()),
+        );
+
         self.update(|this| {
             if let Some(view_id) = view_id {
                 this.halt_action_dispatch = false;

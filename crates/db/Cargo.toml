@@ -13,7 +13,6 @@ test-support = []
 
 [dependencies]
 collections = { path = "../collections" }
-gpui = { path = "../gpui" }
 sqlez = { path = "../sqlez" }
 sqlez_macros = { path = "../sqlez_macros" }
 util = { path = "../util" }
