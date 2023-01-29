@@ -22,6 +22,7 @@ use gpui::{
     platform::{WindowBounds, WindowOptions},
     AssetSource, AsyncAppContext, PromptLevel, TitlebarOptions, ViewContext, WindowKind,
 };
+use keyframe::keyframes;
 use language::Rope;
 use lazy_static::lazy_static;
 pub use lsp;
@@ -580,16 +581,17 @@ fn start_animation(_: &mut Workspace, _: &StartAnimation, cx: &mut ViewContext<W
             }
             previous_frame = Instant::now();
             let time = (animation_start.elapsed().as_secs_f64() / 2.).min(1.);
-            let time_z = (initial_start.elapsed().as_secs_f64() / 10.).min(1.);
+            let time_z = (initial_start.elapsed().as_secs_f64() / 5.).min(1.);
 
             let z_scale_factor: f64 =
-                keyframe::ease(keyframe::functions::EaseOutCubic, 0., 1. / 180., time);
-            let rotate_x = keyframe::ease(keyframe::functions::EaseOutCubic, 0., 55., time);
-            let rotate_z = keyframe::ease(keyframe::functions::EaseOutCubic, 0., -360., time_z);
+                keyframe::ease(keyframe::functions::EaseInOut, 0., 1. / 160., time);
+            let scale = keyframe::ease(keyframe::functions::EaseInOut, -1., -2., time);
+            let rotate_x = keyframe::ease(keyframe::functions::EaseInOut, 0., 45., time);
+            let rotate_z = keyframe::ease(keyframe::functions::EaseInOut, 0., -360., time_z);
             cx.update(|cx| {
                 cx.transform(
                     z_scale_factor as f32,
-                    cx.scale,
+                    scale,
                     rotate_x,
                     cx.rotate_y,
                     rotate_z,
@@ -609,9 +611,9 @@ fn start_animation(_: &mut Workspace, _: &StartAnimation, cx: &mut ViewContext<W
                 cx.background().timer(sleep).await;
             }
             previous_frame = Instant::now();
-            let time_z = (initial_start.elapsed().as_secs_f64() / 10.).min(1.);
+            let time_z = (initial_start.elapsed().as_secs_f64() / 5.).min(1.);
 
-            let rotate_z = keyframe::ease(keyframe::functions::EaseOutCubic, 0., -360., time_z);
+            let rotate_z = keyframe::ease(keyframe::functions::EaseInOut, 0., -360., time_z);
             cx.update(|cx| {
                 cx.transform(
                     cx.layer_z_factor,
@@ -628,10 +630,12 @@ fn start_animation(_: &mut Workspace, _: &StartAnimation, cx: &mut ViewContext<W
             }
         }
 
+        let prev_scale = cx.update(|cx| cx.scale);
         let prev_scale_factor = cx.update(|cx| cx.layer_z_factor);
         let prev_rotate_x = cx.update(|cx| cx.rotate_x);
 
         let animation_start = Instant::now();
+        let remaining_time = 5. - initial_start.elapsed().as_secs_f64();
         let mut previous_frame = Instant::now();
         loop {
             let next_frame = previous_frame + FRAME_INTERVAL;
@@ -639,22 +643,18 @@ fn start_animation(_: &mut Workspace, _: &StartAnimation, cx: &mut ViewContext<W
                 cx.background().timer(sleep).await;
             }
             previous_frame = Instant::now();
-            let time = (animation_start.elapsed().as_secs_f64() / 2.).min(1.);
-            let time_z = (initial_start.elapsed().as_secs_f64() / 10.).min(1.);
+            let time = (animation_start.elapsed().as_secs_f64() / remaining_time).min(1.);
+            let time_z = (initial_start.elapsed().as_secs_f64() / 5.).min(1.);
 
-            let z_scale_factor = keyframe::ease(
-                keyframe::functions::EaseOutCubic,
-                prev_scale_factor,
-                0.,
-                time,
-            );
-            let rotate_x =
-                keyframe::ease(keyframe::functions::EaseOutCubic, prev_rotate_x, 0., time);
-            let rotate_z = keyframe::ease(keyframe::functions::EaseOutCubic, 0., -360., time_z);
+            let scale = keyframe::ease(keyframe::functions::EaseInOut, prev_scale, -1., time);
+            let z_scale_factor =
+                keyframe::ease(keyframe::functions::EaseInOut, prev_scale_factor, 0., time);
+            let rotate_x = keyframe::ease(keyframe::functions::EaseInOut, prev_rotate_x, 0., time);
+            let rotate_z = keyframe::ease(keyframe::functions::EaseInOut, 0., -360., time_z);
             cx.update(|cx| {
                 cx.transform(
                     z_scale_factor as f32,
-                    cx.scale,
+                    scale,
                     rotate_x,
                     cx.rotate_y,
                     rotate_z,

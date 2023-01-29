@@ -655,11 +655,11 @@ impl MutableAppContext {
     ) -> Self {
         Self {
             layer_z_factor: 0.,
-            scale: -2.5,
+            scale: -1.,
             rotate_x: 0.,
             rotate_y: 0.,
             rotate_z: 0.,
-            fov: 70.,
+            fov: 90.,
             weak_self: None,
             foreground_platform,
             assets: Arc::new(AssetCache::new(asset_source)),

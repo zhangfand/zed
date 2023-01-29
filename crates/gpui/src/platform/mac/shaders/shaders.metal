@@ -104,7 +104,7 @@ float4 to_device_position_3d(float2 pixel_position_, GPUIUniforms uniforms, floa
     
     float near = 0.1;
     float far = 100.;
-    float aspect = viewport_size.x / viewport_size.y;
+    float aspect = 1.;
     float4x4 projection_matrix = perspective_projection(aspect, deg_to_rad(uniforms.fov), near, far);
 
     float4x4 model_view = view_matrix * model_matrix;
