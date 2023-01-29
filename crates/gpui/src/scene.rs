@@ -26,6 +26,7 @@ pub struct SceneBuilder {
     rotate_y: f32,
     rotate_z: f32,
     fov: f32,
+    opacity: f32,
     stacking_contexts: Vec<StackingContext>,
     active_stacking_context_stack: Vec<usize>,
     #[cfg(debug_assertions)]
@@ -40,6 +41,7 @@ pub struct Scene {
     pub rotate_y: f32,
     pub rotate_z: f32,
     pub fov: f32,
+    pub opacity: f32,
     stacking_contexts: Vec<StackingContext>,
 }
 
@@ -236,6 +238,7 @@ impl SceneBuilder {
         rotate_y: f32,
         rotate_z: f32,
         fov: f32,
+        opacity: f32,
     ) -> Self {
         let stacking_context = StackingContext::new(None, 0);
         SceneBuilder {
@@ -246,6 +249,7 @@ impl SceneBuilder {
             rotate_y,
             rotate_z,
             fov,
+            opacity,
             stacking_contexts: vec![stacking_context],
             active_stacking_context_stack: vec![0],
             #[cfg(debug_assertions)]
@@ -264,6 +268,7 @@ impl SceneBuilder {
             rotate_y: self.rotate_y,
             rotate_z: self.rotate_z,
             fov: self.fov,
+            opacity: self.opacity,
             stacking_contexts: self.stacking_contexts,
         }
     }

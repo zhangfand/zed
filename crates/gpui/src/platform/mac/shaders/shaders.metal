@@ -7,10 +7,9 @@ float4 coloru_to_colorf(uchar4 coloru) {
     return float4(coloru) / float4(0xff, 0xff, 0xff, 0xff);
 }
 
-
 float deg_to_rad(float deg)
 {
-    return deg * (3.14 / 180);
+    return deg * (M_PI_F / 180);
 }
 
 float4x4 identity()
@@ -22,7 +21,6 @@ float4x4 identity()
     float4x4 mat = float4x4(X, Y, Z, W);
     return mat;
 }
-
 
 float4x4 perspective_projection(float aspect, float fovy, float near, float far)
 {
@@ -72,23 +70,6 @@ float4x4 rotation(float3 axis, float angle)
     
     float4x4 mat = float4x4(X, Y, Z, W);
     return mat;
-}
-
-float4 to_device_position(float2 pixel_position_, float2 viewport_size) {
-    float4 pixel_position = float4(pixel_position_ / viewport_size * float2(2., -2.) + float2(-1., 1.), 0., 1.);
-    
-    float4x4 model_matrix = rotation(float3(0., 1., 0.), -deg_to_rad(30.));
-    float4x4 view_matrix = identity();
-    view_matrix.columns[3].z = -2;
-    
-    float near = 0.1;
-    float far = 100.;
-    float aspect = viewport_size.x / viewport_size.y;
-    float4x4 projection_matrix = perspective_projection(aspect, deg_to_rad(75.), near, far);
-
-    float4x4 model_view = view_matrix * model_matrix;
-    float4x4 model_view_proj = projection_matrix * model_view;
-    return model_view_proj * pixel_position;
 }
 
 float4 to_device_position_3d(float2 pixel_position_, GPUIUniforms uniforms, float z) {
@@ -146,7 +127,7 @@ struct QuadFragmentInput {
     float border_left;
     float4 border_color;
     float corner_radius;
-    uchar grayscale; // only used in image shader
+    float opacity;
 };
 
 float4 quad_sdf(QuadFragmentInput input) {
@@ -186,7 +167,7 @@ float4 quad_sdf(QuadFragmentInput input) {
         color = float4(premultiplied_output_rgb / output_alpha, output_alpha);
     }
 
-    return color * float4(1., 1., 1., saturate(0.5 - distance));
+    return color * float4(1., 1., 1., saturate(0.5 - distance) * input.opacity);
 }
 
 vertex QuadFragmentInput quad_vertex(
@@ -214,7 +195,7 @@ vertex QuadFragmentInput quad_vertex(
         quad.border_left,
         coloru_to_colorf(quad.border_color),
         quad.corner_radius,
-        0,
+        uniforms->opacity
     };
 }
 
@@ -224,71 +205,12 @@ fragment float4 quad_fragment(
     return quad_sdf(input);
 }
 
-struct ShadowFragmentInput {
-    float4 position [[position]];
-    vector_float2 origin;
-    vector_float2 size;
-    float corner_radius;
-    float sigma;
-    vector_uchar4 color;
-};
-
-vertex ShadowFragmentInput shadow_vertex(
-    uint unit_vertex_id [[vertex_id]],
-    uint shadow_id [[instance_id]],
-    constant float2 *unit_vertices [[buffer(GPUIShadowInputIndexVertices)]],
-    constant GPUIShadow *shadows [[buffer(GPUIShadowInputIndexShadows)]],
-    constant GPUIUniforms *uniforms [[buffer(GPUIShadowInputIndexUniforms)]]
-) {
-    float2 unit_vertex = unit_vertices[unit_vertex_id];
-    GPUIShadow shadow = shadows[shadow_id];
-
-    float margin = 3. * shadow.sigma;
-    float2 position = unit_vertex * (shadow.size + 2. * margin) + shadow.origin - margin;
-    float4 device_position = to_device_position(position, uniforms->viewport_size);
-
-    return ShadowFragmentInput {
-        device_position,
-        shadow.origin,
-        shadow.size,
-        shadow.corner_radius,
-        shadow.sigma,
-        shadow.color,
-    };
-}
-
-fragment float4 shadow_fragment(
-    ShadowFragmentInput input [[stage_in]]
-) {
-    float sigma = input.sigma;
-    float corner_radius = input.corner_radius;
-    float2 half_size = input.size / 2.;
-    float2 center = input.origin + half_size;
-    float2 point = input.position.xy - center;
-
-    // The signal is only non-zero in a limited range, so don't waste samples
-    float low = point.y - half_size.y;
-    float high = point.y + half_size.y;
-    float start = clamp(-3. * sigma, low, high);
-    float end = clamp(3. * sigma, low, high);
-
-    // Accumulate samples (we can get away with surprisingly few samples)
-    float step = (end - start) / 4.;
-    float y = start + step * 0.5;
-    float alpha = 0.;
-    for (int i = 0; i < 4; i++) {
-        alpha += blur_along_x(point.x, point.y - y, sigma, corner_radius, half_size) * gaussian(y, sigma) * step;
-        y += step;
-    }
-
-    return float4(1., 1., 1., alpha) * coloru_to_colorf(input.color);
-}
-
 struct SpriteFragmentInput {
     float4 position [[position]];
     float2 atlas_position;
     float4 color [[flat]];
     uchar compute_winding [[flat]];
+    float opacity;
 };
 
 vertex SpriteFragmentInput sprite_vertex(
@@ -309,7 +231,8 @@ vertex SpriteFragmentInput sprite_vertex(
         device_position,
         atlas_position,
         coloru_to_colorf(sprite.color),
-        sprite.compute_winding
+        sprite.compute_winding,
+        uniforms->opacity
     };
 }
 
@@ -326,200 +249,6 @@ fragment float4 sprite_fragment(
     } else {
         mask = sample.a;
     }
-    color.a *= mask;
+    color.a *= mask * input.opacity;
     return color;
-}
-
-vertex QuadFragmentInput image_vertex(
-    uint unit_vertex_id [[vertex_id]],
-    uint image_id [[instance_id]],
-    constant float2 *unit_vertices [[buffer(GPUIImageVertexInputIndexVertices)]],
-    constant GPUIImage *images [[buffer(GPUIImageVertexInputIndexImages)]],
-    constant float2 *viewport_size [[buffer(GPUIImageVertexInputIndexViewportSize)]],
-    constant float2 *atlas_size [[buffer(GPUIImageVertexInputIndexAtlasSize)]]
-) {
-    float2 unit_vertex = unit_vertices[unit_vertex_id];
-    GPUIImage image = images[image_id];
-    float2 position = unit_vertex * image.target_size + image.origin;
-    float4 device_position = to_device_position(position, *viewport_size);
-    float2 atlas_position = (unit_vertex * image.source_size + image.atlas_origin) / *atlas_size;
-
-    return QuadFragmentInput {
-        device_position,
-        position,
-        atlas_position,
-        image.origin,
-        image.target_size,
-        float4(0.),
-        image.border_top,
-        image.border_right,
-        image.border_bottom,
-        image.border_left,
-        coloru_to_colorf(image.border_color),
-        image.corner_radius,
-        image.grayscale,
-    };
-}
-
-fragment float4 image_fragment(
-    QuadFragmentInput input [[stage_in]],
-    texture2d<float> atlas [[ texture(GPUIImageFragmentInputIndexAtlas) ]]
-) {
-    constexpr sampler atlas_sampler(mag_filter::linear, min_filter::linear);
-    input.background_color = atlas.sample(atlas_sampler, input.atlas_position);
-    if (input.grayscale) {
-        float grayscale =
-            0.2126 * input.background_color.r +
-            0.7152 * input.background_color.g + 
-            0.0722 * input.background_color.b;
-        input.background_color = float4(grayscale, grayscale, grayscale, input.background_color.a);
-    }
-    return quad_sdf(input);
-}
-
-vertex QuadFragmentInput surface_vertex(
-    uint unit_vertex_id [[vertex_id]],
-    uint image_id [[instance_id]],
-    constant float2 *unit_vertices [[buffer(GPUISurfaceVertexInputIndexVertices)]],
-    constant GPUISurface *images [[buffer(GPUISurfaceVertexInputIndexSurfaces)]],
-    constant float2 *viewport_size [[buffer(GPUISurfaceVertexInputIndexViewportSize)]],
-    constant float2 *atlas_size [[buffer(GPUISurfaceVertexInputIndexAtlasSize)]]
-) {
-    float2 unit_vertex = unit_vertices[unit_vertex_id];
-    GPUISurface image = images[image_id];
-    float2 position = unit_vertex * image.target_size + image.origin;
-    float4 device_position = to_device_position(position, *viewport_size);
-    float2 atlas_position = (unit_vertex * image.source_size) / *atlas_size;
-
-    return QuadFragmentInput {
-        device_position,
-        position,
-        atlas_position,
-        image.origin,
-        image.target_size,
-        float4(0.),
-        0.,
-        0.,
-        0.,
-        0.,
-        float4(0.),
-        0.,
-        0,
-    };
-}
-
-fragment float4 surface_fragment(
-    QuadFragmentInput input [[stage_in]],
-    texture2d<float> y_atlas [[ texture(GPUISurfaceFragmentInputIndexYAtlas) ]],
-    texture2d<float> cb_cr_atlas [[ texture(GPUISurfaceFragmentInputIndexCbCrAtlas) ]]
-) {
-    constexpr sampler atlas_sampler(mag_filter::linear, min_filter::linear);
-    const float4x4 ycbcrToRGBTransform = float4x4(
-        float4(+1.0000f, +1.0000f, +1.0000f, +0.0000f),
-        float4(+0.0000f, -0.3441f, +1.7720f, +0.0000f),
-        float4(+1.4020f, -0.7141f, +0.0000f, +0.0000f),
-        float4(-0.7010f, +0.5291f, -0.8860f, +1.0000f)
-    );
-    float4 ycbcr = float4(y_atlas.sample(atlas_sampler, input.atlas_position).r,
-                          cb_cr_atlas.sample(atlas_sampler, input.atlas_position).rg, 1.0);
-
-    input.background_color = ycbcrToRGBTransform * ycbcr;
-    return quad_sdf(input);
-}
-
-struct PathAtlasVertexOutput {
-    float4 position [[position]];
-    float2 st_position;
-    float clip_rect_distance [[clip_distance]] [4];
-};
-
-struct PathAtlasFragmentInput {
-    float4 position [[position]];
-    float2 st_position;
-};
-
-vertex PathAtlasVertexOutput path_atlas_vertex(
-    uint vertex_id [[vertex_id]],
-    constant GPUIPathVertex *vertices [[buffer(GPUIPathAtlasVertexInputIndexVertices)]],
-    constant float2 *atlas_size [[buffer(GPUIPathAtlasVertexInputIndexAtlasSize)]]
-) {
-    GPUIPathVertex v = vertices[vertex_id];
-    float4 device_position = to_device_position(v.xy_position, *atlas_size);
-    return PathAtlasVertexOutput {
-        device_position,
-        v.st_position,
-        {
-            v.xy_position.x - v.clip_rect_origin.x,
-            v.clip_rect_origin.x + v.clip_rect_size.x - v.xy_position.x,
-            v.xy_position.y - v.clip_rect_origin.y,
-            v.clip_rect_origin.y + v.clip_rect_size.y - v.xy_position.y
-        }
-    };
-}
-
-fragment float4 path_atlas_fragment(
-    PathAtlasFragmentInput input [[stage_in]]
-) {
-    float2 dx = dfdx(input.st_position);
-    float2 dy = dfdy(input.st_position);
-    float2 gradient = float2(
-        (2. * input.st_position.x) * dx.x - dx.y,
-        (2. * input.st_position.x) * dy.x - dy.y
-    );
-    float f = (input.st_position.x * input.st_position.x) - input.st_position.y;
-    float distance = f / length(gradient);
-    float alpha = saturate(0.5 - distance);
-    return float4(alpha, 0., 0., 1.);
-}
-
-struct UnderlineFragmentInput {
-    float4 position [[position]];
-    float2 origin;
-    float2 size;
-    float thickness;
-    float4 color;
-    bool squiggly;
-};
-
-vertex UnderlineFragmentInput underline_vertex(
-    uint unit_vertex_id [[vertex_id]],
-    uint underline_id [[instance_id]],
-    constant float2 *unit_vertices [[buffer(GPUIUnderlineInputIndexVertices)]],
-    constant GPUIUnderline *underlines [[buffer(GPUIUnderlineInputIndexUnderlines)]],
-    constant GPUIUniforms *uniforms [[buffer(GPUIUnderlineInputIndexUniforms)]]
-) {
-    float2 unit_vertex = unit_vertices[unit_vertex_id];
-    GPUIUnderline underline = underlines[underline_id];
-    float2 position = unit_vertex * underline.size + underline.origin;
-    float4 device_position = to_device_position(position, uniforms->viewport_size);
-
-    return UnderlineFragmentInput {
-        device_position,
-        underline.origin,
-        underline.size,
-        underline.thickness,
-        coloru_to_colorf(underline.color),
-        underline.squiggly != 0,
-    };
-}
-
-fragment float4 underline_fragment(
-    UnderlineFragmentInput input [[stage_in]]
-) {
-    if (input.squiggly) {
-        float half_thickness = input.thickness * 0.5;
-        float2 st = ((input.position.xy - input.origin) / input.size.y) - float2(0., 0.5);
-        float frequency = (M_PI_F * (3. * input.thickness)) / 8.;
-        float amplitude = 1. / (2. * input.thickness);
-        float sine = sin(st.x * frequency) * amplitude;
-        float dSine = cos(st.x * frequency) * amplitude * frequency;
-        float distance = (st.y - sine) / sqrt(1. + dSine * dSine);
-        float distance_in_pixels = distance * input.size.y;
-        float distance_from_top_border = distance_in_pixels - half_thickness;
-        float distance_from_bottom_border = distance_in_pixels + half_thickness;
-        float alpha = saturate(0.5 - max(-distance_from_bottom_border, distance_from_top_border));
-        return input.color * float4(1., 1., 1., alpha);
-    } else {
-        return input.color;
-    }
 }

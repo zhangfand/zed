@@ -22,7 +22,6 @@ use gpui::{
     platform::{WindowBounds, WindowOptions},
     AssetSource, AsyncAppContext, PromptLevel, TitlebarOptions, ViewContext, WindowKind,
 };
-use keyframe::keyframes;
 use language::Rope;
 use lazy_static::lazy_static;
 pub use lsp;
@@ -477,6 +476,7 @@ fn increase_scale(_: &mut Workspace, _: &IncreaseScale, cx: &mut ViewContext<Wor
             cx.rotate_y,
             cx.rotate_z,
             cx.fov,
+            cx.opacity,
         );
         dbg!(cx.scale);
     });
@@ -491,6 +491,7 @@ fn decrease_scale(_: &mut Workspace, _: &DecreaseScale, cx: &mut ViewContext<Wor
             cx.rotate_y,
             cx.rotate_z,
             cx.fov,
+            cx.opacity,
         );
         dbg!(cx.scale);
     });
@@ -505,6 +506,7 @@ fn increase_fov(_: &mut Workspace, _: &IncreaseFov, cx: &mut ViewContext<Workspa
             cx.rotate_y,
             cx.rotate_z,
             cx.fov + 1.,
+            cx.opacity,
         );
         dbg!(cx.fov);
     });
@@ -519,6 +521,7 @@ fn decrease_fov(_: &mut Workspace, _: &DecreaseFov, cx: &mut ViewContext<Workspa
             cx.rotate_y,
             cx.rotate_z,
             cx.fov - 1.,
+            cx.opacity,
         );
         dbg!(cx.fov);
     });
@@ -533,6 +536,7 @@ fn rotate_x(_: &mut Workspace, _: &RotateX, cx: &mut ViewContext<Workspace>) {
             cx.rotate_y,
             cx.rotate_z,
             cx.fov,
+            cx.opacity,
         );
         dbg!(cx.rotate_x);
     });
@@ -547,6 +551,7 @@ fn rotate_y(_: &mut Workspace, _: &RotateY, cx: &mut ViewContext<Workspace>) {
             cx.rotate_y + 1.,
             cx.rotate_z,
             cx.fov,
+            cx.opacity,
         );
         dbg!(cx.rotate_y);
     });
@@ -561,6 +566,7 @@ fn rotate_z(_: &mut Workspace, _: &RotateZ, cx: &mut ViewContext<Workspace>) {
             cx.rotate_y,
             cx.rotate_z + 1.,
             cx.fov,
+            cx.opacity,
         );
         dbg!(cx.rotate_z);
     });
@@ -588,6 +594,7 @@ fn start_animation(_: &mut Workspace, _: &StartAnimation, cx: &mut ViewContext<W
             let scale = keyframe::ease(keyframe::functions::EaseInOut, -1., -2., time);
             let rotate_x = keyframe::ease(keyframe::functions::EaseInOut, 0., 45., time);
             let rotate_z = keyframe::ease(keyframe::functions::EaseInOut, 0., -360., time_z);
+            let opacity = keyframe::ease(keyframe::functions::EaseInOut, 1., 0.5, time);
             cx.update(|cx| {
                 cx.transform(
                     z_scale_factor as f32,
@@ -596,6 +603,7 @@ fn start_animation(_: &mut Workspace, _: &StartAnimation, cx: &mut ViewContext<W
                     cx.rotate_y,
                     rotate_z,
                     cx.fov,
+                    opacity,
                 )
             });
 
@@ -622,6 +630,7 @@ fn start_animation(_: &mut Workspace, _: &StartAnimation, cx: &mut ViewContext<W
                     cx.rotate_y,
                     rotate_z,
                     cx.fov,
+                    cx.opacity,
                 )
             });
 
@@ -631,6 +640,7 @@ fn start_animation(_: &mut Workspace, _: &StartAnimation, cx: &mut ViewContext<W
         }
 
         let prev_scale = cx.update(|cx| cx.scale);
+        let prev_opacity = cx.update(|cx| cx.opacity);
         let prev_scale_factor = cx.update(|cx| cx.layer_z_factor);
         let prev_rotate_x = cx.update(|cx| cx.rotate_x);
 
@@ -647,6 +657,7 @@ fn start_animation(_: &mut Workspace, _: &StartAnimation, cx: &mut ViewContext<W
             let time_z = (initial_start.elapsed().as_secs_f64() / 5.).min(1.);
 
             let scale = keyframe::ease(keyframe::functions::EaseInOut, prev_scale, -1., time);
+            let opacity = keyframe::ease(keyframe::functions::EaseInOut, prev_opacity, 1., time);
             let z_scale_factor =
                 keyframe::ease(keyframe::functions::EaseInOut, prev_scale_factor, 0., time);
             let rotate_x = keyframe::ease(keyframe::functions::EaseInOut, prev_rotate_x, 0., time);
@@ -659,6 +670,7 @@ fn start_animation(_: &mut Workspace, _: &StartAnimation, cx: &mut ViewContext<W
                     cx.rotate_y,
                     rotate_z,
                     cx.fov,
+                    opacity,
                 )
             });
 

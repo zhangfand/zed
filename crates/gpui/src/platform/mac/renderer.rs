@@ -1,4 +1,4 @@
-use super::{atlas::AtlasAllocator, image_cache::ImageCache, sprite_cache::SpriteCache};
+use super::{image_cache::ImageCache, sprite_cache::SpriteCache};
 use crate::{
     color::Color,
     geometry::{
@@ -13,8 +13,7 @@ use cocoa::{
     foundation::NSUInteger,
     quartzcore::AutoresizingMask,
 };
-use foreign_types::ForeignTypeRef;
-use media::core_video::{self, CVMetalTextureCache};
+use media::core_video;
 use metal::{CommandQueue, MTLPixelFormat, MTLResourceOptions, NSRange};
 use objc::{self, msg_send, sel, sel_impl};
 use shaders::ToFloat2 as _;
@@ -28,23 +27,10 @@ pub struct Renderer {
     command_queue: CommandQueue,
     sprite_cache: SpriteCache,
     image_cache: ImageCache,
-    path_atlases: AtlasAllocator,
     quad_pipeline_state: metal::RenderPipelineState,
-    shadow_pipeline_state: metal::RenderPipelineState,
     sprite_pipeline_state: metal::RenderPipelineState,
-    image_pipeline_state: metal::RenderPipelineState,
-    surface_pipeline_state: metal::RenderPipelineState,
-    path_atlas_pipeline_state: metal::RenderPipelineState,
-    underline_pipeline_state: metal::RenderPipelineState,
     unit_vertices: metal::Buffer,
     instances: metal::Buffer,
-    cv_texture_cache: core_video::CVMetalTextureCache,
-}
-
-struct PathSprite {
-    layer_id: usize,
-    atlas_id: usize,
-    shader_data: shaders::GPUISprite,
 }
 
 pub struct Surface {
@@ -102,22 +88,12 @@ impl Renderer {
 
         let sprite_cache = SpriteCache::new(device.clone(), vec2i(1024, 768), 1., fonts.clone());
         let image_cache = ImageCache::new(device.clone(), vec2i(1024, 768), 1., fonts);
-        let path_atlases =
-            AtlasAllocator::new(device.clone(), build_path_atlas_texture_descriptor());
         let quad_pipeline_state = build_pipeline_state(
             &device,
             &library,
             "quad",
             "quad_vertex",
             "quad_fragment",
-            PIXEL_FORMAT,
-        );
-        let shadow_pipeline_state = build_pipeline_state(
-            &device,
-            &library,
-            "shadow",
-            "shadow_vertex",
-            "shadow_fragment",
             PIXEL_FORMAT,
         );
         let sprite_pipeline_state = build_pipeline_state(
@@ -128,55 +104,15 @@ impl Renderer {
             "sprite_fragment",
             PIXEL_FORMAT,
         );
-        let image_pipeline_state = build_pipeline_state(
-            &device,
-            &library,
-            "image",
-            "image_vertex",
-            "image_fragment",
-            PIXEL_FORMAT,
-        );
-        let surface_pipeline_state = build_pipeline_state(
-            &device,
-            &library,
-            "surface",
-            "surface_vertex",
-            "surface_fragment",
-            PIXEL_FORMAT,
-        );
-        let path_atlas_pipeline_state = build_path_atlas_pipeline_state(
-            &device,
-            &library,
-            "path_atlas",
-            "path_atlas_vertex",
-            "path_atlas_fragment",
-            MTLPixelFormat::R16Float,
-        );
-        let underline_pipeline_state = build_pipeline_state(
-            &device,
-            &library,
-            "underline",
-            "underline_vertex",
-            "underline_fragment",
-            PIXEL_FORMAT,
-        );
-        let cv_texture_cache = CVMetalTextureCache::new(device.as_ptr()).unwrap();
         Self {
             layer,
             command_queue: device.new_command_queue(),
             sprite_cache,
             image_cache,
-            path_atlases,
             quad_pipeline_state,
-            shadow_pipeline_state,
             sprite_pipeline_state,
-            image_pipeline_state,
-            surface_pipeline_state,
-            path_atlas_pipeline_state,
-            underline_pipeline_state,
             unit_vertices,
             instances,
-            cv_texture_cache,
         }
     }
 
@@ -263,6 +199,7 @@ impl Renderer {
                 scene.rotate_y,
                 scene.rotate_z,
                 scene.fov,
+                scene.opacity,
                 layer.quads(),
                 scale_factor,
                 offset,
@@ -276,6 +213,7 @@ impl Renderer {
                 scene.rotate_y,
                 scene.rotate_z,
                 scene.fov,
+                scene.opacity,
                 layer.glyphs(),
                 layer.icons(),
                 scale_factor,
@@ -296,6 +234,7 @@ impl Renderer {
         rotate_y: f32,
         rotate_z: f32,
         fov: f32,
+        opacity: f32,
         quads: &[Quad],
         scale_factor: f32,
         offset: &mut usize,
@@ -332,6 +271,7 @@ impl Renderer {
                 rotate_x,
                 rotate_y,
                 rotate_z,
+                opacity,
                 fov,
             }]
             .as_ptr() as *const c_void,
@@ -380,6 +320,7 @@ impl Renderer {
         rotate_y: f32,
         rotate_z: f32,
         fov: f32,
+        opacity: f32,
         glyphs: &[Glyph],
         icons: &[Icon],
         scale_factor: f32,
@@ -461,6 +402,7 @@ impl Renderer {
                 rotate_y,
                 rotate_z,
                 fov,
+                opacity,
             }]
             .as_ptr() as *const c_void,
         );
@@ -508,17 +450,6 @@ impl Renderer {
     }
 }
 
-fn build_path_atlas_texture_descriptor() -> metal::TextureDescriptor {
-    let texture_descriptor = metal::TextureDescriptor::new();
-    texture_descriptor.set_width(2048);
-    texture_descriptor.set_height(2048);
-    texture_descriptor.set_pixel_format(MTLPixelFormat::R16Float);
-    texture_descriptor
-        .set_usage(metal::MTLTextureUsage::RenderTarget | metal::MTLTextureUsage::ShaderRead);
-    texture_descriptor.set_storage_mode(metal::MTLStorageMode::Private);
-    texture_descriptor
-}
-
 fn align_offset(offset: &mut usize) {
     let r = *offset % 256;
     if r > 0 {
@@ -553,40 +484,6 @@ fn build_pipeline_state(
     color_attachment.set_source_rgb_blend_factor(metal::MTLBlendFactor::SourceAlpha);
     color_attachment.set_source_alpha_blend_factor(metal::MTLBlendFactor::One);
     color_attachment.set_destination_rgb_blend_factor(metal::MTLBlendFactor::OneMinusSourceAlpha);
-    color_attachment.set_destination_alpha_blend_factor(metal::MTLBlendFactor::One);
-
-    device
-        .new_render_pipeline_state(&descriptor)
-        .expect("could not create render pipeline state")
-}
-
-fn build_path_atlas_pipeline_state(
-    device: &metal::DeviceRef,
-    library: &metal::LibraryRef,
-    label: &str,
-    vertex_fn_name: &str,
-    fragment_fn_name: &str,
-    pixel_format: metal::MTLPixelFormat,
-) -> metal::RenderPipelineState {
-    let vertex_fn = library
-        .get_function(vertex_fn_name, None)
-        .expect("error locating vertex function");
-    let fragment_fn = library
-        .get_function(fragment_fn_name, None)
-        .expect("error locating fragment function");
-
-    let descriptor = metal::RenderPipelineDescriptor::new();
-    descriptor.set_label(label);
-    descriptor.set_vertex_function(Some(vertex_fn.as_ref()));
-    descriptor.set_fragment_function(Some(fragment_fn.as_ref()));
-    let color_attachment = descriptor.color_attachments().object_at(0).unwrap();
-    color_attachment.set_pixel_format(pixel_format);
-    color_attachment.set_blending_enabled(true);
-    color_attachment.set_rgb_blend_operation(metal::MTLBlendOperation::Add);
-    color_attachment.set_alpha_blend_operation(metal::MTLBlendOperation::Add);
-    color_attachment.set_source_rgb_blend_factor(metal::MTLBlendFactor::One);
-    color_attachment.set_source_alpha_blend_factor(metal::MTLBlendFactor::One);
-    color_attachment.set_destination_rgb_blend_factor(metal::MTLBlendFactor::One);
     color_attachment.set_destination_alpha_blend_factor(metal::MTLBlendFactor::One);
 
     device

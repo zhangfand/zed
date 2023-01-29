@@ -149,6 +149,7 @@ impl Presenter {
             cx.rotate_y,
             cx.rotate_z,
             cx.fov,
+            cx.opacity,
         );
 
         if let Some(root_view_id) = cx.root_view_id(self.window_id) {

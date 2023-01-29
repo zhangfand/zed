@@ -606,6 +606,7 @@ pub struct MutableAppContext {
     pub rotate_y: f32,
     pub rotate_z: f32,
     pub fov: f32,
+    pub opacity: f32,
     weak_self: Option<rc::Weak<RefCell<Self>>>,
     foreground_platform: Rc<dyn platform::ForegroundPlatform>,
     assets: Arc<AssetCache>,
@@ -660,6 +661,7 @@ impl MutableAppContext {
             rotate_y: 0.,
             rotate_z: 0.,
             fov: 90.,
+            opacity: 1.,
             weak_self: None,
             foreground_platform,
             assets: Arc::new(AssetCache::new(asset_source)),
@@ -713,6 +715,7 @@ impl MutableAppContext {
         rotate_y: f32,
         rotate_z: f32,
         fov: f32,
+        opacity: f32,
     ) {
         self.layer_z_factor = layer_z_factor;
         self.scale = scale;
@@ -720,6 +723,7 @@ impl MutableAppContext {
         self.rotate_y = rotate_y;
         self.rotate_z = rotate_z;
         self.fov = fov;
+        self.opacity = opacity;
         self.perform_window_refresh();
     }
 
