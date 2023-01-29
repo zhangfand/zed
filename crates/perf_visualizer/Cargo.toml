@@ -1,18 +1,16 @@
 [package]
-name = "theme_testbench"
+name = "perf_visualizer"
 version = "0.1.0"
 edition = "2021"
 publish = false
 
 [lib]
-path = "src/theme_testbench.rs"
+path = "src/perf_visualizer.rs"
 doctest = false
 
 [dependencies]
 gpui = { path = "../gpui" }
-theme = { path = "../theme" }
+perf = { path = "../perf" }
 settings = { path = "../settings" }
 workspace = { path = "../workspace" }
 project = { path = "../project" }
-
-smallvec = { version = "1.6", features = ["union"] }

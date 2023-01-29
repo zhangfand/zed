@@ -906,6 +906,7 @@ extern "C" fn handle_key_event(this: &Object, native_event: id, key_equivalent: 
     let event = unsafe { Event::from_native(native_event, Some(window_height)) };
 
     if let Some(event) = event {
+        record_event("Key Event", Some(window_state_borrow.id), None);
         if key_equivalent {
             window_state_borrow.performed_key_equivalent = true;
         } else if window_state_borrow.performed_key_equivalent {
@@ -1000,6 +1001,7 @@ extern "C" fn handle_view_event(this: &Object, _: Sel, native_event: id) {
     let window_height = window_state_borrow.content_size().y();
     let event = unsafe { Event::from_native(native_event, Some(window_height)) };
     if let Some(event) = event {
+        record_event("Mouse Event", Some(window_state_borrow.id), None);
         match &event {
             Event::MouseMoved(
                 event @ MouseMovedEvent {
