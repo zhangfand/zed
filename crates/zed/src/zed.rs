@@ -574,7 +574,7 @@ fn rotate_z(_: &mut Workspace, _: &RotateZ, cx: &mut ViewContext<Workspace>) {
 
 fn start_animation(_: &mut Workspace, _: &StartAnimation, cx: &mut ViewContext<Workspace>) {
     cx.spawn(|_, mut cx| async move {
-        const FRAME_INTERVAL: Duration = Duration::from_millis(8);
+        const FRAME_INTERVAL: Duration = Duration::from_millis(4);
 
         let initial_start = Instant::now();
 
@@ -586,8 +586,8 @@ fn start_animation(_: &mut Workspace, _: &StartAnimation, cx: &mut ViewContext<W
                 cx.background().timer(sleep).await;
             }
             previous_frame = Instant::now();
-            let time = (animation_start.elapsed().as_secs_f64() / 2.).min(1.);
-            let time_z = (initial_start.elapsed().as_secs_f64() / 5.).min(1.);
+            let time = (animation_start.elapsed().as_secs_f64() / 1.).min(1.);
+            let time_z = (initial_start.elapsed().as_secs_f64() / 4.).min(1.);
 
             let z_scale_factor: f64 =
                 keyframe::ease(keyframe::functions::EaseInOut, 0., 1. / 160., time);
@@ -619,7 +619,7 @@ fn start_animation(_: &mut Workspace, _: &StartAnimation, cx: &mut ViewContext<W
                 cx.background().timer(sleep).await;
             }
             previous_frame = Instant::now();
-            let time_z = (initial_start.elapsed().as_secs_f64() / 5.).min(1.);
+            let time_z = (initial_start.elapsed().as_secs_f64() / 4.).min(1.);
 
             let rotate_z = keyframe::ease(keyframe::functions::EaseInOut, 0., -360., time_z);
             cx.update(|cx| {
@@ -645,7 +645,7 @@ fn start_animation(_: &mut Workspace, _: &StartAnimation, cx: &mut ViewContext<W
         let prev_rotate_x = cx.update(|cx| cx.rotate_x);
 
         let animation_start = Instant::now();
-        let remaining_time = 5. - initial_start.elapsed().as_secs_f64();
+        let remaining_time = 4. - initial_start.elapsed().as_secs_f64();
         let mut previous_frame = Instant::now();
         loop {
             let next_frame = previous_frame + FRAME_INTERVAL;
@@ -654,7 +654,7 @@ fn start_animation(_: &mut Workspace, _: &StartAnimation, cx: &mut ViewContext<W
             }
             previous_frame = Instant::now();
             let time = (animation_start.elapsed().as_secs_f64() / remaining_time).min(1.);
-            let time_z = (initial_start.elapsed().as_secs_f64() / 5.).min(1.);
+            let time_z = (initial_start.elapsed().as_secs_f64() / 4.).min(1.);
 
             let scale = keyframe::ease(keyframe::functions::EaseInOut, prev_scale, -1., time);
             let opacity = keyframe::ease(keyframe::functions::EaseInOut, prev_opacity, 1., time);
