@@ -1,4 +1,5 @@
 import { ColorScheme } from "../themes/common/colorScheme"
+import buildTokens, { Tokens } from "../themes/common/tokens"
 import { withOpacity } from "../utils/color"
 import { text, border, background, foreground } from "./components"
 
@@ -8,10 +9,12 @@ export default function tabBar(colorScheme: ColorScheme) {
     let activeLayer = colorScheme.highest
     let layer = colorScheme.middle
 
+    const tokens: Tokens = buildTokens(colorScheme)
+
     const tab = {
         height,
         text: text(layer, "sans", "variant", { size: "sm" }),
-        background: background(layer),
+        background: tokens.tab_bar.tab.inactive.background,
         border: border(layer, {
             right: true,
             bottom: true,
@@ -44,7 +47,7 @@ export default function tabBar(colorScheme: ColorScheme) {
 
     const activePaneActiveTab = {
         ...tab,
-        background: background(activeLayer),
+        background: tokens.tab_bar.tab.active.background,
         text: text(activeLayer, "sans", "active", { size: "sm" }),
         border: {
             ...tab.border,

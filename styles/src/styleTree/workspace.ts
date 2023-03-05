@@ -1,4 +1,5 @@
 import { ColorScheme } from "../themes/common/colorScheme"
+import buildTokens, { Tokens } from "../themes/common/tokens"
 import { withOpacity } from "../utils/color"
 import { background, border, borderColor, foreground, text } from "./components"
 import statusBar from "./statusBar"
@@ -39,8 +40,10 @@ export default function workspace(colorScheme: ColorScheme) {
     const followerAvatarWidth = 14
     const followerAvatarOuterWidth = followerAvatarWidth + 4
 
+    const tokens: Tokens = buildTokens(colorScheme)
+
     return {
-        background: background(layer),
+        background: tokens.workspace.background,
         joiningProjectAvatar: {
             cornerRadius: 40,
             width: 80,
@@ -80,7 +83,7 @@ export default function workspace(colorScheme: ColorScheme) {
             itemSpacing,
             facePileSpacing: 2,
             height: 33, // 32px + 1px for overlaid border
-            background: background(layer),
+            background: tokens.title_bar.background,
             border: border(layer, { bottom: true, overlay: true }),
             padding: {
                 left: 80,

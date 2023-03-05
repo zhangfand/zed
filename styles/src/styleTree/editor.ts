@@ -4,8 +4,11 @@ import { background, border, borderColor, foreground, text } from "./components"
 import hoverPopover from "./hoverPopover"
 
 import { buildSyntax } from "../themes/common/syntax"
+import buildTokens, { Tokens } from "../themes/common/tokens"
 
 export default function editor(colorScheme: ColorScheme) {
+    const tokens: Tokens = buildTokens(colorScheme)
+
     let layer = colorScheme.highest
 
     const autocompleteItem = {
@@ -40,7 +43,7 @@ export default function editor(colorScheme: ColorScheme) {
 
     return {
         textColor: syntax.primary.color,
-        background: background(layer),
+        background: tokens.editor.background,
         activeLineBackground: withOpacity(background(layer, "on"), 0.75),
         highlightedLineBackground: background(layer, "on"),
         codeActions: {
@@ -98,10 +101,10 @@ export default function editor(colorScheme: ColorScheme) {
             .alpha(0.4)
             .hex(), // TODO: This was blend * 2
         errorColor: background(layer, "negative"),
-        gutterBackground: background(layer),
+        gutterBackground: tokens.editor.gutter.background,
         gutterPaddingFactor: 3.5,
-        lineNumber: withOpacity(foreground(layer), 0.35),
-        lineNumberActive: foreground(layer),
+        lineNumber: tokens.editor.line.inactive,
+        lineNumberActive: tokens.editor.line.active,
         renameFade: 0.6,
         unnecessaryCodeFade: 0.5,
         selection: colorScheme.players[0],

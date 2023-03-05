@@ -1,4 +1,5 @@
 import { ColorScheme } from "../themes/common/colorScheme"
+import buildTokens, { Tokens } from "../themes/common/tokens"
 import { withOpacity } from "../utils/color"
 import { background, border, foreground, text } from "./components"
 
@@ -28,8 +29,10 @@ export default function projectPanel(colorScheme: ColorScheme) {
         },
     }
 
+    const tokens: Tokens = buildTokens(colorScheme)
+
     return {
-        background: background(layer),
+        background: tokens.panel.background,
         padding: { left: 12, right: 12, top: 6, bottom: 6 },
         indentWidth: 8,
         entry,
