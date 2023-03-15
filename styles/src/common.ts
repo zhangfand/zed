@@ -1,6 +1,7 @@
 export const fontFamilies = {
     sans: "Zed Sans",
     mono: "Zed Mono",
+    inter: "Inter"
 }
 
 export const fontSizes = {

@@ -14,17 +14,17 @@ export default function projectPanel(colorScheme: ColorScheme) {
 
   let entry = {
     ...baseEntry,
-    text: text(layer, "mono", "variant", { size: "sm" }),
+    text: text(layer, "inter", "variant", { size: "sm" }),
     hover: {
       background: background(layer, "variant", "hovered"),
     },
     active: {
       background: colorScheme.isLight ? withOpacity(background(layer, "active"), 0.5) : background(layer, "active"),
-      text: text(layer, "mono", "active", { size: "sm" }),
+      text: text(layer, "inter", "active", { size: "sm" }),
     },
     activeHover: {
       background: background(layer, "active"),
-      text: text(layer, "mono", "active", { size: "sm" }),
+      text: text(layer, "inter", "active", { size: "sm" }),
     },
   }
 
