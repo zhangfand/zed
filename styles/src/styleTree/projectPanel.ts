@@ -1,6 +1,6 @@
 import { ColorScheme } from "../themes/common/colorScheme"
 import { withOpacity } from "../utils/color"
-import { background, border, foreground, text } from "./components"
+import { background, border, foreground, text, token_text } from "./components"
 
 export default function projectPanel(colorScheme: ColorScheme) {
   let layer = colorScheme.middle
@@ -14,17 +14,29 @@ export default function projectPanel(colorScheme: ColorScheme) {
 
   let entry = {
     ...baseEntry,
+<<<<<<< Updated upstream
     text: text(layer, "inter", "variant", { size: "sm" }),
+=======
+    text: token_text(layer, "mono", "variant", { size: "sm" }),
+>>>>>>> Stashed changes
     hover: {
       background: background(layer, "variant", "hovered"),
     },
     active: {
       background: colorScheme.isLight ? withOpacity(background(layer, "active"), 0.5) : background(layer, "active"),
+<<<<<<< Updated upstream
       text: text(layer, "inter", "active", { size: "sm" }),
     },
     activeHover: {
       background: background(layer, "active"),
       text: text(layer, "inter", "active", { size: "sm" }),
+=======
+      text: token_text(layer, "mono", "active", { size: "sm" }),
+    },
+    activeHover: {
+      background: background(layer, "active"),
+      text: token_text(layer, "mono", "active", { size: "sm" }),
+>>>>>>> Stashed changes
     },
   }
 
@@ -57,20 +69,20 @@ export default function projectPanel(colorScheme: ColorScheme) {
     entry,
     draggedEntry: {
       ...baseEntry,
-      text: text(layer, "mono", "on", { size: "sm" }),
+      text: token_text(layer, "mono", "on", { size: "sm" }),
       background: withOpacity(background(layer, "on"), 0.9),
       border: border(layer),
     },
     ignoredEntry: {
       ...entry,
-      text: text(layer, "mono", "disabled"),
+      text: token_text(layer, "mono", "disabled"),
     },
     cutEntry: {
       ...entry,
-      text: text(layer, "mono", "disabled"),
+      text: token_text(layer, "mono", "disabled"),
       active: {
         background: background(layer, "active"),
-        text: text(layer, "mono", "disabled", { size: "sm" }),
+        text: token_text(layer, "mono", "disabled", { size: "sm" }),
       },
     },
     filenameEditor: {

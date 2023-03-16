@@ -9,7 +9,7 @@ use gpui::{
 use serde::{de::DeserializeOwned, Deserialize};
 use serde_json::Value;
 use std::{collections::HashMap, sync::Arc};
-use ui::{CheckboxStyle, IconStyle};
+use ui::{CheckboxStyle, IconStyle, TokenText};
 
 pub mod ui;
 
@@ -361,12 +361,12 @@ pub struct ProjectPanel {
     pub open_project_button: Interactive<ContainedText>,
 }
 
-#[derive(Clone, Debug, Deserialize, Default)]
+#[derive(Clone, Deserialize, Default)]
 pub struct ProjectPanelEntry {
     pub height: f32,
     #[serde(flatten)]
     pub container: ContainerStyle,
-    pub text: TextStyle,
+    pub text: TokenText,
     pub icon_color: Color,
     pub icon_size: f32,
     pub icon_spacing: f32,

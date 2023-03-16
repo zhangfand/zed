@@ -18,7 +18,7 @@ use gpui::{
 };
 use menu::{Confirm, SelectNext, SelectPrev};
 use project::{Entry, EntryKind, Project, ProjectEntryId, ProjectPath, Worktree, WorktreeId};
-use settings::Settings;
+use settings::{theme_tokens::TokenTextIntoTextStyleExt, Settings};
 use std::{
     cmp::Ordering,
     collections::{hash_map, HashMap},
@@ -1115,12 +1115,15 @@ impl ProjectPanel {
                     .flex(1.0, true)
                     .boxed()
             } else {
-                Label::new(details.filename.clone(), style.text.clone())
-                    .contained()
-                    .with_margin_left(style.icon_spacing)
-                    .aligned()
-                    .left()
-                    .boxed()
+                Label::new(
+                    details.filename.clone(),
+                    style.text.clone().into_text_style(cx),
+                )
+                .contained()
+                .with_margin_left(style.icon_spacing)
+                .aligned()
+                .left()
+                .boxed()
             })
             .constrained()
             .with_height(style.height)

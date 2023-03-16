@@ -4,6 +4,7 @@ use gpui::{
         ConstrainedBox, Container, ContainerStyle, Empty, Flex, KeystrokeLabel, Label,
         MouseEventHandler, ParentElement, Svg,
     },
+    fonts::{UnderlineStyleJson, WeightJson},
     Action, Element, ElementBox, EventContext, RenderContext, View,
 };
 use serde::Deserialize;
@@ -146,4 +147,23 @@ pub fn keystroke_label_for(
         })
         .contained()
         .with_style(label_style.container)
+}
+
+#[derive(Clone, Deserialize, Default, Debug)]
+pub enum TextType {
+    #[default]
+    Ui,
+    Editor,
+}
+
+#[derive(Clone, Deserialize, Default)]
+pub struct TokenText {
+    pub color: Color,
+    pub text_type: TextType,
+    pub weight: Option<WeightJson>,
+    pub font_size: f32,
+    #[serde(default)]
+    pub italic: bool,
+    #[serde(default)]
+    pub underline: UnderlineStyleJson,
 }

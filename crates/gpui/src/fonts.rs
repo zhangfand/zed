@@ -50,8 +50,8 @@ pub struct Underline {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Deserialize)]
-enum WeightJson {
+#[derive(Deserialize, Clone)]
+pub enum WeightJson {
     thin,
     extra_light,
     light,
@@ -67,7 +67,7 @@ thread_local! {
     static FONT_CACHE: RefCell<Option<Arc<FontCache>>> = Default::default();
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 struct TextStyleJson {
     color: Color,
     family: String,
@@ -88,9 +88,9 @@ struct HighlightStyleJson {
     fade_out: Option<f32>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 #[serde(untagged)]
-enum UnderlineStyleJson {
+pub enum UnderlineStyleJson {
     Underlined(bool),
     UnderlinedWithProperties {
         #[serde(default)]
@@ -365,7 +365,7 @@ impl<'de> Deserialize<'de> for HighlightStyle {
     }
 }
 
-fn underline_from_json(json: UnderlineStyleJson) -> Underline {
+pub fn underline_from_json(json: UnderlineStyleJson) -> Underline {
     match json {
         UnderlineStyleJson::Underlined(false) => Underline::default(),
         UnderlineStyleJson::Underlined(true) => Underline {
@@ -385,7 +385,7 @@ fn underline_from_json(json: UnderlineStyleJson) -> Underline {
     }
 }
 
-fn properties_from_json(weight: Option<WeightJson>, italic: bool) -> Properties {
+pub fn properties_from_json(weight: Option<WeightJson>, italic: bool) -> Properties {
     let weight = weight.map(weight_from_json).unwrap_or_default();
     let style = if italic { Style::Italic } else { Style::Normal };
     *Properties::new().weight(weight).style(style)
