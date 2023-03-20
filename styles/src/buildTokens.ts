@@ -65,14 +65,14 @@ function createStyleSetTokens(styleSet: StyleSet): {
     [key in keyof StyleSet]: Record<keyof Style, Token>
 } {
     const stateTokens: { [key in keyof StyleSet]: Record<keyof Style, Token> } =
-        {
-            default: createStyleTokens(styleSet.default),
-            active: createStyleTokens(styleSet.active),
-            disabled: createStyleTokens(styleSet.disabled),
-            hovered: createStyleTokens(styleSet.hovered),
-            pressed: createStyleTokens(styleSet.pressed),
-            inverted: createStyleTokens(styleSet.inverted),
-        }
+    {
+        default: createStyleTokens(styleSet.default),
+        active: createStyleTokens(styleSet.active),
+        disabled: createStyleTokens(styleSet.disabled),
+        hovered: createStyleTokens(styleSet.hovered),
+        pressed: createStyleTokens(styleSet.pressed),
+        inverted: createStyleTokens(styleSet.inverted),
+    }
     return stateTokens
 }
 
@@ -148,7 +148,36 @@ export default function exportThemeTokens(colorScheme: ColorScheme): void {
     fs.writeFileSync(`tokens/${slug}.json`, JSON.stringify(tokens, null, 2))
 }
 
+function createThemeId(name: string, appearance: string): string {
+    const data = `${name}-${appearance}`;
+    const charCodes = Array.from(data).map(char => char.charCodeAt(0));
+    const sum = charCodes.reduce((accumulator, current) => accumulator + current, 0);
+    const id = `${appearance}_${name}_${sum}`;
+
+    return id.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+}
+
+function createThemesJson(themes: { [key: string]: ColorScheme }): void {
+    const themesArray = Object.entries(themes).map(([themeKey, colorScheme]) => {
+        const themeName = `${colorScheme.name} - ${colorScheme.isLight ? 'Light' : 'Dark'}`;
+        const id = createThemeId(colorScheme.name, colorScheme.isLight ? 'light' : 'dark');
+        const selectedTokenSets = {
+            common: 'enabled',
+            [themeKey.toLowerCase()]: 'enabled',
+        };
+
+        return { id, name: themeName, selectedTokenSets };
+    });
+
+    const jsonOutput = JSON.stringify(themesArray, null, 2);
+    fs.writeFileSync('tokens/$themes.json', jsonOutput);
+}
+
+
 // Export all the themes as tokens
 Object.values(themes).forEach((theme) => {
     exportThemeTokens(theme)
 })
+
+// Export the theme token index
+createThemesJson(themes);
