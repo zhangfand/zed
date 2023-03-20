@@ -2,10 +2,13 @@ import fs from "fs"
 import {
     ColorScheme,
     Layer,
+    Player,
+    Players,
     Style,
     StyleSet,
 } from "./themes/common/colorScheme"
-import { oneDark } from "./themes/index"
+import * as themes from "./themes/index"
+import { snakeCase } from "case-anything"
 
 type TokenType = "color" | "sizing" | "spacing" | "other"
 
@@ -16,22 +19,22 @@ interface Token {
     /**
      * The value of the token.
      */
-    $value: string | number | object
+    value: string | number | object
 
     /**
      * The type of the token, such as "color", "dimension", "number", etc.
      */
-    $type: TokenType
+    type: TokenType
 
     /**
      * Optional plain text description explaining the token's purpose.
      */
-    "$description?"?: string
+    "description?"?: string
 
     /**
      * Optional object for storing proprietary, user-, team-, or vendor-specific data.
      */
-    "$extensions?"?: {
+    "extensions?"?: {
         [key: string]: any
     }
 }
@@ -43,9 +46,9 @@ function token(
     description?: string
 ): Token {
     return {
-        $value: value,
-        $type: tokenType,
-        "$description?": description,
+        value: value,
+        type: tokenType,
+        "description?": description,
     }
 }
 
@@ -90,8 +93,38 @@ function createColorTokensFromScheme(colorSchemeData: Layer): {
     return colorTokens
 }
 
-export default function exportDesignTokens(colorScheme: ColorScheme): void {
+function createPlayerTokens(player: Player): { [key in keyof Player]: Token } {
+    const playerTokens: { [key in keyof Player]: Token } = {
+        cursor: token("cursor", player.cursor, "color"),
+        selection: token("selection", player.selection, "color"),
+    }
+    return playerTokens
+}
+
+function createPlayersTokens(players: Players): { [key: string]: Token } {
+    const playersTokens: { [key: string]: Token } = {}
+
+    for (const playerKey in players) {
+        const player = players[playerKey as keyof Players]
+        const playerTokens = createPlayerTokens(player)
+
+        for (const tokenKey in playerTokens) {
+            playersTokens[`player_${playerKey}_${tokenKey}`] =
+                playerTokens[tokenKey as keyof Player]
+        }
+    }
+
+    return playersTokens
+}
+
+export default function exportThemeTokens(colorScheme: ColorScheme): void {
+    const slug = snakeCase(colorScheme.name.toLowerCase())
+
     const lowest = createColorTokensFromScheme(colorScheme.lowest)
+    const middle = createColorTokensFromScheme(colorScheme.middle)
+    const highest = createColorTokensFromScheme(colorScheme.highest)
+
+    const players = createPlayersTokens(colorScheme.players)
 
     const tokens = {
         theme: {
@@ -102,10 +135,20 @@ export default function exportDesignTokens(colorScheme: ColorScheme): void {
                 "other"
             ),
         },
-        lowest: lowest,
+        color: {
+            players,
+            surface: {
+                lowest: lowest,
+                middle: middle,
+                highest: highest,
+            },
+        },
     }
 
-    fs.writeFileSync("design_tokens.json", JSON.stringify(tokens, null, 2))
+    fs.writeFileSync(`tokens/${slug}.json`, JSON.stringify(tokens, null, 2))
 }
 
-exportDesignTokens(oneDark)
+// Export all the themes as tokens
+Object.values(themes).forEach((theme) => {
+    exportThemeTokens(theme)
+})

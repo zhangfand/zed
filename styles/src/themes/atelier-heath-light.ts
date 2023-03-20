@@ -63,6 +63,6 @@ const theme = (variant: Variant) => {
     )
 }
 
-export const dark = theme(variant)
+export const light = theme(variant)
 
 export const meta: Meta = variant.meta
