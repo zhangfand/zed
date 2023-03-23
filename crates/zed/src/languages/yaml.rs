@@ -1,6 +1,5 @@
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
-use client::http::HttpClient;
 use futures::{future::BoxFuture, FutureExt, StreamExt};
 use gpui::MutableAppContext;
 use language::{LanguageServerName, LspAdapter};
@@ -9,6 +8,7 @@ use settings::Settings;
 use smol::fs;
 use std::{any::Any, future, path::PathBuf, sync::Arc};
 use util::ResultExt;
+use util::{fs::remove_matching, http::HttpClient};
 
 use super::installation::{npm_install_packages, npm_package_latest_version};
 
@@ -52,16 +52,7 @@ impl LspAdapter for YamlLspAdapter {
             npm_install_packages([("yaml-language-server", version.as_str())], &version_dir)
                 .await?;
 
-            if let Some(mut entries) = fs::read_dir(&container_dir).await.log_err() {
-                while let Some(entry) = entries.next().await {
-                    if let Some(entry) = entry.log_err() {
-                        let entry_path = entry.path();
-                        if entry_path.as_path() != version_dir {
-                            fs::remove_dir_all(&entry_path).await.log_err();
-                        }
-                    }
-                }
-            }
+            remove_matching(&container_dir, |entry| entry != version_dir).await;
         }
 
         Ok(binary_path)
