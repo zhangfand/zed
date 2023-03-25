@@ -29,6 +29,7 @@ use std::{
         Arc,
     },
 };
+use store::Store;
 use theme::ThemeRegistry;
 use workspace::Workspace;
 
@@ -184,10 +185,12 @@ impl TestServer {
             });
 
         let fs = FakeFs::new(cx.background());
+        let store = Store::memory();
         let user_store = cx.add_model(|cx| UserStore::new(client.clone(), http, cx));
         let app_state = Arc::new(workspace::AppState {
             client: client.clone(),
             user_store: user_store.clone(),
+            store,
             languages: Arc::new(LanguageRegistry::new(Task::ready(()))),
             themes: ThemeRegistry::new((), cx.font_cache()),
             fs: fs.clone(),

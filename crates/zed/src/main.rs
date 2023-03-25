@@ -13,7 +13,7 @@ use client::{
     http::{self, HttpClient},
     UserStore, ZED_APP_VERSION, ZED_SECRET_CLIENT_TOKEN,
 };
-use db::kvp::KEY_VALUE_STORE;
+use db::{kvp::KEY_VALUE_STORE, RELEASE_CHANNEL_NAME};
 use futures::{
     channel::{mpsc, oneshot},
     FutureExt, SinkExt, StreamExt,
@@ -35,6 +35,7 @@ use std::{
     env, ffi::OsStr, fs::OpenOptions, io::Write as _, os::unix::prelude::OsStrExt, panic,
     path::PathBuf, sync::Arc, thread, time::Duration,
 };
+use store::Store;
 use terminal_view::{get_working_directory, TerminalView};
 use welcome::{show_welcome_experience, FIRST_OPEN};
 
@@ -68,6 +69,7 @@ fn main() {
     load_embedded_fonts(&app);
 
     let fs = Arc::new(RealFs);
+    let store = Store::new(util::paths::DB_DIR.join(format!("1-{}", &*RELEASE_CHANNEL_NAME)));
 
     let themes = ThemeRegistry::new(Assets, app.font_cache());
     let default_settings = Settings::defaults(Assets, &app.font_cache(), &themes);
@@ -183,6 +185,7 @@ fn main() {
             themes,
             client: client.clone(),
             user_store,
+            store,
             fs,
             build_window_options,
             initialize_workspace,

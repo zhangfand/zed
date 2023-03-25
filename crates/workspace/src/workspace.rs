@@ -57,6 +57,7 @@ use std::{
     sync::Arc,
     time::Duration,
 };
+use store::Store;
 
 use crate::{
     notifications::simple_message_notification::{MessageNotification, OsOpen},
@@ -425,6 +426,7 @@ pub struct AppState {
     pub themes: Arc<ThemeRegistry>,
     pub client: Arc<client::Client>,
     pub user_store: ModelHandle<client::UserStore>,
+    pub store: Store,
     pub fs: Arc<dyn fs::Fs>,
     pub build_window_options:
         fn(Option<WindowBounds>, Option<uuid::Uuid>, &dyn Platform) -> WindowOptions<'static>,
@@ -444,6 +446,7 @@ impl AppState {
         let http_client = client::test::FakeHttpClient::with_404_response();
         let client = Client::new(http_client.clone(), cx);
         let user_store = cx.add_model(|cx| UserStore::new(client.clone(), http_client, cx));
+        let store = Store::memory();
         let themes = ThemeRegistry::new((), cx.font_cache().clone());
         Arc::new(Self {
             client,
@@ -451,6 +454,7 @@ impl AppState {
             fs,
             languages,
             user_store,
+            store,
             initialize_workspace: |_, _, _| {},
             build_window_options: |_, _, _| Default::default(),
             dock_default_item_factory: |_, _| None,

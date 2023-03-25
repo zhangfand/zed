@@ -79,6 +79,13 @@ impl Store {
         }
     }
 
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn memory() -> Self {
+        Self {
+            request_tx: Self::spawn_memory_thread(),
+        }
+    }
+
     pub async fn create<R: Record>(&self, record: &R) -> Result<u64> {
         let (tx, rx) = oneshot::channel();
         self.request_tx.unbounded_send(Request::Create {
@@ -176,6 +183,73 @@ impl Store {
                         response,
                     } => {
                         response.send(store.destroy(namespace, id)).ok();
+                    }
+                }
+            }
+        });
+
+        request_tx
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    fn spawn_memory_thread() -> mpsc::UnboundedSender<Request> {
+        let (request_tx, mut request_rx) = mpsc::unbounded();
+
+        thread::spawn(move || {
+            let mut next_id = 1;
+            let mut memory_store = HashMap::default();
+
+            while let Some(request) = block_on(request_rx.next()) {
+                match request {
+                    Request::Create {
+                        namespace,
+                        version,
+                        data,
+                        response,
+                    } => {
+                        let id = next_id;
+                        next_id += 1;
+                        memory_store
+                            .entry(namespace)
+                            .or_insert_with(|| HashMap::default())
+                            .insert(id, (version, data));
+
+                        response.send(Ok(id)).ok();
+                    }
+                    Request::Read {
+                        namespace,
+                        id,
+                        response,
+                    } => {
+                        let entry = memory_store
+                            .get(namespace)
+                            .and_then(|ns| ns.get(&id).cloned());
+                        response.send(Ok(entry)).ok();
+                    }
+                    Request::Update {
+                        namespace,
+                        id,
+                        version,
+                        data,
+                        response,
+                    } => {
+                        memory_store
+                            .entry(namespace)
+                            .or_insert_with(|| HashMap::default())
+                            .insert(id, (version, data));
+
+                        response.send(Ok(())).ok();
+                    }
+                    Request::Destroy {
+                        namespace,
+                        id,
+                        response,
+                    } => {
+                        if let Some(namespace) = memory_store.get_mut(namespace) {
+                            namespace.remove(&id);
+                        }
+
+                        response.send(Ok(())).ok();
                     }
                 }
             }
