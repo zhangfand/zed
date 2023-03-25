@@ -94,6 +94,15 @@ impl Store {
         Ok(())
     }
 
+    pub fn destroy<R: Record>(&self, id: u64) -> Result<()> {
+        let db = self.database(R::namespace())?;
+        let mut tx = self.lmdb.begin_rw_txn()?;
+        let key = id.to_ne_bytes();
+        tx.del(db, &key, None)?;
+        tx.commit()?;
+        Ok(())
+    }
+
     fn database(&self, namespace: &'static str) -> Result<lmdb::Database> {
         match self.dbs.lock().entry(namespace) {
             collections::hash_map::Entry::Occupied(db) => Ok(db.get().clone()),
@@ -160,9 +169,14 @@ mod tests {
         let id_b = store.create(&record_a1).unwrap();
         assert_eq!(id_b, 2);
 
+        // Update the new record. It should change in the database.
         record_b1.0 = 1234;
         store.update(id_b, &record_b1).unwrap();
         let record_b2: Test = store.read(id_b).unwrap().unwrap();
         assert_eq!(record_b2, record_b1);
+
+        // Destroy the first record. It is no longer in the database afterwards.
+        store.destroy::<Test>(id_b).unwrap();
+        assert!(store.read::<Test>(id_b).unwrap().is_none());
     }
 }
