@@ -6330,6 +6330,7 @@ dependencies = [
  "anyhow",
  "collections",
  "env_logger",
+ "futures 0.3.25",
  "lmdb",
  "parking_lot 0.11.2",
  "tempdir",

@@ -12,6 +12,7 @@ doctest = false
 collections = { path = "../collections" }
 
 anyhow = "1.0"
+futures = "0.3"
 lmdb = "0.8"
 parking_lot = "0.11"
 
