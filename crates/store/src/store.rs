@@ -76,6 +76,24 @@ impl Store {
         Ok(Some(R::deserialize(version, record_data)?))
     }
 
+    pub fn update<R: Record>(&self, id: u64, record: &R) -> Result<()> {
+        let db = self.database(R::namespace())?;
+        let mut tx = self.lmdb.begin_rw_txn()?;
+        let key = id.to_ne_bytes();
+        let record_data = record.serialize();
+        let mut buffer = tx.reserve(
+            db,
+            &key,
+            std::mem::size_of::<u64>() + record_data.len(),
+            Default::default(),
+        )?;
+        buffer.write_all(&R::schema_version().to_ne_bytes())?;
+        buffer.write_all(&record_data)?;
+        tx.commit()?;
+
+        Ok(())
+    }
+
     fn database(&self, namespace: &'static str) -> Result<lmdb::Database> {
         match self.dbs.lock().entry(namespace) {
             collections::hash_map::Entry::Occupied(db) => Ok(db.get().clone()),
@@ -130,16 +148,21 @@ mod tests {
 
         // Store a record
         let record_a1 = Test(42);
-        let id = store.create(&record_a1).unwrap();
-        assert_eq!(id, 1);
+        let id_a = store.create(&record_a1).unwrap();
+        assert_eq!(id_a, 1);
 
         // Get it back out by key. It exists
-        let record_a2: Test = store.read(id).unwrap().unwrap();
+        let record_a2: Test = store.read(id_a).unwrap().unwrap();
         assert_eq!(record_a2, record_a1);
 
         // Create another record. We increment to the next id.
-        let record_a1 = Test(1337);
-        let id = store.create(&record_a1).unwrap();
-        assert_eq!(id, 2);
+        let mut record_b1 = Test(1337);
+        let id_b = store.create(&record_a1).unwrap();
+        assert_eq!(id_b, 2);
+
+        record_b1.0 = 1234;
+        store.update(id_b, &record_b1).unwrap();
+        let record_b2: Test = store.read(id_b).unwrap().unwrap();
+        assert_eq!(record_b2, record_b1);
     }
 }
