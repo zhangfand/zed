@@ -1,6 +1,6 @@
 mod toggle_dock_button;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use collections::HashMap;
 use gpui::{
@@ -120,7 +120,7 @@ pub fn init(cx: &mut MutableAppContext) {
     );
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum DockPosition {
     Shown(DockAnchor),
     Hidden(DockAnchor),
@@ -447,9 +447,7 @@ mod tests {
     use crate::{
         dock,
         item::{self, test::TestItem},
-        persistence::model::{
-            SerializedItem, SerializedPane, SerializedPaneGroup, SerializedWorkspace,
-        },
+        persistence::model::{PaneGroupState, PaneState, SerializedItem, WorkspaceState},
         register_deserializable_item,
         sidebar::Sidebar,
         ItemHandle, Workspace,
@@ -471,15 +469,15 @@ mod tests {
             register_deserializable_item::<item::test::TestItem>(cx);
         });
 
-        let serialized_workspace = SerializedWorkspace {
+        let serialized_workspace = WorkspaceState {
             id: 0,
             location: Vec::<PathBuf>::new().into(),
             dock_position: dock::DockPosition::Shown(DockAnchor::Expanded),
-            center_group: SerializedPaneGroup::Pane(SerializedPane {
+            center_group: PaneGroupState::Pane(PaneState {
                 active: false,
                 children: vec![],
             }),
-            dock_pane: SerializedPane {
+            dock_pane: PaneState {
                 active: true,
                 children: vec![SerializedItem {
                     active: true,

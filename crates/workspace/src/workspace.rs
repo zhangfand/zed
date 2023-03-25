@@ -53,6 +53,7 @@ use std::{
     borrow::Cow,
     cmp, env,
     future::Future,
+    os::unix::prelude::OsStrExt,
     path::{Path, PathBuf},
     sync::Arc,
     time::Duration,
@@ -61,7 +62,7 @@ use store::Store;
 
 use crate::{
     notifications::simple_message_notification::{MessageNotification, OsOpen},
-    persistence::model::{SerializedPane, SerializedPaneGroup, SerializedWorkspace},
+    persistence::model::{PaneGroupState, PaneState, WorkspaceState},
 };
 use lazy_static::lazy_static;
 use log::{error, warn};
@@ -573,7 +574,7 @@ struct FollowerState {
 
 impl Workspace {
     pub fn new(
-        serialized_workspace: Option<SerializedWorkspace>,
+        serialized_workspace: Option<WorkspaceState>,
         workspace_id: WorkspaceId,
         project: ModelHandle<Project>,
         dock_default_factory: DockDefaultItemFactory,
@@ -786,6 +787,18 @@ impl Workspace {
         );
 
         cx.spawn(|mut cx| async move {
+            let mut workspace_state_key = Vec::new();
+            for abs_path in &abs_paths {
+                workspace_state_key.extend_from_slice(&abs_path.as_os_str().as_bytes());
+                workspace_state_key.push(0);
+            }
+
+            let workspace_state = app_state
+                .store
+                .read_by_key::<WorkspaceState>(workspace_state_key)
+                .await
+                .log_err();
+
             let serialized_workspace = persistence::DB.workspace_for_roots(&abs_paths.as_slice());
 
             let paths_to_open = serialized_workspace
@@ -828,8 +841,7 @@ impl Workspace {
                     });
 
             let build_workspace =
-                |cx: &mut ViewContext<Workspace>,
-                 serialized_workspace: Option<SerializedWorkspace>| {
+                |cx: &mut ViewContext<Workspace>, serialized_workspace: Option<WorkspaceState>| {
                     let mut workspace = Workspace::new(
                         serialized_workspace,
                         workspace_id,
@@ -854,7 +866,8 @@ impl Workspace {
                         .as_ref()
                         .and_then(|serialized_workspace| {
                             let display = serialized_workspace.display?;
-                            let mut bounds = serialized_workspace.bounds?;
+                            let mut bounds =
+                                serialized_workspace.bounds.as_ref()?.to_window_bounds();
 
                             // Stored bounds are relative to the containing display.
                             // So convert back to global coordinates if that screen still exists
@@ -2517,10 +2530,7 @@ impl Workspace {
     }
 
     fn serialize_workspace(&self, cx: &AppContext) {
-        fn serialize_pane_handle(
-            pane_handle: &ViewHandle<Pane>,
-            cx: &AppContext,
-        ) -> SerializedPane {
+        fn serialize_pane_handle(pane_handle: &ViewHandle<Pane>, cx: &AppContext) -> PaneState {
             let (items, active) = {
                 let pane = pane_handle.read(cx);
                 let active_item_id = pane.active_item().map(|item| item.id());
@@ -2538,15 +2548,12 @@ impl Workspace {
                 )
             };
 
-            SerializedPane::new(items, active)
+            PaneState::new(items, active)
         }
 
-        fn build_serialized_pane_group(
-            pane_group: &Member,
-            cx: &AppContext,
-        ) -> SerializedPaneGroup {
+        fn build_serialized_pane_group(pane_group: &Member, cx: &AppContext) -> PaneGroupState {
             match pane_group {
-                Member::Axis(PaneAxis { axis, members }) => SerializedPaneGroup::Group {
+                Member::Axis(PaneAxis { axis, members }) => PaneGroupState::Group {
                     axis: *axis,
                     children: members
                         .iter()
@@ -2554,7 +2561,7 @@ impl Workspace {
                         .collect::<Vec<_>>(),
                 },
                 Member::Pane(pane_handle) => {
-                    SerializedPaneGroup::Pane(serialize_pane_handle(&pane_handle, cx))
+                    PaneGroupState::Pane(serialize_pane_handle(&pane_handle, cx))
                 }
             }
         }
@@ -2567,7 +2574,7 @@ impl Workspace {
                 let dock_pane = serialize_pane_handle(self.dock.pane(), cx);
                 let center_group = build_serialized_pane_group(&self.center.root, cx);
 
-                let serialized_workspace = SerializedWorkspace {
+                let serialized_workspace = WorkspaceState {
                     id: self.database_id,
                     location,
                     dock_position: self.dock.position(),
@@ -2587,7 +2594,7 @@ impl Workspace {
 
     fn load_from_serialized_workspace(
         workspace: WeakViewHandle<Workspace>,
-        serialized_workspace: SerializedWorkspace,
+        serialized_workspace: WorkspaceState,
         cx: &mut MutableAppContext,
     ) {
         cx.spawn(|mut cx| async move {

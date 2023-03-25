@@ -19,6 +19,7 @@ use crate::{
 use anyhow::bail;
 use collections::{HashMap, HashSet};
 use pathfinder_geometry::vector::{vec2f, Vector2F};
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use smallvec::SmallVec;
 use sqlez::{
@@ -638,7 +639,7 @@ impl<'a> LayoutContext<'a> {
             (Some(layout_parent), Some(ParentId::View(app_parent))) => {
                 if layout_parent != app_parent {
                     panic!(
-                        "View {} was laid out with parent {} when it was constructed with parent {}", 
+                        "View {} was laid out with parent {} when it was constructed with parent {}",
                         print_error(view_id),
                         print_error(*layout_parent),
                         print_error(*app_parent))
@@ -911,7 +912,7 @@ pub struct DebugContext<'a> {
     pub app: &'a AppContext,
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub enum Axis {
     #[default]
     Horizontal,

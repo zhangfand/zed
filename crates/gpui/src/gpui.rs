@@ -35,4 +35,5 @@ pub use presenter::{
 };
 
 pub use anyhow;
+pub use serde;
 pub use serde_json;

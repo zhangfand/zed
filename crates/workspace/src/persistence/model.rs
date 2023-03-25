@@ -6,14 +6,19 @@ use std::{
 use anyhow::{Context, Result};
 
 use async_recursion::async_recursion;
-use gpui::{AsyncAppContext, Axis, ModelHandle, Task, ViewHandle, WindowBounds};
+use gpui::{
+    geometry::{rect::RectF, vector::vec2f},
+    AsyncAppContext, Axis, ModelHandle, Task, ViewHandle, WindowBounds,
+};
 
 use db::sqlez::{
     bindable::{Bind, Column, StaticColumnCount},
     statement::Statement,
 };
 use project::Project;
+use serde::{Deserialize, Serialize};
 use settings::DockAnchor;
+use store::Record;
 use util::ResultExt;
 use uuid::Uuid;
 
@@ -21,7 +26,7 @@ use crate::{
     dock::DockPosition, ItemDeserializers, Member, Pane, PaneAxis, Workspace, WorkspaceId,
 };
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WorkspaceLocation(Arc<Vec<PathBuf>>);
 
 impl WorkspaceLocation {
@@ -60,38 +65,103 @@ impl Column for WorkspaceLocation {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
-pub struct SerializedWorkspace {
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
+pub struct WorkspaceState {
     pub id: WorkspaceId,
     pub location: WorkspaceLocation,
     pub dock_position: DockPosition,
-    pub center_group: SerializedPaneGroup,
-    pub dock_pane: SerializedPane,
+    pub center_group: PaneGroupState,
+    pub dock_pane: PaneState,
     pub left_sidebar_open: bool,
-    pub bounds: Option<WindowBounds>,
+    pub bounds: Option<WindowBoundsState>,
     pub display: Option<Uuid>,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub enum SerializedPaneGroup {
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum WindowBoundsState {
+    Fullscreen,
+    Maximized,
+    Fixed {
+        origin_x: f32,
+        origin_y: f32,
+        width: f32,
+        height: f32,
+    },
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
+pub enum PaneGroupState {
     Group {
         axis: Axis,
-        children: Vec<SerializedPaneGroup>,
+        children: Vec<PaneGroupState>,
     },
-    Pane(SerializedPane),
+    Pane(PaneState),
+}
+
+impl Record for WorkspaceState {
+    fn namespace() -> &'static str {
+        "Workspace"
+    }
+
+    fn schema_version() -> u64 {
+        0
+    }
+
+    fn serialize(&self) -> Vec<u8> {
+        todo!()
+    }
+
+    fn deserialize(version: u64, data: Vec<u8>) -> Result<Self>
+    where
+        Self: Sized,
+    {
+        todo!()
+    }
+}
+
+impl WindowBoundsState {
+    pub fn from_window_bounds(bounds: WindowBounds) -> Self {
+        match bounds {
+            WindowBounds::Fullscreen => Self::Fullscreen,
+            WindowBounds::Maximized => Self::Maximized,
+            WindowBounds::Fixed(bounds) => Self::Fixed {
+                origin_x: bounds.origin_x(),
+                origin_y: bounds.origin_y(),
+                width: bounds.width(),
+                height: bounds.height(),
+            },
+        }
+    }
+
+    pub fn to_window_bounds(&self) -> WindowBounds {
+        match self {
+            WindowBoundsState::Fullscreen => WindowBounds::Fullscreen,
+            WindowBoundsState::Maximized => WindowBounds::Maximized,
+            WindowBoundsState::Fixed {
+                origin_x,
+                origin_y,
+                width,
+                height,
+            } => WindowBounds::Fixed(RectF::new(
+                vec2f(*origin_x, *origin_y),
+                vec2f(*width, *height),
+            )),
+        }
+    }
 }
 
 #[cfg(test)]
-impl Default for SerializedPaneGroup {
+impl Default for PaneGroupState {
     fn default() -> Self {
-        Self::Pane(SerializedPane {
+        Self::Pane(PaneState {
             children: vec![SerializedItem::default()],
             active: false,
         })
     }
 }
 
-impl SerializedPaneGroup {
+impl PaneGroupState {
     #[async_recursion(?Send)]
     pub(crate) async fn deserialize(
         &self,
@@ -101,7 +171,7 @@ impl SerializedPaneGroup {
         cx: &mut AsyncAppContext,
     ) -> Option<(Member, Option<ViewHandle<Pane>>)> {
         match self {
-            SerializedPaneGroup::Group { axis, children } => {
+            PaneGroupState::Group { axis, children } => {
                 let mut current_active_pane = None;
                 let mut members = Vec::new();
                 for child in children {
@@ -130,7 +200,7 @@ impl SerializedPaneGroup {
                     current_active_pane,
                 ))
             }
-            SerializedPaneGroup::Pane(serialized_pane) => {
+            PaneGroupState::Pane(serialized_pane) => {
                 let pane = workspace.update(cx, |workspace, cx| workspace.add_pane(cx));
                 let active = serialized_pane.active;
                 serialized_pane
@@ -148,15 +218,15 @@ impl SerializedPaneGroup {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Default, Clone)]
-pub struct SerializedPane {
+#[derive(Debug, PartialEq, Eq, Default, Clone, Serialize, Deserialize)]
+pub struct PaneState {
     pub(crate) active: bool,
     pub(crate) children: Vec<SerializedItem>,
 }
 
-impl SerializedPane {
+impl PaneState {
     pub fn new(children: Vec<SerializedItem>, active: bool) -> Self {
-        SerializedPane { children, active }
+        PaneState { children, active }
     }
 
     pub async fn deserialize_to(
@@ -213,7 +283,7 @@ pub type GroupId = i64;
 pub type PaneId = i64;
 pub type ItemId = usize;
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub struct SerializedItem {
     pub kind: Arc<str>,
     pub item_id: ItemId,

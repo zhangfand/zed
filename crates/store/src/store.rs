@@ -56,6 +56,11 @@ enum Request {
         id: u64,
         response: oneshot::Sender<Result<Option<(u64, Vec<u8>)>>>,
     },
+    ReadByKey {
+        namespace: &'static str,
+        key: Vec<u8>,
+        response: oneshot::Sender<Result<Option<(u64, Vec<u8>)>>>,
+    },
     Update {
         namespace: &'static str,
         id: u64,
@@ -63,9 +68,21 @@ enum Request {
         data: Vec<u8>,
         response: oneshot::Sender<Result<()>>,
     },
+    UpdateByKey {
+        namespace: &'static str,
+        key: Vec<u8>,
+        version: u64,
+        data: Vec<u8>,
+        response: oneshot::Sender<Result<()>>,
+    },
     Destroy {
         namespace: &'static str,
         id: u64,
+        response: oneshot::Sender<Result<()>>,
+    },
+    DestroyByKey {
+        namespace: &'static str,
+        key: Vec<u8>,
         response: oneshot::Sender<Result<()>>,
     },
 }
@@ -113,6 +130,21 @@ impl Store {
         }
     }
 
+    pub async fn read_by_key<R: Record>(&self, key: Vec<u8>) -> Result<Option<R>> {
+        let (tx, rx) = oneshot::channel();
+        self.request_tx.unbounded_send(Request::ReadByKey {
+            namespace: R::namespace(),
+            key,
+            response: tx,
+        })?;
+
+        if let Some((version, data)) = rx.await?? {
+            Ok(Some(R::deserialize(version, data)?))
+        } else {
+            Ok(None)
+        }
+    }
+
     pub async fn update<R: Record>(&self, id: u64, record: &R) -> Result<()> {
         let (tx, rx) = oneshot::channel();
         self.request_tx.unbounded_send(Request::Update {
@@ -126,11 +158,35 @@ impl Store {
         rx.await?
     }
 
+    pub async fn update_by_key<R: Record>(&self, key: Vec<u8>, record: &R) -> Result<()> {
+        let (tx, rx) = oneshot::channel();
+        self.request_tx.unbounded_send(Request::UpdateByKey {
+            namespace: R::namespace(),
+            version: R::schema_version(),
+            key,
+            data: record.serialize(),
+            response: tx,
+        })?;
+
+        rx.await?
+    }
+
     pub async fn destroy<R: Record>(&self, id: u64) -> Result<()> {
         let (tx, rx) = oneshot::channel();
         self.request_tx.unbounded_send(Request::Destroy {
             namespace: R::namespace(),
             id,
+            response: tx,
+        })?;
+
+        rx.await?
+    }
+
+    pub async fn destroy_by_key<R: Record>(&self, key: Vec<u8>) -> Result<()> {
+        let (tx, rx) = oneshot::channel();
+        self.request_tx.unbounded_send(Request::DestroyByKey {
+            namespace: R::namespace(),
+            key,
             response: tx,
         })?;
 
@@ -164,7 +220,14 @@ impl Store {
                         id,
                         response,
                     } => {
-                        response.send(store.read(namespace, id)).ok();
+                        response.send(store.read(namespace, &id.to_ne_bytes())).ok();
+                    }
+                    Request::ReadByKey {
+                        namespace,
+                        key,
+                        response,
+                    } => {
+                        response.send(store.read(namespace, &key)).ok();
                     }
                     Request::Update {
                         namespace,
@@ -174,7 +237,18 @@ impl Store {
                         response,
                     } => {
                         response
-                            .send(store.update(namespace, version, id, data))
+                            .send(store.update(namespace, version, &id.to_ne_bytes(), data))
+                            .ok();
+                    }
+                    Request::UpdateByKey {
+                        namespace,
+                        key,
+                        version,
+                        data,
+                        response,
+                    } => {
+                        response
+                            .send(store.update(namespace, version, &key, data))
                             .ok();
                     }
                     Request::Destroy {
@@ -182,7 +256,16 @@ impl Store {
                         id,
                         response,
                     } => {
-                        response.send(store.destroy(namespace, id)).ok();
+                        response
+                            .send(store.destroy(namespace, &id.to_ne_bytes()))
+                            .ok();
+                    }
+                    Request::DestroyByKey {
+                        namespace,
+                        key,
+                        response,
+                    } => {
+                        response.send(store.destroy(namespace, &key)).ok();
                     }
                 }
             }
@@ -196,8 +279,9 @@ impl Store {
         let (request_tx, mut request_rx) = mpsc::unbounded();
 
         thread::spawn(move || {
-            let mut next_id = 1;
-            let mut memory_store = HashMap::default();
+            let mut next_id = 1_u64;
+            let mut memory_store =
+                HashMap::<&'static str, HashMap<Vec<u8>, (u64, Vec<u8>)>>::default();
 
             while let Some(request) = block_on(request_rx.next()) {
                 match request {
@@ -212,7 +296,7 @@ impl Store {
                         memory_store
                             .entry(namespace)
                             .or_insert_with(|| HashMap::default())
-                            .insert(id, (version, data));
+                            .insert(id.to_ne_bytes().to_vec(), (version, data));
 
                         response.send(Ok(id)).ok();
                     }
@@ -221,9 +305,20 @@ impl Store {
                         id,
                         response,
                     } => {
+                        let key = id.to_ne_bytes().to_vec();
                         let entry = memory_store
                             .get(namespace)
-                            .and_then(|ns| ns.get(&id).cloned());
+                            .and_then(|ns| ns.get(&key).cloned());
+                        response.send(Ok(entry)).ok();
+                    }
+                    Request::ReadByKey {
+                        namespace,
+                        key,
+                        response,
+                    } => {
+                        let entry = memory_store
+                            .get(namespace)
+                            .and_then(|ns| ns.get(&key).cloned());
                         response.send(Ok(entry)).ok();
                     }
                     Request::Update {
@@ -233,10 +328,25 @@ impl Store {
                         data,
                         response,
                     } => {
+                        let key = id.to_ne_bytes().to_vec();
                         memory_store
                             .entry(namespace)
                             .or_insert_with(|| HashMap::default())
-                            .insert(id, (version, data));
+                            .insert(key, (version, data));
+
+                        response.send(Ok(())).ok();
+                    }
+                    Request::UpdateByKey {
+                        namespace,
+                        key,
+                        version,
+                        data,
+                        response,
+                    } => {
+                        memory_store
+                            .entry(namespace)
+                            .or_insert_with(|| HashMap::default())
+                            .insert(key, (version, data));
 
                         response.send(Ok(())).ok();
                     }
@@ -246,7 +356,19 @@ impl Store {
                         response,
                     } => {
                         if let Some(namespace) = memory_store.get_mut(namespace) {
-                            namespace.remove(&id);
+                            let key = id.to_ne_bytes().to_vec();
+                            namespace.remove(&key);
+                        }
+
+                        response.send(Ok(())).ok();
+                    }
+                    Request::DestroyByKey {
+                        namespace,
+                        key,
+                        response,
+                    } => {
+                        if let Some(namespace) = memory_store.get_mut(namespace) {
+                            namespace.remove(&key);
                         }
 
                         response.send(Ok(())).ok();
@@ -296,10 +418,10 @@ impl BlockingStore {
         Ok(id)
     }
 
-    fn read(&mut self, namespace: &'static str, id: u64) -> Result<Option<(u64, Vec<u8>)>> {
+    fn read(&mut self, namespace: &'static str, key: &[u8]) -> Result<Option<(u64, Vec<u8>)>> {
         let db = self.database(namespace)?;
         let tx = self.lmdb.begin_ro_txn()?;
-        let data = match tx.get(db, &id.to_ne_bytes()) {
+        let data = match tx.get(db, &key) {
             Ok(data) => data,
             Err(error) => {
                 if error == lmdb::Error::NotFound {
@@ -318,12 +440,11 @@ impl BlockingStore {
         &mut self,
         namespace: &'static str,
         version: u64,
-        id: u64,
+        key: &[u8],
         data: Vec<u8>,
     ) -> Result<()> {
         let db = self.database(namespace)?;
         let mut tx = self.lmdb.begin_rw_txn()?;
-        let key = id.to_ne_bytes();
         let mut buffer = tx.reserve(
             db,
             &key,
@@ -337,10 +458,9 @@ impl BlockingStore {
         Ok(())
     }
 
-    fn destroy(&mut self, namespace: &'static str, id: u64) -> Result<()> {
+    fn destroy(&mut self, namespace: &'static str, key: &[u8]) -> Result<()> {
         let db = self.database(namespace)?;
         let mut tx = self.lmdb.begin_rw_txn()?;
-        let key = id.to_ne_bytes();
         tx.del(db, &key, None)?;
         tx.commit()?;
         Ok(())
