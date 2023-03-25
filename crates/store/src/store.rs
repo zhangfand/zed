@@ -32,6 +32,7 @@ pub trait Record {
 }
 
 /// A simple key value store for storing records with versioned serialization schemas.
+#[derive(Clone)]
 pub struct Store {
     request_tx: futures::channel::mpsc::UnboundedSender<Request>,
 }
@@ -72,9 +73,10 @@ enum Request {
 const SEQUENCE_KEY: &'static [u8; 8] = b"sequence";
 
 impl Store {
-    pub async fn new(path: PathBuf) -> Result<Self> {
-        let request_tx = Self::spawn_background_thread(path).await?;
-        Ok(Self { request_tx })
+    pub fn new(path: PathBuf) -> Self {
+        Self {
+            request_tx: Self::spawn_background_thread(path),
+        }
     }
 
     pub async fn create<R: Record>(&self, record: &R) -> Result<u64> {
@@ -128,18 +130,14 @@ impl Store {
         rx.await?
     }
 
-    async fn spawn_background_thread(path: PathBuf) -> Result<mpsc::UnboundedSender<Request>> {
-        let (setup_tx, setup_rx) = oneshot::channel::<Result<()>>();
+    fn spawn_background_thread(path: PathBuf) -> mpsc::UnboundedSender<Request> {
         let (request_tx, mut request_rx) = mpsc::unbounded();
 
         thread::spawn(move || {
             let mut store = match BlockingStore::new(&path) {
-                Ok(store) => {
-                    let _ = setup_tx.send(Ok(()));
-                    store
-                }
+                Ok(store) => store,
                 Err(error) => {
-                    let _ = setup_tx.send(Err(anyhow!(error)));
+                    log::error!("error opening database: {}", error);
                     return;
                 }
             };
@@ -183,8 +181,7 @@ impl Store {
             }
         });
 
-        setup_rx.await??;
-        Ok(request_tx)
+        request_tx
     }
 }
 
@@ -323,7 +320,7 @@ mod tests {
 
         block_on(async {
             let tempdir = TempDir::new("store_tests").unwrap();
-            let store = Store::new(tempdir.path().into()).await.unwrap();
+            let store = Store::new(tempdir.path().into());
 
             // When key does not exist, return None.
             assert!(store.read::<Test>(1).await.unwrap().is_none());

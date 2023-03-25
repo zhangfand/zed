@@ -6332,6 +6332,7 @@ dependencies = [
  "env_logger",
  "futures 0.3.25",
  "lmdb",
+ "log",
  "tempdir",
 ]
 
@@ -8410,6 +8411,7 @@ dependencies = [
  "serde_json",
  "settings",
  "smallvec",
+ "store",
  "terminal",
  "theme",
  "util",
