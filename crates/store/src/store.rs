@@ -1,15 +1,14 @@
-use std::path::Path;
-
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use collections::HashMap;
-use lmdb::{Cursor, Transaction};
+use lmdb::Transaction;
 use parking_lot::Mutex;
+use std::{io::Write, path::Path};
 
 pub trait Record {
     fn namespace() -> &'static str;
-    fn current_version() -> u64;
+    fn schema_version() -> u64;
     fn serialize(&self) -> Vec<u8>;
-    fn deserialize(version: u64, data: Vec<u8>) -> Result<Self>
+    fn deserialize(version: u64, data: &[u8]) -> Result<Self>
     where
         Self: Sized;
 }
@@ -32,7 +31,7 @@ impl Store {
         })
     }
 
-    pub fn create<R: Record>(&self, record: R) -> Result<u64> {
+    pub fn create<R: Record>(&self, record: &R) -> Result<u64> {
         let db = self.database(R::namespace())?;
         let mut tx = self.lmdb.begin_rw_txn()?;
 
@@ -44,10 +43,37 @@ impl Store {
         let key = id.to_ne_bytes();
         tx.put(db, SEQUENCE_KEY, &key, Default::default())?;
 
-        // Associate the record with the new id in the database
-        tx.put(db, &key, &record.serialize(), Default::default())?;
+        // Associate the record with the new id in the database. Prepend the schema version as a u64.
+        let record_data = record.serialize();
+        let mut buffer = tx.reserve(
+            db,
+            &key,
+            std::mem::size_of::<u64>() + record_data.len(),
+            Default::default(),
+        )?;
+        buffer.write_all(&R::schema_version().to_ne_bytes())?;
+        buffer.write_all(&record_data)?;
+        tx.commit()?;
 
         Ok(id)
+    }
+
+    pub fn read<R: Record>(&self, id: u64) -> Result<Option<R>> {
+        let db = self.database(R::namespace())?;
+        let tx = self.lmdb.begin_ro_txn()?;
+        let data = match tx.get(db, &id.to_ne_bytes()) {
+            Ok(data) => data,
+            Err(error) => {
+                if error == lmdb::Error::NotFound {
+                    return Ok(None);
+                } else {
+                    return Err(anyhow!(error));
+                }
+            }
+        };
+        let version = u64::from_ne_bytes(data[..std::mem::size_of::<u64>()].try_into()?);
+        let record_data = &data[std::mem::size_of::<u64>()..];
+        Ok(Some(R::deserialize(version, record_data)?))
     }
 
     fn database(&self, namespace: &'static str) -> Result<lmdb::Database> {
@@ -69,6 +95,7 @@ mod tests {
 
     #[test]
     fn test_create() {
+        #[derive(Eq, PartialEq, Debug)]
         struct Test(u64);
 
         impl Record for Test {
@@ -76,7 +103,7 @@ mod tests {
                 "Test"
             }
 
-            fn current_version() -> u64 {
+            fn schema_version() -> u64 {
                 0
             }
 
@@ -84,11 +111,11 @@ mod tests {
                 self.0.to_ne_bytes().to_vec()
             }
 
-            fn deserialize(version: u64, data: Vec<u8>) -> Result<Self>
+            fn deserialize(version: u64, data: &[u8]) -> Result<Self>
             where
                 Self: Sized,
             {
-                assert_eq!(version, Self::current_version());
+                assert_eq!(version, Self::schema_version());
                 Ok(Self(u64::from_ne_bytes(
                     data.try_into().map_err(|_| anyhow!("invalid"))?,
                 )))
@@ -96,8 +123,23 @@ mod tests {
         }
 
         let tempdir = TempDir::new("store_tests").unwrap();
-        let db = Store::new(tempdir.path()).unwrap();
-        let id = db.create(Test(42)).unwrap();
-        // assert_eq!(id, 1);
+        let store = Store::new(tempdir.path()).unwrap();
+
+        // When key does not exist, return None.
+        assert!(store.read::<Test>(1).unwrap().is_none());
+
+        // Store a record
+        let record_a1 = Test(42);
+        let id = store.create(&record_a1).unwrap();
+        assert_eq!(id, 1);
+
+        // Get it back out by key. It exists
+        let record_a2: Test = store.read(id).unwrap().unwrap();
+        assert_eq!(record_a2, record_a1);
+
+        // Create another record. We increment to the next id.
+        let record_a1 = Test(1337);
+        let id = store.create(&record_a1).unwrap();
+        assert_eq!(id, 2);
     }
 }
