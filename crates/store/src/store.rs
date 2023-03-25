@@ -6,31 +6,43 @@ use futures::{
     StreamExt,
 };
 use lmdb::Transaction;
-use parking_lot::Mutex;
 use std::{
     io::Write,
     path::{Path, PathBuf},
     thread,
 };
 
+/// Anything you want to save to the store must implement this interface
 pub trait Record {
+    /// The name of the entity being stored. Must be unique in the application.
     fn namespace() -> &'static str;
+
+    /// The current version of the serialization schema.
     fn schema_version() -> u64;
+
+    /// Turn this object into bytes conforming to the current schema version.
     fn serialize(&self) -> Vec<u8>;
+
+    /// Turn bytes into an object for a given schema version.
+    ///
+    /// If you can't handle the given version, return an error.
     fn deserialize(version: u64, data: Vec<u8>) -> Result<Self>
     where
         Self: Sized;
 }
 
+/// A simple key value store for storing records with versioned serialization schemas.
 pub struct Store {
     request_tx: futures::channel::mpsc::UnboundedSender<Request>,
 }
 
+/// This gets used on a background thread that can block.
 struct BlockingStore {
     lmdb: lmdb::Environment,
-    dbs: Mutex<HashMap<&'static str, lmdb::Database>>,
+    dbs: HashMap<&'static str, lmdb::Database>,
 }
 
+/// Messages sent from the foreground to the background to avoid blocking.
 enum Request {
     Create {
         namespace: &'static str,
@@ -121,7 +133,7 @@ impl Store {
         let (request_tx, mut request_rx) = mpsc::unbounded();
 
         thread::spawn(move || {
-            let store = match BlockingStore::new(&path) {
+            let mut store = match BlockingStore::new(&path) {
                 Ok(store) => {
                     let _ = setup_tx.send(Ok(()));
                     store
@@ -187,7 +199,7 @@ impl BlockingStore {
         })
     }
 
-    fn create(&self, namespace: &'static str, version: u64, data: Vec<u8>) -> Result<u64> {
+    fn create(&mut self, namespace: &'static str, version: u64, data: Vec<u8>) -> Result<u64> {
         let db = self.database(namespace)?;
         let mut tx = self.lmdb.begin_rw_txn()?;
 
@@ -213,7 +225,7 @@ impl BlockingStore {
         Ok(id)
     }
 
-    fn read(&self, namespace: &'static str, id: u64) -> Result<Option<(u64, Vec<u8>)>> {
+    fn read(&mut self, namespace: &'static str, id: u64) -> Result<Option<(u64, Vec<u8>)>> {
         let db = self.database(namespace)?;
         let tx = self.lmdb.begin_ro_txn()?;
         let data = match tx.get(db, &id.to_ne_bytes()) {
@@ -231,7 +243,13 @@ impl BlockingStore {
         Ok(Some((version, data)))
     }
 
-    fn update(&self, namespace: &'static str, version: u64, id: u64, data: Vec<u8>) -> Result<()> {
+    fn update(
+        &mut self,
+        namespace: &'static str,
+        version: u64,
+        id: u64,
+        data: Vec<u8>,
+    ) -> Result<()> {
         let db = self.database(namespace)?;
         let mut tx = self.lmdb.begin_rw_txn()?;
         let key = id.to_ne_bytes();
@@ -248,7 +266,7 @@ impl BlockingStore {
         Ok(())
     }
 
-    fn destroy(&self, namespace: &'static str, id: u64) -> Result<()> {
+    fn destroy(&mut self, namespace: &'static str, id: u64) -> Result<()> {
         let db = self.database(namespace)?;
         let mut tx = self.lmdb.begin_rw_txn()?;
         let key = id.to_ne_bytes();
@@ -257,8 +275,8 @@ impl BlockingStore {
         Ok(())
     }
 
-    fn database(&self, namespace: &'static str) -> Result<lmdb::Database> {
-        match self.dbs.lock().entry(namespace) {
+    fn database(&mut self, namespace: &'static str) -> Result<lmdb::Database> {
+        match self.dbs.entry(namespace) {
             collections::hash_map::Entry::Occupied(db) => Ok(db.get().clone()),
             collections::hash_map::Entry::Vacant(_) => {
                 Ok(self.lmdb.create_db(Some(namespace), Default::default())?)
