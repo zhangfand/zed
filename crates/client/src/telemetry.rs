@@ -17,6 +17,7 @@ use std::{
     sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
+use store::Store;
 use tempfile::NamedTempFile;
 use util::{channel::ReleaseChannel, post_inc, ResultExt, TryFutureExt};
 use uuid::Uuid;
@@ -149,21 +150,22 @@ impl Telemetry {
         Some(self.state.lock().log_file.as_ref()?.path().to_path_buf())
     }
 
-    pub fn start(self: &Arc<Self>) {
+    pub fn start(self: &Arc<Self>, store: Store) {
         let this = self.clone();
         self.executor
             .spawn(
                 async move {
-                    let device_id =
-                        if let Ok(Some(device_id)) = KEY_VALUE_STORE.read_kvp("device_id") {
-                            device_id
-                        } else {
-                            let device_id = Uuid::new_v4().to_string();
-                            KEY_VALUE_STORE
-                                .write_kvp("device_id".to_string(), device_id.clone())
-                                .await?;
-                            device_id
-                        };
+                    let device_id = if let Ok(Some(device_id)) =
+                        store.read_by_key(store::DEVICE_ID.to_vec()).await
+                    {
+                        device_id
+                    } else {
+                        let device_id = Uuid::new_v4().to_string();
+                        store
+                            .update_by_key(store::DEVICE_ID.to_vec(), &device_id)
+                            .await?;
+                        device_id
+                    };
 
                     let device_id: Arc<str> = device_id.into();
                     let mut state = this.state.lock();

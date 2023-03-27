@@ -5,14 +5,14 @@ use futures::{
     executor::block_on,
     StreamExt,
 };
-use rusqlite as sqlite;
 use lmdb::Transaction;
-use util::ResultExt;
+use rusqlite as sqlite;
 use std::{
     io::Write,
     path::{Path, PathBuf},
     thread,
 };
+use util::ResultExt;
 
 // These keys receive special handling to read state from the deprecated
 // sqlite database if it is present. It's a bit ugly, but a temporary stopgap
@@ -50,7 +50,6 @@ pub struct Store {
 /// This gets used on a background thread that can block.
 struct BlockingStore {
     lmdb: lmdb::Environment,
-    sqlite: Option<sqlite::Connection>
     dbs: HashMap<&'static str, lmdb::Database>,
 }
 
@@ -204,7 +203,10 @@ impl Store {
         rx.await?
     }
 
-    fn spawn_background_thread(lmdb_path: PathBuf, sqlite_path: PathBuf) -> mpsc::UnboundedSender<Request> {
+    fn spawn_background_thread(
+        lmdb_path: PathBuf,
+        sqlite_path: PathBuf,
+    ) -> mpsc::UnboundedSender<Request> {
         let (request_tx, mut request_rx) = mpsc::unbounded();
 
         thread::spawn(move || {
@@ -397,11 +399,14 @@ impl BlockingStore {
         let mut builder = lmdb::Environment::new();
         builder.set_max_dbs(32);
 
-        Ok(Self {
+        let mut this = Self {
             lmdb: builder.open(lmdb_path)?,
-            sqlite: sqlite::Connection::open(sqlite_path).log_err(),
             dbs: Default::default(),
-        })
+        };
+
+        this.transfer_data_from_sqlite(sqlite_path).log_err();
+
+        Ok(this)
     }
 
     fn create(&mut self, namespace: &'static str, version: u64, data: Vec<u8>) -> Result<u64> {
@@ -437,7 +442,7 @@ impl BlockingStore {
             Ok(data) => data,
             Err(error) => {
                 if error == lmdb::Error::NotFound {
-                    return Ok(self.read_from_deprecated_sqlite(namespace, key));
+                    return Ok(None);
                 } else {
                     return Err(anyhow!(error));
                 }
@@ -448,36 +453,52 @@ impl BlockingStore {
         Ok(Some((version, data)))
     }
 
-    fn read_from_deprecated_sqlite(&mut self, namespace: &'static str, key: &[u8]) -> Option<(u64, Vec<u8>)> {
-        let sqlite = self.sqlite.as_ref()?;
+    /// We're migrating from SQLite to LMDB, so we need to read key/value pairs from the
+    /// old database and populate them in the new one the first time we start with the
+    /// version of Zed containing the new database.
+    fn transfer_data_from_sqlite(&mut self, db_path: &Path) -> Result<()> {
+        if self.read(bool::namespace(), OPENED_ONCE)?.is_some() {
+            return Ok(());
+        }
 
-        let query_sqlite = |key| {
-            let statement = sqlite.prepare("SELECT value FROM kv_store WHERE key = ?").log_err()?;
-            let mut rows = statement.query(&[key]).log_err()?;
-            let row = rows.next().log_err()??;
-            row.get::<_, String>(0).log_err()
-        };
+        let sqlite = sqlite::Connection::open(db_path)?;
+        let mut statement = sqlite.prepare("SELECT key, value FROM kv_store")?;
+        let mut rows = statement.query([])?;
 
-        let (version, data) = match (namespace, key) {
-            ("String", DEVICE_ID) => {
-                let device_id = query_sqlite("device_id")?;
-                (String::schema_version(), device_id.serialize())
+        while let Some(row) = rows.next()? {
+            let key: String = row.get(0)?;
+            let value: String = row.get(1)?;
+
+            match key.as_str() {
+                "first_open" => {
+                    self.update(
+                        bool::namespace(),
+                        bool::schema_version(),
+                        OPENED_ONCE,
+                        true.serialize(),
+                    )?;
+                }
+                "auto-updater-should-show-updated-notification" => {
+                    self.update(
+                        bool::namespace(),
+                        bool::schema_version(),
+                        SHOW_UPDATE_NOTIFICATION,
+                        true.serialize(),
+                    )?;
+                }
+                "device_id" => {
+                    self.update(
+                        String::namespace(),
+                        String::schema_version(),
+                        DEVICE_ID,
+                        value.serialize(),
+                    )?;
+                }
+                _ => {}
             }
-            ("bool", SHOW_UPDATE_NOTIFICATION) => {
-                let show_update_notification = query_sqlite("auto-updater-should-show-updated-notification").is_some();
-                (bool::schema_version(), show_update_notification.serialize())
-            }
-            ("bool", OPENED_ONCE) => {
-                // We wrote "false", so we can use the presence of this value to mean we opened once.
-                let opened_once = query_sqlite("first_open").is_some();
-                (bool::schema_version(), opened_once.serialize())
-            }
-            _ => return None,
-        };
+        }
 
-        self.update(namespace, version, key, data).log_err();
-
-        Some((version, data))
+        Ok(())
     }
 
     fn update(
@@ -558,7 +579,7 @@ mod tests {
 
         block_on(async {
             let tempdir = TempDir::new("store_tests").unwrap();
-            let store = Store::new(tempdir.path().into());
+            let store = Store::new(tempdir.path().into(), PathBuf::new());
 
             // When key does not exist, return None.
             assert!(store.read::<Test>(1).await.unwrap().is_none());

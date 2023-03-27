@@ -16,7 +16,7 @@ collections = { path = "../collections" }
 gpui = { path = "../gpui" }
 util = { path = "../util" }
 rpc = { path = "../rpc" }
-sum_tree = { path = "../sum_tree" }
+store = { path = "../store" }
 anyhow = "1.0.38"
 async-recursion = "0.3"
 async-tungstenite = { version = "0.16", features = ["async-tls"] }

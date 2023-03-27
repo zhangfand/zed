@@ -62,18 +62,15 @@ use store::Store;
 
 use crate::{
     notifications::simple_message_notification::{MessageNotification, OsOpen},
-    persistence::model::{PaneGroupState, PaneState, WorkspaceState},
+    persistence::{PaneGroupState, PaneState, WorkspaceState},
 };
 use lazy_static::lazy_static;
 use log::{error, warn};
 use notifications::{NotificationHandle, NotifyResultExt};
 pub use pane::*;
 pub use pane_group::*;
-use persistence::{model::SerializedItem, DB};
-pub use persistence::{
-    model::{ItemId, WorkspaceLocation},
-    WorkspaceDb, DB as WORKSPACE_DB,
-};
+use persistence::SerializedItem;
+pub use persistence::{ItemId, WorkspaceLocation};
 use postage::prelude::Stream;
 use project::{Project, ProjectEntryId, ProjectPath, Worktree, WorktreeId};
 use serde::Deserialize;
@@ -2657,7 +2654,7 @@ impl Workspace {
 
     #[cfg(any(test, feature = "test-support"))]
     pub fn test_new(project: ModelHandle<Project>, cx: &mut ViewContext<Self>) -> Self {
-        Self::new(None, 0, project, |_, _| None, || &[], cx)
+        Self::new(None, project, |_, _| None, || &[], Store::memory(), cx)
     }
 }
 
@@ -2909,7 +2906,7 @@ pub fn activate_workspace_for_project(
 }
 
 pub async fn last_opened_workspace_paths() -> Option<WorkspaceLocation> {
-    DB.last_workspace().await.log_err().flatten()
+    todo!()
 }
 
 #[allow(clippy::type_complexity)]

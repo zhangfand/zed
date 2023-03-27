@@ -1119,7 +1119,7 @@ dependencies = [
  "serde_derive",
  "settings",
  "smol",
- "sum_tree",
+ "store",
  "tempfile",
  "thiserror",
  "time 0.3.17",

@@ -37,6 +37,7 @@ use std::{
     sync::{Arc, Weak},
     time::{Duration, Instant},
 };
+use store::Store;
 use telemetry::Telemetry;
 use thiserror::Error;
 use url::Url;
@@ -1315,8 +1316,8 @@ impl Client {
         }
     }
 
-    pub fn start_telemetry(&self) {
-        self.telemetry.start();
+    pub fn start_telemetry(&self, store: Store) {
+        self.telemetry.start(store);
     }
 
     pub fn report_event(

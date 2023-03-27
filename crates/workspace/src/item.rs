@@ -25,7 +25,7 @@ use theme::Theme;
 use util::ResultExt;
 
 use crate::{
-    pane, persistence::model::ItemId, searchable::SearchableItemHandle, DelayedDebouncedEditAction,
+    pane, persistence::ItemId, searchable::SearchableItemHandle, DelayedDebouncedEditAction,
     FollowableItemBuilders, ItemNavHistory, Pane, ToolbarItemLocation, ViewId, Workspace,
 };
 
@@ -53,7 +53,7 @@ pub trait Item: View {
         false
     }
     fn set_nav_history(&mut self, _: ItemNavHistory, _: &mut ViewContext<Self>) {}
-    fn clone_on_split(&self, _workspace_id: WorkspaceId, _: &mut ViewContext<Self>) -> Option<Self>
+    fn clone_on_split(&self, _: &mut ViewContext<Self>) -> Option<Self>
     where
         Self: Sized,
     {
@@ -299,7 +299,7 @@ impl<T: Item> ItemHandle for ViewHandle<T> {
 
     fn clone_on_split(&self, cx: &mut MutableAppContext) -> Option<Box<dyn ItemHandle>> {
         self.update(cx, |item, cx| {
-            cx.add_option_view(|cx| item.clone_on_split(workspace_id, cx))
+            cx.add_option_view(|cx| item.clone_on_split(cx))
         })
         .map(|handle| Box::new(handle) as Box<dyn ItemHandle>)
     }

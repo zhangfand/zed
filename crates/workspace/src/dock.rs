@@ -448,7 +448,7 @@ mod tests {
     use crate::{
         dock,
         item::{self, test::TestItem},
-        persistence::model::{PaneGroupState, PaneState, SerializedItem, WorkspaceState},
+        persistence::{PaneGroupState, PaneState, SerializedItem, WorkspaceState},
         register_deserializable_item,
         sidebar::Sidebar,
         ItemHandle, Workspace,
