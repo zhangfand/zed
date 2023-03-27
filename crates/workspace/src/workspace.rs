@@ -167,8 +167,6 @@ pub struct OpenProjectEntryInPane {
     project_entry: ProjectEntryId,
 }
 
-pub type WorkspaceId = i64;
-
 impl_internal_actions!(
     workspace,
     [
@@ -402,7 +400,6 @@ type ItemDeserializers = HashMap<
     fn(
         ModelHandle<Project>,
         WeakViewHandle<Workspace>,
-        WorkspaceId,
         ItemId,
         &mut ViewContext<Pane>,
     ) -> Task<Result<Box<dyn ItemHandle>>>,
@@ -412,8 +409,8 @@ pub fn register_deserializable_item<I: Item>(cx: &mut MutableAppContext) {
         if let Some(serialized_item_kind) = I::serialized_item_kind() {
             deserializers.insert(
                 Arc::from(serialized_item_kind),
-                |project, workspace, workspace_id, item_id, cx| {
-                    let task = I::deserialize(project, workspace, workspace_id, item_id, cx);
+                |project, workspace, item_id, cx| {
+                    let task = I::deserialize(project, workspace, item_id, cx);
                     cx.foreground()
                         .spawn(async { Ok(Box::new(task.await?) as Box<_>) })
                 },
@@ -546,8 +543,8 @@ pub struct Workspace {
     window_edited: bool,
     active_call: Option<(ModelHandle<ActiveCall>, Vec<gpui::Subscription>)>,
     leader_updates_tx: mpsc::UnboundedSender<(PeerId, proto::UpdateFollowers)>,
-    database_id: WorkspaceId,
     background_actions: BackgroundActions,
+    store: Store,
     _window_subscriptions: [Subscription; 3],
     _apply_leader_updates: Task<Result<()>>,
     _observe_current_user: Task<()>,
@@ -575,10 +572,10 @@ struct FollowerState {
 impl Workspace {
     pub fn new(
         serialized_workspace: Option<WorkspaceState>,
-        workspace_id: WorkspaceId,
         project: ModelHandle<Project>,
         dock_default_factory: DockDefaultItemFactory,
         background_actions: BackgroundActions,
+        store: Store,
         cx: &mut ViewContext<Self>,
     ) -> Self {
         cx.observe(&project, |_, _, cx| cx.notify()).detach();
@@ -713,9 +710,10 @@ impl Workspace {
                     }
                 }
 
-                cx.background()
-                    .spawn(DB.set_window_bounds(workspace_id, bounds, display))
-                    .detach_and_log_err(cx);
+                todo!();
+                // cx.background()
+                //     .spawn(DB.set_window_bounds(workspace_id, bounds, display))
+                //     .detach_and_log_err(cx);
             }),
         ];
 
@@ -746,8 +744,8 @@ impl Workspace {
             last_leaders_by_pane: Default::default(),
             window_edited: false,
             active_call,
-            database_id: workspace_id,
             background_actions,
+            store,
             _observe_current_user,
             _apply_leader_updates,
             leader_updates_tx,
@@ -797,11 +795,10 @@ impl Workspace {
                 .store
                 .read_by_key::<WorkspaceState>(workspace_state_key)
                 .await
-                .log_err();
+                .log_err()
+                .flatten();
 
-            let serialized_workspace = persistence::DB.workspace_for_roots(&abs_paths.as_slice());
-
-            let paths_to_open = serialized_workspace
+            let paths_to_open = workspace_state
                 .as_ref()
                 .map(|workspace| workspace.location.paths())
                 .unwrap_or(Arc::new(abs_paths));
@@ -824,12 +821,6 @@ impl Workspace {
                 }
             }
 
-            let workspace_id = if let Some(serialized_workspace) = serialized_workspace.as_ref() {
-                serialized_workspace.id
-            } else {
-                DB.next_id().await.unwrap_or(0)
-            };
-
             let window_bounds_override =
                 ZED_WINDOW_POSITION
                     .zip(*ZED_WINDOW_SIZE)
@@ -841,13 +832,13 @@ impl Workspace {
                     });
 
             let build_workspace =
-                |cx: &mut ViewContext<Workspace>, serialized_workspace: Option<WorkspaceState>| {
+                |cx: &mut ViewContext<Workspace>, workspace_state: Option<WorkspaceState>| {
                     let mut workspace = Workspace::new(
-                        serialized_workspace,
-                        workspace_id,
+                        workspace_state,
                         project_handle,
                         app_state.dock_default_item_factory,
                         app_state.background_actions,
+                        app_state.store.clone(),
                         cx,
                     );
                     (app_state.initialize_workspace)(&mut workspace, &app_state, cx);
@@ -856,13 +847,13 @@ impl Workspace {
 
             let workspace = if let Some(window_id) = requesting_window_id {
                 cx.update(|cx| {
-                    cx.replace_root_view(window_id, |cx| build_workspace(cx, serialized_workspace))
+                    cx.replace_root_view(window_id, |cx| build_workspace(cx, workspace_state))
                 })
             } else {
                 let (bounds, display) = if let Some(bounds) = window_bounds_override {
                     (Some(bounds), None)
                 } else {
-                    serialized_workspace
+                    workspace_state
                         .as_ref()
                         .and_then(|serialized_workspace| {
                             let display = serialized_workspace.display?;
@@ -895,7 +886,7 @@ impl Workspace {
                 // Use the serialized workspace to construct the new window
                 cx.add_window(
                     (app_state.build_window_options)(bounds, display, cx.platform().as_ref()),
-                    |cx| build_workspace(cx, serialized_workspace),
+                    |cx| build_workspace(cx, workspace_state),
                 )
                 .1
             };
@@ -1733,15 +1724,14 @@ impl Workspace {
         }
 
         let item = pane.read(cx).active_item()?;
-        let maybe_pane_handle =
-            if let Some(clone) = item.clone_on_split(self.database_id(), cx.as_mut()) {
-                let new_pane = self.add_pane(cx);
-                Pane::add_item(self, &new_pane, clone, true, true, None, cx);
-                self.center.split(&pane, &new_pane, direction).unwrap();
-                Some(new_pane)
-            } else {
-                None
-            };
+        let maybe_pane_handle = if let Some(clone) = item.clone_on_split(cx.as_mut()) {
+            let new_pane = self.add_pane(cx);
+            Pane::add_item(self, &new_pane, clone, true, true, None, cx);
+            self.center.split(&pane, &new_pane, direction).unwrap();
+            Some(new_pane)
+        } else {
+            None
+        };
         cx.notify();
         maybe_pane_handle
     }
@@ -2456,9 +2446,7 @@ impl Workspace {
 
     pub fn on_window_activation_changed(&mut self, active: bool, cx: &mut ViewContext<Self>) {
         if active {
-            cx.background()
-                .spawn(persistence::DB.update_timestamp(self.database_id()))
-                .detach();
+            todo!();
         } else {
             for pane in &self.panes {
                 pane.update(cx, |pane, cx| {
@@ -2496,10 +2484,6 @@ impl Workspace {
             }
             _ => {}
         }
-    }
-
-    pub fn database_id(&self) -> WorkspaceId {
-        self.database_id
     }
 
     fn location(&self, cx: &AppContext) -> Option<WorkspaceLocation> {
@@ -2575,7 +2559,6 @@ impl Workspace {
                 let center_group = build_serialized_pane_group(&self.center.root, cx);
 
                 let serialized_workspace = WorkspaceState {
-                    id: self.database_id,
                     location,
                     dock_position: self.dock.position(),
                     dock_pane,
@@ -2610,19 +2593,13 @@ impl Workspace {
 
                 serialized_workspace
                     .dock_pane
-                    .deserialize_to(
-                        &project,
-                        &dock_pane_handle,
-                        serialized_workspace.id,
-                        &workspace,
-                        &mut cx,
-                    )
+                    .deserialize_to(&project, &dock_pane_handle, &workspace, &mut cx)
                     .await;
 
                 // Traverse the splits tree and add to things
                 let center_group = serialized_workspace
                     .center_group
-                    .deserialize(&project, serialized_workspace.id, &workspace, &mut cx)
+                    .deserialize(&project, &workspace, &mut cx)
                     .await;
 
                 // Remove old panes from workspace panes list
@@ -3032,14 +3009,15 @@ mod tests {
         Settings::test_async(cx);
 
         let fs = FakeFs::new(cx.background());
+        let store = Store::memory();
         let project = Project::test(fs, [], cx).await;
         let (_, workspace) = cx.add_window(|cx| {
             Workspace::new(
                 Default::default(),
-                0,
                 project.clone(),
                 |_, _| None,
                 || &[],
+                store,
                 cx,
             )
         });
@@ -3089,6 +3067,7 @@ mod tests {
         cx.foreground().forbid_parking();
         Settings::test_async(cx);
         let fs = FakeFs::new(cx.background());
+        let store = Store::memory();
         fs.insert_tree(
             "/root1",
             json!({
@@ -3109,10 +3088,10 @@ mod tests {
         let (window_id, workspace) = cx.add_window(|cx| {
             Workspace::new(
                 Default::default(),
-                0,
                 project.clone(),
                 |_, _| None,
                 || &[],
+                store,
                 cx,
             )
         });
@@ -3205,15 +3184,16 @@ mod tests {
         Settings::test_async(cx);
         let fs = FakeFs::new(cx.background());
         fs.insert_tree("/root", json!({ "one": "" })).await;
+        let store = Store::memory();
 
         let project = Project::test(fs, ["root".as_ref()], cx).await;
         let (window_id, workspace) = cx.add_window(|cx| {
             Workspace::new(
                 Default::default(),
-                0,
                 project.clone(),
                 |_, _| None,
                 || &[],
+                store,
                 cx,
             )
         });
@@ -3249,10 +3229,11 @@ mod tests {
         cx.foreground().forbid_parking();
         Settings::test_async(cx);
         let fs = FakeFs::new(cx.background());
+        let store = Store::memory();
 
         let project = Project::test(fs, None, cx).await;
         let (window_id, workspace) = cx.add_window(|cx| {
-            Workspace::new(Default::default(), 0, project, |_, _| None, || &[], cx)
+            Workspace::new(Default::default(), project, |_, _| None, || &[], store, cx)
         });
 
         let item1 = cx.add_view(&workspace, |cx| {
@@ -3358,10 +3339,11 @@ mod tests {
         cx.foreground().forbid_parking();
         Settings::test_async(cx);
         let fs = FakeFs::new(cx.background());
+        let store = Store::memory();
 
         let project = Project::test(fs, [], cx).await;
         let (window_id, workspace) = cx.add_window(|cx| {
-            Workspace::new(Default::default(), 0, project, |_, _| None, || &[], cx)
+            Workspace::new(Default::default(), project, |_, _| None, || &[], store, cx)
         });
 
         // Create several workspace items with single project entries, and two
@@ -3467,10 +3449,11 @@ mod tests {
 
         Settings::test_async(cx);
         let fs = FakeFs::new(cx.background());
+        let store = Store::memory();
 
         let project = Project::test(fs, [], cx).await;
         let (window_id, workspace) = cx.add_window(|cx| {
-            Workspace::new(Default::default(), 0, project, |_, _| None, || &[], cx)
+            Workspace::new(Default::default(), project, |_, _| None, || &[], store, cx)
         });
 
         let item = cx.add_view(&workspace, |cx| {
@@ -3586,10 +3569,11 @@ mod tests {
         deterministic.forbid_parking();
         Settings::test_async(cx);
         let fs = FakeFs::new(cx.background());
+        let store = Store::memory();
 
         let project = Project::test(fs, [], cx).await;
         let (_, workspace) = cx.add_window(|cx| {
-            Workspace::new(Default::default(), 0, project, |_, _| None, || &[], cx)
+            Workspace::new(Default::default(), project, |_, _| None, || &[], store, cx)
         });
 
         let item = cx.add_view(&workspace, |cx| {

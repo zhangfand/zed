@@ -27,7 +27,6 @@ use util::ResultExt;
 use crate::{
     pane, persistence::model::ItemId, searchable::SearchableItemHandle, DelayedDebouncedEditAction,
     FollowableItemBuilders, ItemNavHistory, Pane, ToolbarItemLocation, ViewId, Workspace,
-    WorkspaceId,
 };
 
 #[derive(Eq, PartialEq, Hash)]
@@ -143,7 +142,6 @@ pub trait Item: View {
     fn deserialize(
         _project: ModelHandle<Project>,
         _workspace: WeakViewHandle<Workspace>,
-        _workspace_id: WorkspaceId,
         _item_id: ItemId,
         _cx: &mut ViewContext<Pane>,
     ) -> Task<Result<ViewHandle<Self>>> {
@@ -171,11 +169,7 @@ pub trait ItemHandle: 'static + fmt::Debug {
     fn for_each_project_item(&self, _: &AppContext, _: &mut dyn FnMut(usize, &dyn project::Item));
     fn is_singleton(&self, cx: &AppContext) -> bool;
     fn boxed_clone(&self) -> Box<dyn ItemHandle>;
-    fn clone_on_split(
-        &self,
-        workspace_id: WorkspaceId,
-        cx: &mut MutableAppContext,
-    ) -> Option<Box<dyn ItemHandle>>;
+    fn clone_on_split(&self, cx: &mut MutableAppContext) -> Option<Box<dyn ItemHandle>>;
     fn added_to_pane(
         &self,
         workspace: &mut Workspace,
@@ -303,11 +297,7 @@ impl<T: Item> ItemHandle for ViewHandle<T> {
         Box::new(self.clone())
     }
 
-    fn clone_on_split(
-        &self,
-        workspace_id: WorkspaceId,
-        cx: &mut MutableAppContext,
-    ) -> Option<Box<dyn ItemHandle>> {
+    fn clone_on_split(&self, cx: &mut MutableAppContext) -> Option<Box<dyn ItemHandle>> {
         self.update(cx, |item, cx| {
             cx.add_option_view(|cx| item.clone_on_split(workspace_id, cx))
         })
@@ -743,7 +733,7 @@ impl<T: FollowableItem> FollowableItemHandle for ViewHandle<T> {
 #[cfg(test)]
 pub(crate) mod test {
     use super::{Item, ItemEvent};
-    use crate::{sidebar::SidebarItem, ItemId, ItemNavHistory, Pane, Workspace, WorkspaceId};
+    use crate::{sidebar::SidebarItem, ItemId, ItemNavHistory, Pane, Workspace};
     use gpui::{
         elements::Empty, AppContext, Element, ElementBox, Entity, ModelHandle, MutableAppContext,
         RenderContext, Task, View, ViewContext, ViewHandle, WeakViewHandle,
@@ -758,7 +748,6 @@ pub(crate) mod test {
     }
 
     pub struct TestItem {
-        pub workspace_id: WorkspaceId,
         pub state: String,
         pub label: String,
         pub save_count: usize,
@@ -806,7 +795,6 @@ pub(crate) mod test {
                 nav_history: None,
                 tab_descriptions: None,
                 tab_detail: Default::default(),
-                workspace_id: self.workspace_id,
             }
         }
     }
@@ -847,14 +835,7 @@ pub(crate) mod test {
                 nav_history: None,
                 tab_descriptions: None,
                 tab_detail: Default::default(),
-                workspace_id: 0,
             }
-        }
-
-        pub fn new_deserialized(id: WorkspaceId) -> Self {
-            let mut this = Self::new();
-            this.workspace_id = id;
-            this
         }
 
         pub fn with_label(mut self, state: &str) -> Self {
@@ -954,11 +935,7 @@ pub(crate) mod test {
             self.push_to_nav_history(cx);
         }
 
-        fn clone_on_split(
-            &self,
-            _workspace_id: WorkspaceId,
-            _: &mut ViewContext<Self>,
-        ) -> Option<Self>
+        fn clone_on_split(&self, _: &mut ViewContext<Self>) -> Option<Self>
         where
             Self: Sized,
         {
@@ -1023,11 +1000,10 @@ pub(crate) mod test {
         fn deserialize(
             _project: ModelHandle<Project>,
             _workspace: WeakViewHandle<Workspace>,
-            workspace_id: WorkspaceId,
             _item_id: ItemId,
             cx: &mut ViewContext<Pane>,
         ) -> Task<anyhow::Result<ViewHandle<Self>>> {
-            let view = cx.add_view(|_cx| Self::new_deserialized(workspace_id));
+            let view = cx.add_view(|_cx| Self::new());
             Task::Ready(Some(anyhow::Ok(view)))
         }
     }

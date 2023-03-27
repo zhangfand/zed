@@ -442,6 +442,7 @@ mod tests {
     use gpui::{AppContext, TestAppContext, UpdateView, View, ViewContext};
     use project::{FakeFs, Project};
     use settings::Settings;
+    use store::Store;
 
     use super::*;
     use crate::{
@@ -470,7 +471,6 @@ mod tests {
         });
 
         let serialized_workspace = WorkspaceState {
-            id: 0,
             location: Vec::<PathBuf>::new().into(),
             dock_position: dock::DockPosition::Shown(DockAnchor::Expanded),
             center_group: PaneGroupState::Pane(PaneState {
@@ -491,15 +491,16 @@ mod tests {
         };
 
         let fs = FakeFs::new(cx.background());
+        let store = Store::memory();
         let project = Project::test(fs, [], cx).await;
 
         let (_, _workspace) = cx.add_window(|cx| {
             Workspace::new(
                 Some(serialized_workspace),
-                0,
                 project.clone(),
                 default_item_factory,
                 || &[],
+                store,
                 cx,
             )
         });
@@ -624,16 +625,17 @@ mod tests {
         pub async fn new(cx: &'a mut TestAppContext) -> DockTestContext<'a> {
             Settings::test_async(cx);
             let fs = FakeFs::new(cx.background());
+            let store = Store::memory();
 
             cx.update(|cx| init(cx));
             let project = Project::test(fs, [], cx).await;
             let (window_id, workspace) = cx.add_window(|cx| {
                 Workspace::new(
                     Default::default(),
-                    0,
                     project,
                     default_item_factory,
                     || &[],
+                    store,
                     cx,
                 )
             });

@@ -18,7 +18,6 @@ settings = { path = "../settings" }
 theme = { path = "../theme" }
 util = { path = "../util" }
 workspace = { path = "../workspace" }
-db = { path = "../db" }
 procinfo = { git = "https://github.com/zed-industries/wezterm", rev = "5cd757e5f2eb039ed0c6bb6512223e69d5efc64d", default-features = false }
 terminal = { path = "../terminal" }
 smallvec = { version = "1.6", features = ["union"] }

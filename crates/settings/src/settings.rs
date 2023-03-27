@@ -2,7 +2,7 @@ mod keymap_file;
 pub mod settings_file;
 pub mod watched_json;
 
-use anyhow::{bail, Result};
+use anyhow::Result;
 use gpui::{
     font_cache::{FamilyId, FontCache},
     fonts, AssetSource,
@@ -14,10 +14,6 @@ use schemars::{
 };
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::Value;
-use sqlez::{
-    bindable::{Bind, Column, StaticColumnCount},
-    statement::Statement,
-};
 use std::{collections::HashMap, num::NonZeroU32, str, sync::Arc};
 use theme::{Theme, ThemeRegistry};
 use tree_sitter::Query;
@@ -298,34 +294,6 @@ pub enum DockAnchor {
     Bottom,
     Right,
     Expanded,
-}
-
-impl StaticColumnCount for DockAnchor {}
-impl Bind for DockAnchor {
-    fn bind(&self, statement: &Statement, start_index: i32) -> anyhow::Result<i32> {
-        match self {
-            DockAnchor::Bottom => "Bottom",
-            DockAnchor::Right => "Right",
-            DockAnchor::Expanded => "Expanded",
-        }
-        .bind(statement, start_index)
-    }
-}
-
-impl Column for DockAnchor {
-    fn column(statement: &mut Statement, start_index: i32) -> anyhow::Result<(Self, i32)> {
-        String::column(statement, start_index).and_then(|(anchor_text, next_index)| {
-            Ok((
-                match anchor_text.as_ref() {
-                    "Bottom" => DockAnchor::Bottom,
-                    "Right" => DockAnchor::Right,
-                    "Expanded" => DockAnchor::Expanded,
-                    _ => bail!("Stored dock anchor is incorrect"),
-                },
-                next_index,
-            ))
-        })
-    }
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]

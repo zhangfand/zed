@@ -1,5 +1,4 @@
 use crate::http::HttpClient;
-use db::kvp::KEY_VALUE_STORE;
 use gpui::{
     executor::Background,
     serde_json::{self, value::Map, Value},
