@@ -21,12 +21,13 @@ use gpui::{
 use project::{Project, ProjectEntryId, ProjectPath};
 use settings::{Autosave, Settings};
 use smallvec::SmallVec;
+use store::Store;
 use theme::Theme;
 use util::ResultExt;
 
 use crate::{
-    pane, persistence::ItemId, searchable::SearchableItemHandle, DelayedDebouncedEditAction,
-    FollowableItemBuilders, ItemNavHistory, Pane, ToolbarItemLocation, ViewId, Workspace,
+    pane, searchable::SearchableItemHandle, DelayedDebouncedEditAction, FollowableItemBuilders,
+    ItemNavHistory, Pane, ToolbarItemLocation, ViewId, Workspace,
 };
 
 #[derive(Eq, PartialEq, Hash)]
@@ -135,20 +136,22 @@ pub trait Item: View {
 
     fn added_to_workspace(&mut self, _workspace: &mut Workspace, _cx: &mut ViewContext<Self>) {}
 
-    fn serialized_item_kind() -> Option<&'static str> {
+    fn save_state(&self, cx: &mut ViewContext<Self>) -> Option<(&'static str, Task<u64>)> {
         None
     }
 
-    fn deserialize(
+    fn load_state(
+        _store: Store,
         _project: ModelHandle<Project>,
         _workspace: WeakViewHandle<Workspace>,
-        _item_id: ItemId,
+        _item_id: u64,
         _cx: &mut ViewContext<Pane>,
     ) -> Task<Result<ViewHandle<Self>>> {
         unimplemented!(
             "deserialize() must be implemented if serialized_item_kind() returns Some(_)"
         )
     }
+
     fn show_toolbar(&self) -> bool {
         true
     }
@@ -209,8 +212,8 @@ pub trait ItemHandle: 'static + fmt::Debug {
     fn to_searchable_item_handle(&self, cx: &AppContext) -> Option<Box<dyn SearchableItemHandle>>;
     fn breadcrumb_location(&self, cx: &AppContext) -> ToolbarItemLocation;
     fn breadcrumbs(&self, theme: &Theme, cx: &AppContext) -> Option<Vec<ElementBox>>;
-    fn serialized_item_kind(&self) -> Option<&'static str>;
     fn show_toolbar(&self, cx: &AppContext) -> bool;
+    fn save_state(&self, cx: &mut MutableAppContext) -> Option<(&'static str, Task<u64>)>;
 }
 
 pub trait WeakItemHandle {
@@ -479,7 +482,7 @@ impl<T: Item> ItemHandle for ViewHandle<T> {
         }
 
         cx.defer(|workspace, cx| {
-            workspace.serialize_workspace(cx);
+            workspace.save_state(cx);
         });
     }
 
@@ -582,12 +585,12 @@ impl<T: Item> ItemHandle for ViewHandle<T> {
         self.read(cx).breadcrumbs(theme, cx)
     }
 
-    fn serialized_item_kind(&self) -> Option<&'static str> {
-        T::serialized_item_kind()
-    }
-
     fn show_toolbar(&self, cx: &AppContext) -> bool {
         self.read(cx).show_toolbar()
+    }
+
+    fn save_state(&self, cx: &mut MutableAppContext) -> Option<(&'static str, Task<u64>)> {
+        self.update(cx, |this, cx| this.save_state(cx))
     }
 }
 
@@ -993,11 +996,11 @@ pub(crate) mod test {
             [ItemEvent::UpdateTab, ItemEvent::Edit].into()
         }
 
-        fn serialized_item_kind() -> Option<&'static str> {
-            Some("TestItem")
+        fn save_state(&self, cx: &mut ViewContext<Self>) -> Option<(&'static str, Task<u64>)> {
+            Some(("TestItem", todo!()))
         }
 
-        fn deserialize(
+        fn load_state(
             _project: ModelHandle<Project>,
             _workspace: WeakViewHandle<Workspace>,
             _item_id: ItemId,

@@ -621,7 +621,7 @@ impl Item for ProjectDiagnosticsEditor {
         Some("diagnostics")
     }
 
-    fn deserialize(
+    fn load_state(
         project: ModelHandle<Project>,
         workspace: WeakViewHandle<Workspace>,
         _item_id: workspace::ItemId,

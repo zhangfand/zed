@@ -268,7 +268,7 @@ impl Dock {
             }
         }
         cx.emit(crate::Event::DockAnchorChanged);
-        workspace.serialize_workspace(cx);
+        workspace.save_state(cx);
         cx.notify();
     }
 
@@ -448,7 +448,7 @@ mod tests {
     use crate::{
         dock,
         item::{self, test::TestItem},
-        persistence::{PaneGroupState, PaneState, SerializedItem, WorkspaceState},
+        persistence::{PaneGroupState, SerializedItem, WorkspaceState},
         register_deserializable_item,
         sidebar::Sidebar,
         ItemHandle, Workspace,

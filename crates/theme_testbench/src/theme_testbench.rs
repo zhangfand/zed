@@ -314,7 +314,7 @@ impl Item for ThemeTestbench {
         Some("ThemeTestBench")
     }
 
-    fn deserialize(
+    fn load_state(
         _project: ModelHandle<Project>,
         _workspace: WeakViewHandle<Workspace>,
         _item_id: workspace::ItemId,

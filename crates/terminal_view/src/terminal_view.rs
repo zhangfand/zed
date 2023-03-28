@@ -611,7 +611,7 @@ impl Item for TerminalView {
         Some("Terminal")
     }
 
-    fn deserialize(
+    fn load_state(
         project: ModelHandle<Project>,
         workspace: WeakViewHandle<Workspace>,
         item_id: workspace::ItemId,

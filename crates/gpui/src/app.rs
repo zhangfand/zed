@@ -803,7 +803,7 @@ impl MutableAppContext {
 
     pub fn window_display_uuid(&self, window_id: usize) -> Option<Uuid> {
         let (_, window) = self.presenters_and_platform_windows.get(&window_id)?;
-        window.screen().display_uuid()
+        window.screen().id()
     }
 
     pub fn active_labeled_tasks<'a>(

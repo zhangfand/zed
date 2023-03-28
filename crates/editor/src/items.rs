@@ -791,7 +791,7 @@ impl Item for Editor {
         Some("Editor")
     }
 
-    fn deserialize(
+    fn load_state(
         project: ModelHandle<Project>,
         _workspace: WeakViewHandle<Workspace>,
         item_id: ItemId,

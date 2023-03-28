@@ -59,6 +59,7 @@ use std::{
     time::Duration,
 };
 use store::Store;
+use uuid::Uuid;
 
 use crate::{
     notifications::simple_message_notification::MessageNotification,
@@ -69,8 +70,7 @@ use log::{error, warn};
 use notifications::{NotificationHandle, NotifyResultExt};
 pub use pane::*;
 pub use pane_group::*;
-use persistence::SerializedItem;
-pub use persistence::{ItemId, WorkspaceLocation};
+pub use persistence::WorkspaceLocation;
 use postage::prelude::Stream;
 use project::{Project, ProjectEntryId, ProjectPath, Worktree, WorktreeId};
 use serde::Deserialize;
@@ -407,7 +407,7 @@ pub fn register_deserializable_item<I: Item>(cx: &mut MutableAppContext) {
             deserializers.insert(
                 Arc::from(serialized_item_kind),
                 |project, workspace, item_id, cx| {
-                    let task = I::deserialize(project, workspace, item_id, cx);
+                    let task = I::load_state(project, workspace, item_id, cx);
                     cx.foreground()
                         .spawn(async { Ok(Box::new(task.await?) as Box<_>) })
                 },
@@ -521,6 +521,8 @@ pub struct Workspace {
     user_store: ModelHandle<client::UserStore>,
     remote_entity_subscription: Option<client::Subscription>,
     fs: Arc<dyn Fs>,
+    bounds: WindowBounds,
+    screen_id: Option<Uuid>,
     modal: Option<AnyViewHandle>,
     center: PaneGroup,
     left_sidebar: ViewHandle<Sidebar>,
@@ -568,7 +570,7 @@ struct FollowerState {
 
 impl Workspace {
     pub fn new(
-        serialized_workspace: Option<WorkspaceState>,
+        saved_state: Option<WorkspaceState>,
         project: ModelHandle<Project>,
         dock_default_factory: DockDefaultItemFactory,
         background_actions: BackgroundActions,
@@ -589,7 +591,7 @@ impl Workspace {
 
                 project::Event::WorktreeRemoved(_) | project::Event::WorktreeAdded => {
                     this.update_window_title(cx);
-                    this.serialize_workspace(cx);
+                    this.save_state(cx);
                 }
 
                 project::Event::DisconnectedFromHost => {
@@ -694,31 +696,21 @@ impl Workspace {
         let subscriptions = [
             cx.observe_fullscreen(|_, _, cx| cx.notify()),
             cx.observe_window_activation(Self::on_window_activation_changed),
-            cx.observe_window_bounds(move |_, mut bounds, display, cx| {
-                // Transform fixed bounds to be stored in terms of the containing display
-                if let WindowBounds::Fixed(mut window_bounds) = bounds {
-                    if let Some(screen) = cx.platform().screen_by_id(display) {
-                        let screen_bounds = screen.bounds();
-                        window_bounds
-                            .set_origin_x(window_bounds.origin_x() - screen_bounds.origin_x());
-                        window_bounds
-                            .set_origin_y(window_bounds.origin_y() - screen_bounds.origin_y());
-                        bounds = WindowBounds::Fixed(window_bounds);
-                    }
-                }
-
-                todo!();
-                // cx.background()
-                //     .spawn(DB.set_window_bounds(workspace_id, bounds, display))
-                //     .detach_and_log_err(cx);
-            }),
+            cx.observe_window_bounds(Self::on_window_bounds_changed),
         ];
 
         let mut this = Workspace {
-            modal: None,
             weak_self: weak_handle.clone(),
+            client,
+            user_store,
+            remote_entity_subscription: None,
+            fs,
+            bounds: WindowBounds::Maximized,
+            screen_id: None,
+            modal: None,
             center: PaneGroup::new(center_pane.clone()),
-            dock,
+            left_sidebar,
+            right_sidebar,
             // When removing an item, the last element remaining in this array
             // is used to find where focus should fallback to. As such, the order
             // of these two variables is important.
@@ -728,30 +720,25 @@ impl Workspace {
             last_active_center_pane: Some(center_pane.downgrade()),
             status_bar,
             titlebar_item: None,
+            dock,
             notifications: Default::default(),
-            client,
-            remote_entity_subscription: None,
-            user_store,
-            fs,
-            left_sidebar,
-            right_sidebar,
             project: project.clone(),
             leader_state: Default::default(),
             follower_states_by_leader: Default::default(),
             last_leaders_by_pane: Default::default(),
             window_edited: false,
             active_call,
+            leader_updates_tx,
             background_actions,
             store,
-            _observe_current_user,
-            _apply_leader_updates,
-            leader_updates_tx,
             _window_subscriptions: subscriptions,
+            _apply_leader_updates,
+            _observe_current_user,
         };
         this.project_remote_id_changed(project.read(cx).remote_id(), cx);
         cx.defer(|this, cx| this.update_window_title(cx));
 
-        if let Some(serialized_workspace) = serialized_workspace {
+        if let Some(serialized_workspace) = saved_state {
             cx.defer(move |_, cx| {
                 Self::load_from_serialized_workspace(weak_handle, serialized_workspace, cx)
             });
@@ -765,7 +752,7 @@ impl Workspace {
     }
 
     fn new_local(
-        abs_paths: Vec<PathBuf>,
+        mut abs_paths: Vec<PathBuf>,
         app_state: Arc<AppState>,
         requesting_window_id: Option<usize>,
         cx: &mut MutableAppContext,
@@ -773,6 +760,8 @@ impl Workspace {
         ViewHandle<Workspace>,
         Vec<Option<Result<Box<dyn ItemHandle>, anyhow::Error>>>,
     )> {
+        abs_paths.sort_unstable();
+
         let project_handle = Project::local(
             app_state.client.clone(),
             app_state.user_store.clone(),
@@ -1377,7 +1366,7 @@ impl Workspace {
             Dock::hide_on_sidebar_shown(self, sidebar_side, cx);
         }
 
-        self.serialize_workspace(cx);
+        self.save_state(cx);
 
         cx.focus_self();
         cx.notify();
@@ -1411,7 +1400,7 @@ impl Workspace {
             cx.focus_self();
         }
 
-        self.serialize_workspace(cx);
+        self.save_state(cx);
 
         cx.notify();
     }
@@ -1441,7 +1430,7 @@ impl Workspace {
             }
         }
 
-        self.serialize_workspace(cx);
+        self.save_state(cx);
 
         cx.notify();
     }
@@ -1701,7 +1690,7 @@ impl Workspace {
                 _ => {}
             }
 
-            self.serialize_workspace(cx);
+            self.save_state(cx);
         } else if self.dock.visible_pane().is_none() {
             error!("pane {} not found", pane_id);
         }
@@ -2462,6 +2451,32 @@ impl Workspace {
         }
     }
 
+    pub fn on_window_bounds_changed(
+        &mut self,
+        mut bounds: WindowBounds,
+        screen_id: Uuid,
+        cx: &mut ViewContext<Self>,
+    ) {
+        // Transform fixed bounds to be stored in terms of the containing display
+        if let WindowBounds::Fixed(mut window_bounds) = bounds {
+            if let Some(screen) = cx.platform().screen_by_id(screen_id) {
+                let screen_bounds = screen.bounds();
+                window_bounds.set_origin_x(window_bounds.origin_x() - screen_bounds.origin_x());
+                window_bounds.set_origin_y(window_bounds.origin_y() - screen_bounds.origin_y());
+                self.bounds = WindowBounds::Fixed(window_bounds);
+                self.screen_id = Some(screen_id);
+            } else {
+                self.bounds = bounds;
+                self.screen_id = None;
+            }
+        } else {
+            self.bounds = bounds;
+            self.screen_id = Some(screen_id);
+        }
+
+        self.save_state(cx);
+    }
+
     fn active_call(&self) -> Option<&ModelHandle<ActiveCall>> {
         self.active_call.as_ref().map(|(call, _)| call)
     }
@@ -2508,7 +2523,7 @@ impl Workspace {
         }
     }
 
-    fn serialize_workspace(&self, cx: &AppContext) {
+    fn save_state(&self, cx: &AppContext) {
         fn serialize_pane_handle(pane_handle: &ViewHandle<Pane>, cx: &AppContext) -> PaneState {
             let (items, active) = {
                 let pane = pane_handle.read(cx);
@@ -2642,7 +2657,7 @@ impl Workspace {
                 });
 
                 // Serialize ourself to make sure our timestamps and any pane / item changes are replicated
-                workspace.read_with(&cx, |workspace, cx| workspace.serialize_workspace(cx))
+                workspace.read_with(&cx, |workspace, cx| workspace.save_state(cx))
             }
         })
         .detach();

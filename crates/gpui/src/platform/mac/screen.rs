@@ -32,10 +32,10 @@ impl Screen {
             let native_screens = NSScreen::screens(nil);
             (0..NSArray::count(native_screens))
                 .into_iter()
-                .map(|ix| Screen {
+                .map(|ix| Self {
                     native_screen: native_screens.objectAtIndex(ix),
                 })
-                .find(|screen| platform::Screen::display_uuid(screen) == Some(uuid))
+                .find(|screen| platform::Screen::id(screen) == Some(uuid))
         }
     }
 
@@ -44,7 +44,7 @@ impl Screen {
         unsafe {
             let native_screens = NSScreen::screens(nil);
             for ix in 0..NSArray::count(native_screens) {
-                screens.push(Screen {
+                screens.push(Self {
                     native_screen: native_screens.objectAtIndex(ix),
                 });
             }
@@ -58,7 +58,7 @@ impl platform::Screen for Screen {
         self
     }
 
-    fn display_uuid(&self) -> Option<uuid::Uuid> {
+    fn id(&self) -> Option<uuid::Uuid> {
         unsafe {
             // Screen ids are not stable. Further, the default device id is also unstable across restarts.
             // CGDisplayCreateUUIDFromDisplayID is stable but not exposed in the bindings we use.

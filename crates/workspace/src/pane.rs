@@ -4,6 +4,7 @@ use super::{ItemHandle, SplitDirection};
 use crate::{
     dock::{icon_for_dock_anchor, AnchorDockBottom, AnchorDockRight, ExpandDock, HideDock},
     item::WeakItemHandle,
+    persistence::PaneState,
     toolbar::Toolbar,
     Item, NewFile, NewSearch, NewTerminal, Workspace,
 };
@@ -30,7 +31,7 @@ use gpui::{
 use project::{Project, ProjectEntryId, ProjectPath};
 use serde::Deserialize;
 use settings::{Autosave, DockAnchor, Settings};
-use std::{any::Any, cell::RefCell, cmp, mem, path::Path, rc::Rc};
+use std::{any::Any, cell::RefCell, cmp, mem, path::Path, rc::Rc, sync::Arc};
 use theme::Theme;
 use util::ResultExt;
 
@@ -326,6 +327,58 @@ impl Pane {
             _background_actions: background_actions,
             _workspace_id: workspace_id,
         }
+    }
+
+    pub fn build_state(&self, cx: &mut ViewContext<Self>) -> Task<PaneState> {
+        let active_item_id = self.active_item().map(|item| item.id());
+
+        let mut tasks = Vec::new();
+        for (ix, item) in self.items().enumerate() {
+            let active = ix == self.active_item_index;
+            if let Some((kind, item_id)) = item.save_state(cx) {
+                tasks.push((kind, active, item_id));
+            }
+        }
+
+        let active = self.is_active;
+        cx.foreground().spawn(async move {
+            let mut items = Vec::new();
+            for (kind, active, item_id) in tasks {
+                if let Some(item_id) = item_id.await.log_err() {
+                    items.push(ItemState {
+                        kind,
+                        item_id,
+                        active,
+                    });
+                }
+            }
+            PaneState { active, items }
+        })
+
+        //     {
+        //         items.push(ItemState {
+        //             kind,
+        //             item_id,
+        //             active,
+        //         })
+        //     }
+        // }
+
+        // let items = self
+        //     .items()
+        //     .filter_map(|item_handle| {
+        //         Some(ItemState {
+        //             kind: Arc::from(item_handle.serialized_item_kind()?),
+        //             item_id: item_handle.id(),
+        //             active: Some(item_handle.id()) == active_item_id,
+        //         })
+        //     })
+        //     .collect::<Vec<_>>();
+
+        // PaneState {
+        //     active: self.is_active,
+        //     items,
+        // }
     }
 
     pub fn is_active(&self) -> bool {
@@ -1632,6 +1685,86 @@ impl View for Pane {
             keymap.add_identifier("docked");
         }
         keymap
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Default, Clone, Serialize, Deserialize)]
+pub struct PaneState {
+    pub(crate) active: bool,
+    pub(crate) items: Vec<ItemState>,
+}
+
+impl PaneState {
+    pub async fn deserialize_to(
+        &self,
+        project: &ModelHandle<Project>,
+        pane_handle: &ViewHandle<Pane>,
+        workspace: &ViewHandle<Workspace>,
+        cx: &mut AsyncAppContext,
+    ) {
+        let mut active_item_index = None;
+        for (index, item) in self.children.iter().enumerate() {
+            let project = project.clone();
+            let item_handle = pane_handle
+                .update(cx, |_, cx| {
+                    if let Some(deserializer) = cx.global::<ItemDeserializers>().get(&item.kind) {
+                        deserializer(project, workspace.downgrade(), item.item_id, cx)
+                    } else {
+                        Task::ready(Err(anyhow::anyhow!(
+                            "Deserializer does not exist for item kind: {}",
+                            item.kind
+                        )))
+                    }
+                })
+                .await
+                .log_err();
+
+            if let Some(item_handle) = item_handle {
+                workspace.update(cx, |workspace, cx| {
+                    Pane::add_item(workspace, &pane_handle, item_handle, false, false, None, cx);
+                })
+            }
+
+            if item.active {
+                active_item_index = Some(index);
+            }
+        }
+
+        if let Some(active_item_index) = active_item_index {
+            pane_handle.update(cx, |pane, cx| {
+                pane.activate_item(active_item_index, false, false, cx);
+            })
+        }
+    }
+}
+
+pub type ItemId = usize;
+
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
+pub struct ItemState {
+    pub kind: Arc<str>,
+    pub item_id: ItemId,
+    pub active: bool,
+}
+
+impl ItemState {
+    pub fn new(kind: impl AsRef<str>, item_id: ItemId, active: bool) -> Self {
+        Self {
+            kind: Arc::from(kind.as_ref()),
+            item_id,
+            active,
+        }
+    }
+}
+
+#[cfg(test)]
+impl Default for ItemState {
+    fn default() -> Self {
+        ItemState {
+            kind: Arc::from("Terminal"),
+            item_id: 100000,
+            active: false,
+        }
     }
 }
 

@@ -230,7 +230,7 @@ impl super::Platform for Platform {
     fn restart(&self) {}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct Screen;
 
 impl super::Screen for Screen {
@@ -242,7 +242,7 @@ impl super::Screen for Screen {
         RectF::new(Vector2F::zero(), Vector2F::new(1920., 1080.))
     }
 
-    fn display_uuid(&self) -> Option<uuid::Uuid> {
+    fn id(&self) -> Option<uuid::Uuid> {
         Some(uuid::Uuid::new_v4())
     }
 }

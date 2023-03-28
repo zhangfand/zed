@@ -370,7 +370,7 @@ impl Item for ProjectSearchView {
         None
     }
 
-    fn deserialize(
+    fn load_state(
         _project: ModelHandle<Project>,
         _workspace: WeakViewHandle<Workspace>,
         _item_id: workspace::ItemId,
