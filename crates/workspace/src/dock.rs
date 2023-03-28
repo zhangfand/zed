@@ -448,10 +448,10 @@ mod tests {
     use crate::{
         dock,
         item::{self, test::TestItem},
-        persistence::{PaneGroupState, SerializedItem, WorkspaceState},
-        register_deserializable_item,
+        persistence::{PaneGroupState, WorkspaceState},
+        register_persistent_item,
         sidebar::Sidebar,
-        ItemHandle, Workspace,
+        ItemHandle, ItemState, PaneState, Workspace,
     };
 
     pub fn default_item_factory(
@@ -467,7 +467,7 @@ mod tests {
         Settings::test_async(cx);
 
         cx.update(|cx| {
-            register_deserializable_item::<item::test::TestItem>(cx);
+            register_persistent_item::<item::test::TestItem>(cx);
         });
 
         let serialized_workspace = WorkspaceState {
@@ -475,11 +475,11 @@ mod tests {
             dock_position: dock::DockPosition::Shown(DockAnchor::Expanded),
             center_group: PaneGroupState::Pane(PaneState {
                 active: false,
-                children: vec![],
+                items: vec![],
             }),
             dock_pane: PaneState {
                 active: true,
-                children: vec![SerializedItem {
+                items: vec![ItemState {
                     active: true,
                     item_id: 0,
                     kind: "TestItem".into(),
@@ -487,7 +487,7 @@ mod tests {
             },
             left_sidebar_open: false,
             bounds: Default::default(),
-            display: Default::default(),
+            screen_id: Default::default(),
         };
 
         let fs = FakeFs::new(cx.background());

@@ -8,16 +8,19 @@ use anyhow::Result;
 use async_recursion::async_recursion;
 use gpui::{
     geometry::{rect::RectF, vector::vec2f},
-    AsyncAppContext, Axis, ModelHandle, Task, ViewHandle, WindowBounds,
+    AsyncAppContext, Axis, ModelHandle, ViewHandle, WindowBounds,
 };
 
 use project::Project;
 use serde::{Deserialize, Serialize};
 use store::Record;
-use util::ResultExt;
 use uuid::Uuid;
 
-use crate::{dock::DockPosition, ItemDeserializers, Member, Pane, PaneAxis, Workspace};
+use crate::{
+    dock::DockPosition,
+    pane::{Pane, PaneState},
+    Member, Workspace,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WorkspaceLocation(Arc<Vec<PathBuf>>);
@@ -46,14 +49,15 @@ pub struct WorkspaceState {
     pub center_group: PaneGroupState,
     pub dock_pane: PaneState,
     pub left_sidebar_open: bool,
-    pub bounds: Option<WindowBoundsState>,
-    pub display: Option<Uuid>,
+    pub bounds: WindowBoundsState,
+    pub screen_id: Option<Uuid>,
 }
 
-#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize, Default)]
 #[serde(tag = "type")]
 pub enum WindowBoundsState {
     Fullscreen,
+    #[default]
     Maximized,
     Fixed {
         origin_x: f32,
@@ -67,7 +71,7 @@ pub enum WindowBoundsState {
 pub enum PaneGroupState {
     Group {
         axis: Axis,
-        children: Vec<PaneGroupState>,
+        members: Vec<PaneGroupState>,
     },
     Pane(PaneState),
 }
@@ -128,7 +132,7 @@ impl WindowBoundsState {
 impl Default for PaneGroupState {
     fn default() -> Self {
         Self::Pane(PaneState {
-            children: vec![SerializedItem::default()],
+            items: vec![crate::ItemState::default()],
             active: false,
         })
     }
@@ -142,49 +146,50 @@ impl PaneGroupState {
         workspace: &ViewHandle<Workspace>,
         cx: &mut AsyncAppContext,
     ) -> Option<(Member, Option<ViewHandle<Pane>>)> {
-        match self {
-            PaneGroupState::Group { axis, children } => {
-                let mut current_active_pane = None;
-                let mut members = Vec::new();
-                for child in children {
-                    if let Some((new_member, active_pane)) =
-                        child.deserialize(project, workspace, cx).await
-                    {
-                        members.push(new_member);
-                        current_active_pane = current_active_pane.or(active_pane);
-                    }
-                }
+        todo!()
+        // match self {
+        //     PaneGroupState::Group { axis, members } => {
+        //         let mut current_active_pane = None;
+        //         let mut members = Vec::new();
+        //         for child in members {
+        //             if let Some((new_member, active_pane)) =
+        //                 child.deserialize(project, workspace, cx).await
+        //             {
+        //                 members.push(new_member);
+        //                 current_active_pane = current_active_pane.or(active_pane);
+        //             }
+        //         }
 
-                if members.is_empty() {
-                    return None;
-                }
+        //         if members.is_empty() {
+        //             return None;
+        //         }
 
-                if members.len() == 1 {
-                    return Some((members.remove(0), current_active_pane));
-                }
+        //         if members.len() == 1 {
+        //             return Some((members.remove(0), current_active_pane));
+        //         }
 
-                Some((
-                    Member::Axis(PaneAxis {
-                        axis: *axis,
-                        members,
-                    }),
-                    current_active_pane,
-                ))
-            }
-            PaneGroupState::Pane(serialized_pane) => {
-                let pane = workspace.update(cx, |workspace, cx| workspace.add_pane(cx));
-                let active = serialized_pane.active;
-                serialized_pane
-                    .deserialize_to(project, &pane, workspace, cx)
-                    .await;
+        //         Some((
+        //             Member::Axis(PaneAxis {
+        //                 axis: *axis,
+        //                 members,
+        //             }),
+        //             current_active_pane,
+        //         ))
+        //     }
+        //     PaneGroupState::Pane(serialized_pane) => {
+        //         let pane = workspace.update(cx, |workspace, cx| workspace.add_pane(cx));
+        //         let active = serialized_pane.active;
+        //         serialized_pane
+        //             .deserialize_to(project, &pane, workspace, cx)
+        //             .await;
 
-                if pane.read_with(cx, |pane, _| pane.items_len() != 0) {
-                    Some((Member::Pane(pane.clone()), active.then(|| pane)))
-                } else {
-                    workspace.update(cx, |workspace, cx| workspace.remove_pane(pane, cx));
-                    None
-                }
-            }
-        }
+        //         if pane.read_with(cx, |pane, _| pane.items_len() != 0) {
+        //             Some((Member::Pane(pane.clone()), active.then(|| pane)))
+        //         } else {
+        //             workspace.update(cx, |workspace, cx| workspace.remove_pane(pane, cx));
+        //             None
+        //         }
+        //     }
+        // }
     }
 }

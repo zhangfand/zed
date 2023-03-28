@@ -14,6 +14,7 @@ use std::{
 
 use anyhow::Result;
 use client::{proto, Client};
+use futures::future::LocalBoxFuture;
 use gpui::{
     AnyViewHandle, AppContext, ElementBox, ModelHandle, MutableAppContext, Task, View, ViewContext,
     ViewHandle, WeakViewHandle,
@@ -27,7 +28,7 @@ use util::ResultExt;
 
 use crate::{
     pane, searchable::SearchableItemHandle, DelayedDebouncedEditAction, FollowableItemBuilders,
-    ItemNavHistory, Pane, ToolbarItemLocation, ViewId, Workspace,
+    ItemNavHistory, Pane, PersistentItemRegistrations, ToolbarItemLocation, ViewId, Workspace,
 };
 
 #[derive(Eq, PartialEq, Hash)]
@@ -136,22 +137,6 @@ pub trait Item: View {
 
     fn added_to_workspace(&mut self, _workspace: &mut Workspace, _cx: &mut ViewContext<Self>) {}
 
-    fn save_state(&self, cx: &mut ViewContext<Self>) -> Option<(&'static str, Task<u64>)> {
-        None
-    }
-
-    fn load_state(
-        _store: Store,
-        _project: ModelHandle<Project>,
-        _workspace: WeakViewHandle<Workspace>,
-        _item_id: u64,
-        _cx: &mut ViewContext<Pane>,
-    ) -> Task<Result<ViewHandle<Self>>> {
-        unimplemented!(
-            "deserialize() must be implemented if serialized_item_kind() returns Some(_)"
-        )
-    }
-
     fn show_toolbar(&self) -> bool {
         true
     }
@@ -204,6 +189,7 @@ pub trait ItemHandle: 'static + fmt::Debug {
     ) -> Task<Result<()>>;
     fn act_as_type(&self, type_id: TypeId, cx: &AppContext) -> Option<AnyViewHandle>;
     fn to_followable_item_handle(&self, cx: &AppContext) -> Option<Box<dyn FollowableItemHandle>>;
+    fn to_persistent_item_handle(&self, cx: &AppContext) -> Option<Box<dyn PersistentItemHandle>>;
     fn on_release(
         &self,
         cx: &mut MutableAppContext,
@@ -213,7 +199,6 @@ pub trait ItemHandle: 'static + fmt::Debug {
     fn breadcrumb_location(&self, cx: &AppContext) -> ToolbarItemLocation;
     fn breadcrumbs(&self, theme: &Theme, cx: &AppContext) -> Option<Vec<ElementBox>>;
     fn show_toolbar(&self, cx: &AppContext) -> bool;
-    fn save_state(&self, cx: &mut MutableAppContext) -> Option<(&'static str, Task<u64>)>;
 }
 
 pub trait WeakItemHandle {
@@ -565,6 +550,19 @@ impl<T: Item> ItemHandle for ViewHandle<T> {
         }
     }
 
+    fn to_persistent_item_handle(&self, cx: &AppContext) -> Option<Box<dyn PersistentItemHandle>> {
+        if cx.has_global::<PersistentItemRegistrations>() {
+            let item = self.to_any();
+            let downcast = &cx
+                .global::<PersistentItemRegistrations>()
+                .get(&item.view_type())?
+                .downcast_handle;
+            Some(downcast(self.to_any()))
+        } else {
+            None
+        }
+    }
+
     fn on_release(
         &self,
         cx: &mut MutableAppContext,
@@ -587,10 +585,6 @@ impl<T: Item> ItemHandle for ViewHandle<T> {
 
     fn show_toolbar(&self, cx: &AppContext) -> bool {
         self.read(cx).show_toolbar()
-    }
-
-    fn save_state(&self, cx: &mut MutableAppContext) -> Option<(&'static str, Task<u64>)> {
-        self.update(cx, |this, cx| this.save_state(cx))
     }
 }
 
@@ -733,10 +727,35 @@ impl<T: FollowableItem> FollowableItemHandle for ViewHandle<T> {
     }
 }
 
+pub trait PersistentItem: Item {
+    fn type_name() -> &'static str;
+    fn load_state(
+        store: Store,
+        item_id: u64,
+        project: ModelHandle<Project>,
+        workspace: WeakViewHandle<Workspace>,
+        cx: &mut ViewContext<Pane>,
+    ) -> LocalBoxFuture<'static, Result<ViewHandle<Self>>>;
+    fn save_state(&self, cx: &mut MutableAppContext) -> Task<u64>;
+}
+
+pub trait PersistentItemHandle: ItemHandle {
+    fn save_state(&self, cx: &mut MutableAppContext) -> (&'static str, Task<u64>);
+}
+
+impl<T: PersistentItem> PersistentItemHandle for ViewHandle<T> {
+    fn save_state(&self, cx: &mut MutableAppContext) -> (&'static str, Task<u64>) {
+        self.update(cx, |this, cx| {
+            let id = PersistentItem::save_state(this, cx);
+            (T::type_name(), id)
+        })
+    }
+}
+
 #[cfg(test)]
 pub(crate) mod test {
-    use super::{Item, ItemEvent};
-    use crate::{sidebar::SidebarItem, ItemId, ItemNavHistory, Pane, Workspace};
+    use super::{Item, ItemEvent, PersistentItem};
+    use crate::{sidebar::SidebarItem, ItemNavHistory, Pane, Workspace};
     use gpui::{
         elements::Empty, AppContext, Element, ElementBox, Entity, ModelHandle, MutableAppContext,
         RenderContext, Task, View, ViewContext, ViewHandle, WeakViewHandle,
@@ -744,6 +763,7 @@ pub(crate) mod test {
     use project::{Project, ProjectEntryId, ProjectPath, WorktreeId};
     use smallvec::SmallVec;
     use std::{any::Any, borrow::Cow, cell::Cell, path::Path};
+    use store::Store;
 
     pub struct TestProjectItem {
         pub entry_id: Option<ProjectEntryId>,
@@ -995,21 +1015,27 @@ pub(crate) mod test {
         fn to_item_events(_: &Self::Event) -> SmallVec<[ItemEvent; 2]> {
             [ItemEvent::UpdateTab, ItemEvent::Edit].into()
         }
-
-        fn save_state(&self, cx: &mut ViewContext<Self>) -> Option<(&'static str, Task<u64>)> {
-            Some(("TestItem", todo!()))
-        }
-
-        fn load_state(
-            _project: ModelHandle<Project>,
-            _workspace: WeakViewHandle<Workspace>,
-            _item_id: ItemId,
-            cx: &mut ViewContext<Pane>,
-        ) -> Task<anyhow::Result<ViewHandle<Self>>> {
-            let view = cx.add_view(|_cx| Self::new());
-            Task::Ready(Some(anyhow::Ok(view)))
-        }
     }
 
     impl SidebarItem for TestItem {}
+
+    impl PersistentItem for TestItem {
+        fn type_name() -> &'static str {
+            "TestItem"
+        }
+
+        fn load_state(
+            store: Store,
+            item_id: u64,
+            project: ModelHandle<Project>,
+            workspace: WeakViewHandle<Workspace>,
+            cx: &mut ViewContext<Pane>,
+        ) -> futures::future::LocalBoxFuture<'static, anyhow::Result<ViewHandle<Self>>> {
+            todo!()
+        }
+
+        fn save_state(&self, cx: &mut MutableAppContext) -> Task<u64> {
+            todo!()
+        }
+    }
 }

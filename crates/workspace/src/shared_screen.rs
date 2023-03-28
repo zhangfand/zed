@@ -1,6 +1,6 @@
 use crate::{
     item::{Item, ItemEvent},
-    ItemNavHistory,
+    pane::ItemNavHistory,
 };
 use call::participant::{Frame, RemoteVideoTrack};
 use client::{proto::PeerId, User};

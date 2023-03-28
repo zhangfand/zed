@@ -12,14 +12,18 @@ use gpui::{
 use project::Project;
 use settings::Settings;
 use theme::{ColorScheme, Layer, Style, StyleSet};
-use workspace::{item::Item, register_deserializable_item, Pane, Workspace};
+use workspace::{
+    futures::future::LocalBoxFuture,
+    item::{Item, PersistentItem},
+    Pane, Store, Workspace,
+};
 
 actions!(theme, [DeployThemeTestbench]);
 
 pub fn init(cx: &mut MutableAppContext) {
     cx.add_action(ThemeTestbench::deploy);
 
-    register_deserializable_item::<ThemeTestbench>(cx)
+    workspace::register_persistent_item::<ThemeTestbench>(cx)
 }
 
 pub struct ThemeTestbench {}
@@ -309,17 +313,24 @@ impl Item for ThemeTestbench {
             .contained()
             .boxed()
     }
+}
 
-    fn serialized_item_kind() -> Option<&'static str> {
-        Some("ThemeTestBench")
+impl PersistentItem for ThemeTestbench {
+    fn type_name() -> &'static str {
+        todo!()
     }
 
     fn load_state(
-        _project: ModelHandle<Project>,
-        _workspace: WeakViewHandle<Workspace>,
-        _item_id: workspace::ItemId,
+        store: Store,
+        item_id: u64,
+        project: ModelHandle<Project>,
+        workspace: WeakViewHandle<Workspace>,
         cx: &mut ViewContext<Pane>,
-    ) -> Task<gpui::anyhow::Result<ViewHandle<Self>>> {
-        Task::ready(Ok(cx.add_view(|_| Self {})))
+    ) -> LocalBoxFuture<'static, gpui::anyhow::Result<ViewHandle<Self>>> {
+        todo!()
+    }
+
+    fn save_state(&self, cx: &mut MutableAppContext) -> Task<u64> {
+        todo!()
     }
 }

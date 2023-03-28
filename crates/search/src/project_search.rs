@@ -26,7 +26,7 @@ use std::{
 };
 use util::ResultExt as _;
 use workspace::{
-    item::{Item, ItemEvent, ItemHandle},
+    item::{Item, ItemEvent, ItemHandle, PersistentItem},
     searchable::{Direction, SearchableItem, SearchableItemHandle},
     ItemNavHistory, Pane, ToolbarItemLocation, ToolbarItemView, Workspace,
 };
@@ -365,18 +365,25 @@ impl Item for ProjectSearchView {
     fn breadcrumbs(&self, theme: &theme::Theme, cx: &AppContext) -> Option<Vec<ElementBox>> {
         self.results_editor.breadcrumbs(theme, cx)
     }
+}
 
-    fn serialized_item_kind() -> Option<&'static str> {
-        None
+impl PersistentItem for ProjectSearchView {
+    fn type_name() -> &'static str {
+        "ProjectSearchView"
     }
 
     fn load_state(
-        _project: ModelHandle<Project>,
-        _workspace: WeakViewHandle<Workspace>,
-        _item_id: workspace::ItemId,
-        _cx: &mut ViewContext<Pane>,
-    ) -> Task<anyhow::Result<ViewHandle<Self>>> {
-        unimplemented!()
+        store: workspace::Store,
+        item_id: u64,
+        project: ModelHandle<Project>,
+        workspace: WeakViewHandle<Workspace>,
+        cx: &mut ViewContext<Pane>,
+    ) -> futures::future::LocalBoxFuture<'static, anyhow::Result<ViewHandle<Self>>> {
+        todo!()
+    }
+
+    fn save_state(&self, cx: &mut MutableAppContext) -> Task<u64> {
+        todo!()
     }
 }
 

@@ -36,6 +36,7 @@ project = { path = "../project" }
 rpc = { path = "../rpc" }
 settings = { path = "../settings" }
 snippet = { path = "../snippet" }
+store = { path = "../store" }
 sum_tree = { path = "../sum_tree" }
 theme = { path = "../theme" }
 util = { path = "../util" }

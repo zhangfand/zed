@@ -3,7 +3,7 @@ use crate::{
     movement::surrounding_word, scroll::ScrollAnchor, Anchor, Autoscroll, Editor, Event, ExcerptId,
     ExcerptRange, MultiBuffer, MultiBufferSnapshot, NavigationData, ToPoint as _,
 };
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, Result};
 use collections::HashSet;
 use futures::future::try_join_all;
 use gpui::{
@@ -14,7 +14,7 @@ use language::{
     proto::serialize_anchor as serialize_text_anchor, Bias, Buffer, OffsetRangeExt, Point,
     SelectionGoal,
 };
-use project::{FormatTrigger, Item as _, Project, ProjectPath};
+use project::{FormatTrigger, Item as _, Project};
 use rpc::proto::{self, update_view};
 use settings::Settings;
 use smallvec::SmallVec;
@@ -26,13 +26,14 @@ use std::{
     ops::Range,
     path::{Path, PathBuf},
 };
+use store::Store;
 use text::Selection;
-use util::{ResultExt, TryFutureExt};
-use workspace::item::FollowableItemHandle;
+use util::TryFutureExt;
+use workspace::item::{FollowableItemHandle, PersistentItem};
 use workspace::{
     item::{FollowableItem, Item, ItemEvent, ItemHandle, ProjectItem},
     searchable::{Direction, SearchEvent, SearchableItem, SearchableItemHandle},
-    ItemId, ItemNavHistory, Pane, StatusItemView, ToolbarItemLocation, ViewId, Workspace,
+    ItemNavHistory, Pane, StatusItemView, ToolbarItemLocation, ViewId, Workspace,
 };
 
 pub const MAX_TAB_TITLE_LEN: usize = 24;
@@ -786,54 +787,6 @@ impl Item for Editor {
         //     .detach();
         // }
     }
-
-    fn serialized_item_kind() -> Option<&'static str> {
-        Some("Editor")
-    }
-
-    fn load_state(
-        project: ModelHandle<Project>,
-        _workspace: WeakViewHandle<Workspace>,
-        item_id: ItemId,
-        cx: &mut ViewContext<Pane>,
-    ) -> Task<Result<ViewHandle<Self>>> {
-        let project_item: Result<_> = project.update(cx, |project, cx| {
-            // Look up the path with this key associated, create a self with that path
-            let path: &Path = todo!();
-            // let path = DB
-            //     .get_path(item_id, workspace_id)?
-            //     .context("No path stored for this editor")?;
-
-            let (worktree, path) = project
-                .find_local_worktree(&path, cx)
-                .with_context(|| format!("No worktree for path: {path:?}"))?;
-            let project_path = ProjectPath {
-                worktree_id: worktree.read(cx).id(),
-                path: path.into(),
-            };
-
-            Ok(project.open_path(project_path, cx))
-        });
-
-        project_item
-            .map(|project_item| {
-                cx.spawn(|pane, mut cx| async move {
-                    let (_, project_item) = project_item.await?;
-                    let buffer = project_item
-                        .downcast::<Buffer>()
-                        .context("Project item at stored path was not a buffer")?;
-
-                    Ok(cx.update(|cx| {
-                        cx.add_view(pane, |cx| {
-                            let mut editor = Editor::for_buffer(buffer, Some(project), cx);
-                            editor.read_scroll_position_from_db(item_id, cx);
-                            editor
-                        })
-                    }))
-                })
-            })
-            .unwrap_or_else(|error| Task::ready(Err(error)))
-    }
 }
 
 impl ProjectItem for Editor {
@@ -846,6 +799,70 @@ impl ProjectItem for Editor {
     ) -> Self {
         Self::for_buffer(buffer, Some(project), cx)
     }
+}
+
+impl PersistentItem for Editor {
+    fn type_name() -> &'static str {
+        "Editor"
+    }
+
+    fn load_state(
+        store: Store,
+        item_id: u64,
+        project: ModelHandle<Project>,
+        workspace: WeakViewHandle<Workspace>,
+        cx: &mut ViewContext<Pane>,
+    ) -> futures::future::LocalBoxFuture<'static, Result<ViewHandle<Self>>> {
+        todo!()
+    }
+
+    fn save_state(&self, cx: &mut MutableAppContext) -> Task<u64> {
+        todo!()
+    }
+
+    // fn load_state(
+    //     project: ModelHandle<Project>,
+    //     _workspace: WeakViewHandle<Workspace>,
+    //     item_id: ItemId,
+    //     cx: &mut ViewContext<Pane>,
+    // ) -> Task<Result<ViewHandle<Self>>> {
+    //     let project_item: Result<_> = project.update(cx, |project, cx| {
+    //         // Look up the path with this key associated, create a self with that path
+    //         let path: &Path = todo!();
+    //         // let path = DB
+    //         //     .get_path(item_id, workspace_id)?
+    //         //     .context("No path stored for this editor")?;
+
+    //         let (worktree, path) = project
+    //             .find_local_worktree(&path, cx)
+    //             .with_context(|| format!("No worktree for path: {path:?}"))?;
+    //         let project_path = ProjectPath {
+    //             worktree_id: worktree.read(cx).id(),
+    //             path: path.into(),
+    //         };
+
+    //         Ok(project.open_path(project_path, cx))
+    //     });
+
+    //     project_item
+    //         .map(|project_item| {
+    //             cx.spawn(|pane, mut cx| async move {
+    //                 let (_, project_item) = project_item.await?;
+    //                 let buffer = project_item
+    //                     .downcast::<Buffer>()
+    //                     .context("Project item at stored path was not a buffer")?;
+
+    //                 Ok(cx.update(|cx| {
+    //                     cx.add_view(pane, |cx| {
+    //                         let mut editor = Editor::for_buffer(buffer, Some(project), cx);
+    //                         editor.read_scroll_position_from_db(item_id, cx);
+    //                         editor
+    //                     })
+    //                 }))
+    //             })
+    //         })
+    //         .unwrap_or_else(|error| Task::ready(Err(error)))
+    // }
 }
 
 enum BufferSearchHighlights {}

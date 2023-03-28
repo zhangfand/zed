@@ -33,9 +33,9 @@ use terminal::{
 };
 use util::ResultExt;
 use workspace::{
-    item::{Item, ItemEvent},
+    item::{Item, ItemEvent, PersistentItem},
     notifications::NotifyResultExt,
-    pane, register_deserializable_item,
+    pane,
     searchable::{SearchEvent, SearchOptions, SearchableItem, SearchableItemHandle},
     Pane, ToolbarItemLocation, Workspace,
 };
@@ -71,7 +71,7 @@ impl_internal_actions!(project_panel, [DeployContextMenu]);
 pub fn init(cx: &mut MutableAppContext) {
     cx.add_action(TerminalView::deploy);
 
-    register_deserializable_item::<TerminalView>(cx);
+    workspace::register_persistent_item::<TerminalView>(cx);
 
     //Useful terminal views
     cx.add_action(TerminalView::send_text);
@@ -607,45 +607,6 @@ impl Item for TerminalView {
         .boxed()])
     }
 
-    fn serialized_item_kind() -> Option<&'static str> {
-        Some("Terminal")
-    }
-
-    fn load_state(
-        project: ModelHandle<Project>,
-        workspace: WeakViewHandle<Workspace>,
-        item_id: workspace::ItemId,
-        cx: &mut ViewContext<Pane>,
-    ) -> Task<anyhow::Result<ViewHandle<Self>>> {
-        let window_id = cx.window_id();
-        cx.spawn(|pane, mut cx| async move {
-            // let cwd = TERMINAL_DB
-            //     .get_working_directory(item_id, workspace_id)
-            //     .log_err()
-            //     .flatten()
-            //     .or_else(|| {
-            //         cx.read(|cx| {
-            //             let strategy = cx.global::<Settings>().terminal_strategy();
-            //             workspace
-            //                 .upgrade(cx)
-            //                 .map(|workspace| {
-            //                     get_working_directory(workspace.read(cx), cx, strategy)
-            //                 })
-            //                 .flatten()
-            //         })
-            //     });
-            let cwd = todo!();
-
-            cx.update(|cx| {
-                let terminal = project.update(cx, |project, cx| {
-                    project.create_terminal(cwd, window_id, cx)
-                })?;
-
-                Ok(cx.add_view(pane, |cx| TerminalView::new(terminal, cx)))
-            })
-        })
-    }
-
     fn added_to_workspace(&mut self, workspace: &mut Workspace, cx: &mut ViewContext<Self>) {
         todo!()
         // cx.background()
@@ -655,6 +616,65 @@ impl Item for TerminalView {
         //     ))
         //     .detach();
     }
+}
+
+impl PersistentItem for TerminalView {
+    fn type_name() -> &'static str {
+        "TerminalView"
+    }
+
+    fn load_state(
+        store: workspace::Store,
+        item_id: u64,
+        project: ModelHandle<Project>,
+        workspace: WeakViewHandle<Workspace>,
+        cx: &mut ViewContext<Pane>,
+    ) -> futures::future::LocalBoxFuture<'static, anyhow::Result<ViewHandle<Self>>> {
+        todo!()
+    }
+
+    fn save_state(&self, cx: &mut MutableAppContext) -> Task<u64> {
+        todo!()
+    }
+
+    // fn serialized_item_kind() -> Option<&'static str> {
+    //     Some("Terminal")
+    // }
+
+    // fn load_state(
+    //     project: ModelHandle<Project>,
+    //     workspace: WeakViewHandle<Workspace>,
+    //     item_id: workspace::ItemId,
+    //     cx: &mut ViewContext<Pane>,
+    // ) -> Task<anyhow::Result<ViewHandle<Self>>> {
+    //     let window_id = cx.window_id();
+    //     cx.spawn(|pane, mut cx| async move {
+    //         // let cwd = TERMINAL_DB
+    //         //     .get_working_directory(item_id, workspace_id)
+    //         //     .log_err()
+    //         //     .flatten()
+    //         //     .or_else(|| {
+    //         //         cx.read(|cx| {
+    //         //             let strategy = cx.global::<Settings>().terminal_strategy();
+    //         //             workspace
+    //         //                 .upgrade(cx)
+    //         //                 .map(|workspace| {
+    //         //                     get_working_directory(workspace.read(cx), cx, strategy)
+    //         //                 })
+    //         //                 .flatten()
+    //         //         })
+    //         //     });
+    //         let cwd = todo!();
+
+    //         cx.update(|cx| {
+    //             let terminal = project.update(cx, |project, cx| {
+    //                 project.create_terminal(cwd, window_id, cx)
+    //             })?;
+
+    //             Ok(cx.add_view(pane, |cx| TerminalView::new(terminal, cx)))
+    //         })
+    //     })
+    // }
 }
 
 impl SearchableItem for TerminalView {

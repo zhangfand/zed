@@ -16,7 +16,6 @@ use update_notification::UpdateNotification;
 use util::channel::ReleaseChannel;
 use workspace::Workspace;
 
-const SHOULD_SHOW_UPDATE_NOTIFICATION_KEY: &str = "auto-updater-should-show-updated-notification";
 const POLL_INTERVAL: Duration = Duration::from_secs(60 * 60);
 
 actions!(auto_update, [Check, DismissErrorMessage, ViewReleaseNotes]);

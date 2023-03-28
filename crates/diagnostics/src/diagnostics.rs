@@ -31,7 +31,7 @@ use std::{
 };
 use util::TryFutureExt;
 use workspace::{
-    item::{Item, ItemEvent, ItemHandle},
+    item::{Item, ItemEvent, ItemHandle, PersistentItem},
     ItemNavHistory, Pane, Workspace,
 };
 
@@ -616,19 +616,35 @@ impl Item for ProjectDiagnosticsEditor {
     fn deactivated(&mut self, cx: &mut ViewContext<Self>) {
         self.editor.update(cx, |editor, cx| editor.deactivated(cx));
     }
+}
 
-    fn serialized_item_kind() -> Option<&'static str> {
-        Some("diagnostics")
+impl PersistentItem for ProjectDiagnosticsEditor {
+    fn type_name() -> &'static str {
+        "ProjectDiagnosticsEditor"
     }
 
     fn load_state(
+        store: workspace::Store,
+        item_id: u64,
         project: ModelHandle<Project>,
         workspace: WeakViewHandle<Workspace>,
-        _item_id: workspace::ItemId,
         cx: &mut ViewContext<Pane>,
-    ) -> Task<Result<ViewHandle<Self>>> {
-        Task::ready(Ok(cx.add_view(|cx| Self::new(project, workspace, cx))))
+    ) -> workspace::futures::future::LocalBoxFuture<'static, Result<ViewHandle<Self>>> {
+        todo!()
     }
+
+    fn save_state(&self, cx: &mut MutableAppContext) -> Task<u64> {
+        todo!()
+    }
+
+    // fn load_state(
+    //     project: ModelHandle<Project>,
+    //     workspace: WeakViewHandle<Workspace>,
+    //     _item_id: workspace::ItemId,
+    //     cx: &mut ViewContext<Pane>,
+    // ) -> Task<Result<ViewHandle<Self>>> {
+    //     Task::ready(Ok(cx.add_view(|cx| Self::new(project, workspace, cx))))
+    // }
 }
 
 fn diagnostic_header_renderer(diagnostic: Diagnostic) -> RenderBlock {

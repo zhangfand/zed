@@ -14,8 +14,18 @@ pub mod sidebar;
 mod status_bar;
 mod toolbar;
 
+pub use futures;
+pub use pane::*;
+pub use pane_group::*;
+pub use persistence::WorkspaceLocation;
 pub use smallvec;
+pub use status_bar::StatusItemView;
+pub use store::*;
+pub use toolbar::{ToolbarItemLocation, ToolbarItemView};
 
+use crate::{
+    notifications::simple_message_notification::MessageNotification, persistence::WorkspaceState,
+};
 use anyhow::{anyhow, Context, Result};
 use call::ActiveCall;
 use client::{
@@ -28,7 +38,7 @@ use drag_and_drop::DragAndDrop;
 use fs::{self, Fs};
 use futures::{
     channel::{mpsc, oneshot},
-    future::try_join_all,
+    future::{try_join_all, LocalBoxFuture},
     FutureExt, StreamExt,
 };
 use gpui::{
@@ -46,8 +56,22 @@ use gpui::{
     SizeConstraint, Subscription, Task, View, ViewContext, ViewHandle, WeakViewHandle,
     WindowBounds,
 };
-use item::{FollowableItem, FollowableItemHandle, Item, ItemHandle, ProjectItem};
+use item::{
+    FollowableItem, FollowableItemHandle, Item, ItemHandle, PersistentItem, PersistentItemHandle,
+    ProjectItem,
+};
 use language::LanguageRegistry;
+use lazy_static::lazy_static;
+use log::{error, warn};
+use notifications::{NotificationHandle, NotifyResultExt};
+use persistence::WindowBoundsState;
+use postage::prelude::Stream;
+use project::{Project, ProjectEntryId, ProjectPath, Worktree, WorktreeId};
+use serde::Deserialize;
+use settings::{Autosave, DockAnchor, Settings};
+use shared_screen::SharedScreen;
+use sidebar::{Sidebar, SidebarButtons, SidebarSide, ToggleSidebarItem};
+use status_bar::StatusBar;
 use std::{
     any::TypeId,
     borrow::Cow,
@@ -58,30 +82,9 @@ use std::{
     sync::Arc,
     time::Duration,
 };
-use store::Store;
-use uuid::Uuid;
-
-use crate::{
-    notifications::simple_message_notification::MessageNotification,
-    persistence::{PaneGroupState, PaneState, WorkspaceState},
-};
-use lazy_static::lazy_static;
-use log::{error, warn};
-use notifications::{NotificationHandle, NotifyResultExt};
-pub use pane::*;
-pub use pane_group::*;
-pub use persistence::WorkspaceLocation;
-use postage::prelude::Stream;
-use project::{Project, ProjectEntryId, ProjectPath, Worktree, WorktreeId};
-use serde::Deserialize;
-use settings::{Autosave, DockAnchor, Settings};
-use shared_screen::SharedScreen;
-use sidebar::{Sidebar, SidebarButtons, SidebarSide, ToggleSidebarItem};
-use status_bar::StatusBar;
-pub use status_bar::StatusItemView;
 use theme::{Theme, ThemeRegistry};
-pub use toolbar::{ToolbarItemLocation, ToolbarItemView};
 use util::ResultExt;
+use uuid::Uuid;
 
 lazy_static! {
     static ref ZED_WINDOW_SIZE: Option<Vector2F> = env::var("ZED_WINDOW_SIZE")
@@ -368,6 +371,7 @@ type FollowableItemBuilder = fn(
     &mut Option<proto::view::Variant>,
     &mut MutableAppContext,
 ) -> Option<Task<Result<Box<dyn FollowableItemHandle>>>>;
+
 type FollowableItemBuilders = HashMap<
     TypeId,
     (
@@ -375,6 +379,7 @@ type FollowableItemBuilders = HashMap<
         fn(AnyViewHandle) -> Box<dyn FollowableItemHandle>,
     ),
 >;
+
 pub fn register_followable_item<I: FollowableItem>(cx: &mut MutableAppContext) {
     cx.update_default_global(|builders: &mut FollowableItemBuilders, _| {
         builders.insert(
@@ -392,27 +397,39 @@ pub fn register_followable_item<I: FollowableItem>(cx: &mut MutableAppContext) {
     });
 }
 
-type ItemDeserializers = HashMap<
-    Arc<str>,
-    fn(
+#[derive(Default)]
+struct PersistentItemTypesByName(HashMap<&'static str, TypeId>);
+
+type PersistentItemRegistrations = HashMap<TypeId, PersistentItemRegistration>;
+
+struct PersistentItemRegistration {
+    load_item: fn(
+        Store,
+        u64,
         ModelHandle<Project>,
         WeakViewHandle<Workspace>,
-        ItemId,
         &mut ViewContext<Pane>,
-    ) -> Task<Result<Box<dyn ItemHandle>>>,
->;
-pub fn register_deserializable_item<I: Item>(cx: &mut MutableAppContext) {
-    cx.update_default_global(|deserializers: &mut ItemDeserializers, _cx| {
-        if let Some(serialized_item_kind) = I::serialized_item_kind() {
-            deserializers.insert(
-                Arc::from(serialized_item_kind),
-                |project, workspace, item_id, cx| {
-                    let task = I::load_state(project, workspace, item_id, cx);
-                    cx.foreground()
-                        .spawn(async { Ok(Box::new(task.await?) as Box<_>) })
+    ) -> LocalBoxFuture<'static, Result<Box<dyn ItemHandle>>>,
+    downcast_handle: fn(AnyViewHandle) -> Box<dyn PersistentItemHandle>,
+}
+
+pub fn register_persistent_item<I: PersistentItem>(cx: &mut MutableAppContext) {
+    cx.update_default_global(|map: &mut PersistentItemTypesByName, _| {
+        map.0.insert(I::type_name(), TypeId::of::<I>());
+    });
+
+    cx.update_default_global(|map: &mut PersistentItemRegistrations, _| {
+        map.insert(
+            TypeId::of::<I>(),
+            PersistentItemRegistration {
+                load_item: |store, item_id, project, workspace, cx| {
+                    let item =
+                        <I as PersistentItem>::load_state(store, item_id, project, workspace, cx);
+                    async move { Ok(Box::new(item.await?) as Box<dyn ItemHandle>) }.boxed_local()
                 },
-            );
-        }
+                downcast_handle: |this| Box::new(this.downcast::<I>().unwrap()),
+            },
+        );
     });
 }
 
@@ -841,10 +858,9 @@ impl Workspace {
                 } else {
                     workspace_state
                         .as_ref()
-                        .and_then(|serialized_workspace| {
-                            let display = serialized_workspace.display?;
-                            let mut bounds =
-                                serialized_workspace.bounds.as_ref()?.to_window_bounds();
+                        .and_then(|workspace_state| {
+                            let display = workspace_state.screen_id?;
+                            let mut bounds = workspace_state.bounds.to_window_bounds();
 
                             // Stored bounds are relative to the containing display.
                             // So convert back to global coordinates if that screen still exists
@@ -2524,62 +2540,36 @@ impl Workspace {
     }
 
     fn save_state(&self, cx: &AppContext) {
-        fn serialize_pane_handle(pane_handle: &ViewHandle<Pane>, cx: &AppContext) -> PaneState {
-            let (items, active) = {
-                let pane = pane_handle.read(cx);
-                let active_item_id = pane.active_item().map(|item| item.id());
-                (
-                    pane.items()
-                        .filter_map(|item_handle| {
-                            Some(SerializedItem {
-                                kind: Arc::from(item_handle.serialized_item_kind()?),
-                                item_id: item_handle.id(),
-                                active: Some(item_handle.id()) == active_item_id,
-                            })
-                        })
-                        .collect::<Vec<_>>(),
-                    pane.is_active(),
-                )
-            };
+        if let Some(location) = self.location(cx) {}
+    }
 
-            PaneState::new(items, active)
-        }
-
-        fn build_serialized_pane_group(pane_group: &Member, cx: &AppContext) -> PaneGroupState {
-            match pane_group {
-                Member::Axis(PaneAxis { axis, members }) => PaneGroupState::Group {
-                    axis: *axis,
-                    children: members
-                        .iter()
-                        .map(|member| build_serialized_pane_group(member, cx))
-                        .collect::<Vec<_>>(),
-                },
-                Member::Pane(pane_handle) => {
-                    PaneGroupState::Pane(serialize_pane_handle(&pane_handle, cx))
-                }
-            }
-        }
-
+    fn build_state(
+        &self,
+        cx: &mut ViewContext<Self>,
+    ) -> Option<impl 'static + Future<Output = WorkspaceState>> {
         if let Some(location) = self.location(cx) {
-            // Load bearing special case:
-            //  - with_local_workspace() relies on this to not have other stuff open
-            //    when you open your log
-            if !location.paths().is_empty() {
-                let dock_pane = serialize_pane_handle(self.dock.pane(), cx);
-                let center_group = build_serialized_pane_group(&self.center.root, cx);
+            let dock_position = self.dock.position();
+            let center_group = self.center.root.build_state(cx);
+            let dock_pane = self
+                .dock_pane()
+                .update(cx, |dock_pane, cx| dock_pane.build_state(cx));
+            let left_sidebar_open = self.left_sidebar.read(cx).is_open();
+            let bounds = WindowBoundsState::from_window_bounds(self.bounds);
+            let screen_id = self.screen_id;
 
-                let serialized_workspace = WorkspaceState {
+            Some(async move {
+                WorkspaceState {
                     location,
-                    dock_position: self.dock.position(),
-                    dock_pane,
-                    center_group,
-                    left_sidebar_open: self.left_sidebar.read(cx).is_open(),
-                    bounds: Default::default(),
-                    display: Default::default(),
-                };
-
-                todo!()
-            }
+                    dock_position,
+                    center_group: center_group.await,
+                    dock_pane: dock_pane.await,
+                    left_sidebar_open,
+                    bounds,
+                    screen_id,
+                }
+            })
+        } else {
+            None
         }
     }
 

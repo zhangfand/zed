@@ -1,10 +1,15 @@
-use crate::{FollowerStatesByLeader, JoinProject, Pane, Workspace};
+use crate::{persistence::PaneGroupState, FollowerStatesByLeader, JoinProject, Pane, Workspace};
 use anyhow::{anyhow, Result};
 use call::{ActiveCall, ParticipantLocation};
+use futures::{
+    future::{self, LocalBoxFuture},
+    FutureExt,
+};
 use gpui::{
     elements::*,
     geometry::{rect::RectF, vector::Vector2F},
-    Axis, Border, CursorStyle, ModelHandle, MouseButton, RenderContext, ViewHandle,
+    Axis, Border, CursorStyle, ModelHandle, MouseButton, MutableAppContext, RenderContext,
+    ViewHandle,
 };
 use project::Project;
 use serde::Deserialize;
@@ -275,6 +280,32 @@ impl Member {
                 }
             }
             Member::Pane(pane) => panes.push(pane),
+        }
+    }
+
+    pub fn build_state(
+        &self,
+        cx: &mut MutableAppContext,
+    ) -> LocalBoxFuture<'static, PaneGroupState> {
+        match self {
+            Member::Axis(pane_axis) => {
+                let axis = pane_axis.axis;
+                let member_states = pane_axis
+                    .members
+                    .iter()
+                    .map(|member| member.build_state(cx))
+                    .collect::<Vec<_>>();
+
+                async move {
+                    let members = future::join_all(member_states).await;
+                    PaneGroupState::Group { axis, members }
+                }
+                .boxed_local()
+            }
+            Member::Pane(pane) => {
+                let pane_state = pane.update(cx, |pane, cx| pane.build_state(cx));
+                async { PaneGroupState::Pane(pane_state.await) }.boxed_local()
+            }
         }
     }
 }
