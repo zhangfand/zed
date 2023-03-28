@@ -403,9 +403,7 @@ impl BlockingStore {
             lmdb: builder.open(lmdb_path)?,
             dbs: Default::default(),
         };
-
         this.transfer_data_from_sqlite(sqlite_path).log_err();
-
         Ok(this)
     }
 

@@ -11,6 +11,7 @@ use serde::Deserialize;
 use settings::Settings;
 use smol::{fs::File, io::AsyncReadExt, process::Command};
 use std::{ffi::OsString, sync::Arc, time::Duration};
+use store::Store;
 use update_notification::UpdateNotification;
 use util::channel::ReleaseChannel;
 use workspace::Workspace;
@@ -33,6 +34,7 @@ pub enum AutoUpdateStatus {
 pub struct AutoUpdater {
     status: AutoUpdateStatus,
     current_version: AppVersion,
+    store: Store,
     http_client: Arc<dyn HttpClient>,
     pending_poll: Option<Task<()>>,
     server_url: String,
@@ -48,11 +50,16 @@ impl Entity for AutoUpdater {
     type Event = ();
 }
 
-pub fn init(http_client: Arc<dyn HttpClient>, server_url: String, cx: &mut MutableAppContext) {
+pub fn init(
+    store: Store,
+    http_client: Arc<dyn HttpClient>,
+    server_url: String,
+    cx: &mut MutableAppContext,
+) {
     if let Some(version) = (*ZED_APP_VERSION).or_else(|| cx.platform().app_version().ok()) {
         let server_url = server_url;
         let auto_updater = cx.add_model(|cx| {
-            let updater = AutoUpdater::new(version, http_client, server_url.clone());
+            let updater = AutoUpdater::new(version, store, http_client, server_url.clone());
 
             let mut update_subscription = cx
                 .global::<Settings>()
@@ -129,12 +136,14 @@ impl AutoUpdater {
 
     fn new(
         current_version: AppVersion,
+        store: Store,
         http_client: Arc<dyn HttpClient>,
         server_url: String,
     ) -> Self {
         Self {
             status: AutoUpdateStatus::Idle,
             current_version,
+            store,
             http_client,
             server_url,
             pending_poll: None,
@@ -304,31 +313,22 @@ impl AutoUpdater {
         should_show: bool,
         cx: &AppContext,
     ) -> Task<Result<()>> {
+        let store = self.store.clone();
         cx.background().spawn(async move {
-            if should_show {
-                todo!();
-                // KEY_VALUE_STORE
-                //     .write_kvp(
-                //         SHOULD_SHOW_UPDATE_NOTIFICATION_KEY.to_string(),
-                //         "".to_string(),
-                //     )
-                //     .await?;
-            } else {
-                todo!();
-                // KEY_VALUE_STORE
-                //     .delete_kvp(SHOULD_SHOW_UPDATE_NOTIFICATION_KEY.to_string())
-                //     .await?;
-            }
+            store
+                .update_by_key(store::SHOW_UPDATE_NOTIFICATION.to_vec(), &should_show)
+                .await?;
             Ok(())
         })
     }
 
     fn should_show_update_notification(&self, cx: &AppContext) -> Task<Result<bool>> {
-        todo!();
-        // cx.background().spawn(async move {
-        //     Ok(KEY_VALUE_STORE
-        //         .read_kvp(SHOULD_SHOW_UPDATE_NOTIFICATION_KEY)?
-        //         .is_some())
-        // })
+        let store = self.store.clone();
+        cx.background().spawn(async move {
+            let show_update_notification = store
+                .read_by_key(store::SHOW_UPDATE_NOTIFICATION.to_vec())
+                .await?;
+            Ok(show_update_notification.unwrap_or(false))
+        })
     }
 }

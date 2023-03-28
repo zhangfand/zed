@@ -196,7 +196,12 @@ fn main() {
             dock_default_item_factory,
             background_actions,
         });
-        auto_update::init(http, client::ZED_SERVER_URL.clone(), cx);
+        auto_update::init(
+            app_state.store.clone(),
+            http,
+            client::ZED_SERVER_URL.clone(),
+            cx,
+        );
 
         workspace::init(app_state.clone(), cx);
 
