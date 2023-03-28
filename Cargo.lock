@@ -8088,6 +8088,7 @@ dependencies = [
  "picker",
  "project",
  "settings",
+ "store",
  "theme",
  "theme_selector",
  "util",

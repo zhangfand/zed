@@ -9,13 +9,13 @@ use gpui::{
 };
 use settings::{settings_file::SettingsFile, Settings};
 
+use store::Store;
+use util::ResultExt;
 use workspace::{
     item::Item, open_new, sidebar::SidebarSide, AppState, PaneBackdrop, Welcome, Workspace,
 };
 
 use crate::base_keymap_picker::ToggleBaseKeymapSelector;
-
-pub const FIRST_OPEN: &str = "first_open";
 
 pub fn init(cx: &mut MutableAppContext) {
     cx.add_action(|workspace: &mut Workspace, _: &Welcome, cx| {
@@ -26,7 +26,16 @@ pub fn init(cx: &mut MutableAppContext) {
     base_keymap_picker::init(cx);
 }
 
-pub fn show_welcome_experience(app_state: &Arc<AppState>, cx: &mut MutableAppContext) {
+pub async fn should_show(store: Store) -> bool {
+    store
+        .read_by_key(store::OPENED_ONCE.to_vec())
+        .await
+        .log_err()
+        .flatten()
+        .unwrap_or(false)
+}
+
+pub fn show(app_state: &Arc<AppState>, cx: &mut MutableAppContext) {
     open_new(&app_state, cx, |workspace, cx| {
         workspace.toggle_sidebar(SidebarSide::Left, cx);
         let welcome_page = cx.add_view(|cx| WelcomePage::new(cx));
@@ -36,10 +45,14 @@ pub fn show_welcome_experience(app_state: &Arc<AppState>, cx: &mut MutableAppCon
     })
     .detach();
 
-    todo!()
-    // db::write_and_log(cx, || {
-    //     KEY_VALUE_STORE.write_kvp(FIRST_OPEN.to_string(), "false".to_string())
-    // });
+    let store = app_state.store.clone();
+    cx.background()
+        .spawn(async move {
+            store
+                .update_by_key(store::OPENED_ONCE.to_vec(), &true)
+                .await
+        })
+        .detach_and_log_err(cx);
 }
 
 pub struct WelcomePage {

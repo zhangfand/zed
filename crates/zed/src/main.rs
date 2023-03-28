@@ -36,7 +36,6 @@ use std::{
 };
 use store::Store;
 use terminal_view::{get_working_directory, TerminalView};
-use welcome::{show_welcome_experience, FIRST_OPEN};
 
 use fs::RealFs;
 use settings::watched_json::WatchedJsonFile;
@@ -282,9 +281,8 @@ async fn restore_or_create_workspace(app_state: &Arc<AppState>, mut cx: AsyncApp
                 paths: location.paths().as_ref().clone(),
             })
         });
-    } else if todo!() {
-        // matches!(KEY_VALUE_STORE.read_kvp(FIRST_OPEN), Ok(None)) {
-        cx.update(|cx| show_welcome_experience(app_state, cx));
+    } else if welcome::should_show(app_state.store.clone()).await {
+        cx.update(|cx| welcome::show(app_state, cx));
     } else {
         cx.update(|cx| {
             cx.dispatch_global_action(NewFile);
