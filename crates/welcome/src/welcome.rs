@@ -2,7 +2,6 @@ mod base_keymap_picker;
 
 use std::{borrow::Cow, sync::Arc};
 
-use db::kvp::KEY_VALUE_STORE;
 use gpui::{
     elements::{Flex, Label, MouseEventHandler, ParentElement},
     Action, Element, ElementBox, Entity, MouseButton, MutableAppContext, RenderContext,
@@ -12,7 +11,6 @@ use settings::{settings_file::SettingsFile, Settings};
 
 use workspace::{
     item::Item, open_new, sidebar::SidebarSide, AppState, PaneBackdrop, Welcome, Workspace,
-    WorkspaceId,
 };
 
 use crate::base_keymap_picker::ToggleBaseKeymapSelector;
@@ -38,9 +36,10 @@ pub fn show_welcome_experience(app_state: &Arc<AppState>, cx: &mut MutableAppCon
     })
     .detach();
 
-    db::write_and_log(cx, || {
-        KEY_VALUE_STORE.write_kvp(FIRST_OPEN.to_string(), "false".to_string())
-    });
+    todo!()
+    // db::write_and_log(cx, || {
+    //     KEY_VALUE_STORE.write_kvp(FIRST_OPEN.to_string(), "false".to_string())
+    // });
 }
 
 pub struct WelcomePage {
@@ -306,11 +305,8 @@ impl Item for WelcomePage {
     fn show_toolbar(&self) -> bool {
         false
     }
-    fn clone_on_split(
-        &self,
-        _workspace_id: WorkspaceId,
-        cx: &mut ViewContext<Self>,
-    ) -> Option<Self> {
+
+    fn clone_on_split(&self, cx: &mut ViewContext<Self>) -> Option<Self> {
         Some(WelcomePage::new(cx))
     }
 }

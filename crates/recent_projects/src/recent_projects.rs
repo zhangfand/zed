@@ -13,7 +13,7 @@ use picker::{Picker, PickerDelegate};
 use settings::Settings;
 use workspace::{
     notifications::simple_message_notification::MessageNotification, OpenPaths, Workspace,
-    WorkspaceLocation, WORKSPACE_DB,
+    WorkspaceLocation,
 };
 
 actions!(projects, [OpenRecent]);
@@ -45,18 +45,20 @@ impl RecentProjectsView {
 
     fn toggle(_: &mut Workspace, _: &OpenRecent, cx: &mut ViewContext<Workspace>) {
         cx.spawn(|workspace, mut cx| async move {
-            let workspace_locations: Vec<_> = cx
-                .background()
-                .spawn(async {
-                    WORKSPACE_DB
-                        .recent_workspaces_on_disk()
-                        .await
-                        .unwrap_or_default()
-                        .into_iter()
-                        .map(|(_, location)| location)
-                        .collect()
-                })
-                .await;
+            let workspace_locations: Vec<_> = todo!();
+
+            // Vec<_> = cx
+            // .background()
+            // .spawn(async {
+            //     WORKSPACE_DB
+            //         .recent_workspaces_on_disk()
+            //         .await
+            //         .unwrap_or_default()
+            //         .into_iter()
+            //         .map(|(_, location)| location)
+            //         .collect()
+            // })
+            // .await;
 
             workspace.update(&mut cx, |workspace, cx| {
                 if !workspace_locations.is_empty() {

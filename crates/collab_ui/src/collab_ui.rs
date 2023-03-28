@@ -83,10 +83,10 @@ fn join_project(action: &JoinProject, app_state: Arc<AppState>, cx: &mut Mutable
                 |cx| {
                     let mut workspace = Workspace::new(
                         Default::default(),
-                        0,
                         project,
                         app_state.dock_default_item_factory,
                         app_state.background_actions,
+                        app_state.store.clone(),
                         cx,
                     );
                     (app_state.initialize_workspace)(&mut workspace, &app_state, cx);

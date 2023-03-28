@@ -13,7 +13,6 @@ use client::{
     http::{self, HttpClient},
     UserStore, ZED_APP_VERSION, ZED_SECRET_CLIENT_TOKEN,
 };
-use db::{kvp::KEY_VALUE_STORE, RELEASE_CHANNEL_NAME};
 use futures::{
     channel::{mpsc, oneshot},
     FutureExt, SinkExt, StreamExt,
@@ -44,7 +43,10 @@ use settings::watched_json::WatchedJsonFile;
 use theme::ThemeRegistry;
 #[cfg(debug_assertions)]
 use util::StaffMode;
-use util::{channel::RELEASE_CHANNEL, paths, ResultExt, TryFutureExt};
+use util::{
+    channel::{RELEASE_CHANNEL, RELEASE_CHANNEL_NAME},
+    paths, ResultExt, TryFutureExt,
+};
 use workspace::{
     self, dock::FocusDock, item::ItemHandle, notifications::NotifyResultExt, AppState, NewFile,
     OpenPaths, Workspace,
@@ -69,7 +71,9 @@ fn main() {
     load_embedded_fonts(&app);
 
     let fs = Arc::new(RealFs);
-    let store = Store::new(util::paths::DB_DIR.join(format!("1-{}", &*RELEASE_CHANNEL_NAME)));
+    let lmdb_path = util::paths::DB_DIR.join(format!("1-{}", &*RELEASE_CHANNEL_NAME));
+    let sqlite_path = util::paths::DB_DIR.join(format!("0-{}", &*RELEASE_CHANNEL_NAME));
+    let store = Store::new(lmdb_path, sqlite_path);
 
     let themes = ThemeRegistry::new(Assets, app.font_cache());
     let default_settings = Settings::defaults(Assets, &app.font_cache(), &themes);
@@ -173,7 +177,7 @@ fn main() {
         })
         .detach();
 
-        client.start_telemetry();
+        client.start_telemetry(store.clone());
         client.report_event(
             "start app",
             Default::default(),
@@ -273,7 +277,8 @@ async fn restore_or_create_workspace(app_state: &Arc<AppState>, mut cx: AsyncApp
                 paths: location.paths().as_ref().clone(),
             })
         });
-    } else if matches!(KEY_VALUE_STORE.read_kvp(FIRST_OPEN), Ok(None)) {
+    } else if todo!() {
+        // matches!(KEY_VALUE_STORE.read_kvp(FIRST_OPEN), Ok(None)) {
         cx.update(|cx| show_welcome_experience(app_state, cx));
     } else {
         cx.update(|cx| {
@@ -705,7 +710,7 @@ pub fn dock_default_item_factory(
         })
         .notify_err(workspace, cx)?;
 
-    let terminal_view = cx.add_view(|cx| TerminalView::new(terminal, workspace.database_id(), cx));
+    let terminal_view = cx.add_view(|cx| TerminalView::new(terminal, cx));
 
     Some(Box::new(terminal_view))
 }

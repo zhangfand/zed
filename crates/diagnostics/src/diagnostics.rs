@@ -587,11 +587,7 @@ impl Item for ProjectDiagnosticsEditor {
         });
     }
 
-    fn clone_on_split(
-        &self,
-        _workspace_id: workspace::WorkspaceId,
-        cx: &mut ViewContext<Self>,
-    ) -> Option<Self>
+    fn clone_on_split(&self, cx: &mut ViewContext<Self>) -> Option<Self>
     where
         Self: Sized,
     {
@@ -628,7 +624,6 @@ impl Item for ProjectDiagnosticsEditor {
     fn deserialize(
         project: ModelHandle<Project>,
         workspace: WeakViewHandle<Workspace>,
-        _workspace_id: workspace::WorkspaceId,
         _item_id: workspace::ItemId,
         cx: &mut ViewContext<Pane>,
     ) -> Task<Result<ViewHandle<Self>>> {

@@ -14,6 +14,7 @@ use gpui::{
 use project::Project;
 use serde::{Deserialize, Serialize};
 use store::Record;
+use util::ResultExt;
 use uuid::Uuid;
 
 use crate::{dock::DockPosition, ItemDeserializers, Member, Pane, PaneAxis, Workspace};
@@ -242,8 +243,6 @@ impl PaneState {
     }
 }
 
-pub type GroupId = i64;
-pub type PaneId = i64;
 pub type ItemId = usize;
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]

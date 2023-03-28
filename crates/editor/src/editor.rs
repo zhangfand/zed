@@ -1,7 +1,6 @@
 mod blink_manager;
 pub mod display_map;
 mod element;
-
 mod git;
 mod highlight_matching_bracket;
 mod hover_popover;
@@ -10,7 +9,6 @@ mod link_go_to_definition;
 mod mouse_context_menu;
 pub mod movement;
 mod multi_buffer;
-mod persistence;
 pub mod scroll;
 pub mod selections_collection;
 
@@ -86,7 +84,7 @@ use std::{
 pub use sum_tree::Bias;
 use theme::{DiagnosticStyle, Theme};
 use util::{post_inc, RangeExt, ResultExt, TryFutureExt};
-use workspace::{ItemNavHistory, ViewId, Workspace, WorkspaceId};
+use workspace::{ItemNavHistory, ViewId, Workspace};
 
 use crate::git::diff_hunk_to_display;
 
@@ -496,7 +494,6 @@ pub struct Editor {
     pending_rename: Option<RenameState>,
     searchable: bool,
     cursor_shape: CursorShape,
-    workspace_id: Option<WorkspaceId>,
     keymap_context_layers: BTreeMap<TypeId, KeymapContext>,
     input_enabled: bool,
     leader_replica_id: Option<u16>,
@@ -1167,7 +1164,6 @@ impl Editor {
             searchable: true,
             override_text_style: None,
             cursor_shape: Default::default(),
-            workspace_id: None,
             keymap_context_layers: Default::default(),
             input_enabled: true,
             leader_replica_id: None,

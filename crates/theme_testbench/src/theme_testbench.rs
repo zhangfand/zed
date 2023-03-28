@@ -317,7 +317,6 @@ impl Item for ThemeTestbench {
     fn deserialize(
         _project: ModelHandle<Project>,
         _workspace: WeakViewHandle<Workspace>,
-        _workspace_id: workspace::WorkspaceId,
         _item_id: workspace::ItemId,
         cx: &mut ViewContext<Pane>,
     ) -> Task<gpui::anyhow::Result<ViewHandle<Self>>> {

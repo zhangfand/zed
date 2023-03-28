@@ -37,10 +37,10 @@ use workspace::{
     notifications::NotifyResultExt,
     pane, register_deserializable_item,
     searchable::{SearchEvent, SearchOptions, SearchableItem, SearchableItemHandle},
-    Pane, ToolbarItemLocation, Workspace, WorkspaceId,
+    Pane, ToolbarItemLocation, Workspace,
 };
 
-use crate::{persistence::TERMINAL_DB, terminal_element::TerminalElement};
+use crate::terminal_element::TerminalElement;
 
 const CURSOR_BLINK_INTERVAL: Duration = Duration::from_millis(500);
 
@@ -94,7 +94,6 @@ pub struct TerminalView {
     blinking_on: bool,
     blinking_paused: bool,
     blink_epoch: usize,
-    workspace_id: WorkspaceId,
 }
 
 impl Entity for TerminalView {
@@ -121,16 +120,12 @@ impl TerminalView {
             .notify_err(workspace, cx);
 
         if let Some(terminal) = terminal {
-            let view = cx.add_view(|cx| TerminalView::new(terminal, workspace.database_id(), cx));
+            let view = cx.add_view(|cx| TerminalView::new(terminal, cx));
             workspace.add_item(Box::new(view), cx)
         }
     }
 
-    pub fn new(
-        terminal: ModelHandle<Terminal>,
-        workspace_id: WorkspaceId,
-        cx: &mut ViewContext<Self>,
-    ) -> Self {
+    pub fn new(terminal: ModelHandle<Terminal>, cx: &mut ViewContext<Self>) -> Self {
         cx.observe(&terminal, |_, _, cx| cx.notify()).detach();
         cx.subscribe(&terminal, |this, _, event, cx| match event {
             Event::Wakeup => {
@@ -150,15 +145,15 @@ impl TerminalView {
                     let cwd = foreground_info.cwd.clone();
 
                     let item_id = cx.view_id();
-                    let workspace_id = this.workspace_id;
-                    cx.background()
-                        .spawn(async move {
-                            TERMINAL_DB
-                                .save_working_directory(item_id, workspace_id, cwd)
-                                .await
-                                .log_err();
-                        })
-                        .detach();
+                    todo!();
+                    // cx.background()
+                    //     .spawn(async move {
+                    //         TERMINAL_DB
+                    //             .save_working_directory(item_id, workspace_id, cwd)
+                    //             .await
+                    //             .log_err();
+                    //     })
+                    //     .detach();
                 }
             }
             _ => cx.emit(*event),
@@ -174,7 +169,6 @@ impl TerminalView {
             blinking_on: false,
             blinking_paused: false,
             blink_epoch: 0,
-            workspace_id,
         }
     }
 
@@ -565,11 +559,7 @@ impl Item for TerminalView {
             .boxed()
     }
 
-    fn clone_on_split(
-        &self,
-        _workspace_id: WorkspaceId,
-        _cx: &mut ViewContext<Self>,
-    ) -> Option<Self> {
+    fn clone_on_split(&self, _cx: &mut ViewContext<Self>) -> Option<Self> {
         //From what I can tell, there's no  way to tell the current working
         //Directory of the terminal from outside the shell. There might be
         //solutions to this, but they are non-trivial and require more IPC
@@ -624,47 +614,46 @@ impl Item for TerminalView {
     fn deserialize(
         project: ModelHandle<Project>,
         workspace: WeakViewHandle<Workspace>,
-        workspace_id: workspace::WorkspaceId,
         item_id: workspace::ItemId,
         cx: &mut ViewContext<Pane>,
     ) -> Task<anyhow::Result<ViewHandle<Self>>> {
         let window_id = cx.window_id();
         cx.spawn(|pane, mut cx| async move {
-            let cwd = TERMINAL_DB
-                .get_working_directory(item_id, workspace_id)
-                .log_err()
-                .flatten()
-                .or_else(|| {
-                    cx.read(|cx| {
-                        let strategy = cx.global::<Settings>().terminal_strategy();
-                        workspace
-                            .upgrade(cx)
-                            .map(|workspace| {
-                                get_working_directory(workspace.read(cx), cx, strategy)
-                            })
-                            .flatten()
-                    })
-                });
+            // let cwd = TERMINAL_DB
+            //     .get_working_directory(item_id, workspace_id)
+            //     .log_err()
+            //     .flatten()
+            //     .or_else(|| {
+            //         cx.read(|cx| {
+            //             let strategy = cx.global::<Settings>().terminal_strategy();
+            //             workspace
+            //                 .upgrade(cx)
+            //                 .map(|workspace| {
+            //                     get_working_directory(workspace.read(cx), cx, strategy)
+            //                 })
+            //                 .flatten()
+            //         })
+            //     });
+            let cwd = todo!();
 
             cx.update(|cx| {
                 let terminal = project.update(cx, |project, cx| {
                     project.create_terminal(cwd, window_id, cx)
                 })?;
 
-                Ok(cx.add_view(pane, |cx| TerminalView::new(terminal, workspace_id, cx)))
+                Ok(cx.add_view(pane, |cx| TerminalView::new(terminal, cx)))
             })
         })
     }
 
     fn added_to_workspace(&mut self, workspace: &mut Workspace, cx: &mut ViewContext<Self>) {
-        cx.background()
-            .spawn(TERMINAL_DB.update_workspace_id(
-                workspace.database_id(),
-                self.workspace_id,
-                cx.view_id(),
-            ))
-            .detach();
-        self.workspace_id = workspace.database_id();
+        todo!()
+        // cx.background()
+        //     .spawn(TERMINAL_DB.update_workspace_id(
+        //         self.workspace_id,
+        //         cx.view_id(),
+        //     ))
+        //     .detach();
     }
 }
 

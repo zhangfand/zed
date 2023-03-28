@@ -28,7 +28,7 @@ use util::ResultExt as _;
 use workspace::{
     item::{Item, ItemEvent, ItemHandle},
     searchable::{Direction, SearchableItem, SearchableItemHandle},
-    ItemNavHistory, Pane, ToolbarItemLocation, ToolbarItemView, Workspace, WorkspaceId,
+    ItemNavHistory, Pane, ToolbarItemLocation, ToolbarItemView, Workspace,
 };
 
 actions!(project_search, [SearchInNew, ToggleFocus]);
@@ -316,7 +316,7 @@ impl Item for ProjectSearchView {
             .update(cx, |editor, cx| editor.reload(project, cx))
     }
 
-    fn clone_on_split(&self, _workspace_id: WorkspaceId, cx: &mut ViewContext<Self>) -> Option<Self>
+    fn clone_on_split(&self, cx: &mut ViewContext<Self>) -> Option<Self>
     where
         Self: Sized,
     {
@@ -373,7 +373,6 @@ impl Item for ProjectSearchView {
     fn deserialize(
         _project: ModelHandle<Project>,
         _workspace: WeakViewHandle<Workspace>,
-        _workspace_id: workspace::WorkspaceId,
         _item_id: workspace::ItemId,
         _cx: &mut ViewContext<Pane>,
     ) -> Task<anyhow::Result<ViewHandle<Self>>> {

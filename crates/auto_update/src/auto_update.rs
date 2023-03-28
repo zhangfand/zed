@@ -3,7 +3,6 @@ mod update_notification;
 use anyhow::{anyhow, Context, Result};
 use client::{http::HttpClient, ZED_SECRET_CLIENT_TOKEN};
 use client::{ZED_APP_PATH, ZED_APP_VERSION};
-use db::kvp::KEY_VALUE_STORE;
 use gpui::{
     actions, platform::AppVersion, AppContext, AsyncAppContext, Entity, ModelContext, ModelHandle,
     MutableAppContext, Task, WeakViewHandle,
@@ -307,26 +306,29 @@ impl AutoUpdater {
     ) -> Task<Result<()>> {
         cx.background().spawn(async move {
             if should_show {
-                KEY_VALUE_STORE
-                    .write_kvp(
-                        SHOULD_SHOW_UPDATE_NOTIFICATION_KEY.to_string(),
-                        "".to_string(),
-                    )
-                    .await?;
+                todo!();
+                // KEY_VALUE_STORE
+                //     .write_kvp(
+                //         SHOULD_SHOW_UPDATE_NOTIFICATION_KEY.to_string(),
+                //         "".to_string(),
+                //     )
+                //     .await?;
             } else {
-                KEY_VALUE_STORE
-                    .delete_kvp(SHOULD_SHOW_UPDATE_NOTIFICATION_KEY.to_string())
-                    .await?;
+                todo!();
+                // KEY_VALUE_STORE
+                //     .delete_kvp(SHOULD_SHOW_UPDATE_NOTIFICATION_KEY.to_string())
+                //     .await?;
             }
             Ok(())
         })
     }
 
     fn should_show_update_notification(&self, cx: &AppContext) -> Task<Result<bool>> {
-        cx.background().spawn(async move {
-            Ok(KEY_VALUE_STORE
-                .read_kvp(SHOULD_SHOW_UPDATE_NOTIFICATION_KEY)?
-                .is_some())
-        })
+        todo!();
+        // cx.background().spawn(async move {
+        //     Ok(KEY_VALUE_STORE
+        //         .read_kvp(SHOULD_SHOW_UPDATE_NOTIFICATION_KEY)?
+        //         .is_some())
+        // })
     }
 }

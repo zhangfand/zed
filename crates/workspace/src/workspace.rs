@@ -61,7 +61,7 @@ use std::{
 use store::Store;
 
 use crate::{
-    notifications::simple_message_notification::{MessageNotification, OsOpen},
+    notifications::simple_message_notification::MessageNotification,
     persistence::{PaneGroupState, PaneState, WorkspaceState},
 };
 use lazy_static::lazy_static;
@@ -887,8 +887,6 @@ impl Workspace {
                 )
                 .1
             };
-
-            notify_if_database_failed(&workspace, &mut cx);
 
             // Call open path for each of the project paths
             // (this will bring them to the front if they were in the serialized workspace)
@@ -2565,9 +2563,7 @@ impl Workspace {
                     display: Default::default(),
                 };
 
-                cx.background()
-                    .spawn(persistence::DB.save_workspace(serialized_workspace))
-                    .detach();
+                todo!()
             }
         }
     }
@@ -2655,47 +2651,6 @@ impl Workspace {
     #[cfg(any(test, feature = "test-support"))]
     pub fn test_new(project: ModelHandle<Project>, cx: &mut ViewContext<Self>) -> Self {
         Self::new(None, project, |_, _| None, || &[], Store::memory(), cx)
-    }
-}
-
-fn notify_if_database_failed(workspace: &ViewHandle<Workspace>, cx: &mut AsyncAppContext) {
-    if (*db::ALL_FILE_DB_FAILED).load(std::sync::atomic::Ordering::Acquire) {
-        workspace.update(cx, |workspace, cx| {
-            workspace.show_notification_once(0, cx, |cx| {
-                cx.add_view(|_| {
-                    MessageNotification::new(
-                        indoc::indoc! {"
-                            Failed to load any database file :(
-                        "},
-                        OsOpen("https://github.com/zed-industries/community/issues/new?assignees=&labels=defect%2Ctriage&template=2_bug_report.yml".to_string()),
-                        "Click to let us know about this error"
-                    )
-                })
-            });
-        });
-    } else {
-        let backup_path = (*db::BACKUP_DB_PATH).read();
-        if let Some(backup_path) = &*backup_path {
-            workspace.update(cx, |workspace, cx| {
-                workspace.show_notification_once(0, cx, |cx| {
-                    cx.add_view(|_| {
-                        let backup_path = backup_path.to_string_lossy();
-                        MessageNotification::new(
-                            format!(
-                                indoc::indoc! {"
-                                Database file was corrupted :(
-                                Old database backed up to:
-                                {}
-                                "},
-                                backup_path
-                            ),
-                            OsOpen(backup_path.to_string()),
-                            "Click to show old database in finder",
-                        )
-                    })
-                });
-            });
-        }
     }
 }
 
