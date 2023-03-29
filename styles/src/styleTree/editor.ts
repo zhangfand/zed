@@ -4,6 +4,7 @@ import { background, border, borderColor, foreground, text } from "./components"
 import hoverPopover from "./hoverPopover"
 
 import { buildSyntax } from "../themes/common/syntax"
+import { highlight } from "../components/highlight"
 
 export default function editor(colorScheme: ColorScheme) {
     let layer = colorScheme.highest
@@ -44,7 +45,7 @@ export default function editor(colorScheme: ColorScheme) {
         activeLineBackground: withOpacity(background(layer, "on"), 0.75),
         // TODO: Improve the name of highlightedLineBackground to better describe what it styles
         // Occurences of Find All References, etc.
-        highlightedLineBackground: withOpacity(background(layer, "active"), colorScheme.isLight ? 0.75 : 1),
+        highlightedLineBackground: highlight(colorScheme).match,
         codeActions: {
             indicator: {
                 color: foreground(layer, "variant"),
@@ -111,6 +112,7 @@ export default function editor(colorScheme: ColorScheme) {
             foreground(layer, "accent"),
             0.2
         ),
+        /** TODO: Dodument what this is used for (used in editor:rename) */
         documentHighlightWriteBackground: colorScheme.ramps
             .neutral(0.5)
             .alpha(0.4)
