@@ -42,7 +42,9 @@ export default function editor(colorScheme: ColorScheme) {
         textColor: syntax.primary.color,
         background: background(layer),
         activeLineBackground: withOpacity(background(layer, "on"), 0.75),
-        highlightedLineBackground: background(layer, "on"),
+        // TODO: Improve the name of highlightedLineBackground to better describe what it styles
+        // Occurences of Find All References, etc.
+        highlightedLineBackground: withOpacity(background(layer, "active"), colorScheme.isLight ? 0.75 : 1),
         codeActions: {
             indicator: {
                 color: foreground(layer, "variant"),
@@ -107,7 +109,7 @@ export default function editor(colorScheme: ColorScheme) {
          */
         documentHighlightReadBackground: withOpacity(
             foreground(layer, "accent"),
-            0.1
+            0.2
         ),
         documentHighlightWriteBackground: colorScheme.ramps
             .neutral(0.5)
