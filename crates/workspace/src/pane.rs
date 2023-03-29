@@ -342,28 +342,31 @@ impl Pane {
         store: Store,
         cx: &mut ViewContext<Self>,
     ) -> impl 'static + Future<Output = PaneState> {
-        let active_item_id = self.active_item().map(|item| item.id());
-
         let mut persistent_items = Vec::new();
         for (ix, item) in self.items().enumerate() {
-            let active = ix == self.active_item_index;
+            let item_is_active = ix == self.active_item_index;
             if let Some(item) = item.to_persistent_item_handle(cx) {
                 let (namespace, save_task) = item.save_state(store.clone(), cx);
-                persistent_items.push((namespace, save_task, active));
+                persistent_items.push((namespace, save_task, item_is_active));
             }
         }
 
-        let active = self.is_active;
+        let pane_is_active = self.is_active;
         async move {
             let mut items = Vec::new();
-            for (namespace, save_task, active) in persistent_items {
-                items.push(ItemState {
-                    record_namespace: namespace.into(),
-                    record_id: save_task.await,
-                    active,
-                });
+            for (namespace, save_task, item_is_active) in persistent_items {
+                if let Some(record_id) = save_task.await.log_err() {
+                    items.push(ItemState {
+                        record_namespace: namespace.into(),
+                        record_id,
+                        active: item_is_active,
+                    });
+                }
             }
-            PaneState { active, items }
+            PaneState {
+                active: pane_is_active,
+                items,
+            }
         }
     }
 

@@ -8,6 +8,7 @@ use std::{
     time::Duration,
 };
 
+use anyhow::Result;
 use context_menu::{ContextMenu, ContextMenuItem};
 use dirs::home_dir;
 use gpui::{
@@ -622,7 +623,7 @@ impl Item for TerminalView {
 impl PersistentItem for TerminalView {
     type State = TerminalViewState;
 
-    fn save_state(&self, store: Store, cx: &mut MutableAppContext) -> Task<u64> {
+    fn save_state(&self, store: Store, cx: &mut MutableAppContext) -> Task<Result<u64>> {
         todo!()
     }
 
@@ -681,7 +682,7 @@ impl Record for TerminalViewState {
         todo!()
     }
 
-    fn deserialize(version: u64, data: Vec<u8>) -> anyhow::Result<Self>
+    fn deserialize(version: u64, data: Vec<u8>) -> Result<Self>
     where
         Self: Sized,
     {

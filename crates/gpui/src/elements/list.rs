@@ -930,7 +930,7 @@ mod tests {
         }
 
         fn paint(&mut self, _: RectF, _: RectF, _: &mut (), _: &mut PaintContext) {
-            todo!()
+            unimplemented!()
         }
 
         fn rect_for_text_range(

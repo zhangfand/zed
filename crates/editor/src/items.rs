@@ -807,7 +807,7 @@ impl ProjectItem for Editor {
 impl PersistentItem for Editor {
     type State = EditorState;
 
-    fn save_state(&self, store: Store, _cx: &mut MutableAppContext) -> Task<u64> {
+    fn save_state(&self, store: Store, _cx: &mut MutableAppContext) -> Task<Result<u64>> {
         todo!()
     }
 

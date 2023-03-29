@@ -1,5 +1,6 @@
 use gpui::{
     actions,
+    anyhow::{self, Result},
     color::Color,
     elements::{
         Canvas, Container, ContainerStyle, ElementBox, Flex, Label, Margin, MouseEventHandler,
@@ -318,7 +319,7 @@ impl Item for ThemeTestbench {
 impl PersistentItem for ThemeTestbench {
     type State = ();
 
-    fn save_state(&self, store: Store, cx: &mut MutableAppContext) -> Task<u64> {
+    fn save_state(&self, store: Store, cx: &mut MutableAppContext) -> Task<Result<u64>> {
         todo!()
     }
 }

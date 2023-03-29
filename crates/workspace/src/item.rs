@@ -729,15 +729,23 @@ impl<T: FollowableItem> FollowableItemHandle for ViewHandle<T> {
 pub trait PersistentItem: Item {
     type State: Record;
 
-    fn save_state(&self, store: Store, cx: &mut MutableAppContext) -> Task<u64>;
+    fn save_state(&self, store: Store, cx: &mut MutableAppContext) -> Task<Result<u64>>;
 }
 
 pub trait PersistentItemHandle: ItemHandle {
-    fn save_state(&self, store: Store, cx: &mut MutableAppContext) -> (&'static str, Task<u64>);
+    fn save_state(
+        &self,
+        store: Store,
+        cx: &mut MutableAppContext,
+    ) -> (&'static str, Task<Result<u64>>);
 }
 
 impl<T: PersistentItem> PersistentItemHandle for ViewHandle<T> {
-    fn save_state(&self, store: Store, cx: &mut MutableAppContext) -> (&'static str, Task<u64>) {
+    fn save_state(
+        &self,
+        store: Store,
+        cx: &mut MutableAppContext,
+    ) -> (&'static str, Task<Result<u64>>) {
         self.update(cx, |this, cx| {
             let id = PersistentItem::save_state(this, store, cx);
             (T::State::namespace(), id)
@@ -749,6 +757,7 @@ impl<T: PersistentItem> PersistentItemHandle for ViewHandle<T> {
 pub(crate) mod test {
     use super::{Item, ItemEvent, PersistentItem};
     use crate::{sidebar::SidebarItem, ItemNavHistory};
+    use anyhow::Result;
     use gpui::{
         elements::Empty, AppContext, Element, ElementBox, Entity, ModelHandle, MutableAppContext,
         RenderContext, Task, View, ViewContext,
@@ -974,11 +983,7 @@ pub(crate) mod test {
                     .all(|item| item.read(cx).entry_id.is_some())
         }
 
-        fn save(
-            &mut self,
-            _: ModelHandle<Project>,
-            _: &mut ViewContext<Self>,
-        ) -> Task<anyhow::Result<()>> {
+        fn save(&mut self, _: ModelHandle<Project>, _: &mut ViewContext<Self>) -> Task<Result<()>> {
             self.save_count += 1;
             self.is_dirty = false;
             Task::ready(Ok(()))
@@ -989,7 +994,7 @@ pub(crate) mod test {
             _: ModelHandle<Project>,
             _: std::path::PathBuf,
             _: &mut ViewContext<Self>,
-        ) -> Task<anyhow::Result<()>> {
+        ) -> Task<Result<()>> {
             self.save_as_count += 1;
             self.is_dirty = false;
             Task::ready(Ok(()))
@@ -999,7 +1004,7 @@ pub(crate) mod test {
             &mut self,
             _: ModelHandle<Project>,
             _: &mut ViewContext<Self>,
-        ) -> Task<anyhow::Result<()>> {
+        ) -> Task<Result<()>> {
             self.reload_count += 1;
             self.is_dirty = false;
             Task::ready(Ok(()))
@@ -1015,7 +1020,7 @@ pub(crate) mod test {
     impl PersistentItem for TestItem {
         type State = String;
 
-        fn save_state(&self, store: Store, cx: &mut MutableAppContext) -> Task<u64> {
+        fn save_state(&self, store: Store, cx: &mut MutableAppContext) -> Task<Result<u64>> {
             todo!()
         }
     }

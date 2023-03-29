@@ -623,7 +623,7 @@ impl Item for ProjectDiagnosticsEditor {
 impl PersistentItem for ProjectDiagnosticsEditor {
     type State = ProjectDiagnosticsEditorState;
 
-    fn save_state(&self, _store: Store, _cx: &mut MutableAppContext) -> Task<u64> {
+    fn save_state(&self, _store: Store, _cx: &mut MutableAppContext) -> Task<Result<u64>> {
         todo!()
     }
 }

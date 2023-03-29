@@ -2,6 +2,7 @@ use crate::{
     SearchOption, SelectNextMatch, SelectPrevMatch, ToggleCaseSensitive, ToggleRegex,
     ToggleWholeWord,
 };
+use anyhow::Result;
 use collections::HashMap;
 use editor::{
     items::active_match_index, scroll::autoscroll::Autoscroll, Anchor, Editor, MultiBuffer,
@@ -83,6 +84,7 @@ pub struct ProjectSearchView {
     query_contains_error: bool,
     active_match_index: Option<usize>,
     search_id: usize,
+    record_id: Option<u64>,
 }
 
 pub struct ProjectSearchBar {
@@ -294,7 +296,7 @@ impl Item for ProjectSearchView {
         &mut self,
         project: ModelHandle<Project>,
         cx: &mut ViewContext<Self>,
-    ) -> Task<anyhow::Result<()>> {
+    ) -> Task<Result<()>> {
         self.results_editor
             .update(cx, |editor, cx| editor.save(project, cx))
     }
@@ -304,7 +306,7 @@ impl Item for ProjectSearchView {
         _: ModelHandle<Project>,
         _: PathBuf,
         _: &mut ViewContext<Self>,
-    ) -> Task<anyhow::Result<()>> {
+    ) -> Task<Result<()>> {
         unreachable!("save_as should not have been called")
     }
 
@@ -312,7 +314,7 @@ impl Item for ProjectSearchView {
         &mut self,
         project: ModelHandle<Project>,
         cx: &mut ViewContext<Self>,
-    ) -> Task<anyhow::Result<()>> {
+    ) -> Task<Result<()>> {
         self.results_editor
             .update(cx, |editor, cx| editor.reload(project, cx))
     }
@@ -340,7 +342,7 @@ impl Item for ProjectSearchView {
         &mut self,
         project: ModelHandle<Project>,
         cx: &mut ViewContext<Self>,
-    ) -> Task<anyhow::Result<()>> {
+    ) -> Task<Result<()>> {
         self.results_editor
             .update(cx, |editor, cx| editor.git_diff_recalc(project, cx))
     }
@@ -371,8 +373,13 @@ impl Item for ProjectSearchView {
 impl PersistentItem for ProjectSearchView {
     type State = ProjectSearchViewState;
 
-    fn save_state(&self, store: Store, cx: &mut MutableAppContext) -> Task<u64> {
-        todo!()
+    fn save_state(&self, store: Store, cx: &mut MutableAppContext) -> Task<Result<u64>> {
+        if let Some(record_id) = self.record_id {
+            Task::ready(Ok(record_id))
+        } else {
+            cx.foreground()
+                .spawn(async move { store.create(&ProjectSearchViewState {}).await })
+        }
     }
 }
 
@@ -391,7 +398,7 @@ impl Record for ProjectSearchViewState {
         todo!()
     }
 
-    fn deserialize(version: u64, data: Vec<u8>) -> anyhow::Result<Self>
+    fn deserialize(version: u64, data: Vec<u8>) -> Result<Self>
     where
         Self: Sized,
     {
@@ -463,6 +470,7 @@ impl ProjectSearchView {
             regex,
             query_contains_error: false,
             active_match_index: None,
+            record_id: None,
         };
         this.model_changed(cx);
         this
