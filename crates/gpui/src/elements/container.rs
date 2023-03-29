@@ -15,6 +15,7 @@ use crate::{
 };
 use serde::Deserialize;
 use serde_json::json;
+use ts_rs::TS;
 
 #[derive(Clone, Copy, Debug, Default, Deserialize)]
 pub struct ContainerStyle {
@@ -326,7 +327,8 @@ impl ToJson for ContainerStyle {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, TS)]
+#[ts(export, export_to = "types/property/margin.d.ts")]
 pub struct Margin {
     pub top: f32,
     pub left: f32,
@@ -353,7 +355,8 @@ impl ToJson for Margin {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, TS)]
+#[ts(export, export_to = "types/property/padding.d.ts")]
 pub struct Padding {
     pub top: f32,
     pub left: f32,
@@ -434,8 +437,9 @@ impl<'de> Deserialize<'de> for Margin {
         })
     }
 }
-#[derive(Deserialize)]
+#[derive(Deserialize, TS)]
 #[serde(untagged)]
+#[ts(export, export_to = "types/property/spacing.d.ts")]
 enum Spacing {
     Uniform(f32),
     Specific {
