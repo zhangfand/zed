@@ -19,6 +19,7 @@ use language::{
     SelectionGoal,
 };
 use project::{DiagnosticSummary, Project, ProjectPath};
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use settings::Settings;
 use smallvec::SmallVec;
@@ -32,7 +33,7 @@ use std::{
 use util::TryFutureExt;
 use workspace::{
     item::{Item, ItemEvent, ItemHandle, PersistentItem},
-    ItemNavHistory, Pane, Record, Workspace,
+    ItemNavHistory, Record, Workspace,
 };
 
 actions!(diagnostics, [Deploy]);
@@ -621,11 +622,12 @@ impl Item for ProjectDiagnosticsEditor {
 impl PersistentItem for ProjectDiagnosticsEditor {
     type State = ProjectDiagnosticsEditorState;
 
-    fn save_state(&self, cx: &mut MutableAppContext) -> Task<u64> {
+    fn save_state(&self, _cx: &mut MutableAppContext) -> Task<u64> {
         todo!()
     }
 }
 
+#[derive(Serialize, Deserialize)]
 struct ProjectDiagnosticsEditorState {}
 
 impl Record for ProjectDiagnosticsEditorState {
@@ -638,14 +640,14 @@ impl Record for ProjectDiagnosticsEditorState {
     }
 
     fn serialize(&self) -> Vec<u8> {
-        todo!()
+        serde_json::to_vec(self).unwrap()
     }
 
-    fn deserialize(version: u64, data: Vec<u8>) -> Result<Self>
+    fn deserialize(_: u64, data: Vec<u8>) -> Result<Self>
     where
         Self: Sized,
     {
-        todo!()
+        Ok(serde_json::from_slice(&data)?)
     }
 }
 

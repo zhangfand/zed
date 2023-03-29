@@ -16,6 +16,7 @@ editor = { path = "../editor" }
 language = { path = "../language" }
 gpui = { path = "../gpui" }
 project = { path = "../project" }
+serde = { version = "1.0", features = ["derive", "rc"] }
 settings = { path = "../settings" }
 theme = { path = "../theme" }
 util = { path = "../util" }

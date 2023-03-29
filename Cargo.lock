@@ -1765,6 +1765,7 @@ dependencies = [
  "language",
  "postage",
  "project",
+ "serde",
  "serde_json",
  "settings",
  "smallvec",

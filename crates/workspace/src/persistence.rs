@@ -16,7 +16,6 @@ use gpui::{
 use project::Project;
 use serde::{Deserialize, Serialize};
 use store::{Record, Store};
-use uuid::Uuid;
 
 use crate::{
     dock::DockPosition,
@@ -32,7 +31,7 @@ pub struct WorkspaceState {
     pub dock_pane: PaneState,
     pub left_sidebar_open: bool,
     pub bounds: WindowBoundsState,
-    pub screen_id: Option<Uuid>,
+    pub screen_id: Option<String>,
 }
 
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize, Default)]
@@ -99,7 +98,7 @@ impl WorkspaceState {
         self.center_group
             .load_items(store, &mut item_states, cx.clone())
             .await;
-        self.dock_pane.load_items(store, &mut item_states, cx);
+        self.dock_pane.load_items(store, &mut item_states, cx).await;
         item_states
     }
 }

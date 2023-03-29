@@ -805,7 +805,7 @@ impl ProjectItem for Editor {
 impl PersistentItem for Editor {
     type State = EditorState;
 
-    fn save_state(&self, cx: &mut MutableAppContext) -> Task<u64> {
+    fn save_state(&self, _cx: &mut MutableAppContext) -> Task<u64> {
         todo!()
     }
 
@@ -880,7 +880,7 @@ impl Record for EditorState {
         todo!()
     }
 
-    fn deserialize(version: u64, data: Vec<u8>) -> Result<Self>
+    fn deserialize(_version: u64, _data: Vec<u8>) -> Result<Self>
     where
         Self: Sized,
     {

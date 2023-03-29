@@ -77,6 +77,7 @@ use std::{
     cmp, env,
     future::Future,
     path::{Path, PathBuf},
+    str::FromStr,
     sync::Arc,
     time::Duration,
 };
@@ -826,7 +827,7 @@ impl Workspace {
                 workspace_state
                     .as_ref()
                     .and_then(|workspace_state| {
-                        let display = workspace_state.screen_id?;
+                        let display = Uuid::from_str(workspace_state.screen_id.as_ref()?).ok()?;
                         let mut bounds = workspace_state.bounds.to_window_bounds();
 
                         // Stored bounds are relative to the containing display.
@@ -2523,7 +2524,7 @@ impl Workspace {
                 .update(cx, |dock_pane, cx| dock_pane.build_state(cx));
             let left_sidebar_open = self.left_sidebar.read(cx).is_open();
             let bounds = WindowBoundsState::from_window_bounds(self.bounds);
-            let screen_id = self.screen_id;
+            let screen_id = self.screen_id.map(|id| id.to_string());
 
             Some(async move {
                 WorkspaceState {
