@@ -19,7 +19,8 @@ pub use pane::*;
 pub use pane_group::*;
 pub use smallvec;
 pub use status_bar::StatusItemView;
-pub use store::*;
+pub use store;
+use store::Store;
 pub use toolbar::{ToolbarItemLocation, ToolbarItemView};
 
 use crate::{
@@ -406,6 +407,8 @@ struct PersistentItemRegistration {
 }
 
 pub fn register_persistent_item<I: PersistentItem>(cx: &mut MutableAppContext) {
+    use store::Record;
+
     cx.update_default_global(|map: &mut PersistentItemTypesByName, _| {
         map.0.insert(I::State::namespace(), TypeId::of::<I>());
     });
@@ -2518,10 +2521,10 @@ impl Workspace {
                 .collect();
 
             let dock_position = self.dock.position();
-            let center_group = self.center.root.build_state(cx);
-            let dock_pane = self
-                .dock_pane()
-                .update(cx, |dock_pane, cx| dock_pane.build_state(cx));
+            let center_group = self.center.root.build_state(&self.store, cx);
+            let dock_pane = self.dock_pane().update(cx, |dock_pane, cx| {
+                dock_pane.build_state(self.store.clone(), cx)
+            });
             let left_sidebar_open = self.left_sidebar.read(cx).is_open();
             let bounds = WindowBoundsState::from_window_bounds(self.bounds);
             let screen_id = self.screen_id.map(|id| id.to_string());
@@ -2926,6 +2929,7 @@ mod tests {
     use gpui::{executor::Deterministic, TestAppContext};
     use project::{Project, ProjectEntryId};
     use serde_json::json;
+    use store::Store;
 
     #[gpui::test]
     async fn test_tab_disambiguation(cx: &mut TestAppContext) {

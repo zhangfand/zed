@@ -21,7 +21,7 @@ use gpui::{
 use project::{Project, ProjectEntryId, ProjectPath};
 use settings::{Autosave, Settings};
 use smallvec::SmallVec;
-use store::Record;
+use store::{Record, Store};
 use theme::Theme;
 use util::ResultExt;
 
@@ -729,17 +729,17 @@ impl<T: FollowableItem> FollowableItemHandle for ViewHandle<T> {
 pub trait PersistentItem: Item {
     type State: Record;
 
-    fn save_state(&self, cx: &mut MutableAppContext) -> Task<u64>;
+    fn save_state(&self, store: Store, cx: &mut MutableAppContext) -> Task<u64>;
 }
 
 pub trait PersistentItemHandle: ItemHandle {
-    fn save_state(&self, cx: &mut MutableAppContext) -> (&'static str, Task<u64>);
+    fn save_state(&self, store: Store, cx: &mut MutableAppContext) -> (&'static str, Task<u64>);
 }
 
 impl<T: PersistentItem> PersistentItemHandle for ViewHandle<T> {
-    fn save_state(&self, cx: &mut MutableAppContext) -> (&'static str, Task<u64>) {
+    fn save_state(&self, store: Store, cx: &mut MutableAppContext) -> (&'static str, Task<u64>) {
         self.update(cx, |this, cx| {
-            let id = PersistentItem::save_state(this, cx);
+            let id = PersistentItem::save_state(this, store, cx);
             (T::State::namespace(), id)
         })
     }
@@ -756,6 +756,7 @@ pub(crate) mod test {
     use project::{Project, ProjectEntryId, ProjectPath, WorktreeId};
     use smallvec::SmallVec;
     use std::{any::Any, borrow::Cow, cell::Cell, path::Path};
+    use store::Store;
 
     pub struct TestProjectItem {
         pub entry_id: Option<ProjectEntryId>,
@@ -1014,7 +1015,7 @@ pub(crate) mod test {
     impl PersistentItem for TestItem {
         type State = String;
 
-        fn save_state(&self, cx: &mut MutableAppContext) -> Task<u64> {
+        fn save_state(&self, store: Store, cx: &mut MutableAppContext) -> Task<u64> {
             todo!()
         }
     }

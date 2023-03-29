@@ -14,7 +14,7 @@ use std::{ffi::OsString, sync::Arc, time::Duration};
 use store::Store;
 use update_notification::UpdateNotification;
 use util::channel::ReleaseChannel;
-use workspace::Workspace;
+use workspace::{store, Workspace};
 
 const POLL_INTERVAL: Duration = Duration::from_secs(60 * 60);
 

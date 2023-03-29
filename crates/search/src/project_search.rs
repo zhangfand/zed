@@ -28,7 +28,8 @@ use util::ResultExt as _;
 use workspace::{
     item::{Item, ItemEvent, ItemHandle, PersistentItem},
     searchable::{Direction, SearchableItem, SearchableItemHandle},
-    ItemNavHistory, Pane, Record, ToolbarItemLocation, ToolbarItemView, Workspace,
+    store::{Record, Store},
+    ItemNavHistory, Pane, ToolbarItemLocation, ToolbarItemView, Workspace,
 };
 
 actions!(project_search, [SearchInNew, ToggleFocus]);
@@ -370,7 +371,7 @@ impl Item for ProjectSearchView {
 impl PersistentItem for ProjectSearchView {
     type State = ProjectSearchViewState;
 
-    fn save_state(&self, cx: &mut MutableAppContext) -> Task<u64> {
+    fn save_state(&self, store: Store, cx: &mut MutableAppContext) -> Task<u64> {
         todo!()
     }
 }

@@ -12,7 +12,7 @@ use settings::{settings_file::SettingsFile, Settings};
 use store::Store;
 use util::ResultExt;
 use workspace::{
-    item::Item, open_new, sidebar::SidebarSide, AppState, PaneBackdrop, Welcome, Workspace,
+    item::Item, open_new, sidebar::SidebarSide, store, AppState, PaneBackdrop, Welcome, Workspace,
 };
 
 use crate::base_keymap_picker::ToggleBaseKeymapSelector;

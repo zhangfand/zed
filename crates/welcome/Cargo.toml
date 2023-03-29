@@ -17,7 +17,6 @@ gpui = { path = "../gpui" }
 install_cli = { path = "../install_cli" }
 project = { path = "../project" }
 settings = { path = "../settings" }
-store = { path = "../store" }
 theme = { path = "../theme" }
 theme_selector = { path = "../theme_selector" }
 util = { path = "../util" }

@@ -14,6 +14,7 @@ use gpui::{
 use project::Project;
 use serde::Deserialize;
 use settings::Settings;
+use store::Store;
 use theme::Theme;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -285,6 +286,7 @@ impl Member {
 
     pub fn build_state(
         &self,
+        store: &Store,
         cx: &mut MutableAppContext,
     ) -> LocalBoxFuture<'static, PaneGroupState> {
         match self {
@@ -293,7 +295,7 @@ impl Member {
                 let member_states = pane_axis
                     .members
                     .iter()
-                    .map(|member| member.build_state(cx))
+                    .map(|member| member.build_state(store, cx))
                     .collect::<Vec<_>>();
 
                 async move {
@@ -303,7 +305,7 @@ impl Member {
                 .boxed_local()
             }
             Member::Pane(pane) => {
-                let pane_state = pane.update(cx, |pane, cx| pane.build_state(cx));
+                let pane_state = pane.update(cx, |pane, cx| pane.build_state(store.clone(), cx));
                 async { PaneGroupState::Pane(pane_state.await) }.boxed_local()
             }
         }

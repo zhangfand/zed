@@ -27,13 +27,15 @@ use std::{
     ops::Range,
     path::{Path, PathBuf},
 };
-use store::Record;
 use text::Selection;
 use util::TryFutureExt;
-use workspace::item::{FollowableItemHandle, PersistentItem};
 use workspace::{
-    item::{FollowableItem, Item, ItemEvent, ItemHandle, ProjectItem},
+    item::{
+        FollowableItem, FollowableItemHandle, Item, ItemEvent, ItemHandle, PersistentItem,
+        ProjectItem,
+    },
     searchable::{Direction, SearchEvent, SearchableItem, SearchableItemHandle},
+    store::{Record, Store},
     ItemNavHistory, StatusItemView, ToolbarItemLocation, ViewId, Workspace,
 };
 
@@ -805,7 +807,7 @@ impl ProjectItem for Editor {
 impl PersistentItem for Editor {
     type State = EditorState;
 
-    fn save_state(&self, _cx: &mut MutableAppContext) -> Task<u64> {
+    fn save_state(&self, store: Store, _cx: &mut MutableAppContext) -> Task<u64> {
         todo!()
     }
 

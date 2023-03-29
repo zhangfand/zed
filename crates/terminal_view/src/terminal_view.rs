@@ -17,9 +17,9 @@ use gpui::{
     impl_actions, impl_internal_actions,
     keymap_matcher::{KeymapContext, Keystroke},
     AnyViewHandle, AppContext, Element, ElementBox, Entity, ModelHandle, MutableAppContext, Task,
-    View, ViewContext, ViewHandle, WeakViewHandle,
+    View, ViewContext, ViewHandle,
 };
-use project::{LocalWorktree, Project};
+use project::LocalWorktree;
 use serde::Deserialize;
 use settings::{Settings, TerminalBlink, WorkingDirectory};
 use smallvec::{smallvec, SmallVec};
@@ -37,7 +37,8 @@ use workspace::{
     notifications::NotifyResultExt,
     pane,
     searchable::{SearchEvent, SearchOptions, SearchableItem, SearchableItemHandle},
-    Pane, Record, ToolbarItemLocation, Workspace,
+    store::{Record, Store},
+    ToolbarItemLocation, Workspace,
 };
 
 use crate::terminal_element::TerminalElement;
@@ -621,7 +622,7 @@ impl Item for TerminalView {
 impl PersistentItem for TerminalView {
     type State = TerminalViewState;
 
-    fn save_state(&self, cx: &mut MutableAppContext) -> Task<u64> {
+    fn save_state(&self, store: Store, cx: &mut MutableAppContext) -> Task<u64> {
         todo!()
     }
 

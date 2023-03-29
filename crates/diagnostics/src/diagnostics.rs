@@ -33,7 +33,8 @@ use std::{
 use util::TryFutureExt;
 use workspace::{
     item::{Item, ItemEvent, ItemHandle, PersistentItem},
-    ItemNavHistory, Record, Workspace,
+    store::{Record, Store},
+    ItemNavHistory, Workspace,
 };
 
 actions!(diagnostics, [Deploy]);
@@ -622,7 +623,7 @@ impl Item for ProjectDiagnosticsEditor {
 impl PersistentItem for ProjectDiagnosticsEditor {
     type State = ProjectDiagnosticsEditorState;
 
-    fn save_state(&self, _cx: &mut MutableAppContext) -> Task<u64> {
+    fn save_state(&self, _store: Store, _cx: &mut MutableAppContext) -> Task<u64> {
         todo!()
     }
 }

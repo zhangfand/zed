@@ -6,14 +6,15 @@ use gpui::{
         Padding, ParentElement,
     },
     fonts::TextStyle,
-    AppContext, Border, Element, Entity, ModelHandle, MutableAppContext, Quad, RenderContext, Task,
-    View, ViewContext, ViewHandle, WeakViewHandle,
+    AppContext, Border, Element, Entity, MutableAppContext, Quad, RenderContext, Task, View,
+    ViewContext,
 };
 use project::Project;
 use settings::Settings;
 use theme::{ColorScheme, Layer, Style, StyleSet};
 use workspace::{
     item::{Item, PersistentItem},
+    store::Store,
     Workspace,
 };
 
@@ -317,7 +318,7 @@ impl Item for ThemeTestbench {
 impl PersistentItem for ThemeTestbench {
     type State = ();
 
-    fn save_state(&self, cx: &mut MutableAppContext) -> Task<u64> {
+    fn save_state(&self, store: Store, cx: &mut MutableAppContext) -> Task<u64> {
         todo!()
     }
 }

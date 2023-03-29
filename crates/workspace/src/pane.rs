@@ -339,6 +339,7 @@ impl Pane {
 
     pub fn build_state(
         &self,
+        store: Store,
         cx: &mut ViewContext<Self>,
     ) -> impl 'static + Future<Output = PaneState> {
         let active_item_id = self.active_item().map(|item| item.id());
@@ -347,7 +348,7 @@ impl Pane {
         for (ix, item) in self.items().enumerate() {
             let active = ix == self.active_item_index;
             if let Some(item) = item.to_persistent_item_handle(cx) {
-                let (namespace, save_task) = item.save_state(cx);
+                let (namespace, save_task) = item.save_state(store.clone(), cx);
                 persistent_items.push((namespace, save_task, active));
             }
         }
