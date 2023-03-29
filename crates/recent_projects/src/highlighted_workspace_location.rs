@@ -1,11 +1,10 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use fuzzy::StringMatch;
 use gpui::{
     elements::{Label, LabelStyle},
     Element, ElementBox,
 };
-use workspace::WorkspaceLocation;
 
 pub struct HighlightedText {
     pub text: String,
@@ -55,10 +54,9 @@ pub struct HighlightedWorkspaceLocation {
 }
 
 impl HighlightedWorkspaceLocation {
-    pub fn new(string_match: &StringMatch, location: &WorkspaceLocation) -> Self {
+    pub fn new(string_match: &StringMatch, location: &[PathBuf]) -> Self {
         let mut path_start_offset = 0;
         let (names, paths): (Vec<_>, Vec<_>) = location
-            .paths()
             .iter()
             .map(|path| {
                 let highlighted_text = Self::highlights_for_path(

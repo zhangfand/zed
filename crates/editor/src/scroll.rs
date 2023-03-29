@@ -11,7 +11,7 @@ use gpui::{
     geometry::vector::{vec2f, Vector2F},
     Axis, MutableAppContext, Task, ViewContext,
 };
-use language::{Bias, Point};
+use language::Bias;
 
 use crate::{
     display_map::{DisplaySnapshot, ToDisplayPoint},

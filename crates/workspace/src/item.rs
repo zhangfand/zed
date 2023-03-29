@@ -14,7 +14,6 @@ use std::{
 
 use anyhow::Result;
 use client::{proto, Client};
-use futures::future::LocalBoxFuture;
 use gpui::{
     AnyViewHandle, AppContext, ElementBox, ModelHandle, MutableAppContext, Task, View, ViewContext,
     ViewHandle, WeakViewHandle,
@@ -22,7 +21,7 @@ use gpui::{
 use project::{Project, ProjectEntryId, ProjectPath};
 use settings::{Autosave, Settings};
 use smallvec::SmallVec;
-use store::Store;
+use store::Record;
 use theme::Theme;
 use util::ResultExt;
 
@@ -728,14 +727,8 @@ impl<T: FollowableItem> FollowableItemHandle for ViewHandle<T> {
 }
 
 pub trait PersistentItem: Item {
-    fn type_name() -> &'static str;
-    fn load_state(
-        store: Store,
-        item_id: u64,
-        project: ModelHandle<Project>,
-        workspace: WeakViewHandle<Workspace>,
-        cx: &mut ViewContext<Pane>,
-    ) -> LocalBoxFuture<'static, Result<ViewHandle<Self>>>;
+    type State: Record;
+
     fn save_state(&self, cx: &mut MutableAppContext) -> Task<u64>;
 }
 
@@ -747,7 +740,7 @@ impl<T: PersistentItem> PersistentItemHandle for ViewHandle<T> {
     fn save_state(&self, cx: &mut MutableAppContext) -> (&'static str, Task<u64>) {
         self.update(cx, |this, cx| {
             let id = PersistentItem::save_state(this, cx);
-            (T::type_name(), id)
+            (T::State::namespace(), id)
         })
     }
 }
@@ -755,15 +748,14 @@ impl<T: PersistentItem> PersistentItemHandle for ViewHandle<T> {
 #[cfg(test)]
 pub(crate) mod test {
     use super::{Item, ItemEvent, PersistentItem};
-    use crate::{sidebar::SidebarItem, ItemNavHistory, Pane, Workspace};
+    use crate::{sidebar::SidebarItem, ItemNavHistory};
     use gpui::{
         elements::Empty, AppContext, Element, ElementBox, Entity, ModelHandle, MutableAppContext,
-        RenderContext, Task, View, ViewContext, ViewHandle, WeakViewHandle,
+        RenderContext, Task, View, ViewContext,
     };
     use project::{Project, ProjectEntryId, ProjectPath, WorktreeId};
     use smallvec::SmallVec;
     use std::{any::Any, borrow::Cow, cell::Cell, path::Path};
-    use store::Store;
 
     pub struct TestProjectItem {
         pub entry_id: Option<ProjectEntryId>,
@@ -1020,19 +1012,7 @@ pub(crate) mod test {
     impl SidebarItem for TestItem {}
 
     impl PersistentItem for TestItem {
-        fn type_name() -> &'static str {
-            "TestItem"
-        }
-
-        fn load_state(
-            store: Store,
-            item_id: u64,
-            project: ModelHandle<Project>,
-            workspace: WeakViewHandle<Workspace>,
-            cx: &mut ViewContext<Pane>,
-        ) -> futures::future::LocalBoxFuture<'static, anyhow::Result<ViewHandle<Self>>> {
-            todo!()
-        }
+        type State = String;
 
         fn save_state(&self, cx: &mut MutableAppContext) -> Task<u64> {
             todo!()

@@ -1,5 +1,7 @@
 mod highlighted_workspace_location;
 
+use std::path::PathBuf;
+
 use fuzzy::{StringMatch, StringMatchCandidate};
 use gpui::{
     actions,
@@ -13,7 +15,6 @@ use picker::{Picker, PickerDelegate};
 use settings::Settings;
 use workspace::{
     notifications::simple_message_notification::MessageNotification, OpenPaths, Workspace,
-    WorkspaceLocation,
 };
 
 actions!(projects, [OpenRecent]);
@@ -25,13 +26,13 @@ pub fn init(cx: &mut MutableAppContext) {
 
 struct RecentProjectsView {
     picker: ViewHandle<Picker<Self>>,
-    workspace_locations: Vec<WorkspaceLocation>,
+    workspace_locations: Vec<Vec<PathBuf>>,
     selected_match_index: usize,
     matches: Vec<StringMatch>,
 }
 
 impl RecentProjectsView {
-    fn new(workspace_locations: Vec<WorkspaceLocation>, cx: &mut ViewContext<Self>) -> Self {
+    fn new(workspace_locations: Vec<Vec<PathBuf>>, cx: &mut ViewContext<Self>) -> Self {
         let handle = cx.weak_handle();
         Self {
             picker: cx.add_view(|cx| {
@@ -137,7 +138,6 @@ impl PickerDelegate for RecentProjectsView {
             .enumerate()
             .map(|(id, location)| {
                 let combined_string = location
-                    .paths()
                     .iter()
                     .map(|path| path.to_string_lossy().to_owned())
                     .collect::<Vec<_>>()
@@ -170,7 +170,7 @@ impl PickerDelegate for RecentProjectsView {
         if let Some(selected_match) = &self.matches.get(self.selected_index()) {
             let workspace_location = &self.workspace_locations[selected_match.candidate_id];
             cx.dispatch_global_action(OpenPaths {
-                paths: workspace_location.paths().as_ref().clone(),
+                paths: workspace_location.clone(),
             });
             cx.emit(Event::Dismissed);
         }

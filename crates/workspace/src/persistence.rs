@@ -1,11 +1,13 @@
 use std::{
-    path::{Path, PathBuf},
-    sync::Arc,
+    any::{Any, TypeId},
+    os::unix::prelude::OsStrExt,
+    path::PathBuf,
 };
 
 use anyhow::Result;
 
 use async_recursion::async_recursion;
+use collections::HashMap;
 use gpui::{
     geometry::{rect::RectF, vector::vec2f},
     AsyncAppContext, Axis, ModelHandle, ViewHandle, WindowBounds,
@@ -13,7 +15,7 @@ use gpui::{
 
 use project::Project;
 use serde::{Deserialize, Serialize};
-use store::Record;
+use store::{Record, Store};
 use uuid::Uuid;
 
 use crate::{
@@ -22,29 +24,9 @@ use crate::{
     Member, Workspace,
 };
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct WorkspaceLocation(Arc<Vec<PathBuf>>);
-
-impl WorkspaceLocation {
-    pub fn paths(&self) -> Arc<Vec<PathBuf>> {
-        self.0.clone()
-    }
-}
-
-impl<P: AsRef<Path>, T: IntoIterator<Item = P>> From<T> for WorkspaceLocation {
-    fn from(iterator: T) -> Self {
-        let mut roots = iterator
-            .into_iter()
-            .map(|p| p.as_ref().to_path_buf())
-            .collect::<Vec<_>>();
-        roots.sort();
-        Self(Arc::new(roots))
-    }
-}
-
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub struct WorkspaceState {
-    pub location: WorkspaceLocation,
+    pub worktree_abs_paths: Vec<PathBuf>,
     pub dock_position: DockPosition,
     pub center_group: PaneGroupState,
     pub dock_pane: PaneState,
@@ -97,6 +79,31 @@ impl Record for WorkspaceState {
     }
 }
 
+impl WorkspaceState {
+    pub fn storage_key(mut abs_paths: Vec<PathBuf>) -> Vec<u8> {
+        abs_paths.sort_unstable();
+        let mut key = Vec::new();
+        for abs_path in &abs_paths {
+            key.extend_from_slice(&abs_path.as_os_str().as_bytes());
+            key.push(0);
+        }
+        key
+    }
+
+    pub async fn load_items<'a>(
+        &'a self,
+        store: &'a Store,
+        cx: AsyncAppContext,
+    ) -> HashMap<TypeId, HashMap<u64, Box<dyn Any>>> {
+        let mut item_states = HashMap::default();
+        self.center_group
+            .load_items(store, &mut item_states, cx.clone())
+            .await;
+        self.dock_pane.load_items(store, &mut item_states, cx);
+        item_states
+    }
+}
+
 impl WindowBoundsState {
     pub fn from_window_bounds(bounds: WindowBounds) -> Self {
         match bounds {
@@ -139,6 +146,23 @@ impl Default for PaneGroupState {
 }
 
 impl PaneGroupState {
+    #[async_recursion(?Send)]
+    pub async fn load_items<'a>(
+        &'a self,
+        store: &'a Store,
+        items: &'a mut HashMap<TypeId, HashMap<u64, Box<dyn Any>>>,
+        cx: AsyncAppContext,
+    ) {
+        match self {
+            PaneGroupState::Group { members, .. } => {
+                for member in members {
+                    member.load_items(store, items, cx.clone()).await;
+                }
+            }
+            PaneGroupState::Pane(pane) => pane.load_items(store, items, cx).await,
+        }
+    }
+
     #[async_recursion(?Send)]
     pub(crate) async fn deserialize(
         &self,

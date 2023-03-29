@@ -5,7 +5,8 @@ use crate::{
     dock::{icon_for_dock_anchor, AnchorDockBottom, AnchorDockRight, ExpandDock, HideDock},
     item::WeakItemHandle,
     toolbar::Toolbar,
-    Item, NewFile, NewSearch, NewTerminal, Workspace,
+    Item, NewFile, NewSearch, NewTerminal, PersistentItemRegistrations, PersistentItemTypesByName,
+    Workspace,
 };
 use anyhow::Result;
 use collections::{HashMap, HashSet, VecDeque};
@@ -30,7 +31,15 @@ use gpui::{
 use project::{Project, ProjectEntryId, ProjectPath};
 use serde::{Deserialize, Serialize};
 use settings::{Autosave, DockAnchor, Settings};
-use std::{any::Any, cell::RefCell, cmp, mem, path::Path, rc::Rc, sync::Arc};
+use std::{
+    any::{Any, TypeId},
+    cell::RefCell,
+    cmp, mem,
+    path::Path,
+    rc::Rc,
+    sync::Arc,
+};
+use store::Store;
 use theme::Theme;
 use util::ResultExt;
 
@@ -338,18 +347,18 @@ impl Pane {
         for (ix, item) in self.items().enumerate() {
             let active = ix == self.active_item_index;
             if let Some(item) = item.to_persistent_item_handle(cx) {
-                let (kind, item_id_task) = item.save_state(cx);
-                persistent_items.push((kind, item_id_task, active));
+                let (namespace, save_task) = item.save_state(cx);
+                persistent_items.push((namespace, save_task, active));
             }
         }
 
         let active = self.is_active;
         async move {
             let mut items = Vec::new();
-            for (kind, item_id, active) in persistent_items {
+            for (namespace, save_task, active) in persistent_items {
                 items.push(ItemState {
-                    kind: kind.into(),
-                    item_id: item_id.await,
+                    record_namespace: namespace.into(),
+                    record_id: save_task.await,
                     active,
                 });
             }
@@ -1671,6 +1680,41 @@ pub struct PaneState {
 }
 
 impl PaneState {
+    pub async fn load_items<'a>(
+        &'a self,
+        store: &'a Store,
+        item_states: &'a mut HashMap<TypeId, HashMap<u64, Box<dyn Any>>>,
+        cx: AsyncAppContext,
+    ) {
+        for item_state in &self.items {
+            let type_id_and_state = cx.read(|cx| {
+                let registered_types = cx.global::<PersistentItemTypesByName>();
+                let registrations = cx.global::<PersistentItemRegistrations>();
+                if let Some(type_id) = registered_types.0.get(item_state.record_namespace.as_ref())
+                {
+                    let registration = registrations.get(type_id).unwrap();
+                    let state = (registration.load_state)(store.clone(), item_state.record_id);
+                    Some((*type_id, state))
+                } else {
+                    log::error!(
+                        "no persistent item of type {} has been registered",
+                        item_state.record_namespace
+                    );
+                    None
+                }
+            });
+
+            if let Some((type_id, state)) = type_id_and_state {
+                if let Some(state) = state.await.log_err() {
+                    item_states
+                        .entry(type_id)
+                        .or_default()
+                        .insert(item_state.record_id, state);
+                }
+            }
+        }
+    }
+
     pub async fn deserialize_to(
         &self,
         project: &ModelHandle<Project>,
@@ -1717,16 +1761,16 @@ impl PaneState {
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub struct ItemState {
-    pub kind: Arc<str>,
-    pub item_id: u64,
+    pub record_namespace: Arc<str>,
+    pub record_id: u64,
     pub active: bool,
 }
 
 impl ItemState {
     pub fn new(kind: impl AsRef<str>, item_id: u64, active: bool) -> Self {
         Self {
-            kind: Arc::from(kind.as_ref()),
-            item_id,
+            record_namespace: Arc::from(kind.as_ref()),
+            record_id: item_id,
             active,
         }
     }
@@ -1736,8 +1780,8 @@ impl ItemState {
 impl Default for ItemState {
     fn default() -> Self {
         ItemState {
-            kind: Arc::from("Terminal"),
-            item_id: 100000,
+            record_namespace: Arc::from("Terminal"),
+            record_id: 100000,
             active: false,
         }
     }

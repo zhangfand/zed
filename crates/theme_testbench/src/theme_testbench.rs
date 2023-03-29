@@ -13,9 +13,8 @@ use project::Project;
 use settings::Settings;
 use theme::{ColorScheme, Layer, Style, StyleSet};
 use workspace::{
-    futures::future::LocalBoxFuture,
     item::{Item, PersistentItem},
-    Pane, Store, Workspace,
+    Workspace,
 };
 
 actions!(theme, [DeployThemeTestbench]);
@@ -316,19 +315,7 @@ impl Item for ThemeTestbench {
 }
 
 impl PersistentItem for ThemeTestbench {
-    fn type_name() -> &'static str {
-        todo!()
-    }
-
-    fn load_state(
-        store: Store,
-        item_id: u64,
-        project: ModelHandle<Project>,
-        workspace: WeakViewHandle<Workspace>,
-        cx: &mut ViewContext<Pane>,
-    ) -> LocalBoxFuture<'static, gpui::anyhow::Result<ViewHandle<Self>>> {
-        todo!()
-    }
+    type State = ();
 
     fn save_state(&self, cx: &mut MutableAppContext) -> Task<u64> {
         todo!()

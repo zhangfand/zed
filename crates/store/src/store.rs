@@ -654,3 +654,24 @@ impl Record for bool {
         Ok(data.first() == Some(&1))
     }
 }
+
+impl Record for () {
+    fn namespace() -> &'static str {
+        "()"
+    }
+
+    fn schema_version() -> u64 {
+        0
+    }
+
+    fn serialize(&self) -> Vec<u8> {
+        Vec::new()
+    }
+
+    fn deserialize(_: u64, _: Vec<u8>) -> Result<Self>
+    where
+        Self: Sized,
+    {
+        Ok(())
+    }
+}

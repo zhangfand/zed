@@ -8,7 +8,7 @@ use collections::HashSet;
 use futures::future::try_join_all;
 use gpui::{
     elements::*, geometry::vector::vec2f, AppContext, Entity, ModelHandle, MutableAppContext,
-    RenderContext, Subscription, Task, View, ViewContext, ViewHandle, WeakViewHandle,
+    RenderContext, Subscription, Task, View, ViewContext, ViewHandle,
 };
 use language::{
     proto::serialize_anchor as serialize_text_anchor, Bias, Buffer, OffsetRangeExt, Point,
@@ -16,6 +16,7 @@ use language::{
 };
 use project::{FormatTrigger, Item as _, Project};
 use rpc::proto::{self, update_view};
+use serde::{Deserialize, Serialize};
 use settings::Settings;
 use smallvec::SmallVec;
 use std::{
@@ -26,14 +27,14 @@ use std::{
     ops::Range,
     path::{Path, PathBuf},
 };
-use store::Store;
+use store::Record;
 use text::Selection;
 use util::TryFutureExt;
 use workspace::item::{FollowableItemHandle, PersistentItem};
 use workspace::{
     item::{FollowableItem, Item, ItemEvent, ItemHandle, ProjectItem},
     searchable::{Direction, SearchEvent, SearchableItem, SearchableItemHandle},
-    ItemNavHistory, Pane, StatusItemView, ToolbarItemLocation, ViewId, Workspace,
+    ItemNavHistory, StatusItemView, ToolbarItemLocation, ViewId, Workspace,
 };
 
 pub const MAX_TAB_TITLE_LEN: usize = 24;
@@ -756,7 +757,7 @@ impl Item for Editor {
         Some(breadcrumbs)
     }
 
-    fn added_to_workspace(&mut self, workspace: &mut Workspace, cx: &mut ViewContext<Self>) {
+    fn added_to_workspace(&mut self, _workspace: &mut Workspace, cx: &mut ViewContext<Self>) {
         let item_id = cx.view_id();
 
         todo!();
@@ -802,19 +803,7 @@ impl ProjectItem for Editor {
 }
 
 impl PersistentItem for Editor {
-    fn type_name() -> &'static str {
-        "Editor"
-    }
-
-    fn load_state(
-        store: Store,
-        item_id: u64,
-        project: ModelHandle<Project>,
-        workspace: WeakViewHandle<Workspace>,
-        cx: &mut ViewContext<Pane>,
-    ) -> futures::future::LocalBoxFuture<'static, Result<ViewHandle<Self>>> {
-        todo!()
-    }
+    type State = EditorState;
 
     fn save_state(&self, cx: &mut MutableAppContext) -> Task<u64> {
         todo!()
@@ -863,6 +852,40 @@ impl PersistentItem for Editor {
     //         })
     //         .unwrap_or_else(|error| Task::ready(Err(error)))
     // }
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct EditorState {
+    abs_path: PathBuf,
+    scroll_position: ScrollPositionState,
+}
+
+#[derive(Serialize, Deserialize)]
+struct ScrollPositionState {
+    top_row: u32,
+    top_offset: f32,
+    left: f32,
+}
+
+impl Record for EditorState {
+    fn namespace() -> &'static str {
+        "EditorState"
+    }
+
+    fn schema_version() -> u64 {
+        todo!()
+    }
+
+    fn serialize(&self) -> Vec<u8> {
+        todo!()
+    }
+
+    fn deserialize(version: u64, data: Vec<u8>) -> Result<Self>
+    where
+        Self: Sized,
+    {
+        todo!()
+    }
 }
 
 enum BufferSearchHighlights {}
@@ -1198,27 +1221,27 @@ mod tests {
         }
 
         fn as_local(&self) -> Option<&dyn language::LocalFile> {
-            todo!()
+            unimplemented!()
         }
 
         fn mtime(&self) -> SystemTime {
-            todo!()
+            unimplemented!()
         }
 
         fn file_name<'a>(&'a self, _: &'a gpui::AppContext) -> &'a std::ffi::OsStr {
-            todo!()
+            unimplemented!()
         }
 
         fn is_deleted(&self) -> bool {
-            todo!()
+            unimplemented!()
         }
 
         fn as_any(&self) -> &dyn std::any::Any {
-            todo!()
+            unimplemented!()
         }
 
         fn to_proto(&self) -> rpc::proto::File {
-            todo!()
+            unimplemented!()
         }
     }
 }

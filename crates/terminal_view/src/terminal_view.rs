@@ -37,7 +37,7 @@ use workspace::{
     notifications::NotifyResultExt,
     pane,
     searchable::{SearchEvent, SearchOptions, SearchableItem, SearchableItemHandle},
-    Pane, ToolbarItemLocation, Workspace,
+    Pane, Record, ToolbarItemLocation, Workspace,
 };
 
 use crate::terminal_element::TerminalElement;
@@ -619,19 +619,7 @@ impl Item for TerminalView {
 }
 
 impl PersistentItem for TerminalView {
-    fn type_name() -> &'static str {
-        "TerminalView"
-    }
-
-    fn load_state(
-        store: workspace::Store,
-        item_id: u64,
-        project: ModelHandle<Project>,
-        workspace: WeakViewHandle<Workspace>,
-        cx: &mut ViewContext<Pane>,
-    ) -> futures::future::LocalBoxFuture<'static, anyhow::Result<ViewHandle<Self>>> {
-        todo!()
-    }
+    type State = TerminalViewState;
 
     fn save_state(&self, cx: &mut MutableAppContext) -> Task<u64> {
         todo!()
@@ -675,6 +663,29 @@ impl PersistentItem for TerminalView {
     //         })
     //     })
     // }
+}
+
+pub struct TerminalViewState {}
+
+impl Record for TerminalViewState {
+    fn namespace() -> &'static str {
+        "TerminalViewState"
+    }
+
+    fn schema_version() -> u64 {
+        0
+    }
+
+    fn serialize(&self) -> Vec<u8> {
+        todo!()
+    }
+
+    fn deserialize(version: u64, data: Vec<u8>) -> anyhow::Result<Self>
+    where
+        Self: Sized,
+    {
+        todo!()
+    }
 }
 
 impl SearchableItem for TerminalView {

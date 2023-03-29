@@ -471,7 +471,7 @@ mod tests {
         });
 
         let serialized_workspace = WorkspaceState {
-            location: Vec::<PathBuf>::new().into(),
+            worktree_abs_paths: Vec::<PathBuf>::new().into(),
             dock_position: dock::DockPosition::Shown(DockAnchor::Expanded),
             center_group: PaneGroupState::Pane(PaneState {
                 active: false,
@@ -481,8 +481,8 @@ mod tests {
                 active: true,
                 items: vec![ItemState {
                     active: true,
-                    item_id: 0,
-                    kind: "TestItem".into(),
+                    record_id: 0,
+                    record_namespace: "TestItem".into(),
                 }],
             },
             left_sidebar_open: false,

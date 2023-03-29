@@ -28,7 +28,7 @@ use util::ResultExt as _;
 use workspace::{
     item::{Item, ItemEvent, ItemHandle, PersistentItem},
     searchable::{Direction, SearchableItem, SearchableItemHandle},
-    ItemNavHistory, Pane, ToolbarItemLocation, ToolbarItemView, Workspace,
+    ItemNavHistory, Pane, Record, ToolbarItemLocation, ToolbarItemView, Workspace,
 };
 
 actions!(project_search, [SearchInNew, ToggleFocus]);
@@ -368,21 +368,32 @@ impl Item for ProjectSearchView {
 }
 
 impl PersistentItem for ProjectSearchView {
-    fn type_name() -> &'static str {
-        "ProjectSearchView"
+    type State = ProjectSearchViewState;
+
+    fn save_state(&self, cx: &mut MutableAppContext) -> Task<u64> {
+        todo!()
+    }
+}
+
+pub struct ProjectSearchViewState {}
+
+impl Record for ProjectSearchViewState {
+    fn namespace() -> &'static str {
+        "ProjectSearchViewState"
     }
 
-    fn load_state(
-        store: workspace::Store,
-        item_id: u64,
-        project: ModelHandle<Project>,
-        workspace: WeakViewHandle<Workspace>,
-        cx: &mut ViewContext<Pane>,
-    ) -> futures::future::LocalBoxFuture<'static, anyhow::Result<ViewHandle<Self>>> {
+    fn schema_version() -> u64 {
+        0
+    }
+
+    fn serialize(&self) -> Vec<u8> {
         todo!()
     }
 
-    fn save_state(&self, cx: &mut MutableAppContext) -> Task<u64> {
+    fn deserialize(version: u64, data: Vec<u8>) -> anyhow::Result<Self>
+    where
+        Self: Sized,
+    {
         todo!()
     }
 }

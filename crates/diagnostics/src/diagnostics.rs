@@ -32,7 +32,7 @@ use std::{
 use util::TryFutureExt;
 use workspace::{
     item::{Item, ItemEvent, ItemHandle, PersistentItem},
-    ItemNavHistory, Pane, Workspace,
+    ItemNavHistory, Pane, Record, Workspace,
 };
 
 actions!(diagnostics, [Deploy]);
@@ -619,32 +619,34 @@ impl Item for ProjectDiagnosticsEditor {
 }
 
 impl PersistentItem for ProjectDiagnosticsEditor {
-    fn type_name() -> &'static str {
-        "ProjectDiagnosticsEditor"
-    }
-
-    fn load_state(
-        store: workspace::Store,
-        item_id: u64,
-        project: ModelHandle<Project>,
-        workspace: WeakViewHandle<Workspace>,
-        cx: &mut ViewContext<Pane>,
-    ) -> workspace::futures::future::LocalBoxFuture<'static, Result<ViewHandle<Self>>> {
-        todo!()
-    }
+    type State = ProjectDiagnosticsEditorState;
 
     fn save_state(&self, cx: &mut MutableAppContext) -> Task<u64> {
         todo!()
     }
+}
 
-    // fn load_state(
-    //     project: ModelHandle<Project>,
-    //     workspace: WeakViewHandle<Workspace>,
-    //     _item_id: workspace::ItemId,
-    //     cx: &mut ViewContext<Pane>,
-    // ) -> Task<Result<ViewHandle<Self>>> {
-    //     Task::ready(Ok(cx.add_view(|cx| Self::new(project, workspace, cx))))
-    // }
+struct ProjectDiagnosticsEditorState {}
+
+impl Record for ProjectDiagnosticsEditorState {
+    fn namespace() -> &'static str {
+        "ProjectDiagnosticsEditorState"
+    }
+
+    fn schema_version() -> u64 {
+        0
+    }
+
+    fn serialize(&self) -> Vec<u8> {
+        todo!()
+    }
+
+    fn deserialize(version: u64, data: Vec<u8>) -> Result<Self>
+    where
+        Self: Sized,
+    {
+        todo!()
+    }
 }
 
 fn diagnostic_header_renderer(diagnostic: Diagnostic) -> RenderBlock {
