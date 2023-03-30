@@ -61,7 +61,7 @@ from_assistant: true,
         let response_message = r#"
 You can add another message to the `messages` vector by creating a new `Message` struct and pushing it onto the vector using the `push` method. Here's an example:
 
-```rust
+rust
 let new_message = Message {
     text: "I think we can improve this code by using Rust macros.".to_owned(),
     from_assistant: true,
@@ -92,7 +92,7 @@ This creates a new `Message` struct with the text "I think we can improve this c
                 })),
                 cx,
             );
-            editor.set_placeholder_text("Send a message... (⌘ Enter)", cx);
+            editor.set_placeholder_text("Send a message...", cx);
             editor
         });
 
@@ -167,6 +167,20 @@ impl View for Assistant {
                     .with_style(style.composer.editor.container)
                     .contained()
                     .with_style(style.composer.container)
+                    .boxed(),
+            )
+            .with_child(
+                Flex::row()
+                    .with_child(Empty::new().flex(1., true).boxed())
+                    .with_child(
+                        Text::new(
+                            "⌘⏎ to send message",
+                            style.composer.footer_label.text.clone(),
+                        )
+                        .contained()
+                        .with_style(style.composer.footer_label.container)
+                        .boxed(),
+                    )
                     .boxed(),
             )
             .contained()

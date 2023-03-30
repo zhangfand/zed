@@ -894,6 +894,7 @@ pub struct AssistantStyle {
 pub struct AssistantComposerStyle {
     pub container: ContainerStyle,
     pub editor: FieldEditor,
+    pub footer_label: ContainedText,
 }
 
 #[derive(Clone, Deserialize, Default)]

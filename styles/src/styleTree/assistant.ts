@@ -7,10 +7,6 @@ import { background, border, text } from "./components"
 export const assistant = (colorScheme: ColorScheme) => {
     const layer = colorScheme.highest
 
-    const message: Container = {
-        margin: margin(8),
-    }
-
     const message_container_common: Container = {
         corner_radius: 6,
         padding: padding(6, 10),
@@ -74,9 +70,13 @@ export const assistant = (colorScheme: ColorScheme) => {
                 border: border(layer, "variant", {
                     top: true,
                 }),
-                padding: padding(8),
+                padding: padding(8, 8, 2, 8),
             },
             editor: editor,
+            footer_label: {
+                ...text(layer, "sans", "variant", { size: "xs" }),
+                padding: padding(4, 8)
+            }
         },
         assistant_message: assistant_message_container,
         player_message: player_message_container,
