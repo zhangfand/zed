@@ -942,7 +942,7 @@ mod tests {
             _: &Self::PaintState,
             _: &MeasurementContext,
         ) -> Option<RectF> {
-            todo!()
+            unimplemented!()
         }
 
         fn debug(&self, _: RectF, _: &(), _: &(), _: &DebugContext) -> serde_json::Value {

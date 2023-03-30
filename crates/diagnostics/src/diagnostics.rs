@@ -631,7 +631,7 @@ impl PersistentItem for ProjectDiagnosticsEditor {
         } else {
             cx.spawn(|this, mut cx| async move {
                 let id = store.create(&{ ProjectDiagnosticsEditorState {} }).await?;
-                this.update(&mut cx, |this, cx| this.record_id = Some(id));
+                this.update(&mut cx, |this, _| this.record_id = Some(id));
                 Ok(id)
             })
         }

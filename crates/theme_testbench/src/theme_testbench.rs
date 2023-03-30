@@ -1,16 +1,16 @@
 use gpui::{
     actions,
-    anyhow::{self, Result},
+    anyhow::Result,
     color::Color,
     elements::{
         Canvas, Container, ContainerStyle, ElementBox, Flex, Label, Margin, MouseEventHandler,
         Padding, ParentElement,
     },
     fonts::TextStyle,
-    AppContext, Border, Element, Entity, MutableAppContext, Quad, RenderContext, Task, View,
-    ViewContext,
+    serde_json, AppContext, Border, Element, Entity, MutableAppContext, Quad, RenderContext, Task,
+    View, ViewContext,
 };
-use project::Project;
+use serde::{Deserialize, Serialize};
 use settings::Settings;
 use theme::{ColorScheme, Layer, Style, StyleSet};
 use workspace::{
@@ -27,7 +27,9 @@ pub fn init(cx: &mut MutableAppContext) {
     workspace::register_persistent_item::<ThemeTestbench>(cx)
 }
 
-pub struct ThemeTestbench {}
+pub struct ThemeTestbench {
+    record_id: Option<u64>,
+}
 
 impl ThemeTestbench {
     pub fn deploy(
@@ -35,7 +37,7 @@ impl ThemeTestbench {
         _: &DeployThemeTestbench,
         cx: &mut ViewContext<Workspace>,
     ) {
-        let view = cx.add_view(|_| ThemeTestbench {});
+        let view = cx.add_view(|_| ThemeTestbench { record_id: None });
         workspace.add_item(Box::new(view), cx);
     }
 
@@ -320,29 +322,38 @@ impl PersistentItem for ThemeTestbench {
     type State = ThemeTestbenchState;
 
     fn save_state(&self, store: Store, cx: &mut ViewContext<Self>) -> Task<Result<u64>> {
-        todo!()
+        if let Some(record_id) = self.record_id {
+            Task::ready(Ok(record_id))
+        } else {
+            cx.spawn(|this, mut cx| async move {
+                let record_id = store.create(&ThemeTestbenchState {}).await?;
+                this.update(&mut cx, |this, _| this.record_id = Some(record_id));
+                Ok(record_id)
+            })
+        }
     }
 }
 
-struct ThemeTestbenchState {}
+#[derive(Serialize, Deserialize)]
+pub struct ThemeTestbenchState {}
 
 impl Record for ThemeTestbenchState {
     fn namespace() -> &'static str {
-        todo!()
+        "ThemeTestbenchState"
     }
 
     fn schema_version() -> u64 {
-        todo!()
+        0
     }
 
     fn serialize(&self) -> Vec<u8> {
-        todo!()
+        serde_json::to_vec(self).unwrap()
     }
 
-    fn deserialize(version: u64, data: Vec<u8>) -> Result<Self>
+    fn deserialize(_: u64, data: Vec<u8>) -> Result<Self>
     where
         Self: Sized,
     {
-        todo!()
+        Ok(serde_json::from_slice(&data)?)
     }
 }

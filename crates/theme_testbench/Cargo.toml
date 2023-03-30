@@ -16,4 +16,5 @@ settings = { path = "../settings" }
 workspace = { path = "../workspace" }
 project = { path = "../project" }
 
+serde = { version = "1.0", features = ["derive", "rc"] }
 smallvec = { version = "1.6", features = ["union"] }
