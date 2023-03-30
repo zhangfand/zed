@@ -2,13 +2,14 @@ mod dragged_item_receiver;
 
 use super::{ItemHandle, SplitDirection};
 use crate::{
+    build_persistent_item,
     dock::{icon_for_dock_anchor, AnchorDockBottom, AnchorDockRight, ExpandDock, HideDock},
     item::WeakItemHandle,
     load_persistent_item,
     toolbar::Toolbar,
     Item, NewFile, NewSearch, NewTerminal, Workspace,
 };
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use collections::{HashMap, HashSet, VecDeque};
 use context_menu::{ContextMenu, ContextMenuItem};
 use drag_and_drop::Draggable;
@@ -31,14 +32,7 @@ use gpui::{
 use project::{Project, ProjectEntryId, ProjectPath};
 use serde::{Deserialize, Serialize};
 use settings::{Autosave, DockAnchor, Settings};
-use std::{
-    any::{Any, TypeId},
-    cell::RefCell,
-    cmp, mem,
-    path::Path,
-    rc::Rc,
-    sync::Arc,
-};
+use std::{any::Any, cell::RefCell, cmp, mem, path::Path, rc::Rc, sync::Arc};
 use store::Store;
 use theme::Theme;
 use util::ResultExt;
@@ -337,11 +331,24 @@ impl Pane {
     pub fn restore(
         &mut self,
         saved_state: PaneState,
-        item_states: &HashMap<TypeId, HashMap<u64, Box<dyn Any>>>,
+        item_states: &HashMap<Arc<str>, HashMap<u64, Box<dyn Any>>>,
         cx: &mut ViewContext<Self>,
     ) {
+        let item_ix = 0;
+        let active_item_ix = 0;
+
         for item in saved_state.items {
-            todo!() // START HERE
+            let state = item_states
+                .get(item.record_namespace.as_ref())
+                .and_then(|item_states| item_states.remove(&item.record_id))
+                .ok_or_else(|| anyhow!("missing item state"))
+                .log_err();
+
+            if let Some(state) = state {
+                let item =
+                    build_persistent_item(item.record_namespace.as_ref(), cx.handle(), state, cx);
+                if let Some(item) = item {}
+            }
         }
     }
 
@@ -1695,11 +1702,11 @@ impl PaneState {
     pub async fn load_items<'a>(
         &'a self,
         store: &'a Store,
-        item_states: &'a mut HashMap<TypeId, HashMap<u64, Box<dyn Any>>>,
+        item_states: &'a mut HashMap<Arc<str>, HashMap<u64, Box<dyn Any>>>,
         cx: AsyncAppContext,
     ) {
         for item_state in &self.items {
-            if let Some((type_id, state)) = cx.read(|cx| {
+            if let Some(state) = cx.read(|cx| {
                 load_persistent_item(
                     store.clone(),
                     item_state.record_namespace.as_ref(),
@@ -1709,7 +1716,7 @@ impl PaneState {
             }) {
                 if let Some(state) = state.await.log_err() {
                     item_states
-                        .entry(type_id)
+                        .entry(item_state.record_namespace.clone())
                         .or_default()
                         .insert(item_state.record_id, state);
                 }

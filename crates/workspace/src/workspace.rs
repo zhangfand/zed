@@ -448,13 +448,13 @@ fn load_persistent_item(
     record_namespace: &str,
     record_id: u64,
     cx: &AppContext,
-) -> Option<(TypeId, impl Future<Output = Result<Box<dyn Any>>>)> {
+) -> Option<impl Future<Output = Result<Box<dyn Any>>>> {
     let registered_types = cx.global::<PersistentItemTypesByName>();
     let registrations = cx.global::<PersistentItemRegistrations>();
     if let Some(type_id) = registered_types.0.get(record_namespace) {
         let registration = registrations.get(type_id).unwrap();
         let state = (registration.load_state)(store.clone(), record_id);
-        Some((*type_id, state))
+        Some(state)
     } else {
         log::error!(
             "no persistent item of type {} has been registered",
@@ -2593,7 +2593,7 @@ impl Workspace {
     fn restore(
         &mut self,
         saved_state: WorkspaceState,
-        item_states: HashMap<TypeId, HashMap<u64, Box<dyn Any>>>,
+        item_states: HashMap<Arc<str>, HashMap<u64, Box<dyn Any>>>,
         cx: &mut ViewContext<Self>,
     ) {
         self.dock_pane().update(cx, |pane, cx| {

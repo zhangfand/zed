@@ -1,8 +1,4 @@
-use std::{
-    any::{Any, TypeId},
-    os::unix::prelude::OsStrExt,
-    path::PathBuf,
-};
+use std::{any::Any, os::unix::prelude::OsStrExt, path::PathBuf, sync::Arc};
 
 use anyhow::Result;
 
@@ -93,7 +89,7 @@ impl WorkspaceState {
         &'a self,
         store: &'a Store,
         cx: AsyncAppContext,
-    ) -> HashMap<TypeId, HashMap<u64, Box<dyn Any>>> {
+    ) -> HashMap<Arc<str>, HashMap<u64, Box<dyn Any>>> {
         let mut item_states = HashMap::default();
         self.center_group
             .load_items(store, &mut item_states, cx.clone())
@@ -149,7 +145,7 @@ impl PaneGroupState {
     pub async fn load_items<'a>(
         &'a self,
         store: &'a Store,
-        items: &'a mut HashMap<TypeId, HashMap<u64, Box<dyn Any>>>,
+        items: &'a mut HashMap<Arc<str>, HashMap<u64, Box<dyn Any>>>,
         cx: AsyncAppContext,
     ) {
         match self {
