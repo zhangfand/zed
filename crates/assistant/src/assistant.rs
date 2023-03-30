@@ -37,24 +37,41 @@ pub fn init(cx: &mut MutableAppContext) {
 
 impl Assistant {
     pub fn new(cx: &mut ViewContext<Self>) -> Self {
+        let messages = vec![
+            Message {
+                text: "So... what do you think of this code.".to_owned(),
+                from_assistant: false,
+            },
+            Message {
+                text: "It's okay, but honestly your job is kind of at risk.".to_owned(),
+                from_assistant: true,
+            },
+        ];
+
         Self {
             composer: cx.add_view(|cx| Editor::single_line(None, cx)),
-            message_list: ListState::new(0, Orientation::Bottom, 512., cx, |this, ix, cx| {
-                let message = &this.messages[ix];
-                let theme = &cx.global::<Settings>().theme.assistant;
-                let style = if message.from_assistant {
-                    &theme.assistant_message
-                } else {
-                    &theme.player_message
-                };
+            message_list: ListState::new(
+                messages.len(),
+                Orientation::Bottom,
+                512.,
+                cx,
+                |this, ix, cx| {
+                    let message = &this.messages[ix];
+                    let theme = &cx.global::<Settings>().theme.assistant;
+                    let style = if message.from_assistant {
+                        &theme.assistant_message
+                    } else {
+                        &theme.player_message
+                    };
 
-                let text = message.text.clone();
-                Text::new(text, style.text.clone())
-                    .contained()
-                    .with_style(style.container)
-                    .boxed()
-            }),
-            messages: Vec::new(),
+                    let text = message.text.clone();
+                    Text::new(text, style.text.clone())
+                        .contained()
+                        .with_style(style.container)
+                        .boxed()
+                },
+            ),
+            messages,
         }
     }
 
