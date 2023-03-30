@@ -135,6 +135,8 @@ messages!(
     (ApplyCodeActionResponse, Background),
     (ApplyCompletionAdditionalEdits, Background),
     (ApplyCompletionAdditionalEditsResponse, Background),
+    (AssistantRequest, Foreground),
+    (AssistantResponse, Background),
     (BufferReloaded, Foreground),
     (BufferSaved, Foreground),
     (Call, Foreground),
@@ -245,6 +247,7 @@ request_messages!(
         ApplyCompletionAdditionalEdits,
         ApplyCompletionAdditionalEditsResponse
     ),
+    (AssistantRequest, AssistantResponse),
     (Call, Ack),
     (CancelCall, Ack),
     (CopyProjectEntry, ProjectEntryResponse),
