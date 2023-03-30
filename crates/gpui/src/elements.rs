@@ -157,6 +157,11 @@ pub trait Element {
         Expanded::new(self.boxed())
     }
 
+    /// Make this element flexible when used as the child of a Flex element
+    ///
+    /// # Arguments
+    /// * `flex` The relative amount of flexibile space this element should consume.
+    /// * `expanded` If true, force this element to take up the allocated space by setting its min constraint.
     fn flex(self, flex: f32, expanded: bool) -> FlexItem
     where
         Self: 'static + Sized,

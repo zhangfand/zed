@@ -79,7 +79,7 @@ impl View for Assistant {
 
     fn render(&mut self, cx: &mut RenderContext<'_, Self>) -> ElementBox {
         Flex::column()
-            .with_child(List::new(self.message_list.clone()).boxed())
+            .with_child(List::new(self.message_list.clone()).flex(1., true).boxed())
             .with_child(ChildView::new(&self.composer, cx).boxed())
             .boxed()
     }
