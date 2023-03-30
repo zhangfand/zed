@@ -113,7 +113,11 @@ pub struct ConnectionState {
     #[allow(clippy::type_complexity)]
     #[serde(skip)]
     stream_response_channels: Arc<
-        Mutex<Option<HashMap<u32, mpsc::UnboundedSender<(proto::Envelope, oneshot::Sender<()>)>>>>,
+        Mutex<
+            Option<
+                HashMap<u32, mpsc::UnboundedSender<(Result<proto::Envelope>, oneshot::Sender<()>)>>,
+            >,
+        >,
     >,
 }
 
@@ -175,13 +179,20 @@ impl Peer {
 
         let this = self.clone();
         let response_channels = connection_state.response_channels.clone();
-        let stream_response_channels = connection_state.response_channels.clone();
+        let stream_response_channels = connection_state.stream_response_channels.clone();
         let handle_io = async move {
             tracing::debug!(%connection_id, "handle io future: start");
 
             let _end_connection = util::defer(|| {
                 response_channels.lock().take();
-                stream_response_channels.lock().take();
+                if let Some(channels) = stream_response_channels.lock().take() {
+                    for channel in channels.values() {
+                        let _ = channel.unbounded_send((
+                            Err(anyhow!("connection closed")),
+                            oneshot::channel().0,
+                        ));
+                    }
+                }
                 this.connections.write().remove(&connection_id);
                 tracing::debug!(%connection_id, "handle io future: end");
             });
@@ -331,7 +342,7 @@ impl Peer {
                         );
                     } else if let Some(mut tx) = stream_response_channel {
                         let requester_resumed = oneshot::channel();
-                        if let Err(error) = tx.send((incoming, requester_resumed.0)).await {
+                        if let Err(error) = tx.send((Ok(incoming), requester_resumed.0)).await {
                             tracing::debug!(
                                 %connection_id,
                                 message_id,
@@ -496,25 +507,34 @@ impl Peer {
             Ok(rx.filter_map(move |(response, _barrier)| {
                 let response_channels = response_channels.clone();
                 async move {
-                    if let Some(proto::envelope::Payload::Error(error)) = &response.payload {
-                        Some(Err(anyhow!(
-                            "RPC request {} failed - {}",
-                            T::NAME,
-                            error.message
-                        )))
-                    } else if let Some(proto::envelope::Payload::EndStream(_)) = &response.payload {
-                        // Remove the transmitting end of the response channel to end the stream.
-                        if let Some(channels) = response_channels.upgrade() {
-                            if let Some(channels) = channels.lock().as_mut() {
-                                channels.remove(&message_id);
+                    match response {
+                        Ok(response) => {
+                            if let Some(proto::envelope::Payload::Error(error)) = &response.payload
+                            {
+                                Some(Err(anyhow!(
+                                    "RPC request {} failed - {}",
+                                    T::NAME,
+                                    error.message
+                                )))
+                            } else if let Some(proto::envelope::Payload::EndStream(_)) =
+                                &response.payload
+                            {
+                                // Remove the transmitting end of the response channel to end the stream.
+                                if let Some(channels) = response_channels.upgrade() {
+                                    if let Some(channels) = channels.lock().as_mut() {
+                                        channels.remove(&message_id);
+                                    }
+                                }
+                                None
+                            } else {
+                                Some(
+                                    T::Response::from_envelope(response).ok_or_else(|| {
+                                        anyhow!("received response of the wrong type")
+                                    }),
+                                )
                             }
                         }
-                        None
-                    } else {
-                        Some(
-                            T::Response::from_envelope(response)
-                                .ok_or_else(|| anyhow!("received response of the wrong type")),
-                        )
+                        Err(error) => Some(Err(error)),
                     }
                 }
             }))
@@ -1014,9 +1034,11 @@ mod tests {
             .await
             .unwrap();
 
-        let responses = cx
-            .foreground()
-            .spawn(stream.map(|response| response.unwrap()).collect::<Vec<_>>());
+        let responses = cx.foreground().spawn(
+            stream
+                .map(|response| response.map_err(|error| error.to_string()))
+                .collect::<Vec<_>>(),
+        );
         deterministic.run_until_parked();
         client_1.disconnect(client_1_to_2_conn_id);
 
@@ -1024,7 +1046,11 @@ mod tests {
 
         assert_eq!(
             responses,
-            vec![proto::Test { id: 0 }, proto::Test { id: 0 }]
+            vec![
+                Ok(proto::Test { id: 0 }),
+                Ok(proto::Test { id: 0 }),
+                Err("connection closed".into())
+            ]
         );
 
         async fn handle_messages(
