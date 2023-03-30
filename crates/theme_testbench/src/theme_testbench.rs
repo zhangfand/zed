@@ -332,6 +332,10 @@ impl PersistentItem for ThemeTestbench {
             })
         }
     }
+
+    fn build_from_state(state: Self::State, cx: &mut ViewContext<Self>) -> Self {
+        todo!()
+    }
 }
 
 #[derive(Serialize, Deserialize)]

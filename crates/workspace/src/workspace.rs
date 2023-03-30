@@ -402,8 +402,10 @@ struct PersistentItemTypesByName(HashMap<&'static str, TypeId>);
 type PersistentItemRegistrations = HashMap<TypeId, PersistentItemRegistration>;
 
 struct PersistentItemRegistration {
-    load_state: fn(Store, u64) -> LocalBoxFuture<'static, Result<Box<dyn Any>>>,
     downcast_handle: fn(AnyViewHandle) -> Box<dyn PersistentItemHandle>,
+    load_state: fn(Store, u64) -> LocalBoxFuture<'static, Result<Box<dyn Any>>>,
+    build_item:
+        fn(AnyViewHandle, Box<dyn Any>, cx: &mut MutableAppContext) -> Option<Box<dyn ItemHandle>>,
 }
 
 pub fn register_persistent_item<I: PersistentItem>(cx: &mut MutableAppContext) {
@@ -417,6 +419,12 @@ pub fn register_persistent_item<I: PersistentItem>(cx: &mut MutableAppContext) {
         map.insert(
             TypeId::of::<I>(),
             PersistentItemRegistration {
+                downcast_handle: |this| Box::new(this.downcast::<I>().unwrap()),
+                build_item: |parent_handle, item_state, cx| {
+                    let state = item_state.downcast::<I::State>().log_err()?;
+                    let handle = cx.add_view(parent_handle, |cx| I::build_from_state(*state, cx));
+                    Some(Box::new(handle))
+                },
                 load_state: |store, item_id| {
                     async move {
                         let state = store.read::<I::State>(item_id).await?.ok_or_else(|| {
@@ -430,10 +438,50 @@ pub fn register_persistent_item<I: PersistentItem>(cx: &mut MutableAppContext) {
                     }
                     .boxed_local()
                 },
-                downcast_handle: |this| Box::new(this.downcast::<I>().unwrap()),
             },
         );
     });
+}
+
+fn load_persistent_item(
+    store: Store,
+    record_namespace: &str,
+    record_id: u64,
+    cx: &AppContext,
+) -> Option<(TypeId, impl Future<Output = Result<Box<dyn Any>>>)> {
+    let registered_types = cx.global::<PersistentItemTypesByName>();
+    let registrations = cx.global::<PersistentItemRegistrations>();
+    if let Some(type_id) = registered_types.0.get(record_namespace) {
+        let registration = registrations.get(type_id).unwrap();
+        let state = (registration.load_state)(store.clone(), record_id);
+        Some((*type_id, state))
+    } else {
+        log::error!(
+            "no persistent item of type {} has been registered",
+            record_namespace
+        );
+        None
+    }
+}
+
+fn build_persistent_item(
+    record_namespace: &str,
+    parent_handle: impl Into<AnyViewHandle>,
+    state: Box<dyn Any>,
+    cx: &mut MutableAppContext,
+) -> Option<Box<dyn ItemHandle>> {
+    let registered_types = cx.global::<PersistentItemTypesByName>();
+    let registrations = cx.global::<PersistentItemRegistrations>();
+    if let Some(type_id) = registered_types.0.get(record_namespace) {
+        let registration = registrations.get(type_id).unwrap();
+        (registration.build_item)(parent_handle.into(), state, cx)
+    } else {
+        log::error!(
+            "no persistent item of type {} has been registered",
+            record_namespace,
+        );
+        None
+    }
 }
 
 pub struct AppState {
@@ -590,7 +638,6 @@ struct FollowerState {
 
 impl Workspace {
     pub fn new(
-        saved_state: Option<WorkspaceState>,
         project: ModelHandle<Project>,
         dock_default_factory: DockDefaultItemFactory,
         background_actions: BackgroundActions,
@@ -632,8 +679,7 @@ impl Workspace {
 
         let weak_handle = cx.weak_handle();
 
-        let center_pane =
-            cx.add_view(|cx| Pane::new(weak_handle.id(), None, background_actions, cx));
+        let center_pane = cx.add_view(|cx| Pane::new(None, background_actions, cx));
         let pane_id = center_pane.id();
         cx.subscribe(&center_pane, move |this, _, event, cx| {
             this.handle_pane_event(pane_id, event, cx)
@@ -758,9 +804,7 @@ impl Workspace {
         this.project_remote_id_changed(project.read(cx).remote_id(), cx);
         cx.defer(|this, cx| this.update_window_title(cx));
 
-        if let Some(saved_state) = saved_state {
-            cx.defer(move |_, cx| Self::restore_from_saved_state(weak_handle, saved_state, cx));
-        } else if project.read(cx).is_local() {
+        if project.read(cx).is_local() {
             if cx.global::<Settings>().default_dock_anchor != DockAnchor::Expanded {
                 Dock::show(&mut this, false, cx);
             }
@@ -786,14 +830,14 @@ impl Workspace {
         );
 
         cx.spawn(|mut cx| async move {
-            let workspace_state = app_state
+            let saved_state = app_state
                 .store
                 .read_by_key::<WorkspaceState>(WorkspaceState::storage_key(abs_paths.clone()))
                 .await
                 .log_err()
                 .flatten();
 
-            let paths_to_open = workspace_state
+            let paths_to_open = saved_state
                 .as_ref()
                 .map(|state| Arc::from(state.worktree_abs_paths.clone()))
                 .unwrap_or(Arc::new(abs_paths));
@@ -827,11 +871,11 @@ impl Workspace {
             let (bounds, display) = if let Some(bounds) = window_bounds_override {
                 (Some(bounds), None)
             } else {
-                workspace_state
+                saved_state
                     .as_ref()
-                    .and_then(|workspace_state| {
-                        let display = Uuid::from_str(workspace_state.screen_id.as_ref()?).ok()?;
-                        let mut bounds = workspace_state.bounds.to_window_bounds();
+                    .and_then(|saved_state| {
+                        let display = Uuid::from_str(saved_state.screen_id.as_ref()?).ok()?;
+                        let mut bounds = saved_state.bounds.to_window_bounds();
 
                         // Stored bounds are relative to the containing display.
                         // So convert back to global coordinates if that screen still exists
@@ -856,15 +900,10 @@ impl Workspace {
                     .unzip()
             };
 
-            if let Some(workspace_state) = &workspace_state {
-                let item_states = workspace_state.load_items(&app_state.store, cx.clone());
-            }
-
             let window_options =
                 (app_state.build_window_options)(bounds, display, cx.platform().as_ref());
             let (_, workspace) = cx.add_window(window_options, |cx| {
                 let mut workspace = Workspace::new(
-                    workspace_state,
                     project_handle,
                     app_state.dock_default_item_factory,
                     app_state.background_actions,
@@ -874,6 +913,13 @@ impl Workspace {
                 (app_state.initialize_workspace)(&mut workspace, &app_state, cx);
                 workspace
             });
+
+            if let Some(saved_state) = saved_state {
+                let item_states = saved_state.load_items(&app_state.store, cx.clone()).await;
+                workspace.update(&mut cx, |workspace, cx| {
+                    workspace.restore(saved_state, item_states, cx)
+                });
+            }
 
             // Call open path for each of the project paths
             // (this will bring them to the front if they were in the serialized workspace)
@@ -1439,8 +1485,7 @@ impl Workspace {
     }
 
     fn add_pane(&mut self, cx: &mut ViewContext<Self>) -> ViewHandle<Pane> {
-        let pane =
-            cx.add_view(|cx| Pane::new(self.weak_handle().id(), None, self.background_actions, cx));
+        let pane = cx.add_view(|cx| Pane::new(None, self.background_actions, cx));
         let pane_id = pane.id();
         cx.subscribe(&pane, move |this, _, event, cx| {
             this.handle_pane_event(pane_id, event, cx)
@@ -2545,6 +2590,17 @@ impl Workspace {
         }
     }
 
+    fn restore(
+        &mut self,
+        saved_state: WorkspaceState,
+        item_states: HashMap<TypeId, HashMap<u64, Box<dyn Any>>>,
+        cx: &mut ViewContext<Self>,
+    ) {
+        self.dock_pane().update(cx, |pane, cx| {
+            pane.restore(saved_state.dock_pane, &item_states, cx);
+        });
+    }
+
     fn restore_from_saved_state(
         workspace: WeakViewHandle<Workspace>,
         serialized_workspace: WorkspaceState,
@@ -2627,7 +2683,7 @@ impl Workspace {
 
     #[cfg(any(test, feature = "test-support"))]
     pub fn test_new(project: ModelHandle<Project>, cx: &mut ViewContext<Self>) -> Self {
-        Self::new(None, project, |_, _| None, || &[], Store::memory(), cx)
+        Self::new(project, |_, _| None, || &[], Store::memory(), cx)
     }
 }
 
@@ -2939,16 +2995,8 @@ mod tests {
         let fs = FakeFs::new(cx.background());
         let store = Store::memory();
         let project = Project::test(fs, [], cx).await;
-        let (_, workspace) = cx.add_window(|cx| {
-            Workspace::new(
-                Default::default(),
-                project.clone(),
-                |_, _| None,
-                || &[],
-                store,
-                cx,
-            )
-        });
+        let (_, workspace) =
+            cx.add_window(|cx| Workspace::new(project.clone(), |_, _| None, || &[], store, cx));
 
         // Adding an item with no ambiguity renders the tab without detail.
         let item1 = cx.add_view(&workspace, |_| {
@@ -3013,16 +3061,8 @@ mod tests {
         .await;
 
         let project = Project::test(fs, ["root1".as_ref()], cx).await;
-        let (window_id, workspace) = cx.add_window(|cx| {
-            Workspace::new(
-                Default::default(),
-                project.clone(),
-                |_, _| None,
-                || &[],
-                store,
-                cx,
-            )
-        });
+        let (window_id, workspace) =
+            cx.add_window(|cx| Workspace::new(project.clone(), |_, _| None, || &[], store, cx));
         let worktree_id = project.read_with(cx, |project, cx| {
             project.worktrees(cx).next().unwrap().read(cx).id()
         });
@@ -3115,16 +3155,8 @@ mod tests {
         let store = Store::memory();
 
         let project = Project::test(fs, ["root".as_ref()], cx).await;
-        let (window_id, workspace) = cx.add_window(|cx| {
-            Workspace::new(
-                Default::default(),
-                project.clone(),
-                |_, _| None,
-                || &[],
-                store,
-                cx,
-            )
-        });
+        let (window_id, workspace) =
+            cx.add_window(|cx| Workspace::new(project.clone(), |_, _| None, || &[], store, cx));
 
         // When there are no dirty items, there's nothing to do.
         let item1 = cx.add_view(&workspace, |_| TestItem::new());
@@ -3160,9 +3192,8 @@ mod tests {
         let store = Store::memory();
 
         let project = Project::test(fs, None, cx).await;
-        let (window_id, workspace) = cx.add_window(|cx| {
-            Workspace::new(Default::default(), project, |_, _| None, || &[], store, cx)
-        });
+        let (window_id, workspace) =
+            cx.add_window(|cx| Workspace::new(project, |_, _| None, || &[], store, cx));
 
         let item1 = cx.add_view(&workspace, |cx| {
             TestItem::new()
@@ -3270,9 +3301,8 @@ mod tests {
         let store = Store::memory();
 
         let project = Project::test(fs, [], cx).await;
-        let (window_id, workspace) = cx.add_window(|cx| {
-            Workspace::new(Default::default(), project, |_, _| None, || &[], store, cx)
-        });
+        let (window_id, workspace) =
+            cx.add_window(|cx| Workspace::new(project, |_, _| None, || &[], store, cx));
 
         // Create several workspace items with single project entries, and two
         // workspace items with multiple project entries.
@@ -3380,9 +3410,8 @@ mod tests {
         let store = Store::memory();
 
         let project = Project::test(fs, [], cx).await;
-        let (window_id, workspace) = cx.add_window(|cx| {
-            Workspace::new(Default::default(), project, |_, _| None, || &[], store, cx)
-        });
+        let (window_id, workspace) =
+            cx.add_window(|cx| Workspace::new(project, |_, _| None, || &[], store, cx));
 
         let item = cx.add_view(&workspace, |cx| {
             TestItem::new().with_project_items(&[TestProjectItem::new(1, "1.txt", cx)])
@@ -3500,9 +3529,8 @@ mod tests {
         let store = Store::memory();
 
         let project = Project::test(fs, [], cx).await;
-        let (_, workspace) = cx.add_window(|cx| {
-            Workspace::new(Default::default(), project, |_, _| None, || &[], store, cx)
-        });
+        let (_, workspace) =
+            cx.add_window(|cx| Workspace::new(project, |_, _| None, || &[], store, cx));
 
         let item = cx.add_view(&workspace, |cx| {
             TestItem::new().with_project_items(&[TestProjectItem::new(1, "1.txt", cx)])

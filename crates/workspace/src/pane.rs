@@ -4,9 +4,9 @@ use super::{ItemHandle, SplitDirection};
 use crate::{
     dock::{icon_for_dock_anchor, AnchorDockBottom, AnchorDockRight, ExpandDock, HideDock},
     item::WeakItemHandle,
+    load_persistent_item,
     toolbar::Toolbar,
-    Item, NewFile, NewSearch, NewTerminal, PersistentItemRegistrations, PersistentItemTypesByName,
-    Workspace,
+    Item, NewFile, NewSearch, NewTerminal, Workspace,
 };
 use anyhow::Result;
 use collections::{HashMap, HashSet, VecDeque};
@@ -221,7 +221,6 @@ pub struct Pane {
     tab_bar_context_menu: TabBarContextMenu,
     docked: Option<DockAnchor>,
     _background_actions: BackgroundActions,
-    _workspace_id: usize,
 }
 
 pub struct ItemNavHistory {
@@ -300,7 +299,6 @@ impl TabBarContextMenu {
 
 impl Pane {
     pub fn new(
-        workspace_id: usize,
         docked: Option<DockAnchor>,
         background_actions: BackgroundActions,
         cx: &mut ViewContext<Self>,
@@ -333,7 +331,17 @@ impl Pane {
             },
             docked,
             _background_actions: background_actions,
-            _workspace_id: workspace_id,
+        }
+    }
+
+    pub fn restore(
+        &mut self,
+        saved_state: PaneState,
+        item_states: &HashMap<TypeId, HashMap<u64, Box<dyn Any>>>,
+        cx: &mut ViewContext<Self>,
+    ) {
+        for item in saved_state.items {
+            todo!() // START HERE
         }
     }
 
@@ -1691,24 +1699,14 @@ impl PaneState {
         cx: AsyncAppContext,
     ) {
         for item_state in &self.items {
-            let type_id_and_state = cx.read(|cx| {
-                let registered_types = cx.global::<PersistentItemTypesByName>();
-                let registrations = cx.global::<PersistentItemRegistrations>();
-                if let Some(type_id) = registered_types.0.get(item_state.record_namespace.as_ref())
-                {
-                    let registration = registrations.get(type_id).unwrap();
-                    let state = (registration.load_state)(store.clone(), item_state.record_id);
-                    Some((*type_id, state))
-                } else {
-                    log::error!(
-                        "no persistent item of type {} has been registered",
-                        item_state.record_namespace
-                    );
-                    None
-                }
-            });
-
-            if let Some((type_id, state)) = type_id_and_state {
+            if let Some((type_id, state)) = cx.read(|cx| {
+                load_persistent_item(
+                    store.clone(),
+                    item_state.record_namespace.as_ref(),
+                    item_state.record_id,
+                    cx,
+                )
+            }) {
                 if let Some(state) = state.await.log_err() {
                     item_states
                         .entry(type_id)

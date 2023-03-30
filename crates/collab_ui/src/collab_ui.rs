@@ -82,7 +82,6 @@ fn join_project(action: &JoinProject, app_state: Arc<AppState>, cx: &mut Mutable
                 (app_state.build_window_options)(None, None, cx.platform().as_ref()),
                 |cx| {
                     let mut workspace = Workspace::new(
-                        Default::default(),
                         project,
                         app_state.dock_default_item_factory,
                         app_state.background_actions,

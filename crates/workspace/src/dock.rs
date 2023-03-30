@@ -188,14 +188,7 @@ impl Dock {
     ) -> Self {
         let position = DockPosition::Hidden(cx.global::<Settings>().default_dock_anchor);
 
-        let pane = cx.add_view(|cx| {
-            Pane::new(
-                workspace_id,
-                Some(position.anchor()),
-                background_actions,
-                cx,
-            )
-        });
+        let pane = cx.add_view(|cx| Pane::new(Some(position.anchor()), background_actions, cx));
         pane.update(cx, |pane, cx| {
             pane.set_active(false, cx);
         });
@@ -495,15 +488,10 @@ mod tests {
         let project = Project::test(fs, [], cx).await;
 
         let (_, _workspace) = cx.add_window(|cx| {
-            Workspace::new(
-                Some(serialized_workspace),
-                project.clone(),
-                default_item_factory,
-                || &[],
-                store,
-                cx,
-            )
+            Workspace::new(project.clone(), default_item_factory, || &[], store, cx)
         });
+
+        todo!(); // We don't use the saved state any more.
 
         cx.foreground().run_until_parked();
         //Should terminate
@@ -629,16 +617,8 @@ mod tests {
 
             cx.update(|cx| init(cx));
             let project = Project::test(fs, [], cx).await;
-            let (window_id, workspace) = cx.add_window(|cx| {
-                Workspace::new(
-                    Default::default(),
-                    project,
-                    default_item_factory,
-                    || &[],
-                    store,
-                    cx,
-                )
-            });
+            let (window_id, workspace) = cx
+                .add_window(|cx| Workspace::new(project, default_item_factory, || &[], store, cx));
 
             workspace.update(cx, |workspace, cx| {
                 let left_panel = cx.add_view(|_| TestItem::new());

@@ -811,6 +811,10 @@ impl PersistentItem for Editor {
         todo!()
     }
 
+    fn build_from_state(state: Self::State, cx: &mut ViewContext<Self>) -> Self {
+        todo!()
+    }
+
     // fn load_state(
     //     project: ModelHandle<Project>,
     //     _workspace: WeakViewHandle<Workspace>,

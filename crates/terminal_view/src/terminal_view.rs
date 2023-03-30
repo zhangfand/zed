@@ -627,6 +627,10 @@ impl PersistentItem for TerminalView {
         todo!()
     }
 
+    fn build_from_state(state: Self::State, cx: &mut ViewContext<Self>) -> Self {
+        todo!()
+    }
+
     // fn serialized_item_kind() -> Option<&'static str> {
     //     Some("Terminal")
     // }

@@ -730,6 +730,7 @@ pub trait PersistentItem: Item {
     type State: Record;
 
     fn save_state(&self, store: Store, cx: &mut ViewContext<Self>) -> Task<Result<u64>>;
+    fn build_from_state(state: Self::State, cx: &mut ViewContext<Self>) -> Self;
 }
 
 pub trait PersistentItemHandle: ItemHandle {
@@ -1034,6 +1035,12 @@ pub(crate) mod test {
                     Ok(id)
                 })
             }
+        }
+
+        fn build_from_state(state: Self::State, _: &mut ViewContext<Self>) -> Self {
+            let mut this = Self::new();
+            this.state = state;
+            this
         }
     }
 }
