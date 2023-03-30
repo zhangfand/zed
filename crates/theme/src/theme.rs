@@ -883,8 +883,10 @@ pub struct WelcomeStyle {
 
 #[derive(Clone, Deserialize, Default)]
 pub struct AssistantStyle {
+    pub surface: ContainerStyle,
     pub assistant_message: ContainedText,
     pub player_message: ContainedText,
+    pub player_avatar: ImageStyle,
     pub composer: AssistantComposerStyle,
 }
 

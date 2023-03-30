@@ -182,7 +182,8 @@
     {
         "context": "Editor && mode == auto_height",
         "bindings": {
-            "alt-enter": "editor::Newline",
+            "enter": "editor::Newline",
+            "shift-enter": "editor::Newline",
             "cmd-alt-enter": "editor::NewlineBelow"
         }
     },

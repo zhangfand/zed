@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use editor::Editor;
 use gpui::{
     actions, elements::*, CursorStyle, Entity, MouseButton, MutableAppContext, RenderContext, View,
@@ -37,19 +39,65 @@ pub fn init(cx: &mut MutableAppContext) {
 
 impl Assistant {
     pub fn new(cx: &mut ViewContext<Self>) -> Self {
+        let request_message = r#"
+How can I add another message to this list in Rust?
+
+```rust
+let messages = vec![
+Message {
+text: "So... what do you think of this code.".to_owned(),
+from_assistant: false,
+},
+Message {
+text: "It's okay, but honestly your job is kind of at risk.".to_owned(),
+from_assistant: true,
+},
+];
+```
+"#
+        .trim_start()
+        .trim_end();
+
+        let response_message = r#"
+You can add another message to the `messages` vector by creating a new `Message` struct and pushing it onto the vector using the `push` method. Here's an example:
+
+```rust
+let new_message = Message {
+    text: "I think we can improve this code by using Rust macros.".to_owned(),
+    from_assistant: true,
+};
+
+messages.push(new_message);
+```
+
+This creates a new `Message` struct with the text "I think we can improve this code by using Rust macros." and sets the `from_assistant` field to `true`. Then, it uses the `push` method to add the new message to the end of the `messages` vector.
+"#.trim_start().trim_end();
+
         let messages = vec![
             Message {
-                text: "So... what do you think of this code.".to_owned(),
+                text: request_message.to_owned(),
                 from_assistant: false,
             },
             Message {
-                text: "It's okay, but honestly your job is kind of at risk.".to_owned(),
+                text: response_message.to_owned(),
                 from_assistant: true,
             },
         ];
 
+        let composer = cx.add_view(|cx| {
+            let mut editor = Editor::auto_height(
+                10,
+                Some(Arc::new(move |theme| {
+                    theme.assistant.composer.editor.clone()
+                })),
+                cx,
+            );
+            editor.set_placeholder_text("Send a message... (⌘ Enter)", cx);
+            editor
+        });
+
         Self {
-            composer: cx.add_view(|cx| Editor::single_line(None, cx)),
+            composer,
             message_list: ListState::new(
                 messages.len(),
                 Orientation::Bottom,
@@ -65,6 +113,7 @@ impl Assistant {
                     };
 
                     let text = message.text.clone();
+
                     Text::new(text, style.text.clone())
                         .contained()
                         .with_style(style.container)
@@ -108,9 +157,20 @@ impl View for Assistant {
     }
 
     fn render(&mut self, cx: &mut RenderContext<'_, Self>) -> ElementBox {
+        let style = &cx.global::<Settings>().theme.assistant;
+
         Flex::column()
             .with_child(List::new(self.message_list.clone()).flex(1., true).boxed())
-            .with_child(ChildView::new(&self.composer, cx).boxed())
+            .with_child(
+                ChildView::new(&self.composer, cx)
+                    .contained()
+                    .with_style(style.composer.editor.container)
+                    .contained()
+                    .with_style(style.composer.container)
+                    .boxed(),
+            )
+            .contained()
+            .with_style(style.surface)
             .boxed()
     }
 

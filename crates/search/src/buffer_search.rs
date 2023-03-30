@@ -239,8 +239,7 @@ impl ToolbarItemView for BufferSearchBar {
 impl BufferSearchBar {
     pub fn new(cx: &mut ViewContext<Self>) -> Self {
         let query_editor = cx.add_view(|cx| {
-            Editor::auto_height(
-                2,
+            Editor::single_line(
                 Some(Arc::new(|theme| theme.search.editor.input.clone())),
                 cx,
             )

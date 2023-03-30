@@ -5,7 +5,7 @@ import { padding } from "../utils/padding"
 import { background, border, text } from "./components"
 
 export const assistant = (colorScheme: ColorScheme) => {
-    const layer = colorScheme.middle
+    const layer = colorScheme.highest
 
     const message: Container = {
         margin: margin(8),
@@ -19,8 +19,17 @@ export const assistant = (colorScheme: ColorScheme) => {
 
     const player_message_container: Container = {
         ...message_container_common,
-        background: background(layer, "variant"),
+        background: background(layer, "accent"),
         ...text(layer, "sans", "default", { size: "sm" }),
+    }
+
+    const player_avatar = {
+        width: 32,
+        height: 32,
+        corderRadius: 16,
+        border: border(layer, "on", {
+            overlay: true,
+        })
     }
 
     const assistant_message_container: Container = {
@@ -51,15 +60,21 @@ export const assistant = (colorScheme: ColorScheme) => {
         border: border(layer, "on"),
         background: background(layer, "on"),
         text: text(layer, "sans", "default", { size: "sm" }),
-        // placeholderText: text(layer, "mono", "disabled"),
+        placeholderText: text(layer, "mono", "disabled"),
         selection: colorScheme.players[0],
     }
 
     return {
+        surface: {
+            background: background(layer),
+        },
+        player_avatar,
         composer: {
             container: {
+                border: border(layer, "variant", {
+                    top: true,
+                }),
                 padding: padding(8),
-                margin: margin(8),
             },
             editor: editor,
         },
