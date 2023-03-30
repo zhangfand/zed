@@ -1,11 +1,7 @@
 import { ColorScheme } from "../themes/common/colorScheme";
+import { Container } from "../types";
 import { background, border, text } from "./components";
-import { ContainerStyle } from "../../../crates/gpui/bindings/ContainerStyle"
-import { TextStyle } from "../../../crates/gpui/bindings/TextStyle"
 
-type Container = Partial<ContainerStyle>
-type Text = Partial<TextStyle>
-interface ContainedText extends Container, Text { }
 
 export const assistant = (colorScheme: ColorScheme) => {
     const layer = colorScheme.highest
