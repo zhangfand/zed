@@ -167,8 +167,8 @@ impl Peer {
         let connection_state = ConnectionState {
             outgoing_tx,
             next_message_id: Default::default(),
-            response_channels: Default::default(),
-            stream_response_channels: Default::default(),
+            response_channels: Arc::new(Mutex::new(Some(Default::default()))),
+            stream_response_channels: Arc::new(Mutex::new(Some(Default::default()))),
         };
         let mut writer = MessageStream::new(connection.tx);
         let mut reader = MessageStream::new(connection.rx);
@@ -288,11 +288,7 @@ impl Peer {
                     tracing::debug!(%connection_id, message_id, "incoming message future: end");
                 });
 
-                if let Some(proto::ResponseData {
-                    responding_to,
-                    is_last_message,
-                }) = incoming.response_data
-                {
+                if let Some(responding_to) = incoming.responding_to {
                     tracing::debug!(
                         %connection_id,
                         message_id,
@@ -302,18 +298,11 @@ impl Peer {
 
                     let response_channel =
                         response_channels.lock().as_mut()?.remove(&responding_to);
-                    let stream_response_channel = if is_last_message {
-                        stream_response_channels
-                            .lock()
-                            .as_mut()?
-                            .remove(&responding_to)
-                    } else {
-                        stream_response_channels
-                            .lock()
-                            .as_ref()?
-                            .get(&responding_to)
-                            .cloned()
-                    };
+                    let stream_response_channel = stream_response_channels
+                        .lock()
+                        .as_ref()?
+                        .get(&responding_to)
+                        .cloned();
 
                     if let Some(tx) = response_channel {
                         let requester_resumed = oneshot::channel();
@@ -485,8 +474,8 @@ impl Peer {
         let (tx, rx) = mpsc::unbounded();
         let send = self.connection_state(receiver_id).and_then(|connection| {
             let message_id = connection.next_message_id.fetch_add(1, SeqCst);
-            connection
-                .stream_response_channels
+            let stream_response_channels = connection.stream_response_channels.clone();
+            stream_response_channels
                 .lock()
                 .as_mut()
                 .ok_or_else(|| anyhow!("connection was closed"))?
@@ -497,21 +486,36 @@ impl Peer {
                     request.into_envelope(message_id, None, None),
                 ))
                 .map_err(|_| anyhow!("connection was closed"))?;
-            Ok(())
+            Ok((message_id, stream_response_channels))
         });
-        async move {
-            send?;
 
-            Ok(rx.map(|(response, _barrier)| {
-                if let Some(proto::envelope::Payload::Error(error)) = &response.payload {
-                    Err(anyhow!(
-                        "RPC request {} failed - {}",
-                        T::NAME,
-                        error.message
-                    ))
-                } else {
-                    T::Response::from_envelope(response)
-                        .ok_or_else(|| anyhow!("received response of the wrong type"))
+        async move {
+            let (message_id, response_channels) = send?;
+            let response_channels = Arc::downgrade(&response_channels);
+
+            Ok(rx.filter_map(move |(response, _barrier)| {
+                let response_channels = response_channels.clone();
+                async move {
+                    if let Some(proto::envelope::Payload::Error(error)) = &response.payload {
+                        Some(Err(anyhow!(
+                            "RPC request {} failed - {}",
+                            T::NAME,
+                            error.message
+                        )))
+                    } else if let Some(proto::envelope::Payload::EndStream(_)) = &response.payload {
+                        // Remove the transmitting end of the response channel to end the stream.
+                        if let Some(channels) = response_channels.upgrade() {
+                            if let Some(channels) = channels.lock().as_mut() {
+                                channels.remove(&message_id);
+                            }
+                        }
+                        None
+                    } else {
+                        Some(
+                            T::Response::from_envelope(response)
+                                .ok_or_else(|| anyhow!("received response of the wrong type")),
+                        )
+                    }
                 }
             }))
         }
@@ -563,7 +567,25 @@ impl Peer {
             .outgoing_tx
             .unbounded_send(proto::Message::Envelope(response.into_envelope(
                 message_id,
-                Some((receipt.message_id, true)),
+                Some(receipt.message_id),
+                None,
+            )))?;
+        Ok(())
+    }
+
+    pub fn end_stream<T: RequestMessage>(&self, receipt: Receipt<T>) -> Result<()> {
+        let connection = self.connection_state(receipt.sender_id)?;
+        let message_id = connection
+            .next_message_id
+            .fetch_add(1, atomic::Ordering::SeqCst);
+
+        let message = proto::EndStream {};
+
+        connection
+            .outgoing_tx
+            .unbounded_send(proto::Message::Envelope(message.into_envelope(
+                message_id,
+                Some(receipt.message_id),
                 None,
             )))?;
         Ok(())
@@ -582,7 +604,7 @@ impl Peer {
             .outgoing_tx
             .unbounded_send(proto::Message::Envelope(response.into_envelope(
                 message_id,
-                Some((receipt.message_id, true)),
+                Some(receipt.message_id),
                 None,
             )))?;
         Ok(())
@@ -603,7 +625,7 @@ impl Peer {
             .outgoing_tx
             .unbounded_send(proto::Message::Envelope(response.into_envelope(
                 message_id,
-                Some((envelope.message_id(), true)),
+                Some(envelope.message_id()),
                 None,
             )))?;
         Ok(())
@@ -634,7 +656,7 @@ mod tests {
     use super::*;
     use crate::TypedEnvelope;
     use async_tungstenite::tungstenite::Message as WebSocketMessage;
-    use gpui::TestAppContext;
+    use gpui::{executor::Deterministic, TestAppContext};
 
     #[ctor::ctor]
     fn init_logger() {
@@ -947,6 +969,88 @@ mod tests {
                 "response 2".to_string()
             ]
         );
+    }
+
+    #[gpui::test(iterations = 50)]
+    async fn test_streaming_response(deterministic: Arc<Deterministic>, cx: &mut TestAppContext) {
+        let executor = cx.foreground();
+
+        // create 2 clients connected to 1 server
+        let client_1 = Peer::new(0);
+        let client_2 = Peer::new(0);
+
+        let (client_1_to_2_conn, client_2_to_1_conn, _kill) =
+            Connection::in_memory(cx.background());
+        let (client_2_to_1_conn_id, io_task1, client_1_incoming) =
+            client_2.add_test_connection(client_1_to_2_conn, cx.background());
+        let (client_1_to_2_conn_id, io_task2, client_2_incoming) =
+            client_1.add_test_connection(client_2_to_1_conn, cx.background());
+
+        executor.spawn(io_task1).detach();
+        executor.spawn(io_task2).detach();
+        executor
+            .spawn(handle_messages(client_2_incoming, client_1.clone()))
+            .detach();
+        executor
+            .spawn(handle_messages(client_1_incoming, client_2.clone()))
+            .detach();
+
+        // Test stream terminating normally
+        let stream = client_2
+            .request_stream(client_2_to_1_conn_id, proto::Ping {})
+            .await
+            .unwrap();
+
+        let responses = stream
+            .map(|response| response.unwrap())
+            .collect::<Vec<_>>()
+            .await;
+
+        assert_eq!(responses, vec![proto::Ack {}, proto::Ack {}, proto::Ack {}]);
+
+        // Test disconnecting before stream completes
+        let stream = client_1
+            .request_stream(client_1_to_2_conn_id, proto::Test { id: 0 })
+            .await
+            .unwrap();
+
+        let responses = cx
+            .foreground()
+            .spawn(stream.map(|response| response.unwrap()).collect::<Vec<_>>());
+        deterministic.run_until_parked();
+        client_1.disconnect(client_1_to_2_conn_id);
+
+        let responses = responses.await;
+
+        assert_eq!(
+            responses,
+            vec![proto::Test { id: 0 }, proto::Test { id: 0 }]
+        );
+
+        async fn handle_messages(
+            mut messages: BoxStream<'static, Box<dyn AnyTypedEnvelope>>,
+            peer: Arc<Peer>,
+        ) -> Result<()> {
+            while let Some(envelope) = messages.next().await {
+                let envelope = envelope.into_any();
+                if let Some(envelope) = envelope.downcast_ref::<TypedEnvelope<proto::Ping>>() {
+                    let receipt = envelope.receipt();
+                    peer.respond(receipt, proto::Ack {})?;
+                    peer.respond(receipt, proto::Ack {})?;
+                    peer.respond(receipt, proto::Ack {})?;
+                    peer.end_stream(receipt)?;
+                } else if let Some(envelope) = envelope.downcast_ref::<TypedEnvelope<proto::Test>>()
+                {
+                    peer.respond(envelope.receipt(), envelope.payload.clone())?;
+                    peer.respond(envelope.receipt(), envelope.payload.clone())?;
+                    println!("DONE RESPONDING - NOW WAITING");
+                } else {
+                    panic!("unknown message type");
+                }
+            }
+
+            Ok(())
+        }
     }
 
     #[gpui::test(iterations = 50)]

@@ -21,7 +21,7 @@ pub trait EnvelopedMessage: Clone + Debug + Serialize + Sized + Send + Sync + 's
     fn into_envelope(
         self,
         id: u32,
-        responding_to: Option<(u32, bool)>,
+        responding_to: Option<u32>,
         original_sender_id: Option<PeerId>,
     ) -> Envelope;
     fn from_envelope(envelope: Envelope) -> Option<Self>;
@@ -148,6 +148,7 @@ messages!(
     (CreateRoomResponse, Foreground),
     (DeclineCall, Foreground),
     (DeleteProjectEntry, Foreground),
+    (EndStream, Foreground),
     (Error, Foreground),
     (Follow, Foreground),
     (FollowResponse, Foreground),

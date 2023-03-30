@@ -26,14 +26,12 @@ macro_rules! messages {
                 fn into_envelope(
                     self,
                     id: u32,
-                    response_data: Option<(u32, bool)>,
+                    responding_to: Option<u32>,
                     original_sender_id: Option<PeerId>,
                 ) -> Envelope {
                     Envelope {
                         id,
-                        response_data: response_data.map(|(responding_to, is_last_message)| ResponseData {
-                            responding_to, is_last_message
-                        }),
+                        responding_to,
                         original_sender_id,
                         payload: Some(envelope::Payload::$name(self)),
                     }
