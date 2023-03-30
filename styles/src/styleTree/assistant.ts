@@ -1,14 +1,14 @@
-import { ColorScheme } from "../themes/common/colorScheme";
-import { Container } from "../types";
-import { margin } from "../utils/margin";
-import { padding } from "../utils/padding";
-import { background, border, text } from "./components";
+import { ColorScheme } from "../themes/common/colorScheme"
+import { Container } from "../types"
+import { margin } from "../utils/margin"
+import { padding } from "../utils/padding"
+import { background, border, text } from "./components"
 
 export const assistant = (colorScheme: ColorScheme) => {
     const layer = colorScheme.highest
 
     const message: Container = {
-        margin: margin(8)
+        margin: margin(8),
     }
 
     const messageContainer: Container = {
@@ -22,14 +22,14 @@ export const assistant = (colorScheme: ColorScheme) => {
         image: {
             width: 20,
             height: 20,
-            corderRadius: 10
+            corderRadius: 10,
         },
         name: {
             ...text(layer, "sans", "default", { size: "sm" }),
         },
         time: {
             ...text(layer, "sans", "variant", { size: "sm" }),
-        }
+        },
     }
 
     const editor = {

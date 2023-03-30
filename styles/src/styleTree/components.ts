@@ -224,13 +224,13 @@ export function text(
 }
 
 export interface Border {
-    color: string;
-    width: number;
-    top?: boolean;
-    bottom?: boolean;
-    left?: boolean;
-    right?: boolean;
-    overlay: boolean;
+    color: string
+    width: number
+    top?: boolean
+    bottom?: boolean
+    left?: boolean
+    right?: boolean
+    overlay: boolean
 }
 
 export interface BorderProperties {
@@ -265,7 +265,7 @@ export function border(
     styleOrProperties?: Styles | BorderProperties,
     properties?: BorderProperties
 ): Border {
-    let style = getStyle(layer, styleSetStyleOrProperties, styleOrProperties);
+    let style = getStyle(layer, styleSetStyleOrProperties, styleOrProperties)
 
     if (typeof styleSetStyleOrProperties === "object") {
         properties = styleSetStyleOrProperties

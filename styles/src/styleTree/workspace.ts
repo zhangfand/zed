@@ -287,11 +287,7 @@ export default function workspace(colorScheme: ColorScheme) {
             },
             hover: {
                 color: foreground(colorScheme.highest, "on", "hovered"),
-                background: background(
-                    colorScheme.highest,
-                    "on",
-                    "hovered"
-                ),
+                background: background(colorScheme.highest, "on", "hovered"),
             },
         },
         disconnectedOverlay: {
