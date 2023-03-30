@@ -1,11 +1,11 @@
 import { Margin } from "../types"
 
 export function margin(margin: number): Margin
-export function margin(horizontal: number, vertical: number): Margin
+export function margin(vertical: number, horizontal: number): Margin
 export function margin(
     top: number,
-    right: number,
     bottom: number,
+    right: number,
     left: number
 ): Margin
 export function margin(
@@ -16,8 +16,8 @@ export function margin(
 ): Margin {
     return {
         top: a,
-        left: d,
-        bottom: c,
+        bottom: d,
+        left: c,
         right: b,
     }
 }

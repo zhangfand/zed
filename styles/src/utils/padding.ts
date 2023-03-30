@@ -1,11 +1,11 @@
 import { Padding } from "../types"
 
-export function padding(margin: number): Padding
-export function padding(horizontal: number, vertical: number): Padding
+export function padding(padding: number): Padding
+export function padding(vertical: number, horizontal: number): Padding
 export function padding(
     top: number,
-    right: number,
     bottom: number,
+    right: number,
     left: number
 ): Padding
 export function padding(
@@ -16,8 +16,8 @@ export function padding(
 ): Padding {
     return {
         top: a,
-        left: d,
-        bottom: c,
+        bottom: d,
+        left: c,
         right: b,
     }
 }
