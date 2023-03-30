@@ -10,7 +10,7 @@ use workspace::{
     StatusItemView, Workspace,
 };
 
-actions!(assisltant, [DeployAssistant]);
+actions!(assistant, [DeployAssistant]);
 
 pub struct Assistant {
     composer: ViewHandle<Editor>,
@@ -20,6 +20,7 @@ pub struct Assistant {
 
 pub struct Message {
     text: String,
+    from_assistant: bool,
 }
 
 pub struct AssistantButton {
@@ -27,44 +28,56 @@ pub struct AssistantButton {
     active: bool,
 }
 
+actions!(assistant, [SendMessage]);
+
 pub fn init(cx: &mut MutableAppContext) {
     cx.add_action(AssistantButton::deploy_assistant);
+    cx.add_action(Assistant::send_message);
 }
 
 impl Assistant {
     pub fn new(cx: &mut ViewContext<Self>) -> Self {
-        let composer = cx.add_view(|cx| Editor::single_line(None, cx));
-
-        let messages = vec![
-            Message {
-                text: "Hello World".into(),
-            },
-            Message {
-                text: "I Am Skynet".into(),
-            },
-            Message {
-                text: "Prepare To Die".into(),
-            },
-        ];
-
         Self {
-            composer,
-            message_list: ListState::new(
-                messages.len(),
-                Orientation::Bottom,
-                512.,
-                cx,
-                |this, ix, cx| {
-                    let style = &cx.global::<Settings>().theme.assistant;
-                    let text = this.messages[ix].text.clone();
-                    Text::new(text, style.assistant_message.text.clone())
-                        .contained()
-                        .with_style(style.assistant_message.container)
-                        .boxed()
-                },
-            ),
-            messages,
+            composer: cx.add_view(|cx| Editor::single_line(None, cx)),
+            message_list: ListState::new(0, Orientation::Bottom, 512., cx, |this, ix, cx| {
+                let message = &this.messages[ix];
+                let theme = &cx.global::<Settings>().theme.assistant;
+                let style = if message.from_assistant {
+                    &theme.assistant_message
+                } else {
+                    &theme.player_message
+                };
+
+                let text = message.text.clone();
+                Text::new(text, style.text.clone())
+                    .contained()
+                    .with_style(style.container)
+                    .boxed()
+            }),
+            messages: Vec::new(),
         }
+    }
+
+    fn send_message(&mut self, _: &SendMessage, cx: &mut ViewContext<Self>) {
+        let old_len = self.messages.len();
+        let text = self.composer.update(cx, |composer, cx| {
+            let text = composer.text(cx);
+            composer.clear(cx);
+            text
+        });
+        self.messages.push(Message {
+            text: text.clone(),
+            from_assistant: false,
+        });
+        let mut reply = "You said: ".to_owned();
+        reply.push_str(&text);
+        self.messages.push(Message {
+            text: reply,
+            from_assistant: true,
+        });
+
+        self.message_list.splice(old_len..old_len, 2);
+        cx.notify();
     }
 }
 
@@ -82,6 +95,12 @@ impl View for Assistant {
             .with_child(List::new(self.message_list.clone()).flex(1., true).boxed())
             .with_child(ChildView::new(&self.composer, cx).boxed())
             .boxed()
+    }
+
+    fn focus_in(&mut self, focused: gpui::AnyViewHandle, cx: &mut ViewContext<Self>) {
+        if focused != self.composer {
+            cx.focus(&self.composer);
+        }
     }
 }
 

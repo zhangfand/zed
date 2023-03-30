@@ -539,5 +539,11 @@
                 "ctrl-c"
             ]
         }
+    },
+    {
+        "context": "Assistant",
+        "bindings": {
+            "cmd-enter": "assistant::SendMessage"
+        }
     }
 ]

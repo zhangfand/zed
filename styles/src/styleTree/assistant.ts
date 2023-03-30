@@ -15,7 +15,7 @@ export const assistant = (colorScheme: ColorScheme) => {
         background: background(layer, "on"),
         corner_radius: 6,
         padding: padding(8),
-        margin: margin(8),
+        margin: margin(4, 8),
     }
 
     const messageHeader = {

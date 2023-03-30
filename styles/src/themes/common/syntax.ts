@@ -16,6 +16,8 @@ export interface Syntax {
     "comment.doc": SyntaxHighlightStyle
     primary: SyntaxHighlightStyle
     predictive: SyntaxHighlightStyle
+    // Used when stying code that is mid-generation and not ready to be highlighted
+    generating: SyntaxHighlightStyle
 
     // === Formatted Text ====== /
     emphasis: SyntaxHighlightStyle
@@ -169,6 +171,9 @@ function buildDefaultSyntax(colorScheme: ColorScheme): Syntax {
         },
         predictive: {
             color: color.predictive,
+        },
+        generating: {
+            color: colorScheme.ramps.neutral(0.60).hex(),
         },
         emphasis: {
             color: color.emphasis,
