@@ -331,7 +331,7 @@ impl Pane {
     pub fn restore(
         &mut self,
         saved_state: PaneState,
-        item_states: &HashMap<Arc<str>, HashMap<u64, Box<dyn Any>>>,
+        item_states: &mut HashMap<Arc<str>, HashMap<u64, Box<dyn Any>>>,
         cx: &mut ViewContext<Self>,
     ) {
         let item_ix = 0;
@@ -339,7 +339,7 @@ impl Pane {
 
         for item in saved_state.items {
             let state = item_states
-                .get(item.record_namespace.as_ref())
+                .get_mut(item.record_namespace.as_ref())
                 .and_then(|item_states| item_states.remove(&item.record_id))
                 .ok_or_else(|| anyhow!("missing item state"))
                 .log_err();
@@ -347,7 +347,9 @@ impl Pane {
             if let Some(state) = state {
                 let item =
                     build_persistent_item(item.record_namespace.as_ref(), cx.handle(), state, cx);
-                if let Some(item) = item {}
+                if let Some(item) = item {
+                    todo!()
+                }
             }
         }
     }

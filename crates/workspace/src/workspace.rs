@@ -2593,11 +2593,11 @@ impl Workspace {
     fn restore(
         &mut self,
         saved_state: WorkspaceState,
-        item_states: HashMap<Arc<str>, HashMap<u64, Box<dyn Any>>>,
+        mut item_states: HashMap<Arc<str>, HashMap<u64, Box<dyn Any>>>,
         cx: &mut ViewContext<Self>,
     ) {
         self.dock_pane().update(cx, |pane, cx| {
-            pane.restore(saved_state.dock_pane, &item_states, cx);
+            pane.restore(saved_state.dock_pane, &mut item_states, cx);
         });
     }
 
