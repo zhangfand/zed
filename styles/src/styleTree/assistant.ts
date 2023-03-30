@@ -1,35 +1,21 @@
 import { ColorScheme } from "../themes/common/colorScheme";
 import { Container } from "../types";
+import { margin } from "../utils/margin";
+import { padding } from "../utils/padding";
 import { background, border, text } from "./components";
-
 
 export const assistant = (colorScheme: ColorScheme) => {
     const layer = colorScheme.highest
 
     const message: Container = {
-        margin: {
-            top: 8,
-            right: 8,
-            bottom: 8,
-            left: 8
-        }
+        margin: margin(8)
     }
 
     const messageContainer: Container = {
         background: background(layer, "on"),
         corner_radius: 6,
-        padding: {
-            top: 8,
-            right: 8,
-            bottom: 8,
-            left: 8
-        },
-        margin: {
-            top: 8,
-            right: 8,
-            bottom: 8,
-            left: 8
-        },
+        padding: padding(8),
+        margin: margin(8),
     }
 
     const messageHeader = {
@@ -49,12 +35,7 @@ export const assistant = (colorScheme: ColorScheme) => {
     const editor = {
         minWidth: 200,
         maxWidth: 500,
-        padding: {
-            top: 8,
-            right: 8,
-            bottom: 8,
-            left: 8
-        },
+        padding: padding(8),
         cornerRadius: 8,
         border: border(layer, "on"),
         background: background(layer, "on"),
@@ -66,7 +47,7 @@ export const assistant = (colorScheme: ColorScheme) => {
     return {
         composer: {
             container: {
-                padding: 8,
+                padding: padding(8),
             },
             editor: editor,
         },

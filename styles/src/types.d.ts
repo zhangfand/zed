@@ -1,5 +1,6 @@
 import { ContainerStyle } from "../../crates/gpui/bindings/ContainerStyle"
 import { TextStyle } from "../../crates/gpui/bindings/TextStyle"
+import { Margin } from "../../crates/gpui/bindings/Margin"
 import { Border } from "../../crates/gpui/bindings/Border"
 import { Padding } from "../../crates/gpui/bindings/Padding"
 import { ImageStyle } from "../../crates/gpui/bindings/ImageStyle"
@@ -11,4 +12,4 @@ type Text = Partial<TextStyle>
 type Image = Partial<ImageStyle>
 interface ContainedText extends Container, Text { }
 
-export { Container, Text, ContainedText, Border, Padding, Image, Shadow, Underline }
+export { Container, Text, ContainedText, Margin, Border, Padding, Image, Shadow, Underline }
