@@ -1,11 +1,11 @@
 export interface Border {
     width: number
     color: string
-    overlay: boolean
-    top: boolean
-    right: boolean
-    bottom: boolean
-    left: boolean
+    overlay?: boolean
+    top?: boolean
+    right?: boolean
+    bottom?: boolean
+    left?: boolean
 }
 export interface Margin {
     top: number

@@ -5,17 +5,28 @@ import { padding } from "../utils/padding"
 import { background, border, text } from "./components"
 
 export const assistant = (colorScheme: ColorScheme) => {
-    const layer = colorScheme.highest
+    const layer = colorScheme.middle
 
     const message: Container = {
         margin: margin(8),
     }
 
-    const messageContainer: Container = {
-        background: background(layer, "on"),
+    const message_container_common: Container = {
         corner_radius: 6,
-        padding: padding(8),
-        margin: margin(4, 8),
+        padding: padding(6, 10),
+        margin: padding(6, 8),
+    }
+
+    const player_message_container: Container = {
+        ...message_container_common,
+        background: background(layer, "variant"),
+        ...text(layer, "sans", "default", { size: "sm" }),
+    }
+
+    const assistant_message_container: Container = {
+        ...message_container_common,
+        ...text(layer, "sans", "default", { size: "sm" }),
+        background: background(layer, "on"),
     }
 
     const messageHeader = {
@@ -48,21 +59,16 @@ export const assistant = (colorScheme: ColorScheme) => {
         composer: {
             container: {
                 padding: padding(8),
+                margin: margin(8),
             },
             editor: editor,
         },
-        assistant_message: {
-            ...messageContainer,
-            ...text(layer, "sans", "accent", { size: "sm" }),
-        },
-        player_message: {
-            ...messageContainer,
-            ...text(layer, "sans", "default", { size: "sm" }),
-        },
+        assistant_message: assistant_message_container,
+        player_message: player_message_container,
         error_message: {
-            ...messageContainer,
+            ...assistant_message_container,
             background: background(layer, "negative"),
-            ...text(layer, "sans", "accent", { size: "sm" }),
+            ...text(layer, "sans", "negative", { size: "sm" }),
         },
     }
 }
