@@ -15,20 +15,16 @@ use crate::{
 };
 use serde::Deserialize;
 use serde_json::json;
-use ts_rs::TS;
 
-#[derive(Clone, Copy, Debug, Default, Deserialize, TS)]
-#[ts(export)]
+#[derive(Clone, Copy, Debug, Default, Deserialize)]
 pub struct ContainerStyle {
     #[serde(default)]
     pub margin: Margin,
     #[serde(default)]
     pub padding: Padding,
     #[serde(rename = "background")]
-    #[ts(type = "string")]
     pub background_color: Option<Color>,
     #[serde(rename = "overlay")]
-    #[ts(type = "string")]
     pub overlay_color: Option<Color>,
     #[serde(default)]
     pub border: Border,
@@ -37,7 +33,6 @@ pub struct ContainerStyle {
     #[serde(default)]
     pub shadow: Option<Shadow>,
     #[serde(default)]
-    #[ts(type = "'Arrow' | 'ResizeLeftRight' | 'ResizeUpDown' | 'PointingHand' | 'IBeam'")]
     pub cursor: Option<CursorStyle>,
 }
 
@@ -331,8 +326,7 @@ impl ToJson for ContainerStyle {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, TS)]
-#[ts(export)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct Margin {
     pub top: f32,
     pub left: f32,
@@ -359,8 +353,7 @@ impl ToJson for Margin {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, TS)]
-#[ts(export)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct Padding {
     pub top: f32,
     pub left: f32,
@@ -441,9 +434,8 @@ impl<'de> Deserialize<'de> for Margin {
         })
     }
 }
-#[derive(Deserialize, TS)]
+#[derive(Deserialize)]
 #[serde(untagged)]
-#[ts(export)]
 enum Spacing {
     Uniform(f32),
     Specific {
@@ -488,15 +480,12 @@ impl ToJson for Padding {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, Deserialize, TS)]
-#[ts(export)]
+#[derive(Clone, Copy, Debug, Default, Deserialize)]
 pub struct Shadow {
-    #[ts(type = "[number, number]")]
     #[serde(default, deserialize_with = "deserialize_vec2f")]
     offset: Vector2F,
     #[serde(default)]
     blur: f32,
-    #[ts(type = "string")]
     #[serde(default)]
     color: Color,
 }

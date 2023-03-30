@@ -6,7 +6,6 @@ use collections::HashSet;
 use serde::Deserialize;
 use serde_json::json;
 use std::{borrow::Cow, sync::Arc};
-use ts_rs::TS;
 
 use crate::{
     color::Color,
@@ -100,11 +99,9 @@ pub struct Icon {
     pub color: Color,
 }
 
-#[derive(Clone, Copy, Default, Debug, TS)]
-#[ts(export)]
+#[derive(Clone, Copy, Default, Debug)]
 pub struct Border {
     pub width: f32,
-    #[ts(type = "string")]
     pub color: Color,
     pub overlay: bool,
     pub top: bool,

@@ -15,15 +15,13 @@ use schemars::JsonSchema;
 use serde::{de, Deserialize, Serialize};
 use serde_json::Value;
 use std::{cell::RefCell, sync::Arc};
-use ts_rs::TS;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct FontId(pub usize);
 
 pub type GlyphId = u32;
 
-#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize, JsonSchema, TS)]
-#[ts(export)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Features {
     pub calt: Option<bool>,
     pub case: Option<bool>,
@@ -61,29 +59,20 @@ pub struct Features {
     pub zero: Option<bool>,
 }
 
-#[derive(Clone, Debug, TS)]
-#[ts(export)]
+#[derive(Clone, Debug)]
 pub struct TextStyle {
-    #[ts(type = "string")]
     pub color: Color,
-    #[ts(type = "string")]
     pub font_family_name: Arc<str>,
-    #[ts(type = "string")]
     pub font_family_id: FamilyId,
-    #[ts(type = "string")]
     pub font_id: FontId,
     pub font_size: f32,
-    #[ts(type = "{style: string, weight: number. stretch: number}")]
     pub font_properties: Properties,
     pub underline: Underline,
 }
 
-#[derive(Copy, Clone, Debug, Default, PartialEq, TS)]
-#[ts(export)]
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
 pub struct HighlightStyle {
-    #[ts(type = "string")]
     pub color: Option<Color>,
-    #[ts(type = "string")]
     pub weight: Option<Weight>,
     pub italic: Option<bool>,
     pub underline: Option<Underline>,
@@ -92,12 +81,9 @@ pub struct HighlightStyle {
 
 impl Eq for HighlightStyle {}
 
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, TS)]
-#[ts(export)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub struct Underline {
-    #[ts(type = "string")]
     pub color: Option<Color>,
-    #[ts(type = "number")]
     pub thickness: OrderedFloat<f32>,
     pub squiggly: bool,
 }

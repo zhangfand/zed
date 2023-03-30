@@ -15,15 +15,13 @@ enum ImageSource {
     Path(&'static str),
     Data(Arc<ImageData>),
 }
-use ts_rs::TS;
 
 pub struct Image {
     source: ImageSource,
     style: ImageStyle,
 }
 
-#[derive(Copy, Clone, Default, Deserialize, TS)]
-#[ts(export)]
+#[derive(Copy, Clone, Default, Deserialize)]
 pub struct ImageStyle {
     #[serde(default)]
     pub border: Border,
