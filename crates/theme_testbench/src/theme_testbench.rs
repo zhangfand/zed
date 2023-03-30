@@ -15,7 +15,7 @@ use settings::Settings;
 use theme::{ColorScheme, Layer, Style, StyleSet};
 use workspace::{
     item::{Item, PersistentItem},
-    store::Store,
+    store::{Record, Store},
     Workspace,
 };
 
@@ -317,9 +317,32 @@ impl Item for ThemeTestbench {
 }
 
 impl PersistentItem for ThemeTestbench {
-    type State = ();
+    type State = ThemeTestbenchState;
 
-    fn save_state(&self, store: Store, cx: &mut MutableAppContext) -> Task<Result<u64>> {
+    fn save_state(&self, store: Store, cx: &mut ViewContext<Self>) -> Task<Result<u64>> {
+        todo!()
+    }
+}
+
+struct ThemeTestbenchState {}
+
+impl Record for ThemeTestbenchState {
+    fn namespace() -> &'static str {
+        todo!()
+    }
+
+    fn schema_version() -> u64 {
+        todo!()
+    }
+
+    fn serialize(&self) -> Vec<u8> {
+        todo!()
+    }
+
+    fn deserialize(version: u64, data: Vec<u8>) -> Result<Self>
+    where
+        Self: Sized,
+    {
         todo!()
     }
 }

@@ -7,8 +7,8 @@ use anyhow::{anyhow, Result};
 use collections::HashSet;
 use futures::future::try_join_all;
 use gpui::{
-    elements::*, geometry::vector::vec2f, AppContext, Entity, ModelHandle, MutableAppContext,
-    RenderContext, Subscription, Task, View, ViewContext, ViewHandle,
+    elements::*, geometry::vector::vec2f, serde_json, AppContext, Entity, ModelHandle,
+    MutableAppContext, RenderContext, Subscription, Task, View, ViewContext, ViewHandle,
 };
 use language::{
     proto::serialize_anchor as serialize_text_anchor, Bias, Buffer, OffsetRangeExt, Point,
@@ -807,7 +807,7 @@ impl ProjectItem for Editor {
 impl PersistentItem for Editor {
     type State = EditorState;
 
-    fn save_state(&self, store: Store, _cx: &mut MutableAppContext) -> Task<Result<u64>> {
+    fn save_state(&self, store: Store, _cx: &mut ViewContext<Self>) -> Task<Result<u64>> {
         todo!()
     }
 
@@ -875,18 +875,18 @@ impl Record for EditorState {
     }
 
     fn schema_version() -> u64 {
-        todo!()
+        0
     }
 
     fn serialize(&self) -> Vec<u8> {
-        todo!()
+        serde_json::to_vec(self).unwrap()
     }
 
-    fn deserialize(_version: u64, _data: Vec<u8>) -> Result<Self>
+    fn deserialize(_: u64, data: Vec<u8>) -> Result<Self>
     where
         Self: Sized,
     {
-        todo!()
+        Ok(serde_json::from_slice(&data)?)
     }
 }
 

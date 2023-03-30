@@ -10,12 +10,13 @@ use editor::{
 };
 use futures::StreamExt;
 use gpui::{
-    actions, elements::*, platform::CursorStyle, Action, AnyViewHandle, AppContext, ElementBox,
-    Entity, ModelContext, ModelHandle, MouseButton, MutableAppContext, RenderContext, Subscription,
-    Task, View, ViewContext, ViewHandle, WeakModelHandle, WeakViewHandle,
+    actions, elements::*, platform::CursorStyle, serde_json, Action, AnyViewHandle, AppContext,
+    ElementBox, Entity, ModelContext, ModelHandle, MouseButton, MutableAppContext, RenderContext,
+    Subscription, Task, View, ViewContext, ViewHandle, WeakModelHandle, WeakViewHandle,
 };
 use menu::Confirm;
 use project::{search::SearchQuery, Project};
+use serde::{Deserialize, Serialize};
 use settings::Settings;
 use smallvec::SmallVec;
 use std::{
@@ -373,17 +374,24 @@ impl Item for ProjectSearchView {
 impl PersistentItem for ProjectSearchView {
     type State = ProjectSearchViewState;
 
-    fn save_state(&self, store: Store, cx: &mut MutableAppContext) -> Task<Result<u64>> {
+    fn save_state(&self, store: Store, cx: &mut ViewContext<Self>) -> Task<Result<u64>> {
         if let Some(record_id) = self.record_id {
             Task::ready(Ok(record_id))
         } else {
-            cx.foreground()
-                .spawn(async move { store.create(&ProjectSearchViewState {}).await })
+            let query = self.query_editor.read(cx).text(cx);
+            cx.spawn(|this, mut cx| async move {
+                let id = store.create(&ProjectSearchViewState { query }).await?;
+                this.update(&mut cx, |this, _| this.record_id = Some(id));
+                Ok(id)
+            })
         }
     }
 }
 
-pub struct ProjectSearchViewState {}
+#[derive(Serialize, Deserialize)]
+pub struct ProjectSearchViewState {
+    query: String,
+}
 
 impl Record for ProjectSearchViewState {
     fn namespace() -> &'static str {
@@ -395,14 +403,14 @@ impl Record for ProjectSearchViewState {
     }
 
     fn serialize(&self) -> Vec<u8> {
-        todo!()
+        serde_json::to_vec(self).unwrap()
     }
 
-    fn deserialize(version: u64, data: Vec<u8>) -> Result<Self>
+    fn deserialize(_: u64, data: Vec<u8>) -> Result<Self>
     where
         Self: Sized,
     {
-        todo!()
+        Ok(serde_json::from_slice(&data)?)
     }
 }
 

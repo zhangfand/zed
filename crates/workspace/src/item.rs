@@ -729,7 +729,7 @@ impl<T: FollowableItem> FollowableItemHandle for ViewHandle<T> {
 pub trait PersistentItem: Item {
     type State: Record;
 
-    fn save_state(&self, store: Store, cx: &mut MutableAppContext) -> Task<Result<u64>>;
+    fn save_state(&self, store: Store, cx: &mut ViewContext<Self>) -> Task<Result<u64>>;
 }
 
 pub trait PersistentItemHandle: ItemHandle {
@@ -785,6 +785,7 @@ pub(crate) mod test {
         pub nav_history: Option<ItemNavHistory>,
         pub tab_descriptions: Option<Vec<&'static str>>,
         pub tab_detail: Cell<Option<usize>>,
+        pub record_id: Option<u64>,
     }
 
     impl Entity for TestProjectItem {
@@ -820,6 +821,7 @@ pub(crate) mod test {
                 nav_history: None,
                 tab_descriptions: None,
                 tab_detail: Default::default(),
+                record_id: self.record_id,
             }
         }
     }
@@ -860,6 +862,7 @@ pub(crate) mod test {
                 nav_history: None,
                 tab_descriptions: None,
                 tab_detail: Default::default(),
+                record_id: None,
             }
         }
 
@@ -1020,8 +1023,17 @@ pub(crate) mod test {
     impl PersistentItem for TestItem {
         type State = String;
 
-        fn save_state(&self, store: Store, cx: &mut MutableAppContext) -> Task<Result<u64>> {
-            todo!()
+        fn save_state(&self, store: Store, cx: &mut ViewContext<Self>) -> Task<Result<u64>> {
+            if let Some(record_id) = self.record_id {
+                Task::ready(Ok(record_id))
+            } else {
+                let state = self.state.clone();
+                cx.spawn(|this, mut cx| async move {
+                    let id = store.create(&state).await?;
+                    this.update(&mut cx, |this, _| this.record_id = Some(id));
+                    Ok(id)
+                })
+            }
         }
     }
 }

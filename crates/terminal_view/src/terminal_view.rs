@@ -623,7 +623,7 @@ impl Item for TerminalView {
 impl PersistentItem for TerminalView {
     type State = TerminalViewState;
 
-    fn save_state(&self, store: Store, cx: &mut MutableAppContext) -> Task<Result<u64>> {
+    fn save_state(&self, store: Store, cx: &mut ViewContext<Self>) -> Task<Result<u64>> {
         todo!()
     }
 

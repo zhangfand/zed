@@ -59,7 +59,7 @@ pub enum PaneGroupState {
 
 impl Record for WorkspaceState {
     fn namespace() -> &'static str {
-        "Workspace"
+        "WorkspaceState"
     }
 
     fn schema_version() -> u64 {
@@ -67,14 +67,14 @@ impl Record for WorkspaceState {
     }
 
     fn serialize(&self) -> Vec<u8> {
-        todo!()
+        serde_json::to_vec(self).unwrap()
     }
 
-    fn deserialize(version: u64, data: Vec<u8>) -> Result<Self>
+    fn deserialize(_: u64, data: Vec<u8>) -> Result<Self>
     where
         Self: Sized,
     {
-        todo!()
+        Ok(serde_json::from_slice(&data)?)
     }
 }
 

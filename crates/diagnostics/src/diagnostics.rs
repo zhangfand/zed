@@ -58,6 +58,7 @@ struct ProjectDiagnosticsEditor {
     excerpts: ModelHandle<MultiBuffer>,
     path_states: Vec<PathState>,
     paths_to_update: BTreeMap<ProjectPath, usize>,
+    record_id: Option<u64>,
 }
 
 struct PathState {
@@ -180,6 +181,7 @@ impl ProjectDiagnosticsEditor {
             editor,
             path_states: Default::default(),
             paths_to_update,
+            record_id: None,
         };
         this.update_excerpts(None, cx);
         this
@@ -623,8 +625,16 @@ impl Item for ProjectDiagnosticsEditor {
 impl PersistentItem for ProjectDiagnosticsEditor {
     type State = ProjectDiagnosticsEditorState;
 
-    fn save_state(&self, _store: Store, _cx: &mut MutableAppContext) -> Task<Result<u64>> {
-        todo!()
+    fn save_state(&self, store: Store, cx: &mut ViewContext<Self>) -> Task<Result<u64>> {
+        if let Some(record_id) = self.record_id {
+            Task::ready(Ok(record_id))
+        } else {
+            cx.spawn(|this, mut cx| async move {
+                let id = store.create(&{ ProjectDiagnosticsEditorState {} }).await?;
+                this.update(&mut cx, |this, cx| this.record_id = Some(id));
+                Ok(id)
+            })
+        }
     }
 }
 
