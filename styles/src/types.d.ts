@@ -26,7 +26,7 @@ export interface ContainerStyle {
     overlay: string
     border: Border
     corner_radius: number
-    shadow: Shadow | null
+    shadow?: Shadow
     cursor:
     | "Arrow"
     | "ResizeLeftRight"
@@ -38,15 +38,15 @@ export interface ContainerStyle {
 export interface HighlightStyle {
     color: string
     weight: string
-    italic: boolean | null
-    underline: Underline | null
-    fade_out: number | null
+    italic?: boolean
+    underline?: Underline
+    fade_out?: number
 }
 export interface ImageStyle {
     border: Border
     corner_radius: number
-    height: number | null
-    width: number | null
+    height: number
+    width: number
     grayscale: boolean
 }
 
@@ -60,40 +60,40 @@ export type Spacing =
     | { top: number; left: number; bottom: number; right: number }
 
 export interface Features {
-    calt: boolean | null
-    case: boolean | null
-    cpsp: boolean | null
-    frac: boolean | null
-    liga: boolean | null
-    onum: boolean | null
-    ordn: boolean | null
-    pnum: boolean | null
-    ss01: boolean | null
-    ss02: boolean | null
-    ss03: boolean | null
-    ss04: boolean | null
-    ss05: boolean | null
-    ss06: boolean | null
-    ss07: boolean | null
-    ss08: boolean | null
-    ss09: boolean | null
-    ss10: boolean | null
-    ss11: boolean | null
-    ss12: boolean | null
-    ss13: boolean | null
-    ss14: boolean | null
-    ss15: boolean | null
-    ss16: boolean | null
-    ss17: boolean | null
-    ss18: boolean | null
-    ss19: boolean | null
-    ss20: boolean | null
-    subs: boolean | null
-    sups: boolean | null
-    swsh: boolean | null
-    titl: boolean | null
-    tnum: boolean | null
-    zero: boolean | null
+    calt: boolean
+    case: boolean
+    cpsp: boolean
+    frac: boolean
+    liga: boolean
+    onum: boolean
+    ordn: boolean
+    pnum: boolean
+    ss01: boolean
+    ss02: boolean
+    ss03: boolean
+    ss04: boolean
+    ss05: boolean
+    ss06: boolean
+    ss07: boolean
+    ss08: boolean
+    ss09: boolean
+    ss10: boolean
+    ss11: boolean
+    ss12: boolean
+    ss13: boolean
+    ss14: boolean
+    ss15: boolean
+    ss16: boolean
+    ss17: boolean
+    ss18: boolean
+    ss19: boolean
+    ss20: boolean
+    subs: boolean
+    sups: boolean
+    swsh: boolean
+    titl: boolean
+    tnum: boolean
+    zero: boolean
 }
 
 export interface TextStyle {
