@@ -6,9 +6,14 @@ message PeerId {
     uint32 id = 2;
 }
 
+message ResponseData {
+    uint32 responding_to = 1;
+    bool is_last_message = 2;
+}
+
 message Envelope {
     uint32 id = 1;
-    optional uint32 responding_to = 2;
+    optional ResponseData response_data = 2;
     optional PeerId original_sender_id = 3;
     oneof payload {
         Hello hello = 4;
@@ -240,13 +245,13 @@ message ParticipantLocation {
         UnsharedProject unshared_project = 2;
         External external = 3;
     }
-    
+
     message SharedProject {
         uint64 id = 1;
     }
-    
+
     message UnsharedProject {}
-    
+
     message External {}
 }
 
@@ -1174,4 +1179,19 @@ message UpdateDiffBase {
     uint64 project_id = 1;
     uint64 buffer_id = 2;
     optional string diff_base = 3;
+}
+
+message ChatCompletionRequest {
+    repeated ChatCompletionRequestMessage messages = 1;
+}
+
+message ChatCompletionRequestMessage {
+    Role role = 1;
+    string content = 2;
+
+    enum Role {
+        System = 0;
+        User = 1;
+        Assistant = 2;
+    }
 }

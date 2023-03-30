@@ -21,7 +21,7 @@ pub trait EnvelopedMessage: Clone + Debug + Serialize + Sized + Send + Sync + 's
     fn into_envelope(
         self,
         id: u32,
-        responding_to: Option<u32>,
+        responding_to: Option<(u32, bool)>,
         original_sender_id: Option<PeerId>,
     ) -> Envelope;
     fn from_envelope(envelope: Envelope) -> Option<Self>;

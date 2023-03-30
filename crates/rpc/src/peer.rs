@@ -7,7 +7,7 @@ use collections::HashMap;
 use futures::{
     channel::{mpsc, oneshot},
     stream::BoxStream,
-    FutureExt, SinkExt, StreamExt,
+    FutureExt, SinkExt, Stream, StreamExt,
 };
 use parking_lot::{Mutex, RwLock};
 use serde::{ser::SerializeStruct, Serialize};
@@ -110,6 +110,11 @@ pub struct ConnectionState {
     #[serde(skip)]
     response_channels:
         Arc<Mutex<Option<HashMap<u32, oneshot::Sender<(proto::Envelope, oneshot::Sender<()>)>>>>>,
+    #[allow(clippy::type_complexity)]
+    #[serde(skip)]
+    stream_response_channels: Arc<
+        Mutex<Option<HashMap<u32, mpsc::UnboundedSender<(proto::Envelope, oneshot::Sender<()>)>>>>,
+    >,
 }
 
 const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(1);
@@ -162,18 +167,21 @@ impl Peer {
         let connection_state = ConnectionState {
             outgoing_tx,
             next_message_id: Default::default(),
-            response_channels: Arc::new(Mutex::new(Some(Default::default()))),
+            response_channels: Default::default(),
+            stream_response_channels: Default::default(),
         };
         let mut writer = MessageStream::new(connection.tx);
         let mut reader = MessageStream::new(connection.rx);
 
         let this = self.clone();
         let response_channels = connection_state.response_channels.clone();
+        let stream_response_channels = connection_state.response_channels.clone();
         let handle_io = async move {
             tracing::debug!(%connection_id, "handle io future: start");
 
             let _end_connection = util::defer(|| {
                 response_channels.lock().take();
+                stream_response_channels.lock().take();
                 this.connections.write().remove(&connection_id);
                 tracing::debug!(%connection_id, "handle io future: end");
             });
@@ -265,12 +273,14 @@ impl Peer {
         };
 
         let response_channels = connection_state.response_channels.clone();
+        let stream_response_channels = connection_state.stream_response_channels.clone();
         self.connections
             .write()
             .insert(connection_id, connection_state);
 
         let incoming_rx = incoming_rx.filter_map(move |incoming| {
             let response_channels = response_channels.clone();
+            let stream_response_channels = stream_response_channels.clone();
             async move {
                 let message_id = incoming.id;
                 tracing::debug!(?incoming, "incoming message future: start");
@@ -278,15 +288,34 @@ impl Peer {
                     tracing::debug!(%connection_id, message_id, "incoming message future: end");
                 });
 
-                if let Some(responding_to) = incoming.responding_to {
+                if let Some(proto::ResponseData {
+                    responding_to,
+                    is_last_message,
+                }) = incoming.response_data
+                {
                     tracing::debug!(
                         %connection_id,
                         message_id,
                         responding_to,
                         "incoming response: received"
                     );
-                    let channel = response_channels.lock().as_mut()?.remove(&responding_to);
-                    if let Some(tx) = channel {
+
+                    let response_channel =
+                        response_channels.lock().as_mut()?.remove(&responding_to);
+                    let stream_response_channel = if is_last_message {
+                        stream_response_channels
+                            .lock()
+                            .as_mut()?
+                            .remove(&responding_to)
+                    } else {
+                        stream_response_channels
+                            .lock()
+                            .as_ref()?
+                            .get(&responding_to)
+                            .cloned()
+                    };
+
+                    if let Some(tx) = response_channel {
                         let requester_resumed = oneshot::channel();
                         if let Err(error) = tx.send((incoming, requester_resumed.0)) {
                             tracing::debug!(
@@ -310,6 +339,31 @@ impl Peer {
                             message_id,
                             responding_to,
                             "incoming response: requester resumed"
+                        );
+                    } else if let Some(mut tx) = stream_response_channel {
+                        let requester_resumed = oneshot::channel();
+                        if let Err(error) = tx.send((incoming, requester_resumed.0)).await {
+                            tracing::debug!(
+                                %connection_id,
+                                message_id,
+                                responding_to = responding_to,
+                                ?error,
+                                "incoming stream response: request future dropped",
+                            );
+                        }
+
+                        tracing::debug!(
+                            %connection_id,
+                            message_id,
+                            responding_to,
+                            "incoming stream response: waiting to resume requester"
+                        );
+                        let _ = requester_resumed.1.await;
+                        tracing::debug!(
+                            %connection_id,
+                            message_id,
+                            responding_to,
+                            "incoming stream response: requester resumed"
                         );
                     } else {
                         tracing::warn!(
@@ -423,6 +477,46 @@ impl Peer {
         }
     }
 
+    pub fn request_stream<T: RequestMessage>(
+        &self,
+        receiver_id: ConnectionId,
+        request: T,
+    ) -> impl Future<Output = Result<impl Stream<Item = Result<T::Response>>>> {
+        let (tx, rx) = mpsc::unbounded();
+        let send = self.connection_state(receiver_id).and_then(|connection| {
+            let message_id = connection.next_message_id.fetch_add(1, SeqCst);
+            connection
+                .stream_response_channels
+                .lock()
+                .as_mut()
+                .ok_or_else(|| anyhow!("connection was closed"))?
+                .insert(message_id, tx);
+            connection
+                .outgoing_tx
+                .unbounded_send(proto::Message::Envelope(
+                    request.into_envelope(message_id, None, None),
+                ))
+                .map_err(|_| anyhow!("connection was closed"))?;
+            Ok(())
+        });
+        async move {
+            send?;
+
+            Ok(rx.map(|(response, _barrier)| {
+                if let Some(proto::envelope::Payload::Error(error)) = &response.payload {
+                    Err(anyhow!(
+                        "RPC request {} failed - {}",
+                        T::NAME,
+                        error.message
+                    ))
+                } else {
+                    T::Response::from_envelope(response)
+                        .ok_or_else(|| anyhow!("received response of the wrong type"))
+                }
+            }))
+        }
+    }
+
     pub fn send<T: EnvelopedMessage>(&self, receiver_id: ConnectionId, message: T) -> Result<()> {
         let connection = self.connection_state(receiver_id)?;
         let message_id = connection
@@ -469,7 +563,7 @@ impl Peer {
             .outgoing_tx
             .unbounded_send(proto::Message::Envelope(response.into_envelope(
                 message_id,
-                Some(receipt.message_id),
+                Some((receipt.message_id, true)),
                 None,
             )))?;
         Ok(())
@@ -488,7 +582,7 @@ impl Peer {
             .outgoing_tx
             .unbounded_send(proto::Message::Envelope(response.into_envelope(
                 message_id,
-                Some(receipt.message_id),
+                Some((receipt.message_id, true)),
                 None,
             )))?;
         Ok(())
@@ -509,7 +603,7 @@ impl Peer {
             .outgoing_tx
             .unbounded_send(proto::Message::Envelope(response.into_envelope(
                 message_id,
-                Some(envelope.message_id()),
+                Some((envelope.message_id(), true)),
                 None,
             )))?;
         Ok(())
