@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{borrow::Cow, marker::PhantomData, sync::Arc};
 
 use editor::Editor;
 use gpui::{
@@ -114,9 +114,20 @@ This creates a new `Message` struct with the text "I think we can improve this c
 
                     let text = message.text.clone();
 
-                    Text::new(text, style.text.clone())
-                        .contained()
-                        .with_style(style.container)
+                    enum CopyButton {}
+
+                    Flex::column()
+                        .with_child(
+                            Text::new(text, style.text.clone())
+                                .contained()
+                                .with_style(style.container)
+                                .boxed(),
+                        )
+                        .with_children(if message.from_assistant {
+                            Some(this.render_message_button::<CopyButton, _>(ix, "Copy Text", cx))
+                        } else {
+                            None
+                        })
                         .boxed()
                 },
             ),
@@ -135,6 +146,7 @@ This creates a new `Message` struct with the text "I think we can improve this c
             text: text.clone(),
             from_assistant: false,
         });
+
         let mut reply = "You said: ".to_owned();
         reply.push_str(&text);
         self.messages.push(Message {
@@ -144,6 +156,43 @@ This creates a new `Message` struct with the text "I think we can improve this c
 
         self.message_list.splice(old_len..old_len, 2);
         cx.notify();
+    }
+
+    fn render_message_button<Tag: 'static, I: Into<Cow<'static, str>>>(
+        &self,
+        id: usize,
+        label: I,
+        cx: &mut RenderContext<Self>,
+    ) -> ElementBox {
+        let tooltip_style = cx.global::<Settings>().theme.tooltip.clone();
+
+        struct TooltipTag<T>(PhantomData<T>);
+
+        MouseEventHandler::<Tag>::new(id, cx, |state, cx| {
+            let style = &cx
+                .global::<Settings>()
+                .theme
+                .assistant
+                .message
+                .button
+                .style_for(state, false);
+            Label::new(label, style.text.clone())
+                .contained()
+                .with_style(style.container)
+                .boxed()
+        })
+        .on_click(MouseButton::Left, move |_, _cx| {
+            println!("Clicked!");
+        })
+        .with_cursor_style(CursorStyle::PointingHand)
+        .with_tooltip::<TooltipTag<Tag>, _>(
+            id as usize,
+            "Copy Text".to_owned(),
+            None,
+            tooltip_style,
+            cx,
+        )
+        .boxed()
     }
 }
 

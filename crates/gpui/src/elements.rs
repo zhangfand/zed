@@ -469,7 +469,7 @@ pub trait ParentElement<'a>: Extend<ElementBox> + Sized {
         self.add_children(Some(child));
     }
 
-    fn with_children(mut self, children: impl IntoIterator<Item = ElementBox>) -> Self {
+    fn with_children<I: IntoIterator<Item = ElementBox>>(mut self, children: I) -> Self {
         self.add_children(children);
         self
     }

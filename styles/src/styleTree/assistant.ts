@@ -1,6 +1,6 @@
+import { button } from "../components/button"
 import { ColorScheme } from "../themes/common/colorScheme"
 import { Container } from "../types"
-import { margin } from "../utils/margin"
 import { padding } from "../utils/padding"
 import { background, border, text } from "./components"
 
@@ -77,6 +77,9 @@ export const assistant = (colorScheme: ColorScheme) => {
                 ...text(layer, "sans", "variant", { size: "xs" }),
                 padding: padding(4, 8)
             }
+        },
+        message: {
+            button: button(layer)
         },
         assistant_message: assistant_message_container,
         player_message: player_message_container,

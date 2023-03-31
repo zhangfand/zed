@@ -103,7 +103,7 @@ export interface TextStyle {
     font_id: string
     font_size: number
     font_properties: { style: string; weight: number; stretch: number }
-    underline: Underline
+    underline: Underline | boolean
 }
 export interface Underline {
     color: string
@@ -115,3 +115,9 @@ export type Container = Partial<ContainerStyle>
 export type Text = Partial<TextStyle>
 export type Image = Partial<ImageStyle>
 export interface ContainedText extends Container, Text { }
+
+export interface InteractiveContainer extends ContainedText {
+    hover: ContainedText,
+    clicked: ContainedText,
+    disabled?: ContainedText
+}

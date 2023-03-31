@@ -887,7 +887,13 @@ pub struct AssistantStyle {
     pub assistant_message: ContainedText,
     pub player_message: ContainedText,
     pub player_avatar: ImageStyle,
+    pub message: AssistantMessageStyle,
     pub composer: AssistantComposerStyle,
+}
+
+#[derive(Clone, Deserialize, Default)]
+pub struct AssistantMessageStyle {
+    pub button: Interactive<ContainedText>,
 }
 
 #[derive(Clone, Deserialize, Default)]
