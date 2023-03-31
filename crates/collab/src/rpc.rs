@@ -7,6 +7,7 @@ use crate::{
     AppState, Result,
 };
 use anyhow::anyhow;
+use async_openai::types::{ChatCompletionRequestMessage, CreateChatCompletionRequest, Role};
 use async_tungstenite::tungstenite::{
     protocol::CloseFrame as TungsteniteCloseFrame, Message as TungsteniteMessage,
 };
@@ -73,10 +74,15 @@ lazy_static! {
 type MessageHandler =
     Box<dyn Send + Sync + Fn(Box<dyn AnyTypedEnvelope>, Session) -> BoxFuture<'static, ()>>;
 
-struct Response<R> {
+struct Response<R: RequestMessage> {
     peer: Arc<Peer>,
     receipt: Receipt<R>,
     responded: Arc<AtomicBool>,
+}
+
+struct StreamingResponse<R: RequestMessage> {
+    peer: Arc<Peer>,
+    receipt: Receipt<R>,
 }
 
 impl<R: RequestMessage> Response<R> {
@@ -84,6 +90,19 @@ impl<R: RequestMessage> Response<R> {
         self.responded.store(true, SeqCst);
         self.peer.respond(self.receipt, payload)?;
         Ok(())
+    }
+}
+
+impl<R: RequestMessage> StreamingResponse<R> {
+    fn send(&self, payload: R::Response) -> Result<()> {
+        self.peer.respond(self.receipt, payload)?;
+        Ok(())
+    }
+}
+
+impl<R: RequestMessage> Drop for StreamingResponse<R> {
+    fn drop(&mut self) {
+        self.peer.end_stream(self.receipt).trace_err();
     }
 }
 
@@ -95,6 +114,7 @@ struct Session {
     peer: Arc<Peer>,
     connection_pool: Arc<parking_lot::Mutex<ConnectionPool>>,
     live_kit_client: Option<Arc<dyn live_kit_server::api::Client>>,
+    openai_client: Option<async_openai::Client>,
     executor: Executor,
 }
 
@@ -146,6 +166,7 @@ pub struct Server {
     executor: Executor,
     handlers: HashMap<TypeId, MessageHandler>,
     teardown: watch::Sender<()>,
+    openai_client: Option<async_openai::Client>,
 }
 
 pub(crate) struct ConnectionPoolGuard<'a> {
@@ -171,6 +192,12 @@ where
 
 impl Server {
     pub fn new(id: ServerId, app_state: Arc<AppState>, executor: Executor) -> Arc<Self> {
+        let openai_client = app_state
+            .config
+            .openai_api_key
+            .as_ref()
+            .map(|key| async_openai::Client::new().with_api_key(key.to_owned()));
+
         let mut server = Self {
             id: parking_lot::Mutex::new(id),
             peer: Peer::new(id.0 as u32),
@@ -179,6 +206,7 @@ impl Server {
             connection_pool: Default::default(),
             handlers: Default::default(),
             teardown: watch::channel(()).0,
+            openai_client,
         };
 
         server
@@ -239,6 +267,12 @@ impl Server {
             .add_message_handler(update_followers)
             .add_message_handler(update_diff_base)
             .add_request_handler(get_private_user_info);
+
+        if server.openai_client.is_some() {
+            server.add_streaming_request_handler(handle_assistant_request);
+        } else {
+            tracing::warn!("OpenAI API key not set, assistant will not be available");
+        }
 
         Arc::new(server)
     }
@@ -463,6 +497,45 @@ impl Server {
         })
     }
 
+    fn add_streaming_request_handler<F, Fut, M>(&mut self, handler: F) -> &mut Self
+    where
+        F: 'static + Send + Sync + Fn(M, StreamingResponse<M>, Session) -> Fut,
+        Fut: Send + Future<Output = Result<()>>,
+        M: RequestMessage,
+    {
+        let handler = Arc::new(handler);
+        self.add_handler(move |envelope, session| {
+            let receipt = envelope.receipt();
+            let handler = handler.clone();
+            async move {
+                let peer = session.peer.clone();
+                let responded = Arc::new(AtomicBool::default());
+                let response = StreamingResponse {
+                    peer: peer.clone(),
+                    receipt,
+                };
+                match (handler)(envelope.payload, response, session).await {
+                    Ok(()) => {
+                        if responded.load(std::sync::atomic::Ordering::SeqCst) {
+                            Ok(())
+                        } else {
+                            Err(anyhow!("handler did not send a response"))?
+                        }
+                    }
+                    Err(error) => {
+                        peer.respond_with_error(
+                            receipt,
+                            proto::Error {
+                                message: error.to_string(),
+                            },
+                        )?;
+                        Err(error)
+                    }
+                }
+            }
+        })
+    }
+
     pub fn handle_connection(
         self: &Arc<Self>,
         connection: Connection,
@@ -526,6 +599,7 @@ impl Server {
                 peer: this.peer.clone(),
                 connection_pool: this.connection_pool.clone(),
                 live_kit_client: this.app_state.live_kit_client.clone(),
+                openai_client: this.openai_client.clone(),
                 executor: executor.clone(),
             };
             update_user_contacts(user_id, &session).await?;
@@ -2075,6 +2149,64 @@ async fn get_private_user_info(
         metrics_id,
         staff: user.admin,
     })?;
+    Ok(())
+}
+
+async fn handle_assistant_request(
+    request: proto::AssistantRequest,
+    response: StreamingResponse<proto::AssistantRequest>,
+    session: Session,
+) -> Result<()> {
+    let client = session
+        .openai_client
+        .clone()
+        .ok_or_else(|| anyhow!("openai_client is not present in session"))?;
+
+    let mut stream = client
+        .chat()
+        .create_stream(CreateChatCompletionRequest {
+            model: "gpt-3.5-turbo".to_owned(),
+            messages: request
+                .messages
+                .into_iter()
+                .map(|message| ChatCompletionRequestMessage {
+                    role: match message.role() {
+                        proto::assistant_request_message::Role::System => Role::System,
+                        proto::assistant_request_message::Role::User => Role::User,
+                        proto::assistant_request_message::Role::Assistant => Role::Assistant,
+                    },
+                    content: message.content,
+                    name: None,
+                })
+                .collect(),
+            ..Default::default()
+        })
+        .await
+        .map_err(|error| anyhow!(error))?;
+
+    while let Some(message) = stream.next().await {
+        if let Some(choice) = message
+            .map_err(|error| anyhow!(error))?
+            .choices
+            .into_iter()
+            .next()
+        {
+            response.send(proto::AssistantResponse {
+                index: choice.index,
+                content: choice.delta.content,
+                role: choice.delta.role.map(|role| {
+                    match role {
+                        Role::System => proto::assistant_response::Role::System,
+                        Role::User => proto::assistant_response::Role::User,
+                        Role::Assistant => proto::assistant_response::Role::Assistant,
+                    }
+                    .into()
+                }),
+                finish_reason: choice.finish_reason,
+            })?;
+        }
+    }
+
     Ok(())
 }
 

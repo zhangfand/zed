@@ -20,6 +20,7 @@ rpc = { path = "../rpc" }
 util = { path = "../util" }
 
 anyhow = "1.0.40"
+async-openai = "0.10"
 async-tungstenite = "0.16"
 axum = { version = "0.5", features = ["json", "headers", "ws"] }
 axum-extra = { version = "0.3", features = ["erased-json"] }

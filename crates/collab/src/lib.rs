@@ -98,6 +98,7 @@ pub struct Config {
     pub live_kit_server: Option<String>,
     pub live_kit_key: Option<String>,
     pub live_kit_secret: Option<String>,
+    pub openai_api_key: Option<String>,
     pub rust_log: Option<String>,
     pub log_json: Option<bool>,
     pub zed_environment: String,
