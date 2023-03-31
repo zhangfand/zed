@@ -74,8 +74,9 @@ actions!(
 const MIN_FONT_SIZE: f32 = 6.0;
 
 pub fn init(app_state: &Arc<AppState>, cx: &mut gpui::MutableAppContext) {
-    assistant::init(cx);
     terminal_button::init(cx);
+    assistant::init(cx);
+
     cx.add_action(about);
     cx.add_global_action(|_: &Hide, cx: &mut gpui::MutableAppContext| {
         cx.platform().hide();

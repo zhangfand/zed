@@ -1,10 +1,12 @@
 use std::sync::Arc;
 
 use editor::Editor;
+use futures::FutureExt;
 use gpui::{
     actions, elements::*, CursorStyle, Entity, MouseButton, MutableAppContext, RenderContext, View,
     ViewContext, ViewHandle, WeakViewHandle,
 };
+use language::LanguageRegistry;
 use settings::Settings;
 use theme;
 use workspace::{
@@ -12,12 +14,13 @@ use workspace::{
     StatusItemView, Workspace,
 };
 
-actions!(assistant, [DeployAssistant]);
+actions!(assistant, [DeployAssistant, SendMessage]);
 
 pub struct Assistant {
     composer: ViewHandle<Editor>,
     message_list: ListState,
     list_items: Vec<ListItem>,
+    languages: Arc<LanguageRegistry>,
 }
 
 enum Role {
@@ -27,8 +30,15 @@ enum Role {
 
 enum ListItem {
     Header(Role),
-    Message { role: Role, content: String },
-    CodeMessage { role: Role, content: String },
+    Message {
+        role: Role,
+        content: String,
+    },
+    CodeMessage {
+        role: Role,
+        content: String,
+        language: Option<String>,
+    },
 }
 
 pub struct AssistantButton {
@@ -36,15 +46,13 @@ pub struct AssistantButton {
     active: bool,
 }
 
-actions!(assistant, [SendMessage]);
-
 pub fn init(cx: &mut MutableAppContext) {
     cx.add_action(AssistantButton::deploy_assistant);
     cx.add_action(Assistant::send_message);
 }
 
 impl Assistant {
-    pub fn new(cx: &mut ViewContext<Self>) -> Self {
+    pub fn new(languages: Arc<LanguageRegistry>, cx: &mut ViewContext<Self>) -> Self {
         let request_message_1 = r#"
 How can I add another message to this list in Rust?
 "#
@@ -93,6 +101,7 @@ This creates a new `Message` struct with the text "I think we can improve this c
             ListItem::CodeMessage {
                 content: request_message_2.to_owned(),
                 role: Role::User,
+                language: Some("rust".to_owned()),
             },
             ListItem::Message {
                 content: "Thank you!".to_owned(),
@@ -106,6 +115,7 @@ This creates a new `Message` struct with the text "I think we can improve this c
             ListItem::CodeMessage {
                 content: response_message_2.to_owned(),
                 role: Role::Assistant,
+                language: Some("rust".to_owned()),
             },
             ListItem::Message {
                 content: response_message_3.to_owned(),
@@ -167,21 +177,52 @@ This creates a new `Message` struct with the text "I think we can improve this c
                                 .with_style(style.prose_message.container)
                                 .boxed()
                         }
-                        ListItem::CodeMessage { role, content } => {
+                        ListItem::CodeMessage {
+                            role,
+                            content,
+                            language,
+                        } => {
                             let style = match role {
                                 Role::Assistant => &theme.assistant_message,
                                 Role::User => &theme.player_message,
                             };
 
-                            Text::new(content.to_owned(), style.code_message.text.clone())
-                                .contained()
-                                .with_style(style.code_message.container)
-                                .boxed()
+                            if let Some(language) = language.clone().and_then(|language| {
+                                this.languages
+                                    .language_for_name(&language)
+                                    .now_or_never()?
+                                    .ok()
+                            }) {
+                                let syntax = &cx.global::<Settings>().theme.editor.syntax;
+                                let runs = language
+                                    .highlight_text(&content.as_str().into(), 0..content.len());
+
+                                Text::new(content.to_owned(), style.code_message.text.clone())
+                                    .with_soft_wrap(false)
+                                    .with_highlights(
+                                        runs.iter()
+                                            .filter_map(|(range, id)| {
+                                                id.style(syntax.as_ref())
+                                                    .map(|style| (range.clone(), style))
+                                            })
+                                            .collect(),
+                                    )
+                                    .contained()
+                                    .with_style(style.code_message.container)
+                                    .boxed()
+                            } else {
+                                Text::new(content.to_owned(), style.code_message.text.clone())
+                                    .with_soft_wrap(false)
+                                    .contained()
+                                    .with_style(style.code_message.container)
+                                    .boxed()
+                            }
                         }
                     }
                 },
             ),
             list_items,
+            languages,
         }
     }
 
@@ -192,20 +233,25 @@ This creates a new `Message` struct with the text "I think we can improve this c
             composer.clear(cx);
             text
         });
-        self.list_items.push(ListItem::Header(Role::User));
-        self.list_items.push(ListItem::Message {
-            content: text.clone(),
-            role: Role::User,
-        });
+
         let mut reply = "You said: ".to_owned();
         reply.push_str(&text);
-        self.list_items.push(ListItem::Header(Role::Assistant));
-        self.list_items.push(ListItem::Message {
-            content: reply,
-            role: Role::Assistant,
-        });
+        let new_items = [
+            ListItem::Header(Role::User),
+            ListItem::Message {
+                content: text.clone(),
+                role: Role::User,
+            },
+            ListItem::Header(Role::Assistant),
+            ListItem::Message {
+                content: reply,
+                role: Role::Assistant,
+            },
+        ];
+        let new_item_count = new_items.len();
+        self.list_items.extend(new_items);
 
-        self.message_list.splice(old_len..old_len, 2);
+        self.message_list.splice(old_len..old_len, new_item_count);
         cx.notify();
     }
 }
@@ -280,12 +326,13 @@ impl AssistantButton {
     fn deploy_assistant(&mut self, _: &DeployAssistant, cx: &mut ViewContext<Self>) {
         if let Some(workspace) = self.workspace.upgrade(cx) {
             workspace.update(cx, |workspace, cx| {
+                let languages = workspace.project().read(cx).languages().clone();
                 let assistant = workspace.items_of_type::<Assistant>(cx).next();
                 if let Some(assistant) = assistant {
                     workspace.activate_item(&assistant, cx);
                 } else {
                     workspace.show_dock(true, cx);
-                    let assistant = cx.add_view(|cx| Assistant::new(cx));
+                    let assistant = cx.add_view(|cx| Assistant::new(languages, cx));
                     workspace.add_item_to_dock(Box::new(assistant.clone()), cx);
                 }
             })
