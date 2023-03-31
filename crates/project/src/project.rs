@@ -1235,6 +1235,37 @@ impl Project {
         })
     }
 
+    pub fn open_abs_path(
+        &mut self,
+        abs_path: PathBuf,
+        cx: &mut ModelContext<Self>,
+    ) -> Task<Result<ProjectPath>> {
+        for tree in &self.worktrees {
+            if let Some(tree) = tree.upgrade(cx) {
+                let tree = tree.read(cx);
+                if let Some(relative_path) = tree
+                    .as_local()
+                    .and_then(|tree| abs_path.strip_prefix(tree.abs_path()).ok())
+                {
+                    return Task::ready(Ok(ProjectPath {
+                        worktree_id: tree.id(),
+                        path: relative_path.into(),
+                    }));
+                }
+            }
+        }
+
+        let tree = self.create_local_worktree(abs_path, true, cx);
+        cx.spawn(|_, cx| async move {
+            let tree = tree.await?;
+
+            Ok(ProjectPath {
+                worktree_id: tree.read_with(&cx, |tree, _| tree.id()),
+                path: Path::new("").into(),
+            })
+        })
+    }
+
     pub fn open_local_buffer(
         &mut self,
         abs_path: impl AsRef<Path>,
