@@ -1,54 +1,69 @@
-import { ColorScheme } from "../themes/common/colorScheme"
-import { Container } from "../types"
+import { ColorScheme, Layer } from "../themes/common/colorScheme"
+import { ContainedText, Container, InteractiveContainer } from "../types"
 import { margin } from "../utils/margin"
 import { padding } from "../utils/padding"
 import { background, border, text } from "./components"
 
+type PlayerType = "player" | "assistant"
+
+type ProseMessage = ContainedText
+type CodeMessage = ContainedText
+type Header = ContainedText
+
+
+interface MessageListItems {
+    header: Header
+    prose_message: ProseMessage
+    code_message: CodeMessage
+}
+
 export const assistant = (colorScheme: ColorScheme) => {
-    const layer = colorScheme.highest
+    const layer = colorScheme.middle
 
-    const message_container_common: Container = {
-        corner_radius: 6,
-        padding: padding(6, 10),
-        margin: padding(6, 8),
-    }
+    function build_list_items(
+        layer: Layer,
+        playerType: PlayerType,
+    ): MessageListItems {
+        const listItemCommon = {
+            margin: margin(0, 8),
+            padding: padding(4, 8),
+        }
 
-    const player_message_container: Container = {
-        ...message_container_common,
-        background: background(layer, "accent"),
-        ...text(layer, "sans", "default", { size: "sm" }),
-    }
+        const header: Header = {
+            ...listItemCommon,
+            margin: {
+                top: 8,
+                bottom: 0,
+                left: 0,
+                right: 0
+            },
+            ...text(layer, "sans", "default", { size: "xs" }),
+        }
 
-    const player_avatar = {
-        width: 32,
-        height: 32,
-        corderRadius: 16,
-        border: border(layer, "on", {
-            overlay: true,
-        })
-    }
-
-    const assistant_message_container: Container = {
-        ...message_container_common,
-        ...text(layer, "sans", "default", { size: "sm" }),
-        background: background(layer, "on"),
-    }
-
-    const messageHeader = {
-        image: {
-            width: 20,
-            height: 20,
-            corderRadius: 10,
-        },
-        name: {
+        const prose_message = {
+            ...listItemCommon,
+            background: playerType === "assistant"
+                ? background(colorScheme.lowest)
+                : background(colorScheme.lowest, "accent"),
             ...text(layer, "sans", "default", { size: "sm" }),
-        },
-        time: {
-            ...text(layer, "sans", "variant", { size: "sm" }),
-        },
+        }
+        const code_message = {
+            ...listItemCommon,
+            background: background(colorScheme.highest, "default"),
+            border: border(layer, "default", { overlay: true }),
+            ...text(layer, "mono", "default", { size: "sm" }),
+        }
+
+        const listItems = {
+            header,
+            prose_message,
+            code_message
+        }
+
+        return listItems
     }
 
-    const editor = {
+    const composer_input = {
         minWidth: 200,
         maxWidth: 500,
         padding: padding(8),
@@ -64,7 +79,6 @@ export const assistant = (colorScheme: ColorScheme) => {
         surface: {
             background: background(layer),
         },
-        player_avatar,
         composer: {
             container: {
                 border: border(layer, "variant", {
@@ -72,18 +86,13 @@ export const assistant = (colorScheme: ColorScheme) => {
                 }),
                 padding: padding(8, 8, 2, 8),
             },
-            editor: editor,
+            editor: composer_input,
             footer_label: {
                 ...text(layer, "sans", "variant", { size: "xs" }),
                 padding: padding(4, 8)
             }
         },
-        assistant_message: assistant_message_container,
-        player_message: player_message_container,
-        error_message: {
-            ...assistant_message_container,
-            background: background(layer, "negative"),
-            ...text(layer, "sans", "negative", { size: "sm" }),
-        },
+        assistant_message: build_list_items(layer, "assistant"),
+        player_message: build_list_items(layer, "player"),
     }
 }

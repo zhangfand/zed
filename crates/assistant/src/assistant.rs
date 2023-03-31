@@ -17,12 +17,18 @@ actions!(assistant, [DeployAssistant]);
 pub struct Assistant {
     composer: ViewHandle<Editor>,
     message_list: ListState,
-    messages: Vec<Message>,
+    list_items: Vec<ListItem>,
 }
 
-pub struct Message {
-    text: String,
-    from_assistant: bool,
+enum Role {
+    Assistant,
+    User,
+}
+
+enum ListItem {
+    Header(Role),
+    Message { role: Role, content: String },
+    CodeMessage { role: Role, content: String },
 }
 
 pub struct AssistantButton {
@@ -39,48 +45,71 @@ pub fn init(cx: &mut MutableAppContext) {
 
 impl Assistant {
     pub fn new(cx: &mut ViewContext<Self>) -> Self {
-        let request_message = r#"
+        let request_message_1 = r#"
 How can I add another message to this list in Rust?
-
-```rust
+"#
+        .trim_start()
+        .trim_end();
+        let request_message_2 = r#"
 let messages = vec![
-Message {
-text: "So... what do you think of this code.".to_owned(),
-from_assistant: false,
-},
-Message {
-text: "It's okay, but honestly your job is kind of at risk.".to_owned(),
-from_assistant: true,
-},
+    Message {
+        text: "So... what do you think of this code.".to_owned(),
+        from_assistant: false,
+    },
+    Message {
+        text: "It's okay, but honestly your job is kind of at risk.".to_owned(),
+        from_assistant: true,
+    },
 ];
-```
 "#
         .trim_start()
         .trim_end();
 
-        let response_message = r#"
+        let response_message_1 = r#"
 You can add another message to the `messages` vector by creating a new `Message` struct and pushing it onto the vector using the `push` method. Here's an example:
+"#.trim_start().trim_end();
 
-rust
+        let response_message_2 = r#"
 let new_message = Message {
     text: "I think we can improve this code by using Rust macros.".to_owned(),
     from_assistant: true,
 };
 
 messages.push(new_message);
-```
+"#
+        .trim_start()
+        .trim_end();
 
+        let response_message_3 = r#"
 This creates a new `Message` struct with the text "I think we can improve this code by using Rust macros." and sets the `from_assistant` field to `true`. Then, it uses the `push` method to add the new message to the end of the `messages` vector.
 "#.trim_start().trim_end();
 
-        let messages = vec![
-            Message {
-                text: request_message.to_owned(),
-                from_assistant: false,
+        let list_items = vec![
+            ListItem::Header(Role::User),
+            ListItem::Message {
+                content: request_message_1.to_owned(),
+                role: Role::User,
             },
-            Message {
-                text: response_message.to_owned(),
-                from_assistant: true,
+            ListItem::CodeMessage {
+                content: request_message_2.to_owned(),
+                role: Role::User,
+            },
+            ListItem::Message {
+                content: "Thank you!".to_owned(),
+                role: Role::User,
+            },
+            ListItem::Header(Role::Assistant),
+            ListItem::Message {
+                content: response_message_1.to_owned(),
+                role: Role::Assistant,
+            },
+            ListItem::CodeMessage {
+                content: response_message_2.to_owned(),
+                role: Role::Assistant,
+            },
+            ListItem::Message {
+                content: response_message_3.to_owned(),
+                role: Role::Assistant,
             },
         ];
 
@@ -99,47 +128,81 @@ This creates a new `Message` struct with the text "I think we can improve this c
         Self {
             composer,
             message_list: ListState::new(
-                messages.len(),
+                list_items.len(),
                 Orientation::Bottom,
                 512.,
                 cx,
                 |this, ix, cx| {
-                    let message = &this.messages[ix];
+                    let list_item = &this.list_items[ix];
                     let theme = &cx.global::<Settings>().theme.assistant;
-                    let style = if message.from_assistant {
-                        &theme.assistant_message
-                    } else {
-                        &theme.player_message
-                    };
 
-                    let text = message.text.clone();
+                    match list_item {
+                        ListItem::Header(role) => {
+                            let style;
+                            let label;
+                            match role {
+                                Role::Assistant => {
+                                    style = &theme.assistant_message;
+                                    label = "Assistant"
+                                }
+                                Role::User => {
+                                    style = &theme.player_message;
+                                    label = "You"
+                                }
+                            }
 
-                    Text::new(text, style.text.clone())
-                        .contained()
-                        .with_style(style.container)
-                        .boxed()
+                            Text::new(label, style.header.text.clone())
+                                .contained()
+                                .with_style(style.header.container)
+                                .boxed()
+                        }
+                        ListItem::Message { role, content } => {
+                            let style = match role {
+                                Role::Assistant => &theme.assistant_message,
+                                Role::User => &theme.player_message,
+                            };
+
+                            Text::new(content.to_owned(), style.prose_message.text.clone())
+                                .contained()
+                                .with_style(style.prose_message.container)
+                                .boxed()
+                        }
+                        ListItem::CodeMessage { role, content } => {
+                            let style = match role {
+                                Role::Assistant => &theme.assistant_message,
+                                Role::User => &theme.player_message,
+                            };
+
+                            Text::new(content.to_owned(), style.code_message.text.clone())
+                                .contained()
+                                .with_style(style.code_message.container)
+                                .boxed()
+                        }
+                    }
                 },
             ),
-            messages,
+            list_items,
         }
     }
 
     fn send_message(&mut self, _: &SendMessage, cx: &mut ViewContext<Self>) {
-        let old_len = self.messages.len();
+        let old_len = self.list_items.len();
         let text = self.composer.update(cx, |composer, cx| {
             let text = composer.text(cx);
             composer.clear(cx);
             text
         });
-        self.messages.push(Message {
-            text: text.clone(),
-            from_assistant: false,
+        self.list_items.push(ListItem::Header(Role::User));
+        self.list_items.push(ListItem::Message {
+            content: text.clone(),
+            role: Role::User,
         });
         let mut reply = "You said: ".to_owned();
         reply.push_str(&text);
-        self.messages.push(Message {
-            text: reply,
-            from_assistant: true,
+        self.list_items.push(ListItem::Header(Role::Assistant));
+        self.list_items.push(ListItem::Message {
+            content: reply,
+            role: Role::Assistant,
         });
 
         self.message_list.splice(old_len..old_len, 2);

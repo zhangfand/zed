@@ -884,10 +884,9 @@ pub struct WelcomeStyle {
 #[derive(Clone, Deserialize, Default)]
 pub struct AssistantStyle {
     pub surface: ContainerStyle,
-    pub assistant_message: ContainedText,
-    pub player_message: ContainedText,
-    pub player_avatar: ImageStyle,
     pub composer: AssistantComposerStyle,
+    pub assistant_message: MessageListItems,
+    pub player_message: MessageListItems,
 }
 
 #[derive(Clone, Deserialize, Default)]
@@ -895,6 +894,13 @@ pub struct AssistantComposerStyle {
     pub container: ContainerStyle,
     pub editor: FieldEditor,
     pub footer_label: ContainedText,
+}
+
+#[derive(Clone, Deserialize, Default)]
+pub struct MessageListItems {
+    pub header: ContainedText,
+    pub prose_message: ContainedText,
+    pub code_message: ContainedText,
 }
 
 #[derive(Clone, Deserialize, Default)]
