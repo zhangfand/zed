@@ -340,9 +340,9 @@ impl Peer {
                             responding_to,
                             "incoming response: requester resumed"
                         );
-                    } else if let Some(mut tx) = stream_response_channel {
+                    } else if let Some(tx) = stream_response_channel {
                         let requester_resumed = oneshot::channel();
-                        if let Err(error) = tx.send((Ok(incoming), requester_resumed.0)).await {
+                        if let Err(error) = tx.unbounded_send((Ok(incoming), requester_resumed.0)) {
                             tracing::debug!(
                                 %connection_id,
                                 message_id,
@@ -501,11 +501,11 @@ impl Peer {
         });
 
         async move {
-            let (message_id, response_channels) = send?;
-            let response_channels = Arc::downgrade(&response_channels);
+            let (message_id, stream_response_channels) = send?;
+            let stream_response_channels = Arc::downgrade(&stream_response_channels);
 
             Ok(rx.filter_map(move |(response, _barrier)| {
-                let response_channels = response_channels.clone();
+                let stream_response_channels = stream_response_channels.clone();
                 async move {
                     match response {
                         Ok(response) => {
@@ -520,7 +520,7 @@ impl Peer {
                                 &response.payload
                             {
                                 // Remove the transmitting end of the response channel to end the stream.
-                                if let Some(channels) = response_channels.upgrade() {
+                                if let Some(channels) = stream_response_channels.upgrade() {
                                     if let Some(channels) = channels.lock().as_mut() {
                                         channels.remove(&message_id);
                                     }
@@ -1069,7 +1069,6 @@ mod tests {
                 {
                     peer.respond(envelope.receipt(), envelope.payload.clone())?;
                     peer.respond(envelope.receipt(), envelope.payload.clone())?;
-                    println!("DONE RESPONDING - NOW WAITING");
                 } else {
                     panic!("unknown message type");
                 }
