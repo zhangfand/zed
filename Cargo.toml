@@ -63,6 +63,7 @@ members = [
     "crates/util",
     "crates/vim",
     "crates/workspace",
+    "crates/ws2",
     "crates/welcome",
     "crates/zed",
 ]

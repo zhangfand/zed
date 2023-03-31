@@ -8452,6 +8452,43 @@ dependencies = [
 ]
 
 [[package]]
+name = "ws2"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-recursion 1.0.0",
+ "bincode",
+ "call",
+ "client",
+ "collections",
+ "context_menu",
+ "db",
+ "drag_and_drop",
+ "env_logger",
+ "fs",
+ "futures 0.3.25",
+ "gpui",
+ "indoc",
+ "install_cli",
+ "language",
+ "lazy_static",
+ "log",
+ "menu",
+ "parking_lot 0.11.2",
+ "postage",
+ "project",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "settings",
+ "smallvec",
+ "terminal",
+ "theme",
+ "util",
+ "uuid 1.2.2",
+]
+
+[[package]]
 name = "ws2_32-sys"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
