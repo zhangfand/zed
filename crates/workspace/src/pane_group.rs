@@ -1,4 +1,7 @@
-use crate::{persistence::PaneGroupState, FollowerStatesByLeader, JoinProject, Pane, Workspace};
+use crate::{
+    persistence::PaneGroupState, BackgroundActions, FollowerStatesByLeader, JoinProject, Pane,
+    Workspace,
+};
 use anyhow::{anyhow, Result};
 use call::{ActiveCall, ParticipantLocation};
 use futures::{
@@ -9,7 +12,7 @@ use gpui::{
     elements::*,
     geometry::{rect::RectF, vector::Vector2F},
     Axis, Border, CursorStyle, ModelHandle, MouseButton, MutableAppContext, RenderContext,
-    ViewHandle,
+    ViewContext, ViewHandle,
 };
 use project::Project;
 use serde::Deserialize;
@@ -27,9 +30,13 @@ impl PaneGroup {
         Self { root }
     }
 
-    pub fn new(pane: ViewHandle<Pane>) -> Self {
+    pub fn new(
+        panes: &mut Vec<ViewHandle<Pane>>,
+        background_actions: BackgroundActions,
+        cx: &mut ViewContext<Workspace>,
+    ) -> Self {
         Self {
-            root: Member::Pane(pane),
+            root: Member::Pane(Workspace::add_pane(panes, background_actions, cx)),
         }
     }
 

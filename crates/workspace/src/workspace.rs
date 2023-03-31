@@ -644,6 +644,54 @@ impl Workspace {
         store: Store,
         cx: &mut ViewContext<Self>,
     ) -> Self {
+        let mut panes = Vec::new();
+        let dock = Dock::new(&mut panes, dock_default_factory, background_actions, cx);
+        let center = PaneGroup::new(&mut panes, background_actions, cx);
+        let active_pane = panes.last().unwrap().clone();
+        Self::new_internal(
+            project,
+            background_actions,
+            dock,
+            center,
+            panes,
+            active_pane,
+            store,
+            cx,
+        )
+    }
+
+    // pub fn from_state(
+    //     state: WorkspaceState,
+    //     project: ModelHandle<Project>,
+    //     dock_default_factory: DockDefaultItemFactory,
+    //     background_actions: BackgroundActions,
+    //     store: Store,
+    //     cx: &mut ViewContext<Self>,
+    // ) -> Self {
+    //     let mut panes = Vec::new();
+    //     let dock = Dock::from_state(&mut panes, dock_default_factory, background_actions, cx);
+    //     let center = PaneGroup::new(&mut panes, background_actions, cx);
+    //     Self::new_internal(
+    //         project,
+    //         background_actions,
+    //         dock,
+    //         center_pane,
+    //         panes,
+    //         store,
+    //         cx,
+    //     )
+    // }
+
+    pub fn new_internal(
+        project: ModelHandle<Project>,
+        background_actions: BackgroundActions,
+        dock: Dock,
+        center: PaneGroup,
+        panes: Vec<ViewHandle<Pane>>,
+        active_pane: ViewHandle<Pane>,
+        store: Store,
+        cx: &mut ViewContext<Self>,
+    ) -> Self {
         cx.observe(&project, |_, _, cx| cx.notify()).detach();
         cx.subscribe(&project, move |this, _, event, cx| {
             match event {
@@ -678,23 +726,6 @@ impl Workspace {
         .detach();
 
         let weak_handle = cx.weak_handle();
-
-        let center_pane = cx.add_view(|cx| Pane::new(None, background_actions, cx));
-        let pane_id = center_pane.id();
-        cx.subscribe(&center_pane, move |this, _, event, cx| {
-            this.handle_pane_event(pane_id, event, cx)
-        })
-        .detach();
-        cx.focus(&center_pane);
-        cx.emit(Event::PaneAdded(center_pane.clone()));
-        let dock = Dock::new(
-            weak_handle.id(),
-            dock_default_factory,
-            background_actions,
-            cx,
-        );
-        let dock_pane = dock.pane().clone();
-
         let fs = project.read(cx).fs().clone();
         let user_store = project.read(cx).user_store();
         let client = project.read(cx).client();
@@ -740,7 +771,7 @@ impl Workspace {
         let right_sidebar_buttons =
             cx.add_view(|cx| SidebarButtons::new(right_sidebar.clone(), cx));
         let status_bar = cx.add_view(|cx| {
-            let mut status_bar = StatusBar::new(&center_pane.clone(), cx);
+            let mut status_bar = StatusBar::new(&active_pane, cx);
             status_bar.add_left_item(left_sidebar_buttons, cx);
             status_bar.add_right_item(right_sidebar_buttons, cx);
             status_bar.add_right_item(toggle_dock, cx);
@@ -774,16 +805,13 @@ impl Workspace {
             bounds: WindowBounds::Maximized,
             screen_id: None,
             modal: None,
-            center: PaneGroup::new(center_pane.clone()),
+            center,
             left_sidebar,
             right_sidebar,
-            // When removing an item, the last element remaining in this array
-            // is used to find where focus should fallback to. As such, the order
-            // of these two variables is important.
-            panes: vec![dock_pane.clone(), center_pane.clone()],
+            panes,
             panes_by_item: Default::default(),
-            active_pane: center_pane.clone(),
-            last_active_center_pane: Some(center_pane.downgrade()),
+            last_active_center_pane: Some(active_pane.downgrade()),
+            active_pane,
             status_bar,
             titlebar_item: None,
             dock,
@@ -1484,14 +1512,18 @@ impl Workspace {
         cx.notify();
     }
 
-    fn add_pane(&mut self, cx: &mut ViewContext<Self>) -> ViewHandle<Pane> {
-        let pane = cx.add_view(|cx| Pane::new(None, self.background_actions, cx));
+    fn add_pane(
+        panes: &mut Vec<ViewHandle<Pane>>,
+        background_actions: BackgroundActions,
+        cx: &mut ViewContext<Self>,
+    ) -> ViewHandle<Pane> {
+        let pane = cx.add_view(|cx| Pane::new(None, background_actions, cx));
         let pane_id = pane.id();
         cx.subscribe(&pane, move |this, _, event, cx| {
             this.handle_pane_event(pane_id, event, cx)
         })
         .detach();
-        self.panes.push(pane.clone());
+        panes.push(pane.clone());
         cx.focus(pane.clone());
         cx.emit(Event::PaneAdded(pane.clone()));
         pane
@@ -1752,7 +1784,7 @@ impl Workspace {
 
         let item = pane.read(cx).active_item()?;
         let maybe_pane_handle = if let Some(clone) = item.clone_on_split(cx.as_mut()) {
-            let new_pane = self.add_pane(cx);
+            let new_pane = Self::add_pane(&mut self.panes, self.background_actions, cx);
             Pane::add_item(self, &new_pane, clone, true, true, None, cx);
             self.center.split(&pane, &new_pane, direction).unwrap();
             Some(new_pane)
@@ -1771,7 +1803,7 @@ impl Workspace {
             return;
         }
 
-        let new_pane = self.add_pane(cx);
+        let new_pane = Self::add_pane(&mut self.panes, self.background_actions, cx);
         Pane::move_item(
             self,
             from.clone(),
@@ -1797,7 +1829,7 @@ impl Workspace {
             return None;
         }
 
-        let new_pane = self.add_pane(cx);
+        let new_pane = Self::add_pane(&mut self.panes, self.background_actions, cx);
         self.center
             .split(&pane_to_split, &new_pane, action.split_direction)
             .unwrap();

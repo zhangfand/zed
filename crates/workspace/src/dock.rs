@@ -181,23 +181,13 @@ pub struct Dock {
 
 impl Dock {
     pub fn new(
-        workspace_id: usize,
+        panes: &mut Vec<ViewHandle<Pane>>,
         default_item_factory: DockDefaultItemFactory,
         background_actions: BackgroundActions,
         cx: &mut ViewContext<Workspace>,
     ) -> Self {
         let position = DockPosition::Hidden(cx.global::<Settings>().default_dock_anchor);
-
-        let pane = cx.add_view(|cx| Pane::new(Some(position.anchor()), background_actions, cx));
-        pane.update(cx, |pane, cx| {
-            pane.set_active(false, cx);
-        });
-        let pane_id = pane.id();
-        cx.subscribe(&pane, move |workspace, _, event, cx| {
-            workspace.handle_pane_event(pane_id, event, cx);
-        })
-        .detach();
-
+        let pane = Workspace::add_pane(panes, background_actions, cx);
         Self {
             pane,
             panel_sizes: Default::default(),
