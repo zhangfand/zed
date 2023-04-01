@@ -11,7 +11,7 @@ use futures::{
 };
 use parking_lot::{Mutex, RwLock};
 use serde::{ser::SerializeStruct, Serialize};
-use std::{fmt, sync::atomic::Ordering::SeqCst};
+use std::{fmt, future, sync::atomic::Ordering::SeqCst};
 use std::{
     future::Future,
     marker::PhantomData,
@@ -481,7 +481,7 @@ impl Peer {
         &self,
         receiver_id: ConnectionId,
         request: T,
-    ) -> impl Future<Output = Result<impl Stream<Item = Result<T::Response>>>> {
+    ) -> impl Future<Output = Result<impl Unpin + Stream<Item = Result<T::Response>>>> {
         let (tx, rx) = mpsc::unbounded();
         let send = self.connection_state(receiver_id).and_then(|connection| {
             let message_id = connection.next_message_id.fetch_add(1, SeqCst);
@@ -506,37 +506,33 @@ impl Peer {
 
             Ok(rx.filter_map(move |(response, _barrier)| {
                 let stream_response_channels = stream_response_channels.clone();
-                async move {
-                    match response {
-                        Ok(response) => {
-                            if let Some(proto::envelope::Payload::Error(error)) = &response.payload
-                            {
-                                Some(Err(anyhow!(
-                                    "RPC request {} failed - {}",
-                                    T::NAME,
-                                    error.message
-                                )))
-                            } else if let Some(proto::envelope::Payload::EndStream(_)) =
-                                &response.payload
-                            {
-                                // Remove the transmitting end of the response channel to end the stream.
-                                if let Some(channels) = stream_response_channels.upgrade() {
-                                    if let Some(channels) = channels.lock().as_mut() {
-                                        channels.remove(&message_id);
-                                    }
+                future::ready(match response {
+                    Ok(response) => {
+                        if let Some(proto::envelope::Payload::Error(error)) = &response.payload {
+                            Some(Err(anyhow!(
+                                "RPC request {} failed - {}",
+                                T::NAME,
+                                error.message
+                            )))
+                        } else if let Some(proto::envelope::Payload::EndStream(_)) =
+                            &response.payload
+                        {
+                            // Remove the transmitting end of the response channel to end the stream.
+                            if let Some(channels) = stream_response_channels.upgrade() {
+                                if let Some(channels) = channels.lock().as_mut() {
+                                    channels.remove(&message_id);
                                 }
-                                None
-                            } else {
-                                Some(
-                                    T::Response::from_envelope(response).ok_or_else(|| {
-                                        anyhow!("received response of the wrong type")
-                                    }),
-                                )
                             }
+                            None
+                        } else {
+                            Some(
+                                T::Response::from_envelope(response)
+                                    .ok_or_else(|| anyhow!("received response of the wrong type")),
+                            )
                         }
-                        Err(error) => Some(Err(error)),
                     }
-                }
+                    Err(error) => Some(Err(error)),
+                })
             }))
         }
     }
