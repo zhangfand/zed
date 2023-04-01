@@ -1253,7 +1253,7 @@ impl Project {
 
     /// Eventually, we want this to be the way to open a file of any type, such as images,
     /// but it currently only opens buffers. That's why we return an abstract ProjectItemHandle.
-    pub fn open(
+    pub fn open_path2(
         &mut self,
         path: WorktreePath,
         cx: &mut ModelContext<Self>,

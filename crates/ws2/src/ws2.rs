@@ -181,6 +181,9 @@ impl Workspace {
         self.pane_tree.pane_mut(self.active_pane_id).unwrap()
     }
 
+    /// Opens the file at the given absolute path. If no worktree for that path
+    /// exists in the project, one is added automatically. Then the path is opened
+    /// with Self::open_path.
     pub fn open_abs_path(
         &self,
         abs_path: impl Into<PathBuf>,
@@ -193,34 +196,56 @@ impl Workspace {
         cx.spawn(|this, mut cx| async move {
             let worktree_path = worktree_path.await?;
             let pane_item = this
-                .update(&mut cx, |this, cx| this.open(worktree_path, cx))
+                .update(&mut cx, |this, cx| this.open_path(worktree_path, cx))
                 .await?;
             Ok(pane_item)
         })
     }
 
-    pub fn open(
+    /// Open the given WorktreePath in the workspace if it exists. If the path
+    /// points at a directory, emit an event notifying other parts of the UI
+    /// that it was opened. Otherwise activate or add a ProjectPaneItem to the
+    /// active pane for the ProjectItem opened at this path.
+    pub fn open_path(
         &mut self,
         path: WorktreePath,
         cx: &mut ViewContext<Self>,
     ) -> Task<Result<Box<dyn ProjectPaneItemHandle>>> {
-        let project_item = self
+        let entry = self
             .project
-            .update(cx, |project, cx| project.open(path, cx));
+            .update(cx, |project, cx| project.entry_for_path(&path, cx));
+
         cx.spawn(|this, mut cx| async move {
-            let project_item = project_item.await?;
-            this.update(&mut cx, |this, cx| {
-                let active_pane = this.active_pane_mut();
-                if let Some(existing_item) =
-                    active_pane.activate_project_item(project_item.as_ref(), cx)
-                {
-                    Ok(existing_item)
-                } else {
-                    let project_pane_item = build_project_pane_item(project_item, cx)?;
-                    active_pane.add_item(project_pane_item.as_pane_item().boxed_clone(), cx);
-                    Ok(project_pane_item)
-                }
-            })
+            let entry =
+                entry.ok_or_else(|| anyhow!("could not find project entry for path {:?}", path))?;
+
+            if entry.is_dir() {
+                // If the entry is a directory, emit an event so that other parts of the UI
+                // are notified, such as the project browser.
+                todo!();
+            } else {
+                // If the entry is a file, open a project item for it and display it in
+                // the active pane.
+                let project_item = this
+                    .update(&mut cx, |this, cx| {
+                        this.project
+                            .update(cx, |project, cx| project.open_path2(path, cx))
+                    })
+                    .await?;
+
+                this.update(&mut cx, |this, cx| {
+                    let active_pane = this.active_pane_mut();
+                    if let Some(existing_item) =
+                        active_pane.activate_project_item(project_item.as_ref(), cx)
+                    {
+                        Ok(existing_item)
+                    } else {
+                        let project_pane_item = build_project_pane_item(project_item, cx)?;
+                        active_pane.add_item(project_pane_item.as_pane_item().boxed_clone(), cx);
+                        Ok(project_pane_item)
+                    }
+                })
+            }
         })
     }
 
