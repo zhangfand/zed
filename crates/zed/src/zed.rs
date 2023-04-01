@@ -264,6 +264,7 @@ pub fn init(app_state: &Arc<AppState>, cx: &mut gpui::MutableAppContext) {
         },
     );
     activity_indicator::init(cx);
+    copilot_button::init(cx);
     call::init(app_state.client.clone(), app_state.user_store.clone(), cx);
     settings::KeymapFileContent::load_defaults(cx);
 }
@@ -315,6 +316,7 @@ pub fn initialize_workspace(
 
     let toggle_terminal = cx.add_view(|cx| TerminalButton::new(workspace_handle.clone(), cx));
     let toggle_assistant = cx.add_view(|_| AssistantButton::new(workspace_handle.clone()));
+    let copilot = cx.add_view(|cx| copilot_button::CopilotButton::new(cx));
     let diagnostic_summary =
         cx.add_view(|cx| diagnostics::items::DiagnosticIndicator::new(workspace.project(), cx));
     let activity_indicator =
@@ -329,6 +331,7 @@ pub fn initialize_workspace(
         status_bar.add_right_item(toggle_terminal, cx);
         status_bar.add_right_item(toggle_assistant, cx);
         status_bar.add_right_item(feedback_button, cx);
+        status_bar.add_right_item(copilot, cx);
         status_bar.add_right_item(active_buffer_language, cx);
         status_bar.add_right_item(cursor_position, cx);
     });
@@ -657,12 +660,12 @@ fn open_bundled_file(
 mod tests {
     use super::*;
     use assets::Assets;
-    use client::test::FakeHttpClient;
     use editor::{scroll::autoscroll::Autoscroll, DisplayPoint, Editor};
     use gpui::{
         executor::Deterministic, AssetSource, MutableAppContext, TestAppContext, ViewHandle,
     };
     use language::LanguageRegistry;
+    use node_runtime::NodeRuntime;
     use project::{Project, ProjectPath};
     use serde_json::json;
     use std::{
@@ -670,6 +673,7 @@ mod tests {
         path::{Path, PathBuf},
     };
     use theme::ThemeRegistry;
+    use util::http::FakeHttpClient;
     use workspace::{
         item::{Item, ItemHandle},
         open_new, open_paths, pane, NewFile, Pane, SplitDirection, WorkspaceHandle,
@@ -1856,12 +1860,9 @@ mod tests {
         languages.set_executor(cx.background().clone());
         let languages = Arc::new(languages);
         let themes = ThemeRegistry::new((), cx.font_cache().clone());
-        languages::init(
-            FakeHttpClient::with_404_response(),
-            cx.background().clone(),
-            languages.clone(),
-            themes,
-        );
+        let http = FakeHttpClient::with_404_response();
+        let node_runtime = NodeRuntime::new(http, cx.background().to_owned());
+        languages::init(languages.clone(), themes, node_runtime);
         for name in languages.language_names() {
             languages.language_for_name(&name);
         }

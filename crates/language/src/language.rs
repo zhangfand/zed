@@ -10,7 +10,6 @@ mod buffer_tests;
 
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
-use client::http::HttpClient;
 use collections::HashMap;
 use futures::{
     channel::oneshot,
@@ -20,6 +19,7 @@ use futures::{
 use gpui::{executor::Background, MutableAppContext, Task};
 use highlight_map::HighlightMap;
 use lazy_static::lazy_static;
+use lsp::CodeActionKind;
 use parking_lot::{Mutex, RwLock};
 use postage::watch;
 use regex::Regex;
@@ -45,6 +45,7 @@ use syntax_map::SyntaxSnapshot;
 use theme::{SyntaxTheme, Theme};
 use tree_sitter::{self, Query};
 use unicase::UniCase;
+use util::http::HttpClient;
 use util::{merge_json_value_into, post_inc, ResultExt, TryFutureExt as _, UnwrapFuture};
 
 #[cfg(any(test, feature = "test-support"))]
@@ -140,6 +141,10 @@ impl CachedLspAdapter {
         self.adapter.cached_server_binary(container_dir).await
     }
 
+    pub fn code_action_kinds(&self) -> Option<Vec<CodeActionKind>> {
+        self.adapter.code_action_kinds()
+    }
+
     pub fn workspace_configuration(
         &self,
         cx: &mut MutableAppContext,
@@ -223,6 +228,16 @@ pub trait LspAdapter: 'static + Send + Sync {
         _: &mut MutableAppContext,
     ) -> Option<BoxFuture<'static, Value>> {
         None
+    }
+
+    fn code_action_kinds(&self) -> Option<Vec<CodeActionKind>> {
+        Some(vec![
+            CodeActionKind::EMPTY,
+            CodeActionKind::QUICKFIX,
+            CodeActionKind::REFACTOR,
+            CodeActionKind::REFACTOR_EXTRACT,
+            CodeActionKind::SOURCE,
+        ])
     }
 
     async fn disk_based_diagnostic_sources(&self) -> Vec<String> {
@@ -825,6 +840,7 @@ impl LanguageRegistry {
                 &binary.path,
                 &binary.arguments,
                 &root_path,
+                adapter.code_action_kinds(),
                 cx,
             )?;
 

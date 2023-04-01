@@ -1,7 +1,7 @@
 import { ColorScheme } from "../themes/common/colorScheme"
 import { withOpacity } from "../utils/color"
 import { assistant } from "./assistant"
-import { background, border, borderColor, foreground, text } from "./components"
+import { background, border, borderColor, foreground, svg, text } from "./components"
 import statusBar from "./statusBar"
 import tabBar from "./tabBar"
 
@@ -47,27 +47,14 @@ export default function workspace(colorScheme: ColorScheme) {
                 width: 256,
                 height: 256,
             },
-            logo: {
-                color: withOpacity("#000000", colorScheme.isLight ? 0.6 : 0.8),
-                icon: "icons/logo_96.svg",
-                dimensions: {
-                    width: 256,
-                    height: 256,
-                },
-            },
-            logoShadow: {
-                color: withOpacity(
-                    colorScheme.isLight
-                        ? "#FFFFFF"
-                        : colorScheme.lowest.base.default.background,
-                    colorScheme.isLight ? 1 : 0.6
-                ),
-                icon: "icons/logo_96.svg",
-                dimensions: {
-                    width: 256,
-                    height: 256,
-                },
-            },
+            logo: svg(withOpacity("#000000", colorScheme.isLight ? 0.6 : 0.8), "icons/logo_96.svg", 256, 256),
+
+            logoShadow: svg(withOpacity(
+                colorScheme.isLight
+                    ? "#FFFFFF"
+                    : colorScheme.lowest.base.default.background,
+                colorScheme.isLight ? 1 : 0.6
+            ), "icons/logo_96.svg", 256, 256),
             keyboardHints: {
                 margin: {
                     top: 96,

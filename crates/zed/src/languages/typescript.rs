@@ -1,9 +1,9 @@
-use super::node_runtime::NodeRuntime;
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use client::http::HttpClient;
 use futures::StreamExt;
 use language::{LanguageServerBinary, LanguageServerName, LspAdapter};
+use lsp::CodeActionKind;
+use node_runtime::NodeRuntime;
 use serde_json::json;
 use smol::fs;
 use std::{
@@ -12,6 +12,7 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
+use util::http::HttpClient;
 use util::ResultExt;
 
 fn server_binary_arguments(server_path: &Path) -> Vec<OsString> {
@@ -67,14 +68,7 @@ impl LspAdapter for TypeScriptLspAdapter {
         container_dir: PathBuf,
     ) -> Result<LanguageServerBinary> {
         let versions = versions.downcast::<Versions>().unwrap();
-        let version_dir = container_dir.join(&format!(
-            "typescript-{}:server-{}",
-            versions.typescript_version, versions.server_version
-        ));
-        fs::create_dir_all(&version_dir)
-            .await
-            .context("failed to create version directory")?;
-        let server_path = version_dir.join(Self::NEW_SERVER_PATH);
+        let server_path = container_dir.join(Self::NEW_SERVER_PATH);
 
         if fs::metadata(&server_path).await.is_err() {
             self.node
@@ -86,20 +80,9 @@ impl LspAdapter for TypeScriptLspAdapter {
                             versions.server_version.as_str(),
                         ),
                     ],
-                    &version_dir,
+                    &container_dir,
                 )
                 .await?;
-
-            if let Some(mut entries) = fs::read_dir(&container_dir).await.log_err() {
-                while let Some(entry) = entries.next().await {
-                    if let Some(entry) = entry.log_err() {
-                        let entry_path = entry.path();
-                        if entry_path.as_path() != version_dir {
-                            fs::remove_dir_all(&entry_path).await.log_err();
-                        }
-                    }
-                }
-            }
         }
 
         Ok(LanguageServerBinary {
@@ -140,6 +123,15 @@ impl LspAdapter for TypeScriptLspAdapter {
         })()
         .await
         .log_err()
+    }
+
+    fn code_action_kinds(&self) -> Option<Vec<CodeActionKind>> {
+        Some(vec![
+            CodeActionKind::QUICKFIX,
+            CodeActionKind::REFACTOR,
+            CodeActionKind::REFACTOR_EXTRACT,
+            CodeActionKind::SOURCE,
+        ])
     }
 
     async fn label_for_completion(

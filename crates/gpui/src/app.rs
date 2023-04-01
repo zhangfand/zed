@@ -254,6 +254,19 @@ impl App {
         self
     }
 
+    /// Handle the application being re-activated when no windows are open.
+    pub fn on_reopen<F>(&mut self, mut callback: F) -> &mut Self
+    where
+        F: 'static + FnMut(&mut MutableAppContext),
+    {
+        let cx = self.0.clone();
+        self.0
+            .borrow_mut()
+            .foreground_platform
+            .on_reopen(Box::new(move || callback(&mut *cx.borrow_mut())));
+        self
+    }
+
     pub fn on_event<F>(&mut self, mut callback: F) -> &mut Self
     where
         F: 'static + FnMut(Event, &mut MutableAppContext) -> bool,
@@ -276,9 +289,7 @@ impl App {
         self.0
             .borrow_mut()
             .foreground_platform
-            .on_open_urls(Box::new(move |paths| {
-                callback(paths, &mut *cx.borrow_mut())
-            }));
+            .on_open_urls(Box::new(move |urls| callback(urls, &mut *cx.borrow_mut())));
         self
     }
 
@@ -763,6 +774,12 @@ impl MutableAppContext {
             .map_or(false, |(_, window)| {
                 window.is_topmost_for_position(position)
             })
+    }
+
+    pub fn has_window(&self, window_id: usize) -> bool {
+        self.window_ids()
+            .find(|window| window == &window_id)
+            .is_some()
     }
 
     pub fn window_ids(&self) -> impl Iterator<Item = usize> + '_ {

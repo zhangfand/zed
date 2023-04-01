@@ -1174,7 +1174,6 @@ dependencies = [
  "futures 0.3.28",
  "gpui",
  "image",
- "isahc",
  "lazy_static",
  "log",
  "parking_lot 0.11.2",
@@ -1392,6 +1391,48 @@ dependencies = [
  "settings",
  "smallvec",
  "theme",
+]
+
+[[package]]
+name = "copilot"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-compression",
+ "async-tar",
+ "client",
+ "collections",
+ "context_menu",
+ "futures 0.3.28",
+ "gpui",
+ "language",
+ "log",
+ "lsp",
+ "node_runtime",
+ "serde",
+ "serde_derive",
+ "settings",
+ "smol",
+ "theme",
+ "util",
+ "workspace",
+]
+
+[[package]]
+name = "copilot_button"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "context_menu",
+ "copilot",
+ "editor",
+ "futures 0.3.28",
+ "gpui",
+ "settings",
+ "smol",
+ "theme",
+ "util",
+ "workspace",
 ]
 
 [[package]]
@@ -2060,6 +2101,7 @@ dependencies = [
  "clock",
  "collections",
  "context_menu",
+ "copilot",
  "ctor",
  "db",
  "drag_and_drop",
@@ -4085,6 +4127,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "node_runtime"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-compression",
+ "async-tar",
+ "futures 0.3.28",
+ "gpui",
+ "parking_lot 0.11.2",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "smol",
+ "util",
+]
+
+[[package]]
 name = "nom"
 version = "7.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5188,6 +5247,7 @@ dependencies = [
  "settings",
  "smol",
  "text",
+ "util",
  "workspace",
 ]
 
@@ -6092,6 +6152,7 @@ dependencies = [
  "gpui",
  "json_comments",
  "postage",
+ "pretty_assertions",
  "schemars",
  "serde",
  "serde_derive",
@@ -7721,11 +7782,15 @@ dependencies = [
  "dirs 3.0.2",
  "futures 0.3.28",
  "git2",
+ "isahc",
  "lazy_static",
  "log",
  "rand 0.8.5",
+ "serde",
  "serde_json",
+ "smol",
  "tempdir",
+ "url",
 ]
 
 [[package]]
@@ -8695,6 +8760,8 @@ dependencies = [
  "collections",
  "command_palette",
  "context_menu",
+ "copilot",
+ "copilot_button",
  "ctor",
  "db",
  "diagnostics",
@@ -8721,6 +8788,7 @@ dependencies = [
  "libc",
  "log",
  "lsp",
+ "node_runtime",
  "num_cpus",
  "outline",
  "parking_lot 0.11.2",

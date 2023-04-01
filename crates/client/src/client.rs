@@ -1,7 +1,6 @@
 #[cfg(any(test, feature = "test-support"))]
 pub mod test;
 
-pub mod http;
 pub mod telemetry;
 pub mod user;
 
@@ -20,7 +19,6 @@ use gpui::{
     AnyModelHandle, AnyViewHandle, AnyWeakModelHandle, AnyWeakViewHandle, AppContext, AppVersion,
     AsyncAppContext, Entity, ModelHandle, MutableAppContext, Task, View, ViewContext, ViewHandle,
 };
-use http::HttpClient;
 use lazy_static::lazy_static;
 use parking_lot::RwLock;
 use postage::watch;
@@ -43,6 +41,7 @@ use telemetry::Telemetry;
 use thiserror::Error;
 use url::Url;
 use util::channel::ReleaseChannel;
+use util::http::HttpClient;
 use util::{ResultExt, TryFutureExt};
 
 pub use rpc::*;
@@ -132,7 +131,7 @@ pub enum EstablishConnectionError {
     #[error("{0}")]
     Other(#[from] anyhow::Error),
     #[error("{0}")]
-    Http(#[from] http::Error),
+    Http(#[from] util::http::Error),
     #[error("{0}")]
     Io(#[from] std::io::Error),
     #[error("{0}")]
@@ -1422,10 +1421,11 @@ pub fn decode_worktree_url(url: &str) -> Option<(u64, String)> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test::{FakeHttpClient, FakeServer};
+    use crate::test::FakeServer;
     use gpui::{executor::Deterministic, TestAppContext};
     use parking_lot::Mutex;
     use std::future;
+    use util::http::FakeHttpClient;
 
     #[gpui::test(iterations = 10)]
     async fn test_reconnection(cx: &mut TestAppContext) {

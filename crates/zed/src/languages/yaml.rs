@@ -1,10 +1,9 @@
-use super::node_runtime::NodeRuntime;
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use client::http::HttpClient;
 use futures::{future::BoxFuture, FutureExt, StreamExt};
 use gpui::MutableAppContext;
 use language::{LanguageServerBinary, LanguageServerName, LspAdapter};
+use node_runtime::NodeRuntime;
 use serde_json::Value;
 use settings::Settings;
 use smol::fs;
@@ -15,6 +14,7 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
+use util::http::HttpClient;
 use util::ResultExt;
 
 fn server_binary_arguments(server_path: &Path) -> Vec<OsString> {
@@ -57,27 +57,12 @@ impl LspAdapter for YamlLspAdapter {
         container_dir: PathBuf,
     ) -> Result<LanguageServerBinary> {
         let version = version.downcast::<String>().unwrap();
-        let version_dir = container_dir.join(version.as_str());
-        fs::create_dir_all(&version_dir)
-            .await
-            .context("failed to create version directory")?;
-        let server_path = version_dir.join(Self::SERVER_PATH);
+        let server_path = container_dir.join(Self::SERVER_PATH);
 
         if fs::metadata(&server_path).await.is_err() {
             self.node
-                .npm_install_packages([("yaml-language-server", version.as_str())], &version_dir)
+                .npm_install_packages([("yaml-language-server", version.as_str())], &container_dir)
                 .await?;
-
-            if let Some(mut entries) = fs::read_dir(&container_dir).await.log_err() {
-                while let Some(entry) = entries.next().await {
-                    if let Some(entry) = entry.log_err() {
-                        let entry_path = entry.path();
-                        if entry_path.as_path() != version_dir {
-                            fs::remove_dir_all(&entry_path).await.log_err();
-                        }
-                    }
-                }
-            }
         }
 
         Ok(LanguageServerBinary {

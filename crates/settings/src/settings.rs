@@ -21,7 +21,7 @@ use sqlez::{
 use std::{collections::HashMap, num::NonZeroU32, str, sync::Arc};
 use theme::{Theme, ThemeRegistry};
 use tree_sitter::Query;
-use util::ResultExt as _;
+use util::{RangeExt, ResultExt as _};
 
 pub use keymap_file::{keymap_file_json_schema, KeymapFileContent};
 pub use watched_json::watch_files;
@@ -32,6 +32,7 @@ pub struct Settings {
     pub buffer_font_features: fonts::Features,
     pub buffer_font_family: FamilyId,
     pub default_buffer_font_size: f32,
+    pub enable_copilot_integration: bool,
     pub buffer_font_size: f32,
     pub active_pane_magnification: f32,
     pub cursor_blink: bool,
@@ -58,6 +59,29 @@ pub struct Settings {
     pub telemetry_overrides: TelemetrySettings,
     pub auto_update: bool,
     pub base_keymap: BaseKeymap,
+}
+
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum CopilotSettings {
+    #[default]
+    On,
+    Off,
+}
+
+impl From<CopilotSettings> for bool {
+    fn from(value: CopilotSettings) -> Self {
+        match value {
+            CopilotSettings::On => true,
+            CopilotSettings::Off => false,
+        }
+    }
+}
+
+impl CopilotSettings {
+    pub fn is_on(&self) -> bool {
+        <CopilotSettings as Into<bool>>::into(*self)
+    }
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Default)]
@@ -153,6 +177,42 @@ pub struct EditorSettings {
     pub ensure_final_newline_on_save: Option<bool>,
     pub formatter: Option<Formatter>,
     pub enable_language_server: Option<bool>,
+    pub copilot: Option<OnOff>,
+}
+
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum OnOff {
+    On,
+    Off,
+}
+
+impl OnOff {
+    pub fn as_bool(&self) -> bool {
+        match self {
+            OnOff::On => true,
+            OnOff::Off => false,
+        }
+    }
+
+    pub fn from_bool(value: bool) -> OnOff {
+        match value {
+            true => OnOff::On,
+            false => OnOff::Off,
+        }
+    }
+}
+
+impl From<OnOff> for bool {
+    fn from(value: OnOff) -> bool {
+        value.as_bool()
+    }
+}
+
+impl From<bool> for OnOff {
+    fn from(value: bool) -> OnOff {
+        OnOff::from_bool(value)
+    }
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
@@ -375,6 +435,8 @@ pub struct SettingsFileContent {
     pub auto_update: Option<bool>,
     #[serde(default)]
     pub base_keymap: Option<BaseKeymap>,
+    #[serde(default)]
+    pub enable_copilot_integration: Option<bool>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
@@ -436,6 +498,7 @@ impl Settings {
                 format_on_save: required(defaults.editor.format_on_save),
                 formatter: required(defaults.editor.formatter),
                 enable_language_server: required(defaults.editor.enable_language_server),
+                copilot: required(defaults.editor.copilot),
             },
             editor_overrides: Default::default(),
             git: defaults.git.unwrap(),
@@ -452,6 +515,7 @@ impl Settings {
             telemetry_overrides: Default::default(),
             auto_update: defaults.auto_update.unwrap(),
             base_keymap: Default::default(),
+            enable_copilot_integration: defaults.enable_copilot_integration.unwrap(),
         }
     }
 
@@ -503,6 +567,10 @@ impl Settings {
         merge(&mut self.autosave, data.autosave);
         merge(&mut self.default_dock_anchor, data.default_dock_anchor);
         merge(&mut self.base_keymap, data.base_keymap);
+        merge(
+            &mut self.enable_copilot_integration,
+            data.enable_copilot_integration,
+        );
 
         self.editor_overrides = data.editor;
         self.git_overrides = data.git.unwrap_or_default();
@@ -524,6 +592,14 @@ impl Settings {
         self.language_defaults
             .insert(language_name.into(), overrides);
         self
+    }
+
+    pub fn copilot_on(&self, language: Option<&str>) -> bool {
+        if self.enable_copilot_integration {
+            self.language_setting(language, |settings| settings.copilot.map(Into::into))
+        } else {
+            false
+        }
     }
 
     pub fn tab_size(&self, language: Option<&str>) -> NonZeroU32 {
@@ -662,6 +738,7 @@ impl Settings {
                 format_on_save: Some(FormatOnSave::On),
                 formatter: Some(Formatter::LanguageServer),
                 enable_language_server: Some(true),
+                copilot: Some(OnOff::On),
             },
             editor_overrides: Default::default(),
             journal_defaults: Default::default(),
@@ -681,6 +758,7 @@ impl Settings {
             telemetry_overrides: Default::default(),
             auto_update: true,
             base_keymap: Default::default(),
+            enable_copilot_integration: true,
         }
     }
 
@@ -770,6 +848,9 @@ pub fn parse_json_with_comments<T: DeserializeOwned>(content: &str) -> Result<T>
 }
 
 fn write_settings_key(settings_content: &mut String, key_path: &[&str], new_value: &Value) {
+    const LANGUAGE_OVERRIDES: &'static str = "language_overrides";
+    const LANGAUGES: &'static str = "languages";
+
     let mut parser = tree_sitter::Parser::new();
     parser.set_language(tree_sitter_json::language()).unwrap();
     let tree = parser.parse(&settings_content, None).unwrap();
@@ -786,7 +867,10 @@ fn write_settings_key(settings_content: &mut String, key_path: &[&str], new_valu
     )
     .unwrap();
 
+    let has_language_overrides = settings_content.contains(LANGUAGE_OVERRIDES);
+
     let mut depth = 0;
+    let mut last_value_range = 0..0;
     let mut first_key_start = None;
     let mut existing_value_range = 0..settings_content.len();
     let matches = cursor.matches(&query, tree.root_node(), settings_content.as_bytes());
@@ -798,6 +882,14 @@ fn write_settings_key(settings_content: &mut String, key_path: &[&str], new_valu
         let key_range = mat.captures[0].node.byte_range();
         let value_range = mat.captures[1].node.byte_range();
 
+        // Don't enter sub objects until we find an exact
+        // match for the current keypath
+        if last_value_range.contains_inclusive(&value_range) {
+            continue;
+        }
+
+        last_value_range = value_range.clone();
+
         if key_range.start > existing_value_range.end {
             break;
         }
@@ -806,11 +898,19 @@ fn write_settings_key(settings_content: &mut String, key_path: &[&str], new_valu
 
         let found_key = settings_content
             .get(key_range.clone())
-            .map(|key_text| key_text == format!("\"{}\"", key_path[depth]))
+            .map(|key_text| {
+                if key_path[depth] == LANGAUGES && has_language_overrides {
+                    return key_text == format!("\"{}\"", LANGUAGE_OVERRIDES);
+                } else {
+                    return key_text == format!("\"{}\"", key_path[depth]);
+                }
+            })
             .unwrap_or(false);
 
         if found_key {
             existing_value_range = value_range;
+            // Reset last value range when increasing in depth
+            last_value_range = existing_value_range.start..existing_value_range.start;
             depth += 1;
 
             if depth == key_path.len() {
@@ -828,12 +928,20 @@ fn write_settings_key(settings_content: &mut String, key_path: &[&str], new_valu
         settings_content.replace_range(existing_value_range, &new_val);
     } else {
         // We have key paths, construct the sub objects
-        let new_key = key_path[depth];
+        let new_key = if has_language_overrides && key_path[depth] == LANGAUGES {
+            LANGUAGE_OVERRIDES
+        } else {
+            key_path[depth]
+        };
 
         // We don't have the key, construct the nested objects
         let mut new_value = serde_json::to_value(new_value).unwrap();
         for key in key_path[(depth + 1)..].iter().rev() {
-            new_value = serde_json::json!({ key.to_string(): new_value });
+            if has_language_overrides && key == &LANGAUGES {
+                new_value = serde_json::json!({ LANGUAGE_OVERRIDES.to_string(): new_value });
+            } else {
+                new_value = serde_json::json!({ key.to_string(): new_value });
+            }
         }
 
         if let Some(first_key_start) = first_key_start {
@@ -852,7 +960,8 @@ fn write_settings_key(settings_content: &mut String, key_path: &[&str], new_valu
             }
 
             if row > 0 {
-                let new_val = to_pretty_json(&new_value, column, column);
+                // depth is 0 based, but division needs to be 1 based.
+                let new_val = to_pretty_json(&new_value, column / (depth + 1), column);
                 let content = format!(r#""{new_key}": {new_val},"#);
                 settings_content.insert_str(first_key_start, &content);
 
@@ -912,12 +1021,27 @@ fn to_pretty_json(
 
 pub fn update_settings_file(
     mut text: String,
-    old_file_content: SettingsFileContent,
+    mut old_file_content: SettingsFileContent,
     update: impl FnOnce(&mut SettingsFileContent),
 ) -> String {
     let mut new_file_content = old_file_content.clone();
 
     update(&mut new_file_content);
+
+    if new_file_content.languages.len() != old_file_content.languages.len() {
+        for language in new_file_content.languages.keys() {
+            old_file_content
+                .languages
+                .entry(language.clone())
+                .or_default();
+        }
+        for language in old_file_content.languages.keys() {
+            new_file_content
+                .languages
+                .entry(language.clone())
+                .or_default();
+        }
+    }
 
     let old_object = to_json_object(old_file_content);
     let new_object = to_json_object(new_file_content);
@@ -931,6 +1055,7 @@ pub fn update_settings_file(
         for (key, old_value) in old_object.iter() {
             // We know that these two are from the same shape of object, so we can just unwrap
             let new_value = new_object.get(key).unwrap();
+
             if old_value != new_value {
                 match new_value {
                     Value::Bool(_) | Value::Number(_) | Value::String(_) => {
@@ -986,7 +1111,113 @@ mod tests {
         let old_json = old_json.into();
         let old_content: SettingsFileContent = serde_json::from_str(&old_json).unwrap_or_default();
         let new_json = update_settings_file(old_json, old_content, update);
-        assert_eq!(new_json, expected_new_json.into());
+        pretty_assertions::assert_eq!(new_json, expected_new_json.into());
+    }
+
+    #[test]
+    fn test_update_language_overrides_copilot() {
+        assert_new_settings(
+            r#"
+                {
+                    "language_overrides": {
+                        "JSON": {
+                            "copilot": "off"
+                        }
+                    }
+                }
+            "#
+            .unindent(),
+            |settings| {
+                settings.languages.insert(
+                    "Rust".into(),
+                    EditorSettings {
+                        copilot: Some(OnOff::On),
+                        ..Default::default()
+                    },
+                );
+            },
+            r#"
+                {
+                    "language_overrides": {
+                        "Rust": {
+                            "copilot": "on"
+                        },
+                        "JSON": {
+                            "copilot": "off"
+                        }
+                    }
+                }
+            "#
+            .unindent(),
+        );
+    }
+
+    #[test]
+    fn test_update_copilot() {
+        assert_new_settings(
+            r#"
+                {
+                    "languages": {
+                        "JSON": {
+                            "copilot": "off"
+                        }
+                    }
+                }
+            "#
+            .unindent(),
+            |settings| {
+                settings.editor.copilot = Some(OnOff::On);
+            },
+            r#"
+                {
+                    "copilot": "on",
+                    "languages": {
+                        "JSON": {
+                            "copilot": "off"
+                        }
+                    }
+                }
+            "#
+            .unindent(),
+        );
+    }
+
+    #[test]
+    fn test_update_langauge_copilot() {
+        assert_new_settings(
+            r#"
+                {
+                    "languages": {
+                        "JSON": {
+                            "copilot": "off"
+                        }
+                    }
+                }
+            "#
+            .unindent(),
+            |settings| {
+                settings.languages.insert(
+                    "Rust".into(),
+                    EditorSettings {
+                        copilot: Some(OnOff::On),
+                        ..Default::default()
+                    },
+                );
+            },
+            r#"
+                {
+                    "languages": {
+                        "Rust": {
+                            "copilot": "on"
+                        },
+                        "JSON": {
+                            "copilot": "off"
+                        }
+                    }
+                }
+            "#
+            .unindent(),
+        );
     }
 
     #[test]
