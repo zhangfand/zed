@@ -4,7 +4,7 @@ use gpui::{
     MutableAppContext, RenderContext, Task, View, ViewContext, ViewHandle,
 };
 use picker::{Picker, PickerDelegate};
-use project::{PathMatchCandidateSet, Project, ProjectPath, WorktreeId};
+use project::{PathMatchCandidateSet, Project, WorktreeId, WorktreePath};
 use settings::Settings;
 use std::{
     path::Path,
@@ -37,7 +37,7 @@ pub fn init(cx: &mut MutableAppContext) {
 }
 
 pub enum Event {
-    Selected(ProjectPath),
+    Selected(WorktreePath),
     Dismissed,
 }
 
@@ -93,8 +93,8 @@ impl FileFinder {
             let project = workspace.project().clone();
             let relative_to = workspace
                 .active_item(cx)
-                .and_then(|item| item.project_path(cx))
-                .map(|project_path| project_path.path.clone());
+                .and_then(|item| item.worktree_path(cx))
+                .map(|worktree_path| worktree_path.path.clone());
             let finder = cx.add_view(|cx| Self::new(project, relative_to, cx));
             cx.subscribe(&finder, Self::on_event).detach();
             finder
@@ -108,9 +108,9 @@ impl FileFinder {
         cx: &mut ViewContext<Workspace>,
     ) {
         match event {
-            Event::Selected(project_path) => {
+            Event::Selected(worktree_path) => {
                 workspace
-                    .open_path(project_path.clone(), None, true, cx)
+                    .open_path(worktree_path.clone(), None, true, cx)
                     .detach_and_log_err(cx);
                 workspace.dismiss_modal(cx);
             }
@@ -250,7 +250,7 @@ impl PickerDelegate for FileFinder {
 
     fn confirm(&mut self, cx: &mut ViewContext<Self>) {
         if let Some(m) = self.matches.get(self.selected_index()) {
-            cx.emit(Event::Selected(ProjectPath {
+            cx.emit(Event::Selected(WorktreePath {
                 worktree_id: WorktreeId::from_usize(m.worktree_id),
                 path: m.path.clone(),
             }));

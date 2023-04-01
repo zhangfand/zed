@@ -20,7 +20,7 @@ use language::{
     LanguageConfig, OffsetRangeExt, Point, Rope,
 };
 use live_kit_client::MacOSDisplay;
-use project::{search::SearchQuery, DiagnosticSummary, Project, ProjectPath};
+use project::{search::SearchQuery, DiagnosticSummary, Project, WorktreePath};
 use rand::prelude::*;
 use serde_json::json;
 use settings::{Formatter, Settings};
@@ -3322,7 +3322,7 @@ async fn test_collaborating_with_diagnostics(
     let _buffer = project_a
         .update(cx_a, |project, cx| {
             project.open_buffer(
-                ProjectPath {
+                WorktreePath {
                     worktree_id,
                     path: Path::new("other.rs").into(),
                 },
@@ -3381,7 +3381,7 @@ async fn test_collaborating_with_diagnostics(
         assert_eq!(
             project.diagnostic_summaries(cx).collect::<Vec<_>>(),
             &[(
-                ProjectPath {
+                WorktreePath {
                     worktree_id,
                     path: Arc::from(Path::new("a.rs")),
                 },
@@ -3416,7 +3416,7 @@ async fn test_collaborating_with_diagnostics(
     assert_eq!(
         project_c_diagnostic_summaries.borrow().as_slice(),
         &[(
-            ProjectPath {
+            WorktreePath {
                 worktree_id,
                 path: Arc::from(Path::new("a.rs")),
             },
@@ -3456,7 +3456,7 @@ async fn test_collaborating_with_diagnostics(
         assert_eq!(
             project.diagnostic_summaries(cx).collect::<Vec<_>>(),
             [(
-                ProjectPath {
+                WorktreePath {
                     worktree_id,
                     path: Arc::from(Path::new("a.rs")),
                 },
@@ -3472,7 +3472,7 @@ async fn test_collaborating_with_diagnostics(
         assert_eq!(
             project.diagnostic_summaries(cx).collect::<Vec<_>>(),
             [(
-                ProjectPath {
+                WorktreePath {
                     worktree_id,
                     path: Arc::from(Path::new("a.rs")),
                 },
@@ -6049,7 +6049,7 @@ async fn test_basic_following(
             .unwrap()
     });
     assert_eq!(
-        cx_b.read(|cx| editor_b2.project_path(cx)),
+        cx_b.read(|cx| editor_b2.worktree_path(cx)),
         Some((worktree_id, "2.txt").into())
     );
     assert_eq!(
@@ -6446,7 +6446,7 @@ async fn test_following_tab_order(
         pane.update(cx, |pane, cx| {
             pane.items()
                 .map(|item| {
-                    item.project_path(cx)
+                    item.worktree_path(cx)
                         .unwrap()
                         .path
                         .to_str()
@@ -6643,12 +6643,12 @@ async fn test_peers_following_each_other(
         workspace_a.read_with(cx_a, |workspace, cx| workspace
             .active_item(cx)
             .unwrap()
-            .project_path(cx)),
+            .worktree_path(cx)),
         Some((worktree_id, "3.txt").into())
     );
     workspace_a.update(cx_a, |workspace, cx| {
         assert_eq!(
-            workspace.active_item(cx).unwrap().project_path(cx),
+            workspace.active_item(cx).unwrap().worktree_path(cx),
             Some((worktree_id, "3.txt").into())
         );
         workspace.activate_next_pane(cx);
@@ -6656,14 +6656,14 @@ async fn test_peers_following_each_other(
 
     workspace_a.update(cx_a, |workspace, cx| {
         assert_eq!(
-            workspace.active_item(cx).unwrap().project_path(cx),
+            workspace.active_item(cx).unwrap().worktree_path(cx),
             Some((worktree_id, "4.txt").into())
         );
     });
 
     workspace_b.update(cx_b, |workspace, cx| {
         assert_eq!(
-            workspace.active_item(cx).unwrap().project_path(cx),
+            workspace.active_item(cx).unwrap().worktree_path(cx),
             Some((worktree_id, "4.txt").into())
         );
         workspace.activate_next_pane(cx);
@@ -6671,7 +6671,7 @@ async fn test_peers_following_each_other(
 
     workspace_b.update(cx_b, |workspace, cx| {
         assert_eq!(
-            workspace.active_item(cx).unwrap().project_path(cx),
+            workspace.active_item(cx).unwrap().worktree_path(cx),
             Some((worktree_id, "3.txt").into())
         );
     });

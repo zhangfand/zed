@@ -824,7 +824,7 @@ mod tests {
 
     use super::*;
     use gpui::TestAppContext;
-    use project::{Entry, Project, ProjectPath, Worktree};
+    use project::{Entry, Project, Worktree, WorktreePath};
     use workspace::AppState;
 
     use std::path::Path;
@@ -1008,7 +1008,7 @@ mod tests {
         cx: &mut TestAppContext,
     ) {
         cx.update(|cx| {
-            let p = ProjectPath {
+            let p = WorktreePath {
                 worktree_id: wt.read(cx).id(),
                 path: entry.path,
             };

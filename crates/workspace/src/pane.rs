@@ -27,7 +27,7 @@ use gpui::{
     ModelHandle, MouseButton, MouseRegion, MutableAppContext, PromptLevel, Quad, RenderContext,
     Task, View, ViewContext, ViewHandle, WeakViewHandle,
 };
-use project::{Project, ProjectEntryId, ProjectPath};
+use project::{Project, ProjectEntryId, WorktreePath};
 use serde::Deserialize;
 use settings::{Autosave, DockAnchor, Settings};
 use std::{any::Any, cell::RefCell, cmp, mem, path::Path, rc::Rc};
@@ -225,7 +225,7 @@ struct NavHistory {
     backward_stack: VecDeque<NavigationEntry>,
     forward_stack: VecDeque<NavigationEntry>,
     closed_stack: VecDeque<NavigationEntry>,
-    paths_by_item: HashMap<usize, ProjectPath>,
+    paths_by_item: HashMap<usize, WorktreePath>,
     pane: WeakViewHandle<Pane>,
 }
 
@@ -451,15 +451,15 @@ impl Pane {
                         .paths_by_item
                         .get(&entry.item.id())
                         .cloned()
-                        .map(|project_path| (project_path, entry));
+                        .map(|worktree_path| (worktree_path, entry));
                 }
             }
         });
 
-        if let Some((project_path, entry)) = to_load {
+        if let Some((worktree_path, entry)) = to_load {
             // If the item was no longer present, then load it again from its previous path.
             let pane = pane.downgrade();
-            let task = workspace.load_path(project_path, cx);
+            let task = workspace.load_path(worktree_path, cx);
             cx.spawn(|workspace, mut cx| async move {
                 let task = task.await;
                 if let Some(pane) = pane.upgrade(&cx) {
@@ -931,7 +931,7 @@ impl Pane {
             .borrow_mut()
             .set_mode(NavigationMode::Normal);
 
-        if let Some(path) = item.project_path(cx) {
+        if let Some(path) = item.worktree_path(cx) {
             self.nav_history
                 .borrow_mut()
                 .paths_by_item

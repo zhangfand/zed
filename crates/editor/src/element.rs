@@ -38,7 +38,7 @@ use gpui::{
 use itertools::Itertools;
 use json::json;
 use language::{Bias, CursorShape, DiagnosticSeverity, OffsetUtf16, Selection};
-use project::ProjectPath;
+use project::WorktreePath;
 use settings::{GitGutter, Settings};
 use smallvec::SmallVec;
 use std::{
@@ -1443,7 +1443,7 @@ impl EditorElement {
                             .as_ref()
                             .map_or(range.context.start, |primary| primary.start);
                         let jump_action = crate::Jump {
-                            path: ProjectPath {
+                            path: WorktreePath {
                                 worktree_id: file.worktree_id(cx),
                                 path: file.path.clone(),
                             },

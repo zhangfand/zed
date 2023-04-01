@@ -75,7 +75,7 @@ impl<'a> EditorLspTestContext<'a> {
         cx.read(|cx| workspace.read(cx).worktree_scans_complete(cx))
             .await;
 
-        let file = cx.read(|cx| workspace.file_project_paths(cx)[0].clone());
+        let file = cx.read(|cx| workspace.file_worktree_paths(cx)[0].clone());
         let item = workspace
             .update(cx, |workspace, cx| {
                 workspace.open_path(file, None, true, cx)

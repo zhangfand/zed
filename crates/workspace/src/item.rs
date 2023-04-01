@@ -18,7 +18,7 @@ use gpui::{
     AnyViewHandle, AppContext, ElementBox, ModelHandle, MutableAppContext, Task, View, ViewContext,
     ViewHandle, WeakViewHandle,
 };
-use project::{Project, ProjectEntryId, ProjectPath};
+use project::{Project, ProjectEntryId, WorktreePath};
 use settings::{Autosave, Settings};
 use smallvec::SmallVec;
 use theme::Theme;
@@ -165,7 +165,7 @@ pub trait ItemHandle: 'static + fmt::Debug {
     fn tab_description<'a>(&self, detail: usize, cx: &'a AppContext) -> Option<Cow<'a, str>>;
     fn tab_content(&self, detail: Option<usize>, style: &theme::Tab, cx: &AppContext)
         -> ElementBox;
-    fn project_path(&self, cx: &AppContext) -> Option<ProjectPath>;
+    fn worktree_path(&self, cx: &AppContext) -> Option<WorktreePath>;
     fn project_entry_ids(&self, cx: &AppContext) -> SmallVec<[ProjectEntryId; 3]>;
     fn project_item_model_ids(&self, cx: &AppContext) -> SmallVec<[usize; 3]>;
     fn for_each_project_item(&self, _: &AppContext, _: &mut dyn FnMut(usize, &dyn project::Item));
@@ -262,12 +262,12 @@ impl<T: Item> ItemHandle for ViewHandle<T> {
         self.read(cx).tab_content(detail, style, cx)
     }
 
-    fn project_path(&self, cx: &AppContext) -> Option<ProjectPath> {
+    fn worktree_path(&self, cx: &AppContext) -> Option<WorktreePath> {
         let this = self.read(cx);
         let mut result = None;
         if this.is_singleton(cx) {
             this.for_each_project_item(cx, &mut |_, item| {
-                result = item.project_path(cx);
+                result = item.worktree_path(cx);
             });
         }
         result
@@ -748,13 +748,13 @@ pub(crate) mod test {
         elements::Empty, AppContext, Element, ElementBox, Entity, ModelHandle, MutableAppContext,
         RenderContext, Task, View, ViewContext, ViewHandle, WeakViewHandle,
     };
-    use project::{Project, ProjectEntryId, ProjectPath, WorktreeId};
+    use project::{Project, ProjectEntryId, WorktreeId, WorktreePath};
     use smallvec::SmallVec;
     use std::{any::Any, borrow::Cow, cell::Cell, path::Path};
 
     pub struct TestProjectItem {
         pub entry_id: Option<ProjectEntryId>,
-        pub project_path: Option<ProjectPath>,
+        pub worktree_path: Option<WorktreePath>,
     }
 
     pub struct TestItem {
@@ -782,8 +782,8 @@ pub(crate) mod test {
             self.entry_id
         }
 
-        fn project_path(&self, _: &AppContext) -> Option<ProjectPath> {
-            self.project_path.clone()
+        fn worktree_path(&self, _: &AppContext) -> Option<WorktreePath> {
+            self.worktree_path.clone()
         }
     }
 
@@ -814,19 +814,19 @@ pub(crate) mod test {
     impl TestProjectItem {
         pub fn new(id: u64, path: &str, cx: &mut MutableAppContext) -> ModelHandle<Self> {
             let entry_id = Some(ProjectEntryId::from_proto(id));
-            let project_path = Some(ProjectPath {
+            let worktree_path = Some(WorktreePath {
                 worktree_id: WorktreeId::from_usize(0),
                 path: Path::new(path).into(),
             });
             cx.add_model(|_| Self {
                 entry_id,
-                project_path,
+                worktree_path: worktree_path,
             })
         }
 
         pub fn new_untitled(cx: &mut MutableAppContext) -> ModelHandle<Self> {
             cx.add_model(|_| Self {
-                project_path: None,
+                worktree_path: None,
                 entry_id: None,
             })
         }

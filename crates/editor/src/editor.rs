@@ -64,7 +64,7 @@ pub use multi_buffer::{
 };
 use multi_buffer::{MultiBufferChunks, ToOffsetUtf16};
 use ordered_float::OrderedFloat;
-use project::{FormatTrigger, Location, LocationLink, Project, ProjectPath, ProjectTransaction};
+use project::{FormatTrigger, Location, LocationLink, Project, ProjectTransaction, WorktreePath};
 use scroll::{
     autoscroll::Autoscroll, OngoingScroll, ScrollAnchor, ScrollManager, ScrollbarAutoHide,
 };
@@ -109,7 +109,7 @@ pub struct Select(pub SelectPhase);
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Jump {
-    path: ProjectPath,
+    path: WorktreePath,
     position: Point,
     anchor: language::Anchor,
 }

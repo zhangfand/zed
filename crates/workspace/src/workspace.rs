@@ -73,7 +73,7 @@ pub use persistence::{
     WorkspaceDb, DB as WORKSPACE_DB,
 };
 use postage::prelude::Stream;
-use project::{Project, ProjectEntryId, ProjectPath, Worktree, WorktreeId};
+use project::{Project, ProjectEntryId, Worktree, WorktreeId, WorktreePath};
 use serde::Deserialize;
 use settings::{Autosave, DockAnchor, Settings};
 use shared_screen::SharedScreen;
@@ -880,19 +880,19 @@ impl Workspace {
 
             // Get project paths for all of the abs_paths
             let mut worktree_roots: HashSet<Arc<Path>> = Default::default();
-            let mut project_paths = Vec::new();
+            let mut worktree_paths = Vec::new();
             for path in paths_to_open.iter() {
                 if let Some((worktree, project_entry)) = cx
                     .update(|cx| {
-                        Workspace::project_path_for_path(project_handle.clone(), &path, true, cx)
+                        Workspace::worktree_path_for_path(project_handle.clone(), &path, true, cx)
                     })
                     .await
                     .log_err()
                 {
                     worktree_roots.insert(worktree.read_with(&mut cx, |tree, _| tree.abs_path()));
-                    project_paths.push(Some(project_entry));
+                    worktree_paths.push(Some(project_entry));
                 } else {
-                    project_paths.push(None);
+                    worktree_paths.push(None);
                 }
             }
 
@@ -976,22 +976,22 @@ impl Workspace {
 
             // Call open path for each of the project paths
             // (this will bring them to the front if they were in the serialized workspace)
-            debug_assert!(paths_to_open.len() == project_paths.len());
+            debug_assert!(paths_to_open.len() == worktree_paths.len());
             let tasks = paths_to_open
                 .iter()
                 .cloned()
-                .zip(project_paths.into_iter())
-                .map(|(abs_path, project_path)| {
+                .zip(worktree_paths.into_iter())
+                .map(|(abs_path, worktree_path)| {
                     let workspace = workspace.clone();
                     cx.spawn(|mut cx| {
                         let fs = app_state.fs.clone();
                         async move {
-                            let project_path = project_path?;
+                            let worktree_path = worktree_path?;
                             if fs.is_file(&abs_path).await {
                                 Some(
                                     workspace
                                         .update(&mut cx, |workspace, cx| {
-                                            workspace.open_path(project_path, None, true, cx)
+                                            workspace.open_path(worktree_path, None, true, cx)
                                         })
                                         .await,
                                 )
@@ -1243,11 +1243,11 @@ impl Workspace {
         // Sort the paths to ensure we add worktrees for parents before their children.
         abs_paths.sort_unstable();
         cx.spawn(|this, mut cx| async move {
-            let mut project_paths = Vec::new();
+            let mut worktree_paths = Vec::new();
             for path in &abs_paths {
-                project_paths.push(
+                worktree_paths.push(
                     this.update(&mut cx, |this, cx| {
-                        Workspace::project_path_for_path(this.project.clone(), path, visible, cx)
+                        Workspace::worktree_path_for_path(this.project.clone(), path, visible, cx)
                     })
                     .await
                     .log_err(),
@@ -1257,17 +1257,17 @@ impl Workspace {
             let tasks = abs_paths
                 .iter()
                 .cloned()
-                .zip(project_paths.into_iter())
-                .map(|(abs_path, project_path)| {
+                .zip(worktree_paths.into_iter())
+                .map(|(abs_path, worktree_path)| {
                     let this = this.clone();
                     cx.spawn(|mut cx| {
                         let fs = fs.clone();
                         async move {
-                            let (_worktree, project_path) = project_path?;
+                            let (_worktree, worktree_path) = worktree_path?;
                             if fs.is_file(&abs_path).await {
                                 Some(
                                     this.update(&mut cx, |this, cx| {
-                                        this.open_path(project_path, None, true, cx)
+                                        this.open_path(worktree_path, None, true, cx)
                                     })
                                     .await,
                                 )
@@ -1313,12 +1313,12 @@ impl Workspace {
         cx.foreground().spawn(future).detach();
     }
 
-    fn project_path_for_path(
+    fn worktree_path_for_path(
         project: ModelHandle<Project>,
         abs_path: &Path,
         visible: bool,
         cx: &mut MutableAppContext,
-    ) -> Task<Result<(ModelHandle<Worktree>, ProjectPath)>> {
+    ) -> Task<Result<(ModelHandle<Worktree>, WorktreePath)>> {
         let entry = project.update(cx, |project, cx| {
             project.find_or_create_local_worktree(abs_path, visible, cx)
         });
@@ -1327,7 +1327,7 @@ impl Workspace {
             let worktree_id = worktree.read_with(&cx, |t, _| t.id());
             Ok((
                 worktree,
-                ProjectPath {
+                WorktreePath {
                     worktree_id,
                     path: path.into(),
                 },
@@ -1397,8 +1397,8 @@ impl Workspace {
         self.active_pane().read(cx).active_item()
     }
 
-    fn active_project_path(&self, cx: &ViewContext<Self>) -> Option<ProjectPath> {
-        self.active_item(cx).and_then(|item| item.project_path(cx))
+    fn active_worktree_path(&self, cx: &ViewContext<Self>) -> Option<WorktreePath> {
+        self.active_item(cx).and_then(|item| item.worktree_path(cx))
     }
 
     pub fn save_active_item(
@@ -1575,7 +1575,7 @@ impl Workspace {
 
     pub fn open_path(
         &mut self,
-        path: impl Into<ProjectPath>,
+        path: impl Into<WorktreePath>,
         pane: Option<WeakViewHandle<Pane>>,
         focus_item: bool,
         cx: &mut ViewContext<Self>,
@@ -1614,7 +1614,7 @@ impl Workspace {
 
     pub(crate) fn load_path(
         &mut self,
-        path: ProjectPath,
+        path: WorktreePath,
         cx: &mut ViewContext<Self>,
     ) -> Task<
         Result<(
@@ -2095,7 +2095,7 @@ impl Workspace {
     }
 
     fn active_item_path_changed(&mut self, cx: &mut ViewContext<Self>) {
-        let active_entry = self.active_project_path(cx);
+        let active_entry = self.active_worktree_path(cx);
         self.project
             .update(cx, |project, cx| project.set_active_path(active_entry, cx));
         self.update_window_title(cx);
@@ -2105,7 +2105,7 @@ impl Workspace {
         let project = self.project().read(cx);
         let mut title = String::new();
 
-        if let Some(path) = self.active_item(cx).and_then(|item| item.project_path(cx)) {
+        if let Some(path) = self.active_item(cx).and_then(|item| item.worktree_path(cx)) {
             let filename = path
                 .path
                 .file_name()
@@ -2965,16 +2965,16 @@ impl ViewId {
 }
 
 pub trait WorkspaceHandle {
-    fn file_project_paths(&self, cx: &AppContext) -> Vec<ProjectPath>;
+    fn file_worktree_paths(&self, cx: &AppContext) -> Vec<WorktreePath>;
 }
 
 impl WorkspaceHandle for ViewHandle<Workspace> {
-    fn file_project_paths(&self, cx: &AppContext) -> Vec<ProjectPath> {
+    fn file_worktree_paths(&self, cx: &AppContext) -> Vec<WorktreePath> {
         self.read(cx)
             .worktrees(cx)
             .flat_map(|worktree| {
                 let worktree_id = worktree.read(cx).id();
-                worktree.read(cx).files(true, 0).map(move |f| ProjectPath {
+                worktree.read(cx).files(true, 0).map(move |f| WorktreePath {
                     worktree_id,
                     path: f.path.clone(),
                 })

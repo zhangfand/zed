@@ -14,7 +14,7 @@ use language::{
     proto::serialize_anchor as serialize_text_anchor, Bias, Buffer, OffsetRangeExt, Point,
     SelectionGoal,
 };
-use project::{FormatTrigger, Item as _, Project, ProjectPath};
+use project::{FormatTrigger, Item as _, Project, WorktreePath};
 use rpc::proto::{self, update_view};
 use settings::Settings;
 use smallvec::SmallVec;
@@ -592,7 +592,7 @@ impl Item for Editor {
     fn can_save(&self, cx: &AppContext) -> bool {
         let buffer = &self.buffer().read(cx);
         if let Some(buffer) = buffer.as_singleton() {
-            buffer.read(cx).project_path(cx).is_some()
+            buffer.read(cx).worktree_path(cx).is_some()
         } else {
             true
         }
@@ -818,12 +818,12 @@ impl Item for Editor {
             let (worktree, path) = project
                 .find_local_worktree(&path, cx)
                 .with_context(|| format!("No worktree for path: {path:?}"))?;
-            let project_path = ProjectPath {
+            let worktree_path = WorktreePath {
                 worktree_id: worktree.read(cx).id(),
                 path: path.into(),
             };
 
-            Ok(project.open_path(project_path, cx))
+            Ok(project.open_path(worktree_path, cx))
         });
 
         project_item

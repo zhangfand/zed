@@ -47,6 +47,7 @@ use settings::{FormatOnSave, Formatter, Settings};
 use sha2::{Digest, Sha256};
 use similar::{ChangeTag, TextDiff};
 use std::{
+    any::TypeId,
     cell::RefCell,
     cmp::{self, Ordering},
     convert::TryInto,
@@ -72,7 +73,39 @@ pub use worktree::*;
 
 pub trait Item {
     fn entry_id(&self, cx: &AppContext) -> Option<ProjectEntryId>;
-    fn project_path(&self, cx: &AppContext) -> Option<ProjectPath>;
+    fn worktree_path(&self, cx: &AppContext) -> Option<WorktreePath>;
+}
+
+// This will replace the project::Item trait when ws2 is ready. The old
+// workspace does not allow us to enforce that project items are entities.
+pub trait ProjectItem: Entity {
+    fn entry_id(&self, cx: &AppContext) -> Option<ProjectEntryId>;
+    fn worktree_path(&self, cx: &AppContext) -> Option<WorktreePath>;
+}
+
+pub trait ProjectItemHandle {
+    fn entry_id(&self, cx: &AppContext) -> Option<ProjectEntryId>;
+    fn worktree_path(&self, cx: &AppContext) -> Option<WorktreePath>;
+    fn item_type(&self) -> TypeId;
+    fn to_any(&self) -> AnyModelHandle;
+}
+
+impl<T: ProjectItem> ProjectItemHandle for ModelHandle<T> {
+    fn entry_id(&self, cx: &AppContext) -> Option<ProjectEntryId> {
+        self.read(cx).entry_id(cx)
+    }
+
+    fn worktree_path(&self, cx: &AppContext) -> Option<WorktreePath> {
+        self.read(cx).worktree_path(cx)
+    }
+
+    fn item_type(&self) -> TypeId {
+        TypeId::of::<T>()
+    }
+
+    fn to_any(&self) -> AnyModelHandle {
+        self.clone().into()
+    }
 }
 
 // Language server state is stored across 3 collections:
@@ -111,7 +144,7 @@ pub struct Project {
     shared_buffers: HashMap<proto::PeerId, HashSet<u64>>,
     #[allow(clippy::type_complexity)]
     loading_buffers_by_path: HashMap<
-        ProjectPath,
+        WorktreePath,
         postage::watch::Receiver<Option<Result<ModelHandle<Buffer>, Arc<anyhow::Error>>>>,
     >,
     #[allow(clippy::type_complexity)]
@@ -171,7 +204,7 @@ pub enum Event {
         language_server_id: usize,
     },
     DiagnosticsUpdated {
-        path: ProjectPath,
+        path: WorktreePath,
         language_server_id: usize,
     },
     RemoteIdChanged(Option<u64>),
@@ -212,7 +245,7 @@ pub struct LanguageServerProgress {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash, PartialOrd, Ord)]
-pub struct ProjectPath {
+pub struct WorktreePath {
     pub worktree_id: WorktreeId,
     pub path: Arc<Path>,
 }
@@ -246,7 +279,7 @@ pub struct DocumentHighlight {
 pub struct Symbol {
     pub language_server_name: LanguageServerName,
     pub source_worktree_id: WorktreeId,
-    pub path: ProjectPath,
+    pub path: WorktreePath,
     pub label: CodeLabel,
     pub name: String,
     pub kind: lsp::SymbolKind,
@@ -688,7 +721,7 @@ impl Project {
     }
 
     #[cfg(any(test, feature = "test-support"))]
-    pub fn has_open_buffer(&self, path: impl Into<ProjectPath>, cx: &AppContext) -> bool {
+    pub fn has_open_buffer(&self, path: impl Into<WorktreePath>, cx: &AppContext) -> bool {
         let path = path.into();
         if let Some(worktree) = self.worktree_for_id(path.worktree_id, cx) {
             self.opened_buffers.iter().any(|(_, buffer)| {
@@ -820,18 +853,18 @@ impl Project {
 
     pub fn create_entry(
         &mut self,
-        project_path: impl Into<ProjectPath>,
+        worktree_path: impl Into<WorktreePath>,
         is_directory: bool,
         cx: &mut ModelContext<Self>,
     ) -> Option<Task<Result<Entry>>> {
-        let project_path = project_path.into();
-        let worktree = self.worktree_for_id(project_path.worktree_id, cx)?;
+        let worktree_path = worktree_path.into();
+        let worktree = self.worktree_for_id(worktree_path.worktree_id, cx)?;
         if self.is_local() {
             Some(worktree.update(cx, |worktree, cx| {
                 worktree
                     .as_local_mut()
                     .unwrap()
-                    .create_entry(project_path.path, is_directory, cx)
+                    .create_entry(worktree_path.path, is_directory, cx)
             }))
         } else {
             let client = self.client.clone();
@@ -839,9 +872,9 @@ impl Project {
             Some(cx.spawn_weak(|_, mut cx| async move {
                 let response = client
                     .request(proto::CreateProjectEntry {
-                        worktree_id: project_path.worktree_id.to_proto(),
+                        worktree_id: worktree_path.worktree_id.to_proto(),
                         project_id,
-                        path: project_path.path.to_string_lossy().into(),
+                        path: worktree_path.path.to_string_lossy().into(),
                         is_directory,
                     })
                     .await?;
@@ -1218,9 +1251,20 @@ impl Project {
         Ok(buffer)
     }
 
+    /// Eventually, we want this to be the way to open a file of any type, such as images,
+    /// but it currently only opens buffers. That's why we return an abstract ProjectItemHandle.
+    pub fn open(
+        &mut self,
+        path: WorktreePath,
+        cx: &mut ModelContext<Self>,
+    ) -> impl Future<Output = Result<Box<dyn ProjectItemHandle>>> {
+        self.open_buffer(path, cx)
+            .map(|buffer| Ok(Box::new(buffer?) as Box<dyn ProjectItemHandle>))
+    }
+
     pub fn open_path(
         &mut self,
-        path: impl Into<ProjectPath>,
+        path: impl Into<WorktreePath>,
         cx: &mut ModelContext<Self>,
     ) -> Task<Result<(ProjectEntryId, AnyModelHandle)>> {
         let task = self.open_buffer(path, cx);
@@ -1237,9 +1281,10 @@ impl Project {
 
     pub fn open_abs_path(
         &mut self,
-        abs_path: PathBuf,
+        abs_path: impl Into<PathBuf>,
         cx: &mut ModelContext<Self>,
-    ) -> Task<Result<ProjectPath>> {
+    ) -> Task<Result<WorktreePath>> {
+        let abs_path = abs_path.into();
         for tree in &self.worktrees {
             if let Some(tree) = tree.upgrade(cx) {
                 let tree = tree.read(cx);
@@ -1247,7 +1292,7 @@ impl Project {
                     .as_local()
                     .and_then(|tree| abs_path.strip_prefix(tree.abs_path()).ok())
                 {
-                    return Task::ready(Ok(ProjectPath {
+                    return Task::ready(Ok(WorktreePath {
                         worktree_id: tree.id(),
                         path: relative_path.into(),
                     }));
@@ -1259,7 +1304,7 @@ impl Project {
         cx.spawn(|_, cx| async move {
             let tree = tree.await?;
 
-            Ok(ProjectPath {
+            Ok(WorktreePath {
                 worktree_id: tree.read_with(&cx, |tree, _| tree.id()),
                 path: Path::new("").into(),
             })
@@ -1280,23 +1325,23 @@ impl Project {
 
     pub fn open_buffer(
         &mut self,
-        path: impl Into<ProjectPath>,
+        path: impl Into<WorktreePath>,
         cx: &mut ModelContext<Self>,
     ) -> Task<Result<ModelHandle<Buffer>>> {
-        let project_path = path.into();
-        let worktree = if let Some(worktree) = self.worktree_for_id(project_path.worktree_id, cx) {
+        let worktree_path = path.into();
+        let worktree = if let Some(worktree) = self.worktree_for_id(worktree_path.worktree_id, cx) {
             worktree
         } else {
             return Task::ready(Err(anyhow!("no such worktree")));
         };
 
         // If there is already a buffer for the given path, then return it.
-        let existing_buffer = self.get_open_buffer(&project_path, cx);
+        let existing_buffer = self.get_open_buffer(&worktree_path, cx);
         if let Some(existing_buffer) = existing_buffer {
             return Task::ready(Ok(existing_buffer));
         }
 
-        let mut loading_watch = match self.loading_buffers_by_path.entry(project_path.clone()) {
+        let mut loading_watch = match self.loading_buffers_by_path.entry(worktree_path.clone()) {
             // If the given path is already being loaded, then wait for that existing
             // task to complete and return the same buffer.
             hash_map::Entry::Occupied(e) => e.get().clone(),
@@ -1307,16 +1352,16 @@ impl Project {
                 entry.insert(rx.clone());
 
                 let load_buffer = if worktree.read(cx).is_local() {
-                    self.open_local_buffer_internal(&project_path.path, &worktree, cx)
+                    self.open_local_buffer_internal(&worktree_path.path, &worktree, cx)
                 } else {
-                    self.open_remote_buffer_internal(&project_path.path, &worktree, cx)
+                    self.open_remote_buffer_internal(&worktree_path.path, &worktree, cx)
                 };
 
                 cx.spawn(move |this, mut cx| async move {
                     let load_result = load_buffer.await;
                     *tx.borrow_mut() = Some(this.update(&mut cx, |this, _| {
                         // Record the fact that the buffer is no longer loading.
-                        this.loading_buffers_by_path.remove(&project_path);
+                        this.loading_buffers_by_path.remove(&worktree_path);
                         let buffer = load_result.map_err(Arc::new)?;
                         Ok(buffer)
                     }));
@@ -1413,11 +1458,11 @@ impl Project {
                 (worktree, PathBuf::new())
             };
 
-            let project_path = ProjectPath {
+            let worktree_path = WorktreePath {
                 worktree_id: worktree.read_with(&cx, |worktree, _| worktree.id()),
                 path: relative_path.into(),
             };
-            this.update(&mut cx, |this, cx| this.open_buffer(project_path, cx))
+            this.update(&mut cx, |this, cx| this.open_buffer(worktree_path, cx))
                 .await
         })
     }
@@ -1511,7 +1556,7 @@ impl Project {
 
     pub fn get_open_buffer(
         &mut self,
-        path: &ProjectPath,
+        path: &WorktreePath,
         cx: &mut ModelContext<Self>,
     ) -> Option<ModelHandle<Buffer>> {
         let worktree = self.worktree_for_id(path.worktree_id, cx)?;
@@ -2767,12 +2812,12 @@ impl Project {
             .find_local_worktree(&abs_path, cx)
             .ok_or_else(|| anyhow!("no worktree found for diagnostics"))?;
 
-        let project_path = ProjectPath {
+        let worktree_path = WorktreePath {
             worktree_id: worktree.read(cx).id(),
             path: relative_path.into(),
         };
 
-        if let Some(buffer) = self.get_open_buffer(&project_path, cx) {
+        if let Some(buffer) = self.get_open_buffer(&worktree_path, cx) {
             self.update_buffer_diagnostics(&buffer, diagnostics.clone(), version, cx)?;
         }
 
@@ -2782,7 +2827,7 @@ impl Project {
                 .ok_or_else(|| anyhow!("not a local worktree"))?
                 .update_diagnostics(
                     language_server_id,
-                    project_path.path.clone(),
+                    worktree_path.path.clone(),
                     diagnostics,
                     cx,
                 )
@@ -2790,7 +2835,7 @@ impl Project {
         if updated {
             cx.emit(Event::DiagnosticsUpdated {
                 language_server_id,
-                path: project_path,
+                path: worktree_path,
             });
         }
         Ok(())
@@ -3373,15 +3418,15 @@ impl Project {
                                 path = relativize_path(&worktree_abs_path, &abs_path);
                             }
 
-                            let project_path = ProjectPath {
+                            let worktree_path = WorktreePath {
                                 worktree_id,
                                 path: path.into(),
                             };
-                            let signature = this.symbol_signature(&project_path);
+                            let signature = this.symbol_signature(&worktree_path);
                             let adapter_language = adapter_language.clone();
                             let language = this
                                 .languages
-                                .language_for_path(&project_path.path)
+                                .language_for_path(&worktree_path.path)
                                 .unwrap_or_else(move |_| adapter_language);
                             let language_server_name = adapter.name.clone();
                             Some(async move {
@@ -3393,7 +3438,7 @@ impl Project {
                                 Symbol {
                                     language_server_name,
                                     source_worktree_id,
-                                    path: project_path,
+                                    path: worktree_path,
                                     label: label.unwrap_or_else(|| {
                                         CodeLabel::plain(lsp_symbol.name.clone(), None)
                                     }),
@@ -4229,10 +4274,10 @@ impl Project {
                                                     };
 
                                                     if matches {
-                                                        let project_path =
+                                                        let worktree_path =
                                                             (snapshot.id(), entry.path.clone());
                                                         if matching_paths_tx
-                                                            .send(project_path)
+                                                            .send(worktree_path)
                                                             .await
                                                             .is_err()
                                                         {
@@ -4265,7 +4310,7 @@ impl Project {
                 }
 
                 let open_buffers = Rc::new(RefCell::new(open_buffers));
-                while let Some(project_path) = matching_paths_rx.next().await {
+                while let Some(worktree_path) = matching_paths_rx.next().await {
                     if buffers_tx.is_closed() {
                         break;
                     }
@@ -4275,7 +4320,7 @@ impl Project {
                     let buffers_tx = buffers_tx.clone();
                     cx.spawn(|mut cx| async move {
                         if let Some(buffer) = this
-                            .update(&mut cx, |this, cx| this.open_buffer(project_path, cx))
+                            .update(&mut cx, |this, cx| this.open_buffer(worktree_path, cx))
                             .await
                             .log_err()
                         {
@@ -4754,10 +4799,10 @@ impl Project {
         }
     }
 
-    pub fn set_active_path(&mut self, entry: Option<ProjectPath>, cx: &mut ModelContext<Self>) {
-        let new_active_entry = entry.and_then(|project_path| {
-            let worktree = self.worktree_for_id(project_path.worktree_id, cx)?;
-            let entry = worktree.read(cx).entry_for_path(project_path.path)?;
+    pub fn set_active_path(&mut self, entry: Option<WorktreePath>, cx: &mut ModelContext<Self>) {
+        let new_active_entry = entry.and_then(|worktree_path| {
+            let worktree = self.worktree_for_id(worktree_path.worktree_id, cx)?;
+            let entry = worktree.read(cx).entry_for_path(worktree_path.path)?;
             Some(entry.id)
         });
         if new_active_entry != self.active_entry {
@@ -4792,13 +4837,13 @@ impl Project {
     pub fn diagnostic_summaries<'a>(
         &'a self,
         cx: &'a AppContext,
-    ) -> impl Iterator<Item = (ProjectPath, DiagnosticSummary)> + 'a {
+    ) -> impl Iterator<Item = (WorktreePath, DiagnosticSummary)> + 'a {
         self.visible_worktrees(cx).flat_map(move |worktree| {
             let worktree = worktree.read(cx);
             let worktree_id = worktree.id();
             worktree
                 .diagnostic_summaries()
-                .map(move |(path, summary)| (ProjectPath { worktree_id, path }, summary))
+                .map(move |(path, summary)| (WorktreePath { worktree_id, path }, summary))
         })
     }
 
@@ -4822,19 +4867,23 @@ impl Project {
         self.active_entry
     }
 
-    pub fn entry_for_path(&self, path: &ProjectPath, cx: &AppContext) -> Option<Entry> {
+    pub fn entry_for_path(&self, path: &WorktreePath, cx: &AppContext) -> Option<Entry> {
         self.worktree_for_id(path.worktree_id, cx)?
             .read(cx)
             .entry_for_path(&path.path)
             .cloned()
     }
 
-    pub fn path_for_entry(&self, entry_id: ProjectEntryId, cx: &AppContext) -> Option<ProjectPath> {
+    pub fn path_for_entry(
+        &self,
+        entry_id: ProjectEntryId,
+        cx: &AppContext,
+    ) -> Option<WorktreePath> {
         let worktree = self.worktree_for_entry(entry_id, cx)?;
         let worktree = worktree.read(cx);
         let worktree_id = worktree.id();
         let path = worktree.entry_for_id(entry_id)?.path.clone();
-        Some(ProjectPath { worktree_id, path })
+        Some(WorktreePath { worktree_id, path })
     }
 
     // RPC message handlers
@@ -5100,7 +5149,7 @@ impl Project {
             let worktree_id = WorktreeId::from_proto(envelope.payload.worktree_id);
             if let Some(worktree) = this.worktree_for_id(worktree_id, cx) {
                 if let Some(summary) = envelope.payload.summary {
-                    let project_path = ProjectPath {
+                    let worktree_path = WorktreePath {
                         worktree_id,
                         path: Path::new(&summary.path).into(),
                     };
@@ -5108,11 +5157,11 @@ impl Project {
                         worktree
                             .as_remote_mut()
                             .unwrap()
-                            .update_diagnostic_summary(project_path.path.clone(), &summary);
+                            .update_diagnostic_summary(worktree_path.path.clone(), &summary);
                     });
                     cx.emit(Event::DiagnosticsUpdated {
                         language_server_id: summary.language_server_id as usize,
-                        path: project_path,
+                        path: worktree_path,
                     });
                 }
             }
@@ -5830,10 +5879,10 @@ impl Project {
         })
     }
 
-    fn symbol_signature(&self, project_path: &ProjectPath) -> [u8; 32] {
+    fn symbol_signature(&self, worktree_path: &WorktreePath) -> [u8; 32] {
         let mut hasher = Sha256::new();
-        hasher.update(project_path.worktree_id.to_proto().to_be_bytes());
-        hasher.update(project_path.path.to_string_lossy().as_bytes());
+        hasher.update(worktree_path.worktree_id.to_proto().to_be_bytes());
+        hasher.update(worktree_path.path.to_string_lossy().as_bytes());
         hasher.update(self.nonce.to_be_bytes());
         hasher.finalize().as_slice().try_into().unwrap()
     }
@@ -5867,7 +5916,7 @@ impl Project {
         let worktree_id = WorktreeId::from_proto(envelope.payload.worktree_id);
         let open_buffer = this.update(&mut cx, |this, cx| {
             this.open_buffer(
-                ProjectPath {
+                WorktreePath {
                     worktree_id,
                     path: PathBuf::from(envelope.payload.path).into(),
                 },
@@ -6207,7 +6256,7 @@ impl Project {
                 .end
                 .ok_or_else(|| anyhow!("invalid end"))?;
             let kind = unsafe { mem::transmute(serialized_symbol.kind) };
-            let path = ProjectPath {
+            let path = WorktreePath {
                 worktree_id,
                 path: PathBuf::from(serialized_symbol.path).into(),
             };
@@ -6599,7 +6648,7 @@ impl Collaborator {
     }
 }
 
-impl<P: AsRef<Path>> From<(WorktreeId, P)> for ProjectPath {
+impl<P: AsRef<Path>> From<(WorktreeId, P)> for WorktreePath {
     fn from((worktree_id, path): (WorktreeId, P)) -> Self {
         Self {
             worktree_id,
@@ -6687,10 +6736,20 @@ impl Item for Buffer {
         File::from_dyn(self.file()).and_then(|file| file.project_entry_id(cx))
     }
 
-    fn project_path(&self, cx: &AppContext) -> Option<ProjectPath> {
-        File::from_dyn(self.file()).map(|file| ProjectPath {
+    fn worktree_path(&self, cx: &AppContext) -> Option<WorktreePath> {
+        File::from_dyn(self.file()).map(|file| WorktreePath {
             worktree_id: file.worktree_id(cx),
             path: file.path().clone(),
         })
+    }
+}
+
+impl ProjectItem for Buffer {
+    fn entry_id(&self, cx: &AppContext) -> Option<ProjectEntryId> {
+        Item::entry_id(self, cx)
+    }
+
+    fn worktree_path(&self, cx: &AppContext) -> Option<WorktreePath> {
+        Item::worktree_path(self, cx)
     }
 }

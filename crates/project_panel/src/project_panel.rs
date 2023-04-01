@@ -17,7 +17,7 @@ use gpui::{
     MutableAppContext, PromptLevel, RenderContext, Task, View, ViewContext, ViewHandle,
 };
 use menu::{Confirm, SelectNext, SelectPrev};
-use project::{Entry, EntryKind, Project, ProjectEntryId, ProjectPath, Worktree, WorktreeId};
+use project::{Entry, EntryKind, Project, ProjectEntryId, Worktree, WorktreeId, WorktreePath};
 use settings::Settings;
 use std::{
     cmp::Ordering,
@@ -251,7 +251,7 @@ impl ProjectPanel {
                         if let Some(entry) = worktree.read(cx).entry_for_id(entry_id) {
                             workspace
                                 .open_path(
-                                    ProjectPath {
+                                    WorktreePath {
                                         worktree_id: worktree.read(cx).id(),
                                         path: entry.path.clone(),
                                     },

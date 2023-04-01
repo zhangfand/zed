@@ -18,7 +18,7 @@ use language::{
     Anchor, Bias, Buffer, Diagnostic, DiagnosticEntry, DiagnosticSeverity, Point, Selection,
     SelectionGoal,
 };
-use project::{DiagnosticSummary, Project, ProjectPath};
+use project::{DiagnosticSummary, Project, WorktreePath};
 use serde_json::json;
 use settings::Settings;
 use smallvec::SmallVec;
@@ -55,17 +55,17 @@ struct ProjectDiagnosticsEditor {
     summary: DiagnosticSummary,
     excerpts: ModelHandle<MultiBuffer>,
     path_states: Vec<PathState>,
-    paths_to_update: BTreeMap<ProjectPath, usize>,
+    paths_to_update: BTreeMap<WorktreePath, usize>,
 }
 
 struct PathState {
-    path: ProjectPath,
+    path: WorktreePath,
     diagnostic_groups: Vec<DiagnosticGroupState>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 struct Jump {
-    path: ProjectPath,
+    path: WorktreePath,
     position: Point,
     anchor: Anchor,
 }
@@ -225,7 +225,7 @@ impl ProjectDiagnosticsEditor {
 
     fn populate_excerpts(
         &mut self,
-        path: ProjectPath,
+        path: WorktreePath,
         buffer: ModelHandle<Buffer>,
         cx: &mut ViewContext<Self>,
     ) {

@@ -967,7 +967,7 @@ async fn randomly_query_and_mutate_buffers(
             return Ok(());
         };
 
-        let (worktree_root_name, project_path) = worktree.read_with(cx, |worktree, _| {
+        let (worktree_root_name, worktree_path) = worktree.read_with(cx, |worktree, _| {
             let entry = worktree
                 .entries(false)
                 .filter(|e| e.is_file())
@@ -981,20 +981,20 @@ async fn randomly_query_and_mutate_buffers(
         log::info!(
             "{}: opening path {:?} in worktree {} ({})",
             client.username,
-            project_path.1,
-            project_path.0,
+            worktree_path.1,
+            worktree_path.0,
             worktree_root_name,
         );
         let buffer = project
             .update(cx, |project, cx| {
-                project.open_buffer(project_path.clone(), cx)
+                project.open_buffer(worktree_path.clone(), cx)
             })
             .await?;
         log::info!(
             "{}: opened path {:?} in worktree {} ({}) with buffer id {}",
             client.username,
-            project_path.1,
-            project_path.0,
+            worktree_path.1,
+            worktree_path.0,
             worktree_root_name,
             buffer.read_with(cx, |buffer, _| buffer.remote_id())
         );

@@ -661,7 +661,7 @@ mod tests {
     };
     use language::LanguageRegistry;
     use node_runtime::NodeRuntime;
-    use project::{Project, ProjectPath};
+    use project::{Project, WorktreePath};
     use serde_json::json;
     use std::{
         collections::HashSet,
@@ -886,7 +886,7 @@ mod tests {
         let project = Project::test(app_state.fs.clone(), ["/root".as_ref()], cx).await;
         let (_, workspace) = cx.add_window(|cx| Workspace::test_new(project, cx));
 
-        let entries = cx.read(|cx| workspace.file_project_paths(cx));
+        let entries = cx.read(|cx| workspace.file_worktree_paths(cx));
         let file1 = entries[0].clone();
         let file2 = entries[1].clone();
         let file3 = entries[2].clone();
@@ -899,7 +899,7 @@ mod tests {
         cx.read(|cx| {
             let pane = workspace.read(cx).active_pane().read(cx);
             assert_eq!(
-                pane.active_item().unwrap().project_path(cx),
+                pane.active_item().unwrap().worktree_path(cx),
                 Some(file1.clone())
             );
             assert_eq!(pane.items_len(), 1);
@@ -913,7 +913,7 @@ mod tests {
         cx.read(|cx| {
             let pane = workspace.read(cx).active_pane().read(cx);
             assert_eq!(
-                pane.active_item().unwrap().project_path(cx),
+                pane.active_item().unwrap().worktree_path(cx),
                 Some(file2.clone())
             );
             assert_eq!(pane.items_len(), 2);
@@ -929,7 +929,7 @@ mod tests {
         cx.read(|cx| {
             let pane = workspace.read(cx).active_pane().read(cx);
             assert_eq!(
-                pane.active_item().unwrap().project_path(cx),
+                pane.active_item().unwrap().worktree_path(cx),
                 Some(file1.clone())
             );
             assert_eq!(pane.items_len(), 2);
@@ -950,7 +950,7 @@ mod tests {
                     .read(cx)
                     .active_item()
                     .unwrap()
-                    .project_path(cx.as_ref()),
+                    .worktree_path(cx.as_ref()),
                 Some(file2.clone())
             );
         });
@@ -967,12 +967,12 @@ mod tests {
         cx.read(|cx| {
             let pane = workspace.read(cx).active_pane().read(cx);
             assert_eq!(
-                pane.active_item().unwrap().project_path(cx),
+                pane.active_item().unwrap().worktree_path(cx),
                 Some(file3.clone())
             );
             let pane_entries = pane
                 .items()
-                .map(|i| i.project_path(cx).unwrap())
+                .map(|i| i.worktree_path(cx).unwrap())
                 .collect::<Vec<_>>();
             assert_eq!(pane_entries, &[file1, file2, file3]);
         });
@@ -1348,7 +1348,7 @@ mod tests {
         let project = Project::test(app_state.fs.clone(), ["/root".as_ref()], cx).await;
         let (window_id, workspace) = cx.add_window(|cx| Workspace::test_new(project, cx));
 
-        let entries = cx.read(|cx| workspace.file_project_paths(cx));
+        let entries = cx.read(|cx| workspace.file_worktree_paths(cx));
         let file1 = entries[0].clone();
 
         let pane_1 = cx.read(|cx| workspace.read(cx).active_pane().clone());
@@ -1360,7 +1360,7 @@ mod tests {
 
         let (editor_1, buffer) = pane_1.update(cx, |pane_1, cx| {
             let editor = pane_1.active_item().unwrap().downcast::<Editor>().unwrap();
-            assert_eq!(editor.project_path(cx), Some(file1.clone()));
+            assert_eq!(editor.worktree_path(cx), Some(file1.clone()));
             let buffer = editor.update(cx, |editor, cx| {
                 editor.insert("dirt", cx);
                 editor.buffer().downgrade()
@@ -1374,7 +1374,7 @@ mod tests {
             assert_ne!(pane_1, pane_2);
 
             let pane2_item = pane_2.read(cx).active_item().unwrap();
-            assert_eq!(pane2_item.project_path(cx.as_ref()), Some(file1.clone()));
+            assert_eq!(pane2_item.worktree_path(cx.as_ref()), Some(file1.clone()));
 
             pane2_item.downcast::<Editor>().unwrap().downgrade()
         });
@@ -1422,7 +1422,7 @@ mod tests {
         let project = Project::test(app_state.fs.clone(), ["/root".as_ref()], cx).await;
         let (_, workspace) = cx.add_window(|cx| Workspace::test_new(project.clone(), cx));
 
-        let entries = cx.read(|cx| workspace.file_project_paths(cx));
+        let entries = cx.read(|cx| workspace.file_worktree_paths(cx));
         let file1 = entries[0].clone();
         let file2 = entries[1].clone();
         let file3 = entries[2].clone();
@@ -1645,7 +1645,7 @@ mod tests {
         fn active_location(
             workspace: &ViewHandle<Workspace>,
             cx: &mut TestAppContext,
-        ) -> (ProjectPath, DisplayPoint, f32) {
+        ) -> (WorktreePath, DisplayPoint, f32) {
             workspace.update(cx, |workspace, cx| {
                 let item = workspace.active_item(cx).unwrap();
                 let editor = item.downcast::<Editor>().unwrap();
@@ -1656,7 +1656,7 @@ mod tests {
                     )
                 });
                 (
-                    item.project_path(cx).unwrap(),
+                    item.worktree_path(cx).unwrap(),
                     selections[0].start,
                     scroll_position.y(),
                 )
@@ -1687,7 +1687,7 @@ mod tests {
         let (_, workspace) = cx.add_window(|cx| Workspace::test_new(project, cx));
         let pane = workspace.read_with(cx, |workspace, _| workspace.active_pane().clone());
 
-        let entries = cx.read(|cx| workspace.file_project_paths(cx));
+        let entries = cx.read(|cx| workspace.file_worktree_paths(cx));
         let file1 = entries[0].clone();
         let file2 = entries[1].clone();
         let file3 = entries[2].clone();
@@ -1810,10 +1810,10 @@ mod tests {
         fn active_path(
             workspace: &ViewHandle<Workspace>,
             cx: &TestAppContext,
-        ) -> Option<ProjectPath> {
+        ) -> Option<WorktreePath> {
             workspace.read_with(cx, |workspace, cx| {
                 let item = workspace.active_item(cx)?;
-                item.project_path(cx)
+                item.worktree_path(cx)
             })
         }
     }
