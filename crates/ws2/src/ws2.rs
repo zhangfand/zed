@@ -6,6 +6,7 @@ use gpui::{
     actions, elements::*, AnyViewHandle, AppContext, Entity, ModelHandle, MutableAppContext, Task,
     View, ViewContext, ViewHandle,
 };
+use language::Buffer;
 use project::{Project, ProjectItem, ProjectItemHandle, WorktreePath};
 use std::{
     any::{Any, TypeId},
@@ -49,16 +50,16 @@ impl<T: PaneItem> PaneItemHandle for ViewHandle<T> {
 }
 
 pub trait ProjectPaneItem: PaneItem {
-    type Model: ProjectItem;
+    type ProjectItem: ProjectItem;
     type Dependencies: Any;
 
     fn for_project_item(
-        model: ModelHandle<Self::Model>,
+        model: ModelHandle<Self::ProjectItem>,
         dependencies: &Self::Dependencies,
         cx: &mut ViewContext<Self>,
     ) -> Self;
 
-    fn project_item(&self, cx: &AppContext) -> &ModelHandle<Self::Model>;
+    fn project_item(&self, cx: &AppContext) -> &ModelHandle<Self::ProjectItem>;
 }
 
 pub trait ProjectPaneItemHandle {
@@ -116,8 +117,6 @@ pub struct Pane {
 }
 
 pub fn init(cx: &mut MutableAppContext) {
-    cx.set_global::<ProjectPaneItemBuilders>(Default::default());
-    cx.set_global::<ProjectPaneItemHandleConverters>(Default::default());
     cx.add_action(Workspace::close_active_pane_item);
 }
 
@@ -125,9 +124,9 @@ pub fn register_project_pane_item<T: ProjectPaneItem>(
     dependencies: T::Dependencies,
     cx: &mut MutableAppContext,
 ) {
-    cx.update_global(|builders: &mut ProjectPaneItemBuilders, _| {
+    cx.update_default_global(|builders: &mut ProjectPaneItemBuilders, _| {
         builders.insert(
-            TypeId::of::<T::Model>(),
+            TypeId::of::<T::ProjectItem>(),
             Box::new(move |workspace, model, cx| {
                 Box::new(cx.add_view(workspace, |cx| {
                     T::for_project_item(
@@ -140,7 +139,7 @@ pub fn register_project_pane_item<T: ProjectPaneItem>(
         );
     });
 
-    cx.update_global(|converters: &mut ProjectPaneItemHandleConverters, _| {
+    cx.update_default_global(|converters: &mut ProjectPaneItemHandleConverters, _| {
         converters.insert(TypeId::of::<T>(), |any_handle| {
             Box::new(any_handle.downcast::<T>().unwrap())
         });
@@ -152,7 +151,7 @@ fn build_project_pane_item(
     cx: &mut ViewContext<Workspace>,
 ) -> Result<Box<dyn ProjectPaneItemHandle>> {
     let workspace = cx.handle();
-    cx.update_global(|builders: &mut ProjectPaneItemBuilders, cx| {
+    cx.update_default_global(|builders: &mut ProjectPaneItemBuilders, cx| {
         let builder = builders
             .get(&project_item.item_type())
             .ok_or_else(|| anyhow!("no ProjectPaneItem registered for model type"))?;
@@ -350,6 +349,8 @@ impl Pane {
 
 #[cfg(test)]
 mod tests {
+    use std::{path::Path, sync::Arc};
+
     use super::*;
     use fs::FakeFs;
     use gpui::{serde_json::json, TestAppContext};
@@ -357,6 +358,8 @@ mod tests {
 
     #[gpui::test]
     async fn test_ws2_workspace(cx: &mut TestAppContext) {
+        cx.update(|cx| register_project_pane_item::<TestEditor>((), cx));
+
         let fs = FakeFs::new(cx.background());
         fs.insert_tree(
             "/root1",
@@ -374,9 +377,52 @@ mod tests {
             .update(cx, |workspace, cx| workspace.open_abs_path("/root1", cx))
             .await;
         assert!(result.unwrap().is_none());
-        project.read_with(cx, |project, cx| {
-            let worktrees = project.worktrees(cx).collect::<Vec<_>>();
-            assert_eq!(worktrees.len(), 1);
-        })
+        project
+            .read_with(cx, |project, cx| {
+                let worktrees = project.worktrees(cx).collect::<Vec<_>>();
+                assert_eq!(worktrees.len(), 1);
+                let worktree = worktrees[0].read(cx);
+                assert_eq!(worktree.abs_path().as_ref(), Path::new("/root1"));
+                worktree.as_local().unwrap().scan_complete()
+            })
+            .await;
+
+        let pane_item = workspace
+            .update(cx, |workspace, cx| workspace.open_abs_path("/root1/a", cx))
+            .await;
+
+        assert!(pane_item.unwrap().is_some());
+    }
+
+    struct TestEditor(ModelHandle<Buffer>);
+
+    impl Entity for TestEditor {
+        type Event = ();
+    }
+    impl View for TestEditor {
+        fn ui_name() -> &'static str {
+            "TestEditor"
+        }
+
+        fn render(&mut self, cx: &mut gpui::RenderContext<'_, Self>) -> ElementBox {
+            Empty::new().boxed()
+        }
+    }
+    impl PaneItem for TestEditor {}
+    impl ProjectPaneItem for TestEditor {
+        type ProjectItem = Buffer;
+        type Dependencies = ();
+
+        fn for_project_item(
+            buffer: ModelHandle<Buffer>,
+            _: &(),
+            _: &mut ViewContext<Self>,
+        ) -> Self {
+            Self(buffer)
+        }
+
+        fn project_item(&self, _: &AppContext) -> &ModelHandle<Self::ProjectItem> {
+            &self.0
+        }
     }
 }
