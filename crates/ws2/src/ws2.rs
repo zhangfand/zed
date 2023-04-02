@@ -3,8 +3,8 @@ mod workspace_element;
 use anyhow::{anyhow, Result};
 use collections::HashMap;
 use gpui::{
-    actions, AnyViewHandle, AppContext, Entity, ModelHandle, MutableAppContext, Task, View,
-    ViewContext, ViewHandle,
+    actions, elements::*, AnyViewHandle, AppContext, Entity, ModelHandle, MutableAppContext, Task,
+    View, ViewContext, ViewHandle,
 };
 use project::{Project, ProjectItem, ProjectItemHandle, WorktreePath};
 use std::{
@@ -18,7 +18,7 @@ type PaneId = usize;
 
 type BuildProjectPaneItem = Box<
     dyn Fn(
-        ViewHandle<Workspace>,
+        &ViewHandle<Workspace>,
         Box<dyn ProjectItemHandle>,
         &mut MutableAppContext,
     ) -> Box<dyn ProjectPaneItemHandle>,
@@ -40,7 +40,7 @@ impl<T: PaneItem> PaneItemHandle for ViewHandle<T> {
         let converter = cx
             .global::<ProjectPaneItemHandleConverters>()
             .get(&TypeId::of::<T>())?;
-        Some((converter)(self.into()))
+        Some((converter)(self.clone().into_any()))
     }
 
     fn boxed_clone(&self) -> Box<dyn PaneItemHandle> {
@@ -92,6 +92,10 @@ struct ProjectPaneItemRegistration {
     from_any: fn(AnyViewHandle) -> Option<Box<dyn ProjectPaneItemHandle>>,
 }
 
+pub enum WorkspaceEvent {
+    PathOpened(WorktreePath),
+}
+
 enum SplitOrientation {
     Horizontal,
     Vertical,
@@ -126,7 +130,11 @@ pub fn register_project_pane_item<T: ProjectPaneItem>(
             TypeId::of::<T::Model>(),
             Box::new(move |workspace, model, cx| {
                 Box::new(cx.add_view(workspace, |cx| {
-                    T::for_project_item(model.to_any().downcast().unwrap(), &dependencies, cx)
+                    T::for_project_item(
+                        model.as_any().clone().downcast().unwrap(),
+                        &dependencies,
+                        cx,
+                    )
                 }))
             }),
         );
@@ -148,12 +156,12 @@ fn build_project_pane_item(
         let builder = builders
             .get(&project_item.item_type())
             .ok_or_else(|| anyhow!("no ProjectPaneItem registered for model type"))?;
-        Ok(builder(workspace, project_item, cx))
+        Ok(builder(&workspace, project_item, cx))
     })
 }
 
 impl Entity for Workspace {
-    type Event = ();
+    type Event = WorkspaceEvent;
 }
 
 impl View for Workspace {
@@ -162,7 +170,7 @@ impl View for Workspace {
     }
 
     fn render(&mut self, _: &mut gpui::RenderContext<'_, Self>) -> gpui::ElementBox {
-        todo!()
+        Empty::new().boxed()
     }
 }
 
@@ -188,29 +196,28 @@ impl Workspace {
         &self,
         abs_path: impl Into<PathBuf>,
         cx: &mut ViewContext<Self>,
-    ) -> Task<Result<Box<dyn ProjectPaneItemHandle>>> {
+    ) -> Task<Result<Option<Box<dyn ProjectPaneItemHandle>>>> {
         let worktree_path = self
             .project
             .update(cx, |project, cx| project.open_abs_path(abs_path, cx));
 
         cx.spawn(|this, mut cx| async move {
             let worktree_path = worktree_path.await?;
-            let pane_item = this
-                .update(&mut cx, |this, cx| this.open_path(worktree_path, cx))
-                .await?;
-            Ok(pane_item)
+            this.update(&mut cx, |this, cx| this.open_path(worktree_path, cx))
+                .await
         })
     }
 
     /// Open the given WorktreePath in the workspace if it exists. If the path
     /// points at a directory, emit an event notifying other parts of the UI
-    /// that it was opened. Otherwise activate or add a ProjectPaneItem to the
-    /// active pane for the ProjectItem opened at this path.
+    /// that it was opened and return None. Otherwise activate or add a
+    /// ProjectPaneItem to the active pane for the ProjectItem opened at this
+    /// path.
     pub fn open_path(
         &mut self,
         path: WorktreePath,
         cx: &mut ViewContext<Self>,
-    ) -> Task<Result<Box<dyn ProjectPaneItemHandle>>> {
+    ) -> Task<Result<Option<Box<dyn ProjectPaneItemHandle>>>> {
         let entry = self
             .project
             .update(cx, |project, cx| project.entry_for_path(&path, cx));
@@ -222,28 +229,31 @@ impl Workspace {
             if entry.is_dir() {
                 // If the entry is a directory, emit an event so that other parts of the UI
                 // are notified, such as the project browser.
-                todo!();
+                this.update(&mut cx, |_, cx| cx.emit(WorkspaceEvent::PathOpened(path)));
+                Ok(None)
             } else {
                 // If the entry is a file, open a project item for it and display it in
                 // the active pane.
                 let project_item = this
                     .update(&mut cx, |this, cx| {
                         this.project
-                            .update(cx, |project, cx| project.open_path2(path, cx))
+                            .update(cx, |project, cx| project.open_path2(path.clone(), cx))
                     })
                     .await?;
 
                 this.update(&mut cx, |this, cx| {
                     let active_pane = this.active_pane_mut();
-                    if let Some(existing_item) =
+                    let pane_item = if let Some(existing_item) =
                         active_pane.activate_project_item(project_item.as_ref(), cx)
                     {
-                        Ok(existing_item)
+                        existing_item
                     } else {
                         let project_pane_item = build_project_pane_item(project_item, cx)?;
                         active_pane.add_item(project_pane_item.as_pane_item().boxed_clone(), cx);
-                        Ok(project_pane_item)
-                    }
+                        project_pane_item
+                    };
+                    cx.emit(WorkspaceEvent::PathOpened(path));
+                    Ok(Some(pane_item))
                 })
             }
         })
@@ -356,11 +366,17 @@ mod tests {
         )
         .await;
 
-        let project = Project::test(fs, ["root1".as_ref()], cx).await;
-        let (_, workspace) = cx.add_window(|cx| Workspace::new(project));
+        let project = Project::test(fs, [], cx).await;
+        let (_, workspace) = cx.add_window(|_| Workspace::new(project.clone()));
 
-        let worktree_path = workspace
+        assert!(project.read_with(cx, |project, cx| project.worktrees(&cx).next().is_none()));
+        let result = workspace
             .update(cx, |workspace, cx| workspace.open_abs_path("/root1", cx))
             .await;
+        assert!(result.unwrap().is_none());
+        project.read_with(cx, |project, cx| {
+            let worktrees = project.worktrees(cx).collect::<Vec<_>>();
+            assert_eq!(worktrees.len(), 1);
+        })
     }
 }

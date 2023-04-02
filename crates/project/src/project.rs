@@ -87,7 +87,7 @@ pub trait ProjectItemHandle {
     fn entry_id(&self, cx: &AppContext) -> Option<ProjectEntryId>;
     fn worktree_path(&self, cx: &AppContext) -> Option<WorktreePath>;
     fn item_type(&self) -> TypeId;
-    fn to_any(&self) -> AnyModelHandle;
+    fn as_any(&self) -> &AnyModelHandle;
 }
 
 impl<T: ProjectItem> ProjectItemHandle for ModelHandle<T> {
@@ -103,8 +103,8 @@ impl<T: ProjectItem> ProjectItemHandle for ModelHandle<T> {
         TypeId::of::<T>()
     }
 
-    fn to_any(&self) -> AnyModelHandle {
-        self.clone().into()
+    fn as_any(&self) -> &AnyModelHandle {
+        self
     }
 }
 
