@@ -1275,7 +1275,9 @@ impl Project {
                     File::from_dyn(buffer.file()).and_then(|file| file.project_entry_id(cx))
                 })
                 .ok_or_else(|| anyhow!("no project entry"))?;
-            Ok((project_entry_id, buffer.into()))
+
+            let buffer: &AnyModelHandle = &buffer;
+            Ok((project_entry_id, buffer.clone()))
         })
     }
 

@@ -1,7 +1,7 @@
 mod request;
 mod sign_in;
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use async_compression::futures::bufread::GzipDecoder;
 use async_tar::Archive;
 use client::Client;
@@ -11,12 +11,15 @@ use gpui::{
     Task,
 };
 use language::{point_from_lsp, point_to_lsp, Anchor, Bias, Buffer, BufferSnapshot, ToPointUtf16};
+use log::{debug, error};
 use lsp::LanguageServer;
 use node_runtime::NodeRuntime;
+use request::{LogMessage, StatusNotification};
 use settings::Settings;
 use smol::{fs, io::BufReader, stream::StreamExt};
 use std::{
     ffi::OsString,
+    ops::Range,
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -130,7 +133,7 @@ impl Status {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Completion {
-    pub position: Anchor,
+    pub range: Range<Anchor>,
     pub text: String,
 }
 
@@ -240,6 +243,27 @@ impl Copilot {
                         local_checks_only: false,
                     })
                     .await?;
+
+                server
+                    .on_notification::<LogMessage, _>(|params, _cx| {
+                        match params.level {
+                            // Copilot is pretty agressive about logging
+                            0 => debug!("copilot: {}", params.message),
+                            1 => debug!("copilot: {}", params.message),
+                            _ => error!("copilot: {}", params.message),
+                        }
+
+                        debug!("copilot metadata: {}", params.metadata_str);
+                        debug!("copilot extra: {:?}", params.extra);
+                    })
+                    .detach();
+
+                server
+                    .on_notification::<StatusNotification, _>(
+                        |_, _| { /* Silence the notification */ },
+                    )
+                    .detach();
+
                 anyhow::Ok((server, status))
             };
 
@@ -400,9 +424,16 @@ impl Copilot {
             Err(error) => return Task::ready(Err(error)),
         };
 
-        let buffer = buffer.read(cx).snapshot();
-        let request = server
-            .request::<request::GetCompletions>(build_completion_params(&buffer, position, cx));
+        let buffer = buffer.read(cx);
+
+        if !buffer.file().map(|file| file.is_local()).unwrap_or(true) {
+            return Task::ready(Err(anyhow!("Copilot only works locally")));
+        }
+
+        let buffer = buffer.snapshot();
+        let request = server.request::<request::GetCompletions>(
+            build_completion_params(&buffer, position, cx).unwrap(),
+        );
         cx.background().spawn(async move {
             let result = request.await?;
             let completion = result
@@ -428,10 +459,16 @@ impl Copilot {
             Err(error) => return Task::ready(Err(error)),
         };
 
-        let buffer = buffer.read(cx).snapshot();
-        let request = server.request::<request::GetCompletionsCycling>(build_completion_params(
-            &buffer, position, cx,
-        ));
+        let buffer = buffer.read(cx);
+
+        if !buffer.file().map(|file| file.is_local()).unwrap_or(true) {
+            return Task::ready(Err(anyhow!("Copilot only works locally")));
+        }
+
+        let buffer = buffer.snapshot();
+        let request = server.request::<request::GetCompletionsCycling>(
+            build_completion_params(&buffer, position, cx).unwrap(),
+        );
         cx.background().spawn(async move {
             let result = request.await?;
             let completions = result
@@ -503,7 +540,7 @@ fn build_completion_params<T>(
     buffer: &BufferSnapshot,
     position: T,
     cx: &AppContext,
-) -> request::GetCompletionsParams
+) -> anyhow::Result<request::GetCompletionsParams>
 where
     T: ToPointUtf16,
 {
@@ -531,27 +568,33 @@ where
         Some(language_name) => language_name.to_lowercase(),
         None => "plaintext".to_string(),
     };
-    request::GetCompletionsParams {
+
+    let Ok(uri) = lsp::Url::from_file_path(&path) else {
+        bail!("Failed convert file path")
+    };
+
+    Ok(request::GetCompletionsParams {
         doc: request::GetCompletionsDocument {
             source: buffer.text(),
             tab_size: settings.tab_size(language_name).into(),
             indent_size: 1,
             insert_spaces: !settings.hard_tabs(language_name),
-            uri: lsp::Url::from_file_path(&path).unwrap(),
+            uri,
             path: path.to_string_lossy().into(),
             relative_path: relative_path.to_string_lossy().into(),
             language_id,
             position: point_to_lsp(position),
             version: 0,
         },
-    }
+    })
 }
 
 fn completion_from_lsp(completion: request::Completion, buffer: &BufferSnapshot) -> Completion {
-    let position = buffer.clip_point_utf16(point_from_lsp(completion.position), Bias::Left);
+    let start = buffer.clip_point_utf16(point_from_lsp(completion.range.start), Bias::Left);
+    let end = buffer.clip_point_utf16(point_from_lsp(completion.range.end), Bias::Left);
     Completion {
-        position: buffer.anchor_before(position),
-        text: completion.display_text,
+        range: buffer.anchor_before(start)..buffer.anchor_after(end),
+        text: completion.text,
     }
 }
 
