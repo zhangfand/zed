@@ -64,6 +64,7 @@ pub trait ProjectPaneItem: PaneItem {
 
 pub trait ProjectPaneItemHandle {
     fn project_item<'a>(&'a self, cx: &'a AppContext) -> &'a dyn ProjectItemHandle;
+    fn as_any(&self) -> &AnyViewHandle;
     fn as_pane_item(&self) -> &dyn PaneItemHandle;
     fn boxed_clone(&self) -> Box<dyn ProjectPaneItemHandle>;
 }
@@ -71,6 +72,10 @@ pub trait ProjectPaneItemHandle {
 impl<T: ProjectPaneItem> ProjectPaneItemHandle for ViewHandle<T> {
     fn project_item<'a>(&'a self, cx: &'a AppContext) -> &'a dyn ProjectItemHandle {
         self.read(cx).project_item(cx)
+    }
+
+    fn as_any(&self) -> &AnyViewHandle {
+        self
     }
 
     fn as_pane_item(&self) -> &dyn PaneItemHandle {
@@ -87,10 +92,6 @@ pub struct Workspace {
     pane_tree: PaneTree,
     next_pane_id: PaneId,
     active_pane_id: PaneId,
-}
-
-struct ProjectPaneItemRegistration {
-    from_any: fn(AnyViewHandle) -> Option<Box<dyn ProjectPaneItemHandle>>,
 }
 
 pub enum WorkspaceEvent {
@@ -364,7 +365,8 @@ mod tests {
         fs.insert_tree(
             "/root1",
             json!({
-                "a": ""
+                "a": "",
+                "b": ""
             }),
         )
         .await;
@@ -389,9 +391,16 @@ mod tests {
 
         let pane_item = workspace
             .update(cx, |workspace, cx| workspace.open_abs_path("/root1/a", cx))
-            .await;
-
-        assert!(pane_item.unwrap().is_some());
+            .await
+            .unwrap()
+            .unwrap();
+        let editor = pane_item.as_any().downcast_ref::<TestEditor>().unwrap();
+        editor.read_with(cx, |editor, cx| {
+            assert_eq!(
+                editor.0.read(cx).file().unwrap().full_path(cx),
+                Path::new("root1/a")
+            );
+        });
     }
 
     struct TestEditor(ModelHandle<Buffer>);
