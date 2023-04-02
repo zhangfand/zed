@@ -33,6 +33,7 @@ pub trait PaneItem: View {}
 
 pub trait PaneItemHandle {
     fn to_project_pane_item(&self, cx: &AppContext) -> Option<Box<dyn ProjectPaneItemHandle>>;
+    fn as_any(&self) -> &AnyViewHandle;
     fn boxed_clone(&self) -> Box<dyn PaneItemHandle>;
 }
 
@@ -42,6 +43,10 @@ impl<T: PaneItem> PaneItemHandle for ViewHandle<T> {
             .global::<ProjectPaneItemHandleConverters>()
             .get(&TypeId::of::<T>())?;
         Some((converter)(self.clone().into_any()))
+    }
+
+    fn as_any(&self) -> &AnyViewHandle {
+        self
     }
 
     fn boxed_clone(&self) -> Box<dyn PaneItemHandle> {
@@ -185,6 +190,10 @@ impl Workspace {
         }
     }
 
+    pub fn active_pane(&self) -> &Pane {
+        self.pane_tree.pane(self.active_pane_id).unwrap()
+    }
+
     pub fn active_pane_mut(&mut self) -> &mut Pane {
         self.pane_tree.pane_mut(self.active_pane_id).unwrap()
     }
@@ -273,6 +282,19 @@ impl PaneTree {
         PaneTree::Pane(Pane::new(0))
     }
 
+    fn pane(&self, id: PaneId) -> Option<&Pane> {
+        match self {
+            PaneTree::Split { children, .. } => children[0].pane(id),
+            PaneTree::Pane(pane) => {
+                if pane.id == id {
+                    Some(pane)
+                } else {
+                    None
+                }
+            }
+        }
+    }
+
     fn pane_mut(&mut self, pane_id: PaneId) -> Option<&mut Pane> {
         match self {
             PaneTree::Split { children, .. } => {
@@ -331,6 +353,12 @@ impl Pane {
         Some(found_item)
     }
 
+    fn active_item(&self) -> Option<&dyn PaneItemHandle> {
+        self.items
+            .get(self.active_item_index)
+            .map(|item| item.as_ref())
+    }
+
     fn add_item(&mut self, item: Box<dyn PaneItemHandle>, cx: &mut ViewContext<Workspace>) {
         self.items.push(item);
         cx.notify();
@@ -359,6 +387,7 @@ mod tests {
 
     #[gpui::test]
     async fn test_ws2_workspace(cx: &mut TestAppContext) {
+        // Register TestEditor as the ProjectPaneItem for buffer
         cx.update(|cx| register_project_pane_item::<TestEditor>((), cx));
 
         let fs = FakeFs::new(cx.background());
@@ -374,11 +403,17 @@ mod tests {
         let project = Project::test(fs, [], cx).await;
         let (_, workspace) = cx.add_window(|_| Workspace::new(project.clone()));
 
+        // Project starts empty
         assert!(project.read_with(cx, |project, cx| project.worktrees(&cx).next().is_none()));
+
+        // Then we open a direcotry via the workspace
         let result = workspace
             .update(cx, |workspace, cx| workspace.open_abs_path("/root1", cx))
             .await;
+        // The result is None because we can't actually open a pane item for a directory
         assert!(result.unwrap().is_none());
+
+        // But we add a worktree for that directory to the project
         project
             .read_with(cx, |project, cx| {
                 let worktrees = project.worktrees(cx).collect::<Vec<_>>();
@@ -387,20 +422,26 @@ mod tests {
                 assert_eq!(worktree.abs_path().as_ref(), Path::new("/root1"));
                 worktree.as_local().unwrap().scan_complete()
             })
-            .await;
+            .await; // Wait for the worktree's scan to complete
 
-        let pane_item = workspace
+        // Now open a file in the worktree
+        let opened_pane_item = workspace
             .update(cx, |workspace, cx| workspace.open_abs_path("/root1/a", cx))
             .await
             .unwrap()
             .unwrap();
-        let editor = pane_item.as_any().downcast_ref::<TestEditor>().unwrap();
-        editor.read_with(cx, |editor, cx| {
-            assert_eq!(
-                editor.0.read(cx).file().unwrap().full_path(cx),
-                Path::new("root1/a")
-            );
-        });
+        // Convert the more specific Box<dyn ProjectPaneItemHandle> to an AnyViewHandle
+        let opened_pane_item = opened_pane_item.as_any();
+
+        // And then we can downcast it to TestEditor, which we registered abev as the type of view
+        // that we want to create when we open a Buffer. We check that it has the expected path.
+        let editor = opened_pane_item.downcast_ref::<TestEditor>().unwrap();
+        workspace.read_with(cx, |workspace, cx| {
+            let file = editor.read(cx).0.read(cx).file().unwrap();
+            assert_eq!(file.full_path(cx), Path::new("root1/a"));
+            let active_item = workspace.active_pane().active_item().unwrap().as_any();
+            assert_eq!(active_item, opened_pane_item);
+        })
     }
 
     struct TestEditor(ModelHandle<Buffer>);
