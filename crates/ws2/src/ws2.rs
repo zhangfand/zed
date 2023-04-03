@@ -6,10 +6,10 @@ use gpui::{
     actions, elements::*, AnyViewHandle, AppContext, Entity, ModelHandle, MutableAppContext, Task,
     View, ViewContext, ViewHandle,
 };
-use language::Buffer;
 use project::{Project, ProjectItem, ProjectItemHandle, WorktreePath};
 use std::{
     any::{Any, TypeId},
+    cmp,
     path::PathBuf,
 };
 
@@ -360,7 +360,9 @@ impl Pane {
     }
 
     fn add_item(&mut self, item: Box<dyn PaneItemHandle>, cx: &mut ViewContext<Workspace>) {
-        self.items.push(item);
+        let ix = cmp::min(self.items.len(), self.active_item_index + 1);
+        self.items.splice(ix..ix, Some(item));
+        self.active_item_index = ix;
         cx.notify();
     }
 
@@ -378,12 +380,12 @@ impl Pane {
 
 #[cfg(test)]
 mod tests {
-    use std::{path::Path, sync::Arc};
-
     use super::*;
     use fs::FakeFs;
     use gpui::{serde_json::json, TestAppContext};
+    use language::Buffer;
     use project::Project;
+    use std::path::Path;
 
     #[gpui::test]
     async fn test_ws2_workspace(cx: &mut TestAppContext) {
@@ -425,23 +427,40 @@ mod tests {
             .await; // Wait for the worktree's scan to complete
 
         // Now open a file in the worktree
-        let opened_pane_item = workspace
+        let editor_1 = workspace
             .update(cx, |workspace, cx| workspace.open_abs_path("/root1/a", cx))
             .await
-            .unwrap()
+            .unwrap() // Result
+            .unwrap() // Option
+            .as_any() // Cast to AnyViewHandle
+            .clone() // Get an owned value instead of a reference
+            .downcast::<TestEditor>() // Downcast to the expected type
             .unwrap();
-        // Convert the more specific Box<dyn ProjectPaneItemHandle> to an AnyViewHandle
-        let opened_pane_item = opened_pane_item.as_any();
 
-        // And then we can downcast it to TestEditor, which we registered abev as the type of view
-        // that we want to create when we open a Buffer. We check that it has the expected path.
-        let editor = opened_pane_item.downcast_ref::<TestEditor>().unwrap();
         workspace.read_with(cx, |workspace, cx| {
-            let file = editor.read(cx).0.read(cx).file().unwrap();
+            let file = editor_1.read(cx).0.read(cx).file().unwrap();
             assert_eq!(file.full_path(cx), Path::new("root1/a"));
             let active_item = workspace.active_pane().active_item().unwrap().as_any();
-            assert_eq!(active_item, opened_pane_item);
-        })
+            assert_eq!(active_item, &editor_1);
+        });
+
+        // Now open a second file in the same worktree
+        let editor_2 = workspace
+            .update(cx, |workspace, cx| workspace.open_abs_path("/root1/b", cx))
+            .await
+            .unwrap()
+            .unwrap()
+            .as_any()
+            .clone()
+            .downcast::<TestEditor>()
+            .unwrap();
+
+        workspace.read_with(cx, |workspace, cx| {
+            let file = editor_2.read(cx).0.read(cx).file().unwrap();
+            assert_eq!(file.full_path(cx), Path::new("root1/b"));
+            let active_item = workspace.active_pane().active_item().unwrap().as_any();
+            assert_eq!(active_item, &editor_2);
+        });
     }
 
     struct TestEditor(ModelHandle<Buffer>);
@@ -454,7 +473,7 @@ mod tests {
             "TestEditor"
         }
 
-        fn render(&mut self, cx: &mut gpui::RenderContext<'_, Self>) -> ElementBox {
+        fn render(&mut self, _: &mut gpui::RenderContext<'_, Self>) -> ElementBox {
             Empty::new().boxed()
         }
     }
