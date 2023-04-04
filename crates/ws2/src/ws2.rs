@@ -526,6 +526,70 @@ mod tests {
     use std::path::Path;
 
     #[gpui::test]
+    async fn test_open_window(cx: &mut TestAppContext) {
+        // Register TestEditor as the ProjectPaneItem for buffer
+        cx.update(|cx| register_project_pane_item::<TestEditor>((), cx));
+
+        let app_state = cx.update(AppState::test);
+        app_state
+            .fs
+            .as_fake()
+            .insert_tree(
+                "/root1",
+                json!({
+                    "a": {
+                        "b": ""
+                    },
+                    "c": ""
+                }),
+            )
+            .await;
+
+        let (workspace_1, opened_items) = cx
+            .update(|cx| {
+                Workspace::open_window(
+                    vec!["/root1/c".into(), "/root1/a".into()],
+                    app_state.clone(),
+                    cx,
+                )
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(opened_items.len(), 2);
+        opened_items[0]
+            .as_ref()
+            .unwrap()
+            .as_any()
+            .downcast_ref::<TestEditor>()
+            .unwrap()
+            .read_with(cx, |editor, cx| {
+                let path = editor.0.read(cx).file().unwrap().full_path(cx);
+                assert_eq!(path, Path::new("c"));
+            });
+        assert!(opened_items[1].is_none());
+
+        let (workspace_2, opened_items) = cx
+            .update(|cx| Workspace::open_window(vec!["/root1/a/b".into()], app_state, cx))
+            .await
+            .unwrap();
+        assert_eq!(opened_items.len(), 1);
+        opened_items[0]
+            .as_ref()
+            .unwrap()
+            .as_any()
+            .downcast_ref::<TestEditor>()
+            .unwrap()
+            .read_with(cx, |editor, cx| {
+                let path = editor.0.read(cx).file().unwrap().full_path(cx);
+                assert_eq!(path, Path::new("a/b"));
+            });
+
+        // We reuse the workspace that already contains the parent directory of /root1/a/b
+        assert_eq!(workspace_2, workspace_1)
+    }
+
+    #[gpui::test]
     async fn test_open_abs_paths(cx: &mut TestAppContext) {
         // Register TestEditor as the ProjectPaneItem for buffer
         cx.update(|cx| register_project_pane_item::<TestEditor>((), cx));
