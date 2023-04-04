@@ -17,6 +17,7 @@ use futures::{
 use gpui::{Action, App, AssetSource, AsyncAppContext, MutableAppContext, Task, ViewContext};
 use isahc::{config::Configurable, Request};
 use language::LanguageRegistry;
+use lazy_static::lazy_static;
 use log::LevelFilter;
 use node_runtime::NodeRuntime;
 use parking_lot::Mutex;
@@ -47,6 +48,10 @@ use workspace::{
     OpenPaths, Workspace,
 };
 use zed::{self, build_window_options, initialize_workspace, languages, menus, OpenSettings};
+
+lazy_static! {
+    pub static ref ZED_NEW_WORKSPACE: bool = std::env::var("ZED_NEW_WORKSPACE").ok().is_some();
+}
 
 fn main() {
     let http = http::client();
@@ -212,7 +217,12 @@ fn main() {
                 cx.spawn(|cx| async move { restore_or_create_workspace(&app_state, cx).await })
                     .detach()
             } else {
-                cx.dispatch_global_action(OpenPaths { paths });
+                if *ZED_NEW_WORKSPACE {
+                    let task = ws2::open_abs_paths(paths, app_state.clone(), cx);
+                    cx.foreground().spawn(task).detach();
+                } else {
+                    cx.dispatch_global_action(OpenPaths { paths });
+                }
             }
         } else {
             if let Ok(Some(connection)) = cli_connections_rx.try_next() {

@@ -65,6 +65,7 @@ util = { path = "../util" }
 vim = { path = "../vim" }
 workspace = { path = "../workspace" }
 welcome = { path = "../welcome" }
+ws2 = { path = "../ws2" }
 anyhow = "1.0.38"
 async-compression = { version = "0.3", features = ["gzip", "futures-bufread"] }
 async-tar = "0.4.2"

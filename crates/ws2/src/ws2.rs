@@ -2,16 +2,20 @@ mod workspace_element;
 
 use anyhow::{anyhow, Result};
 use collections::HashMap;
+use futures::{future, Future};
 use gpui::{
-    actions, elements::*, AnyViewHandle, AppContext, Entity, ModelHandle, MutableAppContext, Task,
-    View, ViewContext, ViewHandle,
+    actions, elements::*, geometry::vector::vec2f, AnyViewHandle, AppContext, Entity, ModelHandle,
+    MutableAppContext, RootView, Task, TitlebarOptions, View, ViewContext, ViewHandle,
+    WindowBounds, WindowKind, WindowOptions,
 };
 use project::{Project, ProjectItem, ProjectItemHandle, WorktreePath};
 use std::{
     any::{Any, TypeId},
     cmp,
     path::PathBuf,
+    sync::Arc,
 };
+use workspace::AppState;
 
 actions!(ws2, [CloseActivePaneItem]);
 
@@ -100,6 +104,7 @@ pub struct Workspace {
 }
 
 pub enum WorkspaceEvent {
+    Activated,
     PathOpened(WorktreePath),
 }
 
@@ -165,6 +170,64 @@ fn build_project_pane_item(
     })
 }
 
+pub fn open_abs_paths(
+    abs_paths: Vec<PathBuf>,
+    app_state: Arc<AppState>,
+    cx: &mut MutableAppContext,
+) -> Task<
+    Result<(
+        ViewHandle<Workspace>,
+        Vec<Option<Box<dyn ProjectPaneItemHandle>>>,
+    )>,
+> {
+    let existing_workspace = all_workspaces(cx)
+        .find(|workspace| {
+            workspace
+                .read(cx)
+                .project
+                .read(cx)
+                .contains_abs_paths(&abs_paths, cx)
+        })
+        .cloned();
+
+    cx.spawn(|mut cx| async move {
+        // Activate the existing workspace or open a new one.
+        let workspace = if let Some(existing_workspace) = existing_workspace {
+            existing_workspace.update(&mut cx, |workspace, cx| {
+                workspace.activate(cx);
+            });
+            existing_workspace
+        } else {
+            // TODO: Load saved workspace state for these paths from the Store.
+
+            cx.update(|cx| {
+                let project = Project::local(
+                    app_state.client.clone(),
+                    app_state.user_store.clone(),
+                    app_state.languages.clone(),
+                    app_state.fs.clone(),
+                    cx,
+                );
+                let (_, new_workspace) = cx.open_window(|_| Workspace::new(project));
+                new_workspace
+            })
+        };
+
+        workspace
+            .update(&mut cx, |workspace, cx| {
+                workspace.open_abs_paths(abs_paths, cx)
+            })
+            .await;
+
+        todo!()
+    })
+}
+
+pub fn all_workspaces(cx: &MutableAppContext) -> impl Iterator<Item = &ViewHandle<Workspace>> {
+    cx.root_views()
+        .filter_map(|view| view.downcast_ref::<Workspace>())
+}
+
 impl Entity for Workspace {
     type Event = WorkspaceEvent;
 }
@@ -179,6 +242,24 @@ impl View for Workspace {
     }
 }
 
+impl RootView for Workspace {
+    fn window_options(&mut self, _: &mut ViewContext<Self>) -> WindowOptions {
+        WindowOptions {
+            titlebar: Some(TitlebarOptions {
+                title: None,
+                appears_transparent: true,
+                traffic_light_position: Some(vec2f(8., 8.)),
+            }),
+            center: false,
+            focus: true,
+            kind: WindowKind::Normal,
+            is_movable: true,
+            bounds: WindowBounds::Maximized,
+            screen: None,
+        }
+    }
+}
+
 impl Workspace {
     pub fn new(project: ModelHandle<Project>) -> Self {
         let pane_tree = PaneTree::new();
@@ -190,6 +271,10 @@ impl Workspace {
         }
     }
 
+    pub fn activate(&self, cx: &mut ViewContext<Self>) {
+        cx.emit(WorkspaceEvent::Activated);
+    }
+
     pub fn active_pane(&self) -> &Pane {
         self.pane_tree.pane(self.active_pane_id).unwrap()
     }
@@ -198,20 +283,64 @@ impl Workspace {
         self.pane_tree.pane_mut(self.active_pane_id).unwrap()
     }
 
-    /// Opens the file at the given absolute path. If no worktree for that path
-    /// exists in the project, one is added automatically. Then the path is opened
-    /// with Self::open_path.
+    /// Opens the given absolute paths in the workspace.
+    ///
+    /// We return the opened items in the order of the original paths, with `None` for
+    /// are directories.
+    pub fn open_abs_paths(
+        &self,
+        abs_paths: impl IntoIterator<Item = impl Into<PathBuf>>,
+        cx: &mut ViewContext<Self>,
+    ) -> Task<Result<Vec<Option<Box<dyn ProjectPaneItemHandle>>>>> {
+        // Sort the paths so that we open the parent directories before their children,
+        // but track their original index so we can return results in the order of the
+        // orginal paths.
+        let mut abs_paths = abs_paths
+            .into_iter()
+            .map(Into::into)
+            .enumerate()
+            .collect::<Vec<_>>();
+        abs_paths.sort_unstable_by(|(_, a), (_, b)| a.cmp(b));
+
+        cx.spawn(|this, mut cx| async move {
+            // Open all the paths in sequence to ensure we finish opening parent directories
+            // before we start opening their children.
+            let mut opened_items = Vec::new();
+            for (ix, abs_path) in abs_paths {
+                let opened_item = this
+                    .update(&mut cx, |this, cx| this.open_abs_path(abs_path, cx))
+                    .await?;
+                opened_items.push((ix, opened_item));
+            }
+
+            // Sort the opened items by their original path index.
+            opened_items.sort_unstable_by(|(a_ix, _), (b_ix, _)| a_ix.cmp(b_ix));
+
+            Ok(opened_items
+                .into_iter()
+                .map(|(_, pane_item)| pane_item)
+                .collect())
+        })
+    }
+
+    /// Opens the file or directory at the given absolute path. If no worktree for
+    /// that path exists in the project, one is added automatically. Then the path
+    /// is opened with Self::open_path.
     pub fn open_abs_path(
         &self,
         abs_path: impl Into<PathBuf>,
         cx: &mut ViewContext<Self>,
     ) -> Task<Result<Option<Box<dyn ProjectPaneItemHandle>>>> {
+        let abs_path = abs_path.into();
+        dbg!(&abs_path);
         let worktree_path = self
             .project
             .update(cx, |project, cx| project.open_abs_path(abs_path, cx));
 
         cx.spawn(|this, mut cx| async move {
             let worktree_path = worktree_path.await?;
+            dbg!(&worktree_path);
+
             this.update(&mut cx, |this, cx| this.open_path(worktree_path, cx))
                 .await
         })
@@ -227,6 +356,8 @@ impl Workspace {
         path: WorktreePath,
         cx: &mut ViewContext<Self>,
     ) -> Task<Result<Option<Box<dyn ProjectPaneItemHandle>>>> {
+        // TODO: We need to eagerly populate the entry for this path if it hasn't yet loaded in the project
+        // which requires an async operation. We will need a new API to do this. load_entry_for_path?
         let entry = self
             .project
             .update(cx, |project, cx| project.entry_for_path(&path, cx));
@@ -392,7 +523,77 @@ mod tests {
     use std::path::Path;
 
     #[gpui::test]
-    async fn test_ws2_workspace(cx: &mut TestAppContext) {
+    async fn test_open_abs_paths(cx: &mut TestAppContext) {
+        // Register TestEditor as the ProjectPaneItem for buffer
+        cx.update(|cx| register_project_pane_item::<TestEditor>((), cx));
+
+        let fs = FakeFs::new(cx.background());
+        fs.insert_tree(
+            "/root1",
+            json!({
+                "a": {
+                    "b": ""
+                },
+                "c": ""
+            }),
+        )
+        .await;
+
+        let project = Project::test(fs, [], cx).await;
+        let (_, workspace) = cx.add_window(|_| Workspace::new(project.clone()));
+
+        // Then we open a directory via the workspace
+        let opened_items = workspace
+            .update(cx, |workspace, cx| {
+                workspace.open_abs_paths(
+                    [
+                        Path::new("/root1/c"),
+                        Path::new("/root1/a/b"),
+                        Path::new("/root1/a"),
+                    ],
+                    cx,
+                )
+            })
+            .await
+            .unwrap();
+
+        let opened_item = |ix: usize| {
+            Some(
+                opened_items[ix]
+                    .as_ref()?
+                    .as_any()
+                    .downcast_ref::<TestEditor>()
+                    .unwrap(),
+            )
+        };
+
+        // The first opened item is an editor in a single-file worktree
+        assert_eq!(opened_items.len(), 3);
+        opened_item(0)
+            .unwrap()
+            .read_with(cx, |editor: &TestEditor, cx| {
+                assert_eq!(
+                    editor.0.read(cx).file().unwrap().full_path(cx),
+                    Path::new("c")
+                );
+            });
+
+        // The second opened item is an editor for a file in the b worktree
+        opened_item(1)
+            .unwrap()
+            .read_with(cx, |editor: &TestEditor, cx| {
+                assert_eq!(
+                    editor.0.read(cx).file().unwrap().full_path(cx),
+                    Path::new("a/b")
+                );
+            });
+
+        // The path is the directory b, so no editor is opened for that path
+        assert!(opened_item(2).is_none());
+    }
+
+    #[gpui::test]
+    async fn test_open_abs_path(cx: &mut TestAppContext) {
         // Register TestEditor as the ProjectPaneItem for buffer
         cx.update(|cx| register_project_pane_item::<TestEditor>((), cx));
 

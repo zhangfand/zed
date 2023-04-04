@@ -837,11 +837,11 @@ impl Project {
             .map(|worktree| worktree.read(cx).id())
     }
 
-    pub fn contains_paths(&self, paths: &[PathBuf], cx: &AppContext) -> bool {
-        paths.iter().all(|path| self.contains_path(path, cx))
+    pub fn contains_abs_paths(&self, paths: &[PathBuf], cx: &AppContext) -> bool {
+        paths.iter().all(|path| self.contains_abs_path(path, cx))
     }
 
-    pub fn contains_path(&self, path: &Path, cx: &AppContext) -> bool {
+    pub fn contains_abs_path(&self, path: &Path, cx: &AppContext) -> bool {
         for worktree in self.worktrees(cx) {
             let worktree = worktree.read(cx).as_local();
             if worktree.map_or(false, |w| w.contains_abs_path(path)) {

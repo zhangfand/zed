@@ -8486,6 +8486,7 @@ dependencies = [
  "theme",
  "util",
  "uuid 1.2.2",
+ "workspace",
 ]
 
 [[package]]
@@ -8652,6 +8653,7 @@ dependencies = [
  "vim",
  "welcome",
  "workspace",
+ "ws2",
 ]
 
 [[package]]

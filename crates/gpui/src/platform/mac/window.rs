@@ -546,7 +546,7 @@ impl Window {
                 Rc::into_raw(window.0.clone()) as *const c_void,
             );
 
-            if let Some(title) = options.titlebar.as_ref().and_then(|t| t.title) {
+            if let Some(title) = options.titlebar.as_ref().and_then(|t| t.title.as_ref()) {
                 native_window.setTitle_(NSString::alloc(nil).init_str(title));
             }
 

@@ -35,6 +35,8 @@ settings = { path = "../settings" }
 terminal = { path = "../terminal" }
 theme = { path = "../theme" }
 util = { path = "../util" }
+workspace = { path = "../workspace" }
+
 async-recursion = "1.0.0"
 bincode = "1.2.1"
 anyhow = "1.0.38"

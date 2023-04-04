@@ -516,7 +516,7 @@ pub struct AppState {
     pub user_store: ModelHandle<client::UserStore>,
     pub fs: Arc<dyn fs::Fs>,
     pub build_window_options:
-        fn(Option<WindowBounds>, Option<uuid::Uuid>, &dyn Platform) -> WindowOptions<'static>,
+        fn(Option<WindowBounds>, Option<uuid::Uuid>, &dyn Platform) -> WindowOptions,
     pub initialize_workspace: fn(&mut Workspace, &Arc<AppState>, &mut ViewContext<Workspace>),
     pub dock_default_item_factory: DockDefaultItemFactory,
     pub background_actions: BackgroundActions,
@@ -3023,7 +3023,7 @@ pub fn open_paths(
 
     // Open paths in existing workspace if possible
     let existing =
-        activate_workspace_for_project(cx, |project, cx| project.contains_paths(abs_paths, cx));
+        activate_workspace_for_project(cx, |project, cx| project.contains_abs_paths(abs_paths, cx));
 
     let app_state = app_state.clone();
     let abs_paths = abs_paths.to_vec();

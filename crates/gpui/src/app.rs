@@ -120,6 +120,10 @@ pub trait View: Entity + Sized {
     }
 }
 
+pub trait RootView: View {
+    fn window_options(&mut self, cx: &mut ViewContext<Self>) -> WindowOptions;
+}
+
 pub trait ReadModel {
     fn read_model<T: Entity>(&self, handle: &ModelHandle<T>) -> &T;
 }
@@ -358,6 +362,14 @@ impl AsyncAppContext {
         F: FnOnce(&mut ViewContext<T>) -> T,
     {
         self.update(|cx| cx.add_window(window_options, build_root_view))
+    }
+
+    pub fn open_window<T, F>(&mut self, build_root_view: F) -> (usize, ViewHandle<T>)
+    where
+        T: RootView,
+        F: FnOnce(&mut ViewContext<T>) -> T,
+    {
+        self.update(|cx| cx.open_window(build_root_view))
     }
 
     pub fn remove_window(&mut self, window_id: usize) {
@@ -774,16 +786,6 @@ impl MutableAppContext {
             .map_or(false, |(_, window)| {
                 window.is_topmost_for_position(position)
             })
-    }
-
-    pub fn has_window(&self, window_id: usize) -> bool {
-        self.window_ids()
-            .find(|window| window == &window_id)
-            .is_some()
-    }
-
-    pub fn window_ids(&self) -> impl Iterator<Item = usize> + '_ {
-        self.cx.windows.keys().copied()
     }
 
     pub fn activate_window(&self, window_id: usize) {
@@ -1647,6 +1649,49 @@ impl MutableAppContext {
                     .platform
                     .open_window(window_id, window_options, this.foreground.clone());
             this.register_platform_window(window_id, window);
+
+            (window_id, root_view)
+        })
+    }
+
+    /// Opens a new window with a `RootView`.
+    ///
+    /// This is a replacement for add_window, and gets its window options from the root view.
+    pub fn open_window<T, F>(&mut self, build_root_view: F) -> (usize, ViewHandle<T>)
+    where
+        T: RootView,
+        F: FnOnce(&mut ViewContext<T>) -> T,
+    {
+        self.update(|this| {
+            let window_id = post_inc(&mut this.next_window_id);
+            let view_id = post_inc(&mut this.next_entity_id);
+            this.parents.insert((window_id, view_id), ParentId::Root);
+
+            let mut view_cx = ViewContext::new(this, window_id, view_id);
+            let mut root_view = build_root_view(&mut view_cx);
+            let window_options = root_view.window_options(&mut view_cx);
+            this.views.insert((window_id, view_id), Box::new(root_view));
+            let root_view = ViewHandle::<T>::new(window_id, view_id, &this.cx.ref_counts);
+
+            this.windows.insert(
+                window_id,
+                Window {
+                    root_view: root_view.clone().into_any(),
+                    focused_view_id: Some(root_view.id()),
+                    is_active: false,
+                    invalidation: None,
+                    is_fullscreen: false,
+                },
+            );
+
+            root_view.update(this, |root_view, cx| {
+                root_view.focus_in(cx.handle().into_any(), cx)
+            });
+
+            let platform_window =
+                this.platform
+                    .open_window(window_id, window_options, this.foreground.clone());
+            this.register_platform_window(window_id, platform_window);
 
             (window_id, root_view)
         })
@@ -2727,6 +2772,12 @@ impl Deref for MutableAppContext {
     }
 }
 
+impl DerefMut for MutableAppContext {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.cx
+    }
+}
+
 #[derive(Debug)]
 pub enum ParentId {
     View(usize),
@@ -2753,10 +2804,24 @@ impl AppContext {
             .map(|window| window.root_view.clone())
     }
 
+    pub fn root_views(&self) -> impl Iterator<Item = &AnyViewHandle> {
+        self.windows.values().map(|window| &window.root_view)
+    }
+
     pub fn root_view_id(&self, window_id: usize) -> Option<usize> {
         self.windows
             .get(&window_id)
             .map(|window| window.root_view.id())
+    }
+
+    pub fn has_window(&self, window_id: usize) -> bool {
+        self.window_ids()
+            .find(|window| window == &window_id)
+            .is_some()
+    }
+
+    pub fn window_ids(&self) -> impl Iterator<Item = usize> + '_ {
+        self.windows.keys().copied()
     }
 
     pub fn focused_view_id(&self, window_id: usize) -> Option<usize> {

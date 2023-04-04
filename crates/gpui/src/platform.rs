@@ -32,6 +32,7 @@ use sqlez::{
 };
 use std::{
     any::Any,
+    borrow::Cow,
     fmt::{self, Debug, Display},
     ops::Range,
     path::{Path, PathBuf},
@@ -168,9 +169,9 @@ pub trait Window {
 }
 
 #[derive(Debug)]
-pub struct WindowOptions<'a> {
+pub struct WindowOptions {
     pub bounds: WindowBounds,
-    pub titlebar: Option<TitlebarOptions<'a>>,
+    pub titlebar: Option<TitlebarOptions>,
     pub center: bool,
     pub focus: bool,
     pub kind: WindowKind,
@@ -179,8 +180,8 @@ pub struct WindowOptions<'a> {
 }
 
 #[derive(Debug)]
-pub struct TitlebarOptions<'a> {
-    pub title: Option<&'a str>,
+pub struct TitlebarOptions {
+    pub title: Option<Cow<'static, str>>,
     pub appears_transparent: bool,
     pub traffic_light_position: Option<Vector2F>,
 }
@@ -365,7 +366,7 @@ pub trait FontSystem: Send + Sync {
     fn wrap_line(&self, text: &str, font_id: FontId, font_size: f32, width: f32) -> Vec<usize>;
 }
 
-impl<'a> Default for WindowOptions<'a> {
+impl Default for WindowOptions {
     fn default() -> Self {
         Self {
             bounds: WindowBounds::Maximized,

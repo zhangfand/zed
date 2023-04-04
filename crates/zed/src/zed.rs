@@ -348,7 +348,7 @@ pub fn build_window_options(
     bounds: Option<WindowBounds>,
     display: Option<Uuid>,
     platform: &dyn Platform,
-) -> WindowOptions<'static> {
+) -> WindowOptions {
     let bounds = bounds.unwrap_or(WindowBounds::Maximized);
     let screen = display.and_then(|display| platform.screen_by_id(display));
 
