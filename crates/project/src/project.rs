@@ -4869,6 +4869,31 @@ impl Project {
         self.active_entry
     }
 
+    pub fn load_entry_for_path(
+        &self,
+        path: &WorktreePath,
+        cx: &mut MutableAppContext,
+    ) -> impl Future<Output = Result<Entry>> {
+        let worktree = self
+            .worktree_for_id(path.worktree_id, cx)
+            .ok_or_else(|| anyhow!("worktree {} does not exist", path.worktree_id));
+        let path = path.path.clone();
+
+        let task = worktree.and_then(|worktree| {
+            worktree.update(cx, |worktree, cx| {
+                worktree
+                    .as_local()
+                    .ok_or_else(|| anyhow!("worktree is remote"))
+                    .map(|worktree| worktree.load_entry(path, cx))
+            })
+        });
+
+        async move {
+            let entry = task?.await?;
+            Ok(entry)
+        }
+    }
+
     pub fn entry_for_path(&self, path: &WorktreePath, cx: &AppContext) -> Option<Entry> {
         self.worktree_for_id(path.worktree_id, cx)?
             .read(cx)

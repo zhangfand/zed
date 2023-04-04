@@ -907,6 +907,14 @@ impl LocalWorktree {
         }))
     }
 
+    pub fn load_entry(
+        &self,
+        path: Arc<Path>,
+        cx: &mut ModelContext<Worktree>,
+    ) -> Task<Result<Entry>> {
+        self.refresh_entry(path, None, cx)
+    }
+
     fn refresh_entry(
         &self,
         path: Arc<Path>,

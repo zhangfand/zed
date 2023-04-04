@@ -105,7 +105,8 @@ pub struct Workspace {
 
 pub enum WorkspaceEvent {
     Activated,
-    PathOpened(WorktreePath),
+    FileOpened(Box<dyn ProjectPaneItemHandle>),
+    DirOpened(WorktreePath),
 }
 
 enum SplitOrientation {
@@ -356,20 +357,19 @@ impl Workspace {
         path: WorktreePath,
         cx: &mut ViewContext<Self>,
     ) -> Task<Result<Option<Box<dyn ProjectPaneItemHandle>>>> {
-        // TODO: We need to eagerly populate the entry for this path if it hasn't yet loaded in the project
-        // which requires an async operation. We will need a new API to do this. load_entry_for_path?
+        // Eagerly load the entry for the path in case the path does yet not exist. This
+        // lets us check if it's a directory.
         let entry = self
             .project
-            .update(cx, |project, cx| project.entry_for_path(&path, cx));
+            .update(cx, |project, cx| project.load_entry_for_path(&path, cx));
 
         cx.spawn(|this, mut cx| async move {
-            let entry =
-                entry.ok_or_else(|| anyhow!("could not find project entry for path {:?}", path))?;
+            let entry = entry.await?;
 
             if entry.is_dir() {
                 // If the entry is a directory, emit an event so that other parts of the UI
                 // are notified, such as the project browser.
-                this.update(&mut cx, |_, cx| cx.emit(WorkspaceEvent::PathOpened(path)));
+                this.update(&mut cx, |_, cx| cx.emit(WorkspaceEvent::DirOpened(path)));
                 Ok(None)
             } else {
                 // If the entry is a file, open a project item for it and display it in
@@ -392,7 +392,7 @@ impl Workspace {
                         active_pane.add_item(project_pane_item.as_pane_item().boxed_clone(), cx);
                         project_pane_item
                     };
-                    cx.emit(WorkspaceEvent::PathOpened(path));
+                    cx.emit(WorkspaceEvent::FileOpened(pane_item.boxed_clone()));
                     Ok(Some(pane_item))
                 })
             }
