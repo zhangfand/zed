@@ -353,6 +353,10 @@ impl Pane {
         Some(found_item)
     }
 
+    fn items(&self) -> &[Box<dyn PaneItemHandle>] {
+        &self.items
+    }
+
     fn active_item(&self) -> Option<&dyn PaneItemHandle> {
         self.items
             .get(self.active_item_index)
@@ -437,6 +441,7 @@ mod tests {
             .downcast::<TestEditor>() // Downcast to the expected type
             .unwrap();
 
+        // The opened editor has the expected path, and it is the active pane item.
         workspace.read_with(cx, |workspace, cx| {
             let file = editor_1.read(cx).0.read(cx).file().unwrap();
             assert_eq!(file.full_path(cx), Path::new("root1/a"));
@@ -455,11 +460,33 @@ mod tests {
             .downcast::<TestEditor>()
             .unwrap();
 
+        // The opened editor has the expected path, and it is the active pane item.
         workspace.read_with(cx, |workspace, cx| {
             let file = editor_2.read(cx).0.read(cx).file().unwrap();
             assert_eq!(file.full_path(cx), Path::new("root1/b"));
             let active_item = workspace.active_pane().active_item().unwrap().as_any();
             assert_eq!(active_item, &editor_2);
+        });
+
+        // Now open a path for which we already have an editor open
+        // Now open a file in the worktree
+        let editor_1b = workspace
+            .update(cx, |workspace, cx| workspace.open_abs_path("/root1/a", cx))
+            .await
+            .unwrap() // Result
+            .unwrap() // Option
+            .as_any() // Cast to AnyViewHandle
+            .clone() // Get an owned value instead of a reference
+            .downcast::<TestEditor>() // Downcast to the expected type
+            .unwrap();
+
+        // We return a handle to the existing editor.
+        assert_eq!(editor_1b, editor_1);
+
+        workspace.read_with(cx, |workspace, _| {
+            assert_eq!(workspace.active_pane().items().len(), 2);
+            let active_item = workspace.active_pane().active_item().unwrap().as_any();
+            assert_eq!(active_item, &editor_1);
         });
     }
 
