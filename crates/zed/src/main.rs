@@ -218,7 +218,7 @@ fn main() {
                     .detach()
             } else {
                 if *ZED_NEW_WORKSPACE {
-                    let task = ws2::open_abs_paths(paths, app_state.clone(), cx);
+                    let task = ws2::Workspace::open_window(paths, app_state.clone(), cx);
                     cx.foreground().spawn(task).detach();
                 } else {
                     cx.dispatch_global_action(OpenPaths { paths });

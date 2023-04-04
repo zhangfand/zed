@@ -171,64 +171,6 @@ fn build_project_pane_item(
     })
 }
 
-pub fn open_abs_paths(
-    abs_paths: Vec<PathBuf>,
-    app_state: Arc<AppState>,
-    cx: &mut MutableAppContext,
-) -> Task<
-    Result<(
-        ViewHandle<Workspace>,
-        Vec<Option<Box<dyn ProjectPaneItemHandle>>>,
-    )>,
-> {
-    let existing_workspace = all_workspaces(cx)
-        .find(|workspace| {
-            workspace
-                .read(cx)
-                .project
-                .read(cx)
-                .contains_abs_paths(&abs_paths, cx)
-        })
-        .cloned();
-
-    cx.spawn(|mut cx| async move {
-        // Activate the existing workspace or open a new one.
-        let workspace = if let Some(existing_workspace) = existing_workspace {
-            existing_workspace.update(&mut cx, |workspace, cx| {
-                workspace.activate(cx);
-            });
-            existing_workspace
-        } else {
-            // TODO: Load saved workspace state for these paths from the Store.
-
-            cx.update(|cx| {
-                let project = Project::local(
-                    app_state.client.clone(),
-                    app_state.user_store.clone(),
-                    app_state.languages.clone(),
-                    app_state.fs.clone(),
-                    cx,
-                );
-                let (_, new_workspace) = cx.open_window(|_| Workspace::new(project));
-                new_workspace
-            })
-        };
-
-        workspace
-            .update(&mut cx, |workspace, cx| {
-                workspace.open_abs_paths(abs_paths, cx)
-            })
-            .await;
-
-        todo!()
-    })
-}
-
-pub fn all_workspaces(cx: &MutableAppContext) -> impl Iterator<Item = &ViewHandle<Workspace>> {
-    cx.root_views()
-        .filter_map(|view| view.downcast_ref::<Workspace>())
-}
-
 impl Entity for Workspace {
     type Event = WorkspaceEvent;
 }
@@ -270,6 +212,67 @@ impl Workspace {
             next_pane_id: 1,
             active_pane_id: 0,
         }
+    }
+
+    pub fn all(cx: &MutableAppContext) -> impl Iterator<Item = &ViewHandle<Workspace>> {
+        cx.root_views()
+            .filter_map(|view| view.downcast_ref::<Workspace>())
+    }
+
+    pub fn open_window(
+        abs_paths: Vec<PathBuf>,
+        app_state: Arc<AppState>,
+        cx: &mut MutableAppContext,
+    ) -> Task<
+        Result<(
+            ViewHandle<Workspace>,
+            Vec<Option<Box<dyn ProjectPaneItemHandle>>>,
+        )>,
+    > {
+        let existing_workspace = Self::all(cx)
+            .find(|workspace| {
+                workspace
+                    .read(cx)
+                    .project
+                    .read(cx)
+                    .contains_abs_paths(&abs_paths, cx)
+            })
+            .cloned();
+
+        cx.spawn(|mut cx| async move {
+            // Activate the existing workspace or open a new one.
+            let workspace = if let Some(existing_workspace) = existing_workspace {
+                existing_workspace.update(&mut cx, |workspace, cx| {
+                    workspace.activate(cx);
+                });
+                existing_workspace
+            } else {
+                // TODO: Load saved workspace state for these paths from the Store.
+                cx.update(|cx| {
+                    let project = Project::local(
+                        app_state.client.clone(),
+                        app_state.user_store.clone(),
+                        app_state.languages.clone(),
+                        app_state.fs.clone(),
+                        cx,
+                    );
+                    let (_, new_workspace) = cx.open_window(|_| Workspace::new(project));
+                    new_workspace
+                })
+            };
+
+            let opened_items = workspace
+                .update(&mut cx, |workspace, cx| {
+                    workspace.open_abs_paths(abs_paths, cx)
+                })
+                .await?;
+
+            Ok((workspace, opened_items))
+        })
+    }
+
+    pub fn project(&self) -> &ModelHandle<Project> {
+        &self.project
     }
 
     pub fn activate(&self, cx: &mut ViewContext<Self>) {
