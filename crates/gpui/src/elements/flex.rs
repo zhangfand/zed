@@ -3,8 +3,8 @@ use std::{any::Any, cell::Cell, f32::INFINITY, ops::Range, rc::Rc};
 use crate::{
     json::{self, ToJson, Value},
     presenter::MeasurementContext,
-    Axis, DebugContext, Element, ElementBox, ElementStateHandle, LayoutContext, PaintContext,
-    RenderContext, SizeConstraint, Vector2FExt, View,
+    AnyRenderContext, Axis, DebugContext, Element, ElementBox, ElementStateHandle, LayoutContext,
+    PaintContext, RenderContext, SizeConstraint, Vector2FExt, View,
 };
 use pathfinder_geometry::{
     rect::RectF,
@@ -52,19 +52,15 @@ impl Flex {
         self
     }
 
-    pub fn scrollable<Tag, V>(
+    pub fn scrollable<Tag: 'static, C: AnyRenderContext>(
         mut self,
         element_id: usize,
         scroll_to: Option<usize>,
-        cx: &mut RenderContext<V>,
-    ) -> Self
-    where
-        Tag: 'static,
-        V: View,
-    {
+        cx: &mut C,
+    ) -> Self {
         let scroll_state = cx.default_element_state::<Tag, Rc<ScrollState>>(element_id);
         scroll_state.read(cx).scroll_to.set(scroll_to);
-        self.scroll_state = Some((scroll_state, cx.handle().id()));
+        self.scroll_state = Some((scroll_state, cx.view_id()));
         self
     }
 

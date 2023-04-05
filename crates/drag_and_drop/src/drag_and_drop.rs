@@ -5,8 +5,8 @@ use gpui::{
     elements::{Empty, MouseEventHandler, Overlay},
     geometry::{rect::RectF, vector::Vector2F},
     scene::{MouseDown, MouseDrag},
-    CursorStyle, Element, ElementBox, EventContext, MouseButton, MutableAppContext, RenderContext,
-    View, WeakViewHandle,
+    AnyRenderContext, CursorStyle, Element, ElementBox, EventContext, MouseButton,
+    MutableAppContext, RenderContext, View, WeakViewHandle,
 };
 
 const DEAD_ZONE: f32 = 4.;

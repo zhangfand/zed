@@ -16,8 +16,8 @@ use gpui::{
     geometry::vector::Vector2F,
     impl_actions, impl_internal_actions,
     keymap_matcher::{KeymapContext, Keystroke},
-    AnyViewHandle, AppContext, Element, ElementBox, Entity, ModelHandle, MutableAppContext, Task,
-    View, ViewContext, ViewHandle, WeakViewHandle,
+    AnyRenderContext, AnyViewHandle, AppContext, Element, ElementBox, Entity, ModelHandle,
+    MutableAppContext, Task, View, ViewContext, ViewHandle, WeakViewHandle,
 };
 use project::{LocalWorktree, Project};
 use serde::Deserialize;

@@ -10,11 +10,11 @@ use crate::{
         MouseMove, MouseMoveOut, MouseScrollWheel, MouseUp, MouseUpOut, Scene,
     },
     text_layout::TextLayoutCache,
-    Action, AnyModelHandle, AnyViewHandle, AnyWeakModelHandle, AnyWeakViewHandle, Appearance,
-    AssetCache, ElementBox, Entity, FontSystem, ModelHandle, MouseButton, MouseMovedEvent,
-    MouseRegion, MouseRegionId, MouseState, ParentId, ReadModel, ReadView, RenderContext,
-    RenderParams, SceneBuilder, UpgradeModelHandle, UpgradeViewHandle, View, ViewHandle,
-    WeakModelHandle, WeakViewHandle,
+    Action, AnyModelHandle, AnyRenderContext, AnyViewHandle, AnyWeakModelHandle, AnyWeakViewHandle,
+    Appearance, AssetCache, ElementBox, ElementStateId, Entity, FontSystem, ModelHandle,
+    MouseButton, MouseMovedEvent, MouseRegion, MouseRegionId, MouseState, ParentId, ReadModel,
+    ReadView, RenderContext, RenderParams, SceneBuilder, UpgradeModelHandle, UpgradeViewHandle,
+    View, ViewHandle, WeakModelHandle, WeakViewHandle,
 };
 use anyhow::bail;
 use collections::{HashMap, HashSet};
@@ -26,6 +26,7 @@ use sqlez::{
     statement::Statement,
 };
 use std::{
+    any::TypeId,
     marker::PhantomData,
     ops::{Deref, DerefMut, Range},
     sync::Arc,
@@ -741,6 +742,46 @@ impl<'a> UpgradeViewHandle for LayoutContext<'a> {
 
     fn upgrade_any_view_handle(&self, handle: &crate::AnyWeakViewHandle) -> Option<AnyViewHandle> {
         self.app.upgrade_any_view_handle(handle)
+    }
+}
+
+impl<'a> AnyRenderContext for LayoutContext<'a> {
+    fn window_id(&self) -> usize {
+        self.window_id
+    }
+
+    fn view_id(&self) -> usize {
+        *self.view_stack.last().unwrap()
+    }
+
+    fn mouse_state<Tag: 'static>(&self, region_id: usize) -> MouseState {
+        let region_id = MouseRegionId::new::<Tag>(self.view_id(), region_id);
+        MouseState {
+            hovered: self.hovered_region_ids.contains(&region_id),
+            clicked: self.clicked_region_ids.as_ref().and_then(|(ids, button)| {
+                if ids.contains(&region_id) {
+                    Some(*button)
+                } else {
+                    None
+                }
+            }),
+            accessed_hovered: false,
+            accessed_clicked: false,
+        }
+    }
+
+    fn element_state<Tag: 'static, T: 'static>(
+        &mut self,
+        element_id: usize,
+        initial: T,
+    ) -> crate::ElementStateHandle<T> {
+        let id = ElementStateId {
+            view_id: self.view_id(),
+            element_id,
+            tag: TypeId::of::<Tag>(),
+        };
+        let frame_count = self.frame_count();
+        AppContext::element_state(self, id, frame_count, initial)
     }
 }
 

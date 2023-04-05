@@ -13,8 +13,9 @@ use gpui::{
     impl_internal_actions,
     keymap_matcher::KeymapContext,
     platform::CursorStyle,
-    AppContext, ClipboardItem, Element, ElementBox, Entity, ModelHandle, MouseButton,
-    MutableAppContext, PromptLevel, RenderContext, Task, View, ViewContext, ViewHandle,
+    AnyRenderContext, AppContext, ClipboardItem, Element, ElementBox, Entity, ModelHandle,
+    MouseButton, MutableAppContext, PromptLevel, RenderContext, Task, View, ViewContext,
+    ViewHandle,
 };
 use menu::{Confirm, SelectNext, SelectPrev};
 use project::{Entry, EntryKind, Project, ProjectEntryId, Worktree, WorktreeId, WorktreePath};

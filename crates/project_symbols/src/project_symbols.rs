@@ -5,7 +5,7 @@ use editor::{
 use fuzzy::{StringMatch, StringMatchCandidate};
 use gpui::{
     actions, elements::*, AnyViewHandle, AppContext, Entity, ModelHandle, MouseState,
-    MutableAppContext, RenderContext, Task, View, ViewContext, ViewHandle,
+    MutableAppContext, Task, View, ViewContext, ViewHandle, RenderContext,
 };
 use ordered_float::OrderedFloat;
 use picker::{Picker, PickerDelegate};

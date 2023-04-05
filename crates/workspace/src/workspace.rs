@@ -41,9 +41,9 @@ use gpui::{
     impl_actions, impl_internal_actions,
     keymap_matcher::KeymapContext,
     platform::{CursorStyle, WindowOptions},
-    Action, AnyModelHandle, AnyViewHandle, AppContext, AsyncAppContext, Entity, ModelContext,
-    ModelHandle, MouseButton, MutableAppContext, PathPromptOptions, Platform, PromptLevel,
-    RenderContext, SizeConstraint, Subscription, Task, View, ViewContext, ViewHandle,
+    Action, AnyModelHandle, AnyRenderContext, AnyViewHandle, AppContext, AsyncAppContext, Entity,
+    ModelContext, ModelHandle, MouseButton, MutableAppContext, PathPromptOptions, Platform,
+    PromptLevel, RenderContext, SizeConstraint, Subscription, Task, View, ViewContext, ViewHandle,
     WeakViewHandle, WindowBounds,
 };
 use item::{FollowableItem, FollowableItemHandle, Item, ItemHandle, ProjectItem};

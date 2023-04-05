@@ -4,8 +4,8 @@ use gpui::{
     elements::{Canvas, MouseEventHandler, ParentElement, Stack},
     geometry::{rect::RectF, vector::Vector2F},
     scene::MouseUp,
-    AppContext, Element, ElementBox, EventContext, MouseButton, MouseState, Quad, RenderContext,
-    WeakViewHandle,
+    AnyRenderContext, AppContext, Element, ElementBox, EventContext, MouseButton, MouseState, Quad,
+    RenderContext, WeakViewHandle,
 };
 use project::ProjectEntryId;
 use settings::Settings;

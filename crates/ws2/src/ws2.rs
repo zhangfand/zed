@@ -10,6 +10,7 @@ use gpui::{
 use project::{Project, ProjectItem, ProjectItemHandle, WorktreePath};
 use std::{
     any::{Any, TypeId},
+    borrow::Cow,
     cmp,
     path::PathBuf,
     sync::Arc,
@@ -32,12 +33,17 @@ type ProjectPaneItemBuilders = HashMap<TypeId, BuildProjectPaneItem>;
 type ConvertProjectPaneItemHandle = fn(AnyViewHandle) -> Box<dyn ProjectPaneItemHandle>;
 type ProjectPaneItemHandleConverters = HashMap<TypeId, ConvertProjectPaneItemHandle>;
 
-pub trait PaneItem: View {}
+pub trait PaneItem: View {
+    fn tab_description<'a>(&'a self, _: usize, _: &'a AppContext) -> Option<Cow<'a, str>> {
+        None
+    }
+}
 
 pub trait PaneItemHandle {
     fn to_project_pane_item(&self, cx: &AppContext) -> Option<Box<dyn ProjectPaneItemHandle>>;
     fn as_any(&self) -> &AnyViewHandle;
     fn boxed_clone(&self) -> Box<dyn PaneItemHandle>;
+    fn tab_description<'a>(&'a self, ix: usize, cx: &'a AppContext) -> Option<Cow<'a, str>>;
 }
 
 impl<T: PaneItem> PaneItemHandle for ViewHandle<T> {
@@ -54,6 +60,10 @@ impl<T: PaneItem> PaneItemHandle for ViewHandle<T> {
 
     fn boxed_clone(&self) -> Box<dyn PaneItemHandle> {
         Box::new(self.clone())
+    }
+
+    fn tab_description<'a>(&'a self, ix: usize, cx: &'a AppContext) -> Option<Cow<'a, str>> {
+        self.read(cx).tab_description(ix, cx)
     }
 }
 
@@ -278,6 +288,10 @@ impl Workspace {
         &self.project
     }
 
+    pub fn pane(&self, id: PaneId) -> Option<&Pane> {
+        self.pane_tree.pane(id)
+    }
+
     pub fn activate(&self, cx: &mut ViewContext<Self>) {
         cx.emit(WorkspaceEvent::Activated);
     }
@@ -419,7 +433,7 @@ impl PaneTree {
         PaneTree::Pane(Pane::new(0))
     }
 
-    fn pane(&self, id: PaneId) -> Option<&Pane> {
+    pub fn pane(&self, id: PaneId) -> Option<&Pane> {
         match self {
             PaneTree::Split { children, .. } => children[0].pane(id),
             PaneTree::Pane(pane) => {
@@ -432,7 +446,7 @@ impl PaneTree {
         }
     }
 
-    fn pane_mut(&mut self, pane_id: PaneId) -> Option<&mut Pane> {
+    pub fn pane_mut(&mut self, pane_id: PaneId) -> Option<&mut Pane> {
         match self {
             PaneTree::Split { children, .. } => {
                 for child in children {

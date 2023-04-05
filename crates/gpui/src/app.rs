@@ -186,6 +186,8 @@ pub trait UpdateView {
         T: View;
 }
 
+pub trait AccessElementState {}
+
 #[derive(Clone)]
 pub struct App(Rc<RefCell<MutableAppContext>>);
 
@@ -830,6 +832,10 @@ impl MutableAppContext {
         &'a self,
     ) -> impl DoubleEndedIterator<Item = &'static str> + 'a {
         self.active_labeled_tasks.values().cloned()
+    }
+
+    pub(crate) fn frame_count(&self) -> usize {
+        self.frame_count
     }
 
     pub fn render_view(&mut self, params: RenderParams) -> Result<ElementBox> {
@@ -2802,7 +2808,7 @@ pub struct AppContext {
     pub(crate) parents: HashMap<(usize, usize), ParentId>,
     windows: HashMap<usize, Window>,
     globals: HashMap<TypeId, Box<dyn Any>>,
-    element_states: HashMap<ElementStateId, Box<dyn Any>>,
+    pub(crate) element_states: HashMap<ElementStateId, Box<dyn Any>>,
     background: Arc<executor::Background>,
     ref_counts: Arc<Mutex<RefCounts>>,
     font_cache: Arc<FontCache>,
@@ -2874,6 +2880,18 @@ impl AppContext {
         } else {
             panic!("no global has been added for {}", type_name::<T>());
         }
+    }
+
+    pub(crate) fn element_state<T: 'static>(
+        &mut self,
+        id: ElementStateId,
+        frame_count: usize,
+        initial: T,
+    ) -> ElementStateHandle<T> {
+        self.element_states
+            .entry(id)
+            .or_insert_with(|| Box::new(initial));
+        ElementStateHandle::new(id, frame_count, &self.ref_counts)
     }
 
     /// Returns an iterator over all of the view ids from the passed view up to the root of the window
@@ -4321,16 +4339,18 @@ impl<'a, V: View> RenderContext<'a, V> {
     pub fn handle(&self) -> WeakViewHandle<V> {
         WeakViewHandle::new(self.window_id, self.view_id)
     }
+}
 
-    pub fn window_id(&self) -> usize {
+impl<'a, V: View> AnyRenderContext for RenderContext<'a, V> {
+    fn window_id(&self) -> usize {
         self.window_id
     }
 
-    pub fn view_id(&self) -> usize {
+    fn view_id(&self) -> usize {
         self.view_id
     }
 
-    pub fn mouse_state<Tag: 'static>(&self, region_id: usize) -> MouseState {
+    fn mouse_state<Tag: 'static>(&self, region_id: usize) -> MouseState {
         let region_id = MouseRegionId::new::<Tag>(self.view_id, region_id);
         MouseState {
             hovered: self.hovered_region_ids.contains(&region_id),
@@ -4346,7 +4366,7 @@ impl<'a, V: View> RenderContext<'a, V> {
         }
     }
 
-    pub fn element_state<Tag: 'static, T: 'static>(
+    fn element_state<Tag: 'static, T: 'static>(
         &mut self,
         element_id: usize,
         initial: T,
@@ -4356,18 +4376,8 @@ impl<'a, V: View> RenderContext<'a, V> {
             element_id,
             tag: TypeId::of::<Tag>(),
         };
-        self.cx
-            .element_states
-            .entry(id)
-            .or_insert_with(|| Box::new(initial));
-        ElementStateHandle::new(id, self.frame_count, &self.cx.ref_counts)
-    }
-
-    pub fn default_element_state<Tag: 'static, T: 'static + Default>(
-        &mut self,
-        element_id: usize,
-    ) -> ElementStateHandle<T> {
-        self.element_state::<Tag, T>(element_id, T::default())
+        let frame_count = self.frame_count;
+        self.cx.element_state(id, frame_count, initial)
     }
 }
 
@@ -4523,6 +4533,23 @@ pub trait Handle<T> {
 
 pub trait WeakHandle {
     fn id(&self) -> usize;
+}
+
+pub trait AnyRenderContext: Deref<Target = MutableAppContext> + DerefMut {
+    fn window_id(&self) -> usize;
+    fn view_id(&self) -> usize;
+    fn mouse_state<Tag: 'static>(&self, region_id: usize) -> MouseState;
+    fn element_state<Tag: 'static, T: 'static>(
+        &mut self,
+        element_id: usize,
+        initial: T,
+    ) -> ElementStateHandle<T>;
+    fn default_element_state<Tag: 'static, T: 'static + Default>(
+        &mut self,
+        element_id: usize,
+    ) -> ElementStateHandle<T> {
+        self.element_state::<Tag, T>(element_id, T::default())
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
@@ -5235,9 +5262,9 @@ impl Hash for AnyWeakViewHandle {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ElementStateId {
-    view_id: usize,
-    element_id: usize,
-    tag: TypeId,
+    pub(crate) view_id: usize,
+    pub(crate) element_id: usize,
+    pub(crate) tag: TypeId,
 }
 
 pub struct ElementStateHandle<T> {

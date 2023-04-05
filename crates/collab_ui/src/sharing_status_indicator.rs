@@ -2,7 +2,8 @@ use call::ActiveCall;
 use gpui::{
     color::Color,
     elements::{MouseEventHandler, Svg},
-    Appearance, Element, ElementBox, Entity, MouseButton, MutableAppContext, RenderContext, View,
+    Appearance, Element, ElementBox, Entity, MouseButton, MutableAppContext, View,
+    RenderContext,
 };
 use settings::Settings;
 

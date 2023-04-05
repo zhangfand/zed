@@ -6,8 +6,8 @@ use gpui::{
         Padding, ParentElement,
     },
     fonts::TextStyle,
-    AppContext, Border, Element, Entity, ModelHandle, MutableAppContext, Quad, RenderContext, Task,
-    View, ViewContext, ViewHandle, WeakViewHandle,
+    AppContext, Border, Element, Entity, ModelHandle, MutableAppContext, Quad, Task, View,
+    ViewContext, ViewHandle, RenderContext, WeakViewHandle,
 };
 use project::Project;
 use settings::Settings;

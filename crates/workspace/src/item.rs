@@ -746,7 +746,7 @@ pub(crate) mod test {
     use crate::{sidebar::SidebarItem, ItemId, ItemNavHistory, Pane, Workspace, WorkspaceId};
     use gpui::{
         elements::Empty, AppContext, Element, ElementBox, Entity, ModelHandle, MutableAppContext,
-        RenderContext, Task, View, ViewContext, ViewHandle, WeakViewHandle,
+        Task, View, ViewContext, ViewHandle, RenderContext, WeakViewHandle,
     };
     use project::{Project, ProjectEntryId, WorktreeId, WorktreePath};
     use smallvec::SmallVec;

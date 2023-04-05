@@ -7,7 +7,7 @@ use crate::{
     json::{self, json},
     presenter::MeasurementContext,
     scene::MouseScrollWheel,
-    ElementBox, MouseRegion, RenderContext, ScrollWheelEvent, View,
+    ElementBox, MouseRegion, ScrollWheelEvent, View, RenderContext,
 };
 use json::ToJson;
 use std::{cell::RefCell, cmp, ops::Range, rc::Rc};

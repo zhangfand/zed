@@ -3,7 +3,7 @@ use std::sync::Arc;
 use editor::{display_map::ToDisplayPoint, scroll::autoscroll::Autoscroll, DisplayPoint, Editor};
 use gpui::{
     actions, elements::*, geometry::vector::Vector2F, AnyViewHandle, Axis, Entity,
-    MutableAppContext, RenderContext, View, ViewContext, ViewHandle,
+    MutableAppContext, View, ViewContext, ViewHandle, RenderContext,
 };
 use menu::{Cancel, Confirm};
 use settings::Settings;

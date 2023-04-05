@@ -6,7 +6,7 @@ use crate::{
     json::json,
     presenter::MeasurementContext,
     DebugContext, Element, ElementBox, ElementRc, EventContext, LayoutContext, MouseRegion,
-    PaintContext, RenderContext, SizeConstraint, View, ViewContext,
+    PaintContext, SizeConstraint, View, ViewContext, RenderContext,
 };
 use std::{cell::RefCell, collections::VecDeque, ops::Range, rc::Rc};
 use sum_tree::{Bias, SumTree};

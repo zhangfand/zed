@@ -6,8 +6,8 @@ use collections::HashMap;
 use editor::Editor;
 use gpui::{
     actions, elements::*, impl_actions, platform::CursorStyle, Action, AnyViewHandle, AppContext,
-    Entity, MouseButton, MutableAppContext, RenderContext, Subscription, Task, View, ViewContext,
-    ViewHandle,
+    Entity, MouseButton, MutableAppContext, Subscription, Task, View, ViewContext, ViewHandle,
+    RenderContext,
 };
 use project::search::SearchQuery;
 use serde::Deserialize;

@@ -1,6 +1,6 @@
 use gpui::{
-    elements::*, AppContext, Entity, MouseButton, RenderContext, Subscription, View, ViewContext,
-    ViewHandle,
+    elements::*, AppContext, Entity, MouseButton, Subscription, View, ViewContext, ViewHandle,
+    RenderContext,
 };
 use itertools::Itertools;
 use search::ProjectSearchView;

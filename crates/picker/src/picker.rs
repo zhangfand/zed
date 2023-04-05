@@ -4,8 +4,8 @@ use gpui::{
     geometry::vector::{vec2f, Vector2F},
     keymap_matcher::KeymapContext,
     platform::CursorStyle,
-    AnyViewHandle, AppContext, Axis, Entity, MouseButton, MouseState, MutableAppContext,
-    RenderContext, Task, View, ViewContext, ViewHandle, WeakViewHandle,
+    AnyViewHandle, AppContext, Axis, Entity, MouseButton, MouseState, MutableAppContext, Task,
+    View, ViewContext, ViewHandle, RenderContext, WeakViewHandle,
 };
 use menu::{Cancel, Confirm, SelectFirst, SelectIndex, SelectLast, SelectNext, SelectPrev};
 use parking_lot::Mutex;

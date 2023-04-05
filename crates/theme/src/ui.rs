@@ -9,7 +9,8 @@ use gpui::{
     fonts::TextStyle,
     geometry::vector::{vec2f, Vector2F},
     scene::MouseClick,
-    Action, Element, ElementBox, EventContext, MouseButton, MouseState, RenderContext, View,
+    Action, AnyRenderContext, Element, ElementBox, EventContext, MouseButton, MouseState,
+    RenderContext, View,
 };
 use serde::Deserialize;
 

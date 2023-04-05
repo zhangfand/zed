@@ -34,8 +34,8 @@ use crate::{
     },
     json,
     presenter::MeasurementContext,
-    Action, DebugContext, EventContext, LayoutContext, PaintContext, RenderContext, SizeConstraint,
-    View,
+    Action, DebugContext, EventContext, LayoutContext, MutableAppContext, PaintContext,
+    RenderContext, SizeConstraint, View,
 };
 use core::panic;
 use json::ToJson;
@@ -204,6 +204,58 @@ pub trait Element {
             initial_size,
             cx,
         )
+    }
+}
+
+pub trait CompositeElement {
+    fn render(&mut self, cx: &mut LayoutContext) -> ElementBox;
+}
+
+impl<T: CompositeElement> Element for T {
+    type LayoutState = ElementBox;
+
+    type PaintState = ();
+
+    fn layout(
+        &mut self,
+        constraint: SizeConstraint,
+        cx: &mut LayoutContext,
+    ) -> (Vector2F, ElementBox) {
+        let mut element = self.render(cx);
+        let size = element.layout(constraint, cx);
+        (size, element)
+    }
+
+    fn paint(
+        &mut self,
+        bounds: RectF,
+        visible_bounds: RectF,
+        element: &mut ElementBox,
+        cx: &mut PaintContext,
+    ) -> Self::PaintState {
+        element.paint(bounds.origin(), visible_bounds, cx);
+    }
+
+    fn rect_for_text_range(
+        &self,
+        range_utf16: Range<usize>,
+        _: RectF,
+        _: RectF,
+        element: &ElementBox,
+        _: &(),
+        cx: &MeasurementContext,
+    ) -> Option<RectF> {
+        element.rect_for_text_range(range_utf16, cx)
+    }
+
+    fn debug(
+        &self,
+        _: RectF,
+        element: &ElementBox,
+        _: &(),
+        cx: &DebugContext,
+    ) -> serde_json::Value {
+        element.debug(cx)
     }
 }
 

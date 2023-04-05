@@ -8,7 +8,7 @@ use gpui::{
     elements::{ChildView, Container, Empty, MouseEventHandler, ParentElement, Side, Stack},
     geometry::vector::Vector2F,
     impl_internal_actions, Border, CursorStyle, Element, ElementBox, MouseButton,
-    MutableAppContext, RenderContext, SizeConstraint, ViewContext, ViewHandle,
+    MutableAppContext, SizeConstraint, ViewContext, ViewHandle, RenderContext,
 };
 use settings::{DockAnchor, Settings};
 use theme::Theme;

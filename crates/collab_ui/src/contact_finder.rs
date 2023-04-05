@@ -1,7 +1,7 @@
 use client::{ContactRequestStatus, User, UserStore};
 use gpui::{
     elements::*, AnyViewHandle, AppContext, Entity, ModelHandle, MouseState, MutableAppContext,
-    RenderContext, Task, View, ViewContext, ViewHandle,
+    Task, View, ViewContext, ViewHandle, RenderContext,
 };
 use picker::{Picker, PickerDelegate};
 use settings::Settings;

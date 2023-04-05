@@ -42,8 +42,8 @@ use gpui::{
     platform::CursorStyle,
     serde_json::{self, json},
     AnyViewHandle, AppContext, AsyncAppContext, ClipboardItem, Element, ElementBox, Entity,
-    ModelHandle, MouseButton, MutableAppContext, RenderContext, Subscription, Task, View,
-    ViewContext, ViewHandle, WeakViewHandle,
+    ModelHandle, MouseButton, MutableAppContext, Subscription, Task, View, ViewContext, ViewHandle,
+    RenderContext, WeakViewHandle,
 };
 use highlight_matching_bracket::refresh_matching_bracket_highlights;
 use hover_popover::{hide_hover, HideHover, HoverState};

@@ -1,7 +1,7 @@
 use context_menu::{ContextMenu, ContextMenuItem};
 use gpui::{
-    elements::*, impl_internal_actions, CursorStyle, Element, ElementBox, Entity, MouseButton,
-    MutableAppContext, RenderContext, View, ViewContext, ViewHandle, WeakModelHandle,
+    elements::*, impl_internal_actions, AnyRenderContext, CursorStyle, Element, ElementBox, Entity,
+    MouseButton, MutableAppContext, RenderContext, View, ViewContext, ViewHandle, WeakModelHandle,
     WeakViewHandle,
 };
 use settings::Settings;
