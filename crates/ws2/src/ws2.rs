@@ -2,7 +2,6 @@ mod workspace_element;
 
 use anyhow::{anyhow, Result};
 use collections::HashMap;
-use futures::{future, Future};
 use gpui::{
     actions, elements::*, geometry::vector::vec2f, AnyViewHandle, AppContext, Entity, ModelHandle,
     MutableAppContext, RootView, Task, TitlebarOptions, View, ViewContext, ViewHandle,
@@ -186,7 +185,7 @@ impl View for Workspace {
 }
 
 impl RootView for Workspace {
-    fn window_options(&mut self, _: &mut ViewContext<Self>) -> WindowOptions {
+    fn window_options(&self, _: &mut ViewContext<Self>) -> WindowOptions {
         WindowOptions {
             titlebar: Some(TitlebarOptions {
                 title: None,
@@ -200,6 +199,10 @@ impl RootView for Workspace {
             bounds: WindowBounds::Maximized,
             screen: None,
         }
+    }
+
+    fn activate_window_on_event(&self, event: &Self::Event) -> bool {
+        matches!(event, WorkspaceEvent::Activated)
     }
 }
 
@@ -523,7 +526,7 @@ mod tests {
     use gpui::{serde_json::json, TestAppContext};
     use language::Buffer;
     use project::Project;
-    use std::path::Path;
+    use std::{cell::Cell, path::Path, rc::Rc};
 
     #[gpui::test]
     async fn test_open_window(cx: &mut TestAppContext) {
@@ -569,6 +572,17 @@ mod tests {
             });
         assert!(opened_items[1].is_none());
 
+        let activated = Rc::new(Cell::new(false));
+        cx.update(|cx| {
+            let activated = activated.clone();
+            cx.subscribe(&workspace_1, move |_, event, _| {
+                if let WorkspaceEvent::Activated = event {
+                    activated.set(true);
+                }
+            })
+            .detach();
+        });
+
         let (workspace_2, opened_items) = cx
             .update(|cx| Workspace::open_window(vec!["/root1/a/b".into()], app_state, cx))
             .await
@@ -586,7 +600,10 @@ mod tests {
             });
 
         // We reuse the workspace that already contains the parent directory of /root1/a/b
-        assert_eq!(workspace_2, workspace_1)
+        assert_eq!(workspace_2, workspace_1);
+
+        // We activate the existing workspace so its window moves to the foreground
+        assert!(activated.get());
     }
 
     #[gpui::test]

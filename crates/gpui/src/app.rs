@@ -121,7 +121,8 @@ pub trait View: Entity + Sized {
 }
 
 pub trait RootView: View {
-    fn window_options(&mut self, cx: &mut ViewContext<Self>) -> WindowOptions;
+    fn window_options(&self, cx: &mut ViewContext<Self>) -> WindowOptions;
+    fn activate_window_on_event(&self, event: &Self::Event) -> bool;
 }
 
 pub trait ReadModel {
@@ -1668,7 +1669,7 @@ impl MutableAppContext {
             this.parents.insert((window_id, view_id), ParentId::Root);
 
             let mut view_cx = ViewContext::new(this, window_id, view_id);
-            let mut root_view = build_root_view(&mut view_cx);
+            let root_view = build_root_view(&mut view_cx);
             let window_options = root_view.window_options(&mut view_cx);
             this.views.insert((window_id, view_id), Box::new(root_view));
             let root_view = ViewHandle::<T>::new(window_id, view_id, &this.cx.ref_counts);
@@ -1687,6 +1688,17 @@ impl MutableAppContext {
             root_view.update(this, |root_view, cx| {
                 root_view.focus_in(cx.handle().into_any(), cx)
             });
+
+            this.subscribe(&root_view, move |root_view, event, cx| {
+                if root_view.read(cx).activate_window_on_event(event) {
+                    if let Some((_, platform_window)) =
+                        cx.presenters_and_platform_windows.get(&window_id)
+                    {
+                        platform_window.activate();
+                    }
+                }
+            })
+            .detach();
 
             let platform_window =
                 this.platform
