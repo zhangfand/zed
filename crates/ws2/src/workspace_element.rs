@@ -2,7 +2,7 @@ use crate::{PaneId, PaneItemHandle, Workspace};
 use collections::HashMap;
 use gpui::{
     elements::*, geometry::rect::RectF, AppContext, Element, ElementBox, LayoutContext,
-    MeasurementContext, MutableAppContext, PaintContext, SizeConstraint, WeakViewHandle,
+    MeasurementContext, PaintContext, SizeConstraint, WeakViewHandle,
 };
 use settings::Settings;
 
@@ -53,22 +53,24 @@ impl Element for WorkspaceElement {
     }
 }
 
-struct TabBarElement {
+struct TabBarComponent {
     workspace: WeakViewHandle<Workspace>,
     pane_id: PaneId,
     autoscroll: bool,
 }
 
-impl CompositeElement for TabBarElement {
-    // TODO: handle autoscroll
-
+impl Component for TabBarComponent {
     fn render(&mut self, cx: &mut LayoutContext) -> ElementBox {
         let theme = cx.global::<Settings>().theme.clone();
         let workspace = self.workspace.upgrade(cx).unwrap();
         let workspace = workspace.read(cx);
         let pane = workspace.pane(self.pane_id).unwrap();
         let pane_active = workspace.active_pane_id == pane.id;
-        let pane_items = pane.items();
+        let pane_items = pane
+            .items()
+            .iter()
+            .map(|i| i.boxed_clone())
+            .collect::<Vec<_>>();
         let active_item_ix = pane.active_item_index;
 
         let autoscroll = if self.autoscroll {
@@ -77,16 +79,17 @@ impl CompositeElement for TabBarElement {
             None
         };
 
-        let mut row = Flex::row().scrollable::<Self, _>(pane.id, autoscroll, cx);
-        // for (ix, (item, detail)) in
-        //     pane_items
-        //     .iter()
-        //     .cloned()
-        //     .zip(self.tab_details(cx))
-        //     .enumerate()
-        // {
-        //     let detail = if detail == 0 { None } else { Some(detail) };
-        //     let tab_active = ix == self.active_item_index;
+        let id = pane.id;
+        let mut row = Flex::row().scrollable::<Self, _>(id, autoscroll, cx);
+
+        for (ix, (item, detail)) in pane_items
+            .iter()
+            .zip(Self::tab_detail_levels(&pane_items, cx))
+            .enumerate()
+        {
+            let detail = if detail == 0 { None } else { Some(detail) };
+            let tab_active = ix == active_item_ix;
+        }
 
         //     row.add_child({
         //         enum TabDragReceiver {}
@@ -184,7 +187,7 @@ impl CompositeElement for TabBarElement {
     }
 }
 
-impl TabBarElement {
+impl TabBarComponent {
     fn tab_detail_levels(items: &[Box<dyn PaneItemHandle>], cx: &AppContext) -> Vec<usize> {
         let mut tab_detail_levels = vec![0; items.len()];
         let mut tab_descriptions = HashMap::default();

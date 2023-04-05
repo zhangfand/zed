@@ -207,11 +207,11 @@ pub trait Element {
     }
 }
 
-pub trait CompositeElement {
+pub trait Component {
     fn render(&mut self, cx: &mut LayoutContext) -> ElementBox;
 }
 
-impl<T: CompositeElement> Element for T {
+impl<T: Component> Element for T {
     type LayoutState = ElementBox;
 
     type PaintState = ();
