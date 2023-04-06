@@ -1,12 +1,12 @@
 use crate::{PaneId, PaneItemHandle, Workspace};
 use collections::HashMap;
 use gpui::{
-    color::Color, elements::*, geometry::rect::RectF, AppContext, CursorStyle, Element, ElementBox,
-    LayoutContext, MeasurementContext, MouseButton, PaintContext, SizeConstraint, WeakViewHandle,
+    color::Color, elements::*, AppContext, CursorStyle, Element, ElementBox, LayoutContext,
+    MouseButton, ViewContext, WeakViewHandle,
 };
 use settings::Settings;
 
-pub struct WorkspaceElement(WeakViewHandle<Workspace>);
+pub struct WorkspaceComponent;
 
 struct PaneTreeComponent {
     workspace: WeakViewHandle<Workspace>,
@@ -23,57 +23,13 @@ struct TabBarComponent {
     autoscroll: bool,
 }
 
-impl Element for WorkspaceElement {
-    type LayoutState = ();
+impl ViewComponent for WorkspaceComponent {
+    type View = Workspace;
 
-    type PaintState = ();
-
-    fn layout(
-        &mut self,
-        constraint: SizeConstraint,
-        cx: &mut LayoutContext,
-    ) -> (gpui::geometry::vector::Vector2F, Self::LayoutState) {
-        todo!()
-    }
-
-    fn paint(
-        &mut self,
-        bounds: RectF,
-        visible_bounds: RectF,
-        layout: &mut Self::LayoutState,
-        cx: &mut PaintContext,
-    ) -> Self::PaintState {
-        todo!()
-    }
-
-    fn rect_for_text_range(
-        &self,
-        range_utf16: std::ops::Range<usize>,
-        bounds: RectF,
-        visible_bounds: RectF,
-        layout: &Self::LayoutState,
-        paint: &Self::PaintState,
-        cx: &MeasurementContext,
-    ) -> Option<RectF> {
-        todo!()
-    }
-
-    fn debug(
-        &self,
-        bounds: RectF,
-        layout: &Self::LayoutState,
-        paint: &Self::PaintState,
-        cx: &gpui::DebugContext,
-    ) -> serde_json::Value {
+    fn render(&mut self, workspace: &mut Workspace, cx: &mut ViewContext<Workspace>) -> ElementBox {
         todo!()
     }
 }
-
-// impl Component for PaneTreeComponent {
-//     fn render(&mut self, cx: &mut LayoutContext) -> ElementBox {
-
-//     }
-// }
 
 impl Component for PaneComponent {
     fn render(&mut self, cx: &mut LayoutContext) -> ElementBox {

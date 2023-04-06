@@ -16,6 +16,7 @@ use std::{
     sync::Arc,
 };
 use workspace::AppState;
+use workspace_element::WorkspaceComponent;
 
 actions!(ws2, [CloseActivePaneItem]);
 
@@ -218,8 +219,8 @@ impl View for Workspace {
         "Workspace"
     }
 
-    fn render(&mut self, _: &mut gpui::RenderContext<'_, Self>) -> gpui::ElementBox {
-        Empty::new().boxed()
+    fn render(&mut self, cx: &mut gpui::RenderContext<'_, Self>) -> gpui::ElementBox {
+        WorkspaceComponent.boxed(cx)
     }
 }
 

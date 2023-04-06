@@ -34,12 +34,19 @@ use crate::{
     },
     json,
     presenter::MeasurementContext,
-    Action, DebugContext, EventContext, LayoutContext, PaintContext, RenderContext, SizeConstraint,
-    View,
+    Action, AnyWeakViewHandle, DebugContext, EventContext, LayoutContext, PaintContext,
+    RenderContext, SizeConstraint, View, ViewContext, ViewHandle,
 };
 use core::panic;
 use json::ToJson;
-use std::{any::Any, borrow::Cow, cell::RefCell, mem, ops::Range, rc::Rc};
+use std::{
+    any::{Any, TypeId},
+    borrow::Cow,
+    cell::RefCell,
+    mem,
+    ops::Range,
+    rc::Rc,
+};
 
 trait AnyElement {
     fn layout(&mut self, constraint: SizeConstraint, cx: &mut LayoutContext) -> Vector2F;
@@ -252,26 +259,30 @@ impl<T: Component> Element for T {
     }
 }
 
-// pub trait ViewComponent {
-//     type View: View;
+pub trait ViewComponent: 'static {
+    type View: View;
 
-//     fn render(
-//         &mut self,
-//         view: ViewHandle<Self::View>,
-//         cx: &mut ViewContext<Self::View>,
-//     ) -> ElementBox;
-// }
+    fn render(&mut self, view: &mut Self::View, cx: &mut ViewContext<Self::View>) -> ElementBox;
 
-// struct ViewComponentBox {
-//     name: Option<Cow<'static, str>>,
-//     component: Rc<RefCell<dyn AnyViewComponent>>,
-// }
+    fn boxed(mut self, cx: &mut RenderContext<Self::View>) -> ElementBox
+    where
+        Self: Sized,
+    {
+        let view = cx.handle();
+        let component = Box::new(move |cx: &mut LayoutContext| {
+            view.upgrade(cx)
+                .unwrap()
+                .update(cx, |view, cx| self.render(view, cx))
+        }) as Box<dyn FnMut(&mut LayoutContext) -> ElementBox>;
+        component.boxed()
+    }
+}
 
-// impl<V: View, C: ViewComponent<View = V>> Component for C {
-//     fn render(&mut self, cx: &mut LayoutContext) -> ElementBox {
-//         ViewComponent::render(self, todo!(), cx)
-//     }
-// }
+impl Component for Box<dyn FnMut(&mut LayoutContext) -> ElementBox> {
+    fn render(&mut self, cx: &mut LayoutContext) -> ElementBox {
+        self(cx)
+    }
+}
 
 pub enum Lifecycle<T: Element> {
     Empty,

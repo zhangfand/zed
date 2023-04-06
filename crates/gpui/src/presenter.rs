@@ -13,8 +13,8 @@ use crate::{
     Action, AnyModelHandle, AnyRenderContext, AnyViewHandle, AnyWeakModelHandle, AnyWeakViewHandle,
     Appearance, AssetCache, ElementBox, ElementStateId, Entity, FontSystem, ModelHandle,
     MouseButton, MouseMovedEvent, MouseRegion, MouseRegionId, MouseState, ParentId, ReadModel,
-    ReadView, RenderContext, RenderParams, SceneBuilder, UpgradeModelHandle, UpgradeViewHandle,
-    View, ViewHandle, WeakModelHandle, WeakViewHandle,
+    ReadView, RenderContext, RenderParams, SceneBuilder, UpdateView, UpgradeModelHandle,
+    UpgradeViewHandle, View, ViewContext, ViewHandle, WeakModelHandle, WeakViewHandle,
 };
 use anyhow::bail;
 use collections::{HashMap, HashSet};
@@ -709,6 +709,19 @@ impl<'a> DerefMut for LayoutContext<'a> {
 impl<'a> ReadView for LayoutContext<'a> {
     fn read_view<T: View>(&self, handle: &ViewHandle<T>) -> &T {
         self.app.read_view(handle)
+    }
+}
+
+impl<'a> UpdateView for LayoutContext<'a> {
+    fn update_view<T, S>(
+        &mut self,
+        handle: &ViewHandle<T>,
+        update: &mut dyn FnMut(&mut T, &mut crate::ViewContext<T>) -> S,
+    ) -> S
+    where
+        T: View,
+    {
+        self.app.update_view(handle, update)
     }
 }
 
