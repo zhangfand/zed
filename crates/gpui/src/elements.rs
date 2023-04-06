@@ -294,7 +294,6 @@ pub enum Lifecycle<T: Element> {
     },
 }
 
-#[derive(Clone)]
 pub struct ElementBox {
     name: Option<Cow<'static, str>>,
     element: Rc<RefCell<dyn AnyElement>>,
@@ -462,18 +461,12 @@ impl ElementBox {
     }
 }
 
-// impl Clone for ElementBox {
-//     fn clone(&self) -> Self {
-//         ElementBox(self.0.clone())
-//     }
-// }
-
 impl ElementBox {
-    pub fn layout(&mut self, constraint: SizeConstraint, cx: &mut LayoutContext) -> Vector2F {
+    pub fn layout(&self, constraint: SizeConstraint, cx: &mut LayoutContext) -> Vector2F {
         self.element.borrow_mut().layout(constraint, cx)
     }
 
-    pub fn paint(&mut self, origin: Vector2F, visible_bounds: RectF, cx: &mut PaintContext) {
+    pub fn paint(&self, origin: Vector2F, visible_bounds: RectF, cx: &mut PaintContext) {
         self.element.borrow_mut().paint(origin, visible_bounds, cx);
     }
 

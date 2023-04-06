@@ -45,7 +45,7 @@ pub struct ListOffset {
 #[derive(Clone)]
 enum ListItem {
     Unrendered,
-    Rendered(ElementBox),
+    Rendered(Rc<ElementBox>),
     Removed(f32),
 }
 
@@ -433,7 +433,7 @@ impl StateInner {
         existing_element: Option<&ListItem>,
         constraint: SizeConstraint,
         cx: &mut LayoutContext,
-    ) -> Option<ElementBox> {
+    ) -> Option<Rc<ElementBox>> {
         if let Some(ListItem::Rendered(element)) = existing_element {
             Some(element.clone())
         } else {
@@ -455,7 +455,7 @@ impl StateInner {
         &'a self,
         bounds: RectF,
         scroll_top: &ListOffset,
-    ) -> impl Iterator<Item = (ElementBox, Vector2F)> + 'a {
+    ) -> impl Iterator<Item = (Rc<ElementBox>, Vector2F)> + 'a {
         let mut item_origin = bounds.origin() - vec2f(0., scroll_top.offset_in_item);
         let mut cursor = self.items.cursor::<Count>();
         cursor.seek(&Count(scroll_top.item_ix), Bias::Right, &());
