@@ -34,8 +34,8 @@ use crate::{
     },
     json,
     presenter::MeasurementContext,
-    Action, DebugContext, EventContext, LayoutContext, MutableAppContext, PaintContext,
-    RenderContext, SizeConstraint, View,
+    Action, DebugContext, EventContext, LayoutContext, PaintContext, RenderContext, SizeConstraint,
+    View, ViewContext, ViewHandle,
 };
 use core::panic;
 use json::ToJson;
@@ -259,6 +259,27 @@ impl<T: Component> Element for T {
     }
 }
 
+// pub trait ViewComponent {
+//     type View: View;
+
+//     fn render(
+//         &mut self,
+//         view: ViewHandle<Self::View>,
+//         cx: &mut ViewContext<Self::View>,
+//     ) -> ElementBox;
+// }
+
+// struct ViewComponentBox {
+//     name: Option<Cow<'static, str>>,
+//     component: Rc<RefCell<dyn AnyViewComponent>>,
+// }
+
+// impl<V: View, C: ViewComponent<View = V>> Component for C {
+//     fn render(&mut self, cx: &mut LayoutContext) -> ElementBox {
+//         ViewComponent::render(self, todo!(), cx)
+//     }
+// }
+
 pub enum Lifecycle<T: Element> {
     Empty,
     Init {
@@ -438,6 +459,14 @@ impl ElementBox {
     pub fn metadata<T: 'static>(&self) -> Option<&T> {
         let element = unsafe { &*self.0.element.as_ptr() };
         element.metadata().and_then(|m| m.downcast_ref())
+    }
+
+    pub fn constrained(self) -> ConstrainedBox {
+        ConstrainedBox::new(self)
+    }
+
+    pub fn aligned(self) -> Align {
+        Align::new(self)
     }
 }
 

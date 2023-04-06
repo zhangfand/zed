@@ -37,16 +37,29 @@ pub trait PaneItem: View {
     fn tab_description<'a>(&'a self, _: usize, _: &'a AppContext) -> Option<Cow<'a, str>> {
         None
     }
+    fn tab_content(&self, detail: Option<usize>, style: &theme::Tab, cx: &AppContext)
+        -> ElementBox;
+    fn is_dirty(&self, cx: &AppContext) -> bool;
+    fn has_conflict(&self, cx: &AppContext) -> bool;
 }
 
 pub trait PaneItemHandle {
+    fn id(&self) -> usize;
     fn to_project_pane_item(&self, cx: &AppContext) -> Option<Box<dyn ProjectPaneItemHandle>>;
     fn as_any(&self) -> &AnyViewHandle;
     fn boxed_clone(&self) -> Box<dyn PaneItemHandle>;
     fn tab_description<'a>(&'a self, ix: usize, cx: &'a AppContext) -> Option<Cow<'a, str>>;
+    fn tab_content(&self, detail: Option<usize>, style: &theme::Tab, cx: &AppContext)
+        -> ElementBox;
+    fn is_dirty(&self, cx: &AppContext) -> bool;
+    fn has_conflict(&self, cx: &AppContext) -> bool;
 }
 
 impl<T: PaneItem> PaneItemHandle for ViewHandle<T> {
+    fn id(&self) -> usize {
+        ViewHandle::<T>::id(self)
+    }
+
     fn to_project_pane_item(&self, cx: &AppContext) -> Option<Box<dyn ProjectPaneItemHandle>> {
         let converter = cx
             .global::<ProjectPaneItemHandleConverters>()
@@ -64,6 +77,23 @@ impl<T: PaneItem> PaneItemHandle for ViewHandle<T> {
 
     fn tab_description<'a>(&'a self, ix: usize, cx: &'a AppContext) -> Option<Cow<'a, str>> {
         self.read(cx).tab_description(ix, cx)
+    }
+
+    fn tab_content(
+        &self,
+        detail: Option<usize>,
+        style: &theme::Tab,
+        cx: &AppContext,
+    ) -> ElementBox {
+        self.read(cx).tab_content(detail, style, cx)
+    }
+
+    fn is_dirty(&self, cx: &AppContext) -> bool {
+        self.read(cx).is_dirty(cx)
+    }
+
+    fn has_conflict(&self, cx: &AppContext) -> bool {
+        self.read(cx).has_conflict(cx)
     }
 }
 
@@ -86,7 +116,6 @@ pub trait ProjectPaneItemHandle {
     fn as_pane_item(&self) -> &dyn PaneItemHandle;
     fn boxed_clone(&self) -> Box<dyn ProjectPaneItemHandle>;
 }
-
 impl<T: ProjectPaneItem> ProjectPaneItemHandle for ViewHandle<T> {
     fn project_item<'a>(&'a self, cx: &'a AppContext) -> &'a dyn ProjectItemHandle {
         self.read(cx).project_item(cx)
@@ -794,6 +823,7 @@ mod tests {
     impl Entity for TestEditor {
         type Event = ();
     }
+
     impl View for TestEditor {
         fn ui_name() -> &'static str {
             "TestEditor"
@@ -803,7 +833,26 @@ mod tests {
             Empty::new().boxed()
         }
     }
-    impl PaneItem for TestEditor {}
+
+    impl PaneItem for TestEditor {
+        fn tab_content(
+            &self,
+            detail: Option<usize>,
+            style: &theme::Tab,
+            cx: &AppContext,
+        ) -> ElementBox {
+            Empty::new().boxed()
+        }
+
+        fn is_dirty(&self, cx: &AppContext) -> bool {
+            self.0.read(cx).is_dirty()
+        }
+
+        fn has_conflict(&self, cx: &AppContext) -> bool {
+            self.0.read(cx).has_conflict()
+        }
+    }
+
     impl ProjectPaneItem for TestEditor {
         type ProjectItem = Buffer;
         type Dependencies = ();

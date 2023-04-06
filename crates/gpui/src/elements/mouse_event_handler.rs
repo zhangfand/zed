@@ -32,10 +32,10 @@ pub struct MouseEventHandler<Tag: 'static> {
 /// Element which provides a render_child callback with a MouseState and paints a mouse
 /// region under (or above) it for easy mouse event handling.
 impl<Tag> MouseEventHandler<Tag> {
-    pub fn new<V, F>(region_id: usize, cx: &mut RenderContext<V>, render_child: F) -> Self
+    pub fn new<C, F>(region_id: usize, cx: &mut C, render_child: F) -> Self
     where
-        V: View,
-        F: FnOnce(&mut MouseState, &mut RenderContext<V>) -> ElementBox,
+        C: AnyRenderContext,
+        F: FnOnce(&mut MouseState, &mut C) -> ElementBox,
     {
         let mut mouse_state = cx.mouse_state::<Tag>(region_id);
         let child = render_child(&mut mouse_state, cx);

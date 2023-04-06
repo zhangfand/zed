@@ -4,7 +4,7 @@ use crate::{
     json::{self, ToJson, Value},
     presenter::MeasurementContext,
     AnyRenderContext, Axis, DebugContext, Element, ElementBox, ElementStateHandle, LayoutContext,
-    PaintContext, RenderContext, SizeConstraint, Vector2FExt, View,
+    PaintContext, SizeConstraint, Vector2FExt,
 };
 use pathfinder_geometry::{
     rect::RectF,
