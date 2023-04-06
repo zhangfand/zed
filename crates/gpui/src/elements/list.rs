@@ -5,8 +5,8 @@ use crate::{
     },
     json::json,
     presenter::MeasurementContext,
-    DebugContext, Element, ElementBox, ElementRc, EventContext, LayoutContext, MouseRegion,
-    PaintContext, SizeConstraint, View, ViewContext, RenderContext,
+    DebugContext, Element, ElementBox, EventContext, LayoutContext, MouseRegion, PaintContext,
+    RenderContext, SizeConstraint, View, ViewContext,
 };
 use std::{cell::RefCell, collections::VecDeque, ops::Range, rc::Rc};
 use sum_tree::{Bias, SumTree};
@@ -45,7 +45,7 @@ pub struct ListOffset {
 #[derive(Clone)]
 enum ListItem {
     Unrendered,
-    Rendered(ElementRc),
+    Rendered(ElementBox),
     Removed(f32),
 }
 
@@ -433,7 +433,7 @@ impl StateInner {
         existing_element: Option<&ListItem>,
         constraint: SizeConstraint,
         cx: &mut LayoutContext,
-    ) -> Option<ElementRc> {
+    ) -> Option<ElementBox> {
         if let Some(ListItem::Rendered(element)) = existing_element {
             Some(element.clone())
         } else {
@@ -455,7 +455,7 @@ impl StateInner {
         &'a self,
         bounds: RectF,
         scroll_top: &ListOffset,
-    ) -> impl Iterator<Item = (ElementRc, Vector2F)> + 'a {
+    ) -> impl Iterator<Item = (ElementBox, Vector2F)> + 'a {
         let mut item_origin = bounds.origin() - vec2f(0., scroll_top.offset_in_item);
         let mut cursor = self.items.cursor::<Count>();
         cursor.seek(&Count(scroll_top.item_ix), Bias::Right, &());

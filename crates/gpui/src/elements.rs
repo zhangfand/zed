@@ -35,18 +35,11 @@ use crate::{
     json,
     presenter::MeasurementContext,
     Action, DebugContext, EventContext, LayoutContext, PaintContext, RenderContext, SizeConstraint,
-    View, ViewContext, ViewHandle,
+    View,
 };
 use core::panic;
 use json::ToJson;
-use std::{
-    any::Any,
-    borrow::Cow,
-    cell::RefCell,
-    mem,
-    ops::{Deref, DerefMut, Range},
-    rc::Rc,
-};
+use std::{any::Any, borrow::Cow, cell::RefCell, mem, ops::Range, rc::Rc};
 
 trait AnyElement {
     fn layout(&mut self, constraint: SizeConstraint, cx: &mut LayoutContext) -> Vector2F;
@@ -106,20 +99,20 @@ pub trait Element {
     where
         Self: 'static + Sized,
     {
-        ElementBox(ElementRc {
+        ElementBox {
             name: None,
             element: Rc::new(RefCell::new(Lifecycle::Init { element: self })),
-        })
+        }
     }
 
     fn named(self, name: impl Into<Cow<'static, str>>) -> ElementBox
     where
         Self: 'static + Sized,
     {
-        ElementBox(ElementRc {
+        ElementBox {
             name: Some(name.into()),
             element: Rc::new(RefCell::new(Lifecycle::Init { element: self })),
-        })
+        }
     }
 
     fn constrained(self) -> ConstrainedBox
@@ -300,10 +293,9 @@ pub enum Lifecycle<T: Element> {
         paint: T::PaintState,
     },
 }
-pub struct ElementBox(ElementRc);
 
 #[derive(Clone)]
-pub struct ElementRc {
+pub struct ElementBox {
     name: Option<Cow<'static, str>>,
     element: Rc<RefCell<dyn AnyElement>>,
 }
@@ -453,11 +445,11 @@ impl<T: Element> Default for Lifecycle<T> {
 
 impl ElementBox {
     pub fn name(&self) -> Option<&str> {
-        self.0.name.as_deref()
+        self.name.as_deref()
     }
 
     pub fn metadata<T: 'static>(&self) -> Option<&T> {
-        let element = unsafe { &*self.0.element.as_ptr() };
+        let element = unsafe { &*self.element.as_ptr() };
         element.metadata().and_then(|m| m.downcast_ref())
     }
 
@@ -470,33 +462,13 @@ impl ElementBox {
     }
 }
 
-impl Clone for ElementBox {
-    fn clone(&self) -> Self {
-        ElementBox(self.0.clone())
-    }
-}
+// impl Clone for ElementBox {
+//     fn clone(&self) -> Self {
+//         ElementBox(self.0.clone())
+//     }
+// }
 
-impl From<ElementBox> for ElementRc {
-    fn from(val: ElementBox) -> Self {
-        val.0
-    }
-}
-
-impl Deref for ElementBox {
-    type Target = ElementRc;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl DerefMut for ElementBox {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-
-impl ElementRc {
+impl ElementBox {
     pub fn layout(&mut self, constraint: SizeConstraint, cx: &mut LayoutContext) -> Vector2F {
         self.element.borrow_mut().layout(constraint, cx)
     }
