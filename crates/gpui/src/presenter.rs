@@ -672,6 +672,7 @@ impl<'a> LayoutContext<'a> {
     where
         F: FnOnce(&mut V, &mut RenderContext<V>) -> T,
         V: View,
+        T: 'static,
     {
         handle.update(self.app, |view, cx| {
             let mut render_cx = RenderContext {

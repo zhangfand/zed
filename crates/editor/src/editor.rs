@@ -5793,7 +5793,7 @@ impl Editor {
         self.pending_rename.as_ref()
     }
 
-    fn format(&mut self, _: &Format, cx: &mut ViewContext<'_, Self>) -> Option<Task<Result<()>>> {
+    fn format(&mut self, _: &Format, cx: &mut ViewContext<Self>) -> Option<Task<Result<()>>> {
         let project = match &self.project {
             Some(project) => project.clone(),
             None => return None,
@@ -5806,7 +5806,7 @@ impl Editor {
         &mut self,
         project: ModelHandle<Project>,
         trigger: FormatTrigger,
-        cx: &mut ViewContext<'_, Self>,
+        cx: &mut ViewContext<Self>,
     ) -> Task<Result<()>> {
         let buffer = self.buffer().clone();
         let buffers = buffer.read(cx).all_buffers();

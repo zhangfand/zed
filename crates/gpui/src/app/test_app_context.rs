@@ -175,6 +175,7 @@ impl TestAppContext {
     where
         F: FnOnce(&mut V, &mut RenderContext<V>) -> T,
         V: View,
+        T: 'static,
     {
         handle.update(&mut *self.cx.borrow_mut(), |view, cx| {
             let mut render_cx = RenderContext {
@@ -412,6 +413,7 @@ impl UpdateView for TestAppContext {
     ) -> S
     where
         T: View,
+        S: 'static,
     {
         self.cx.borrow_mut().update_view(handle, update)
     }

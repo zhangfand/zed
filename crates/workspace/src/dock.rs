@@ -681,6 +681,7 @@ mod tests {
         pub fn update_workspace<F, T>(&mut self, update: F) -> T
         where
             F: FnOnce(&mut Workspace, &mut ViewContext<Workspace>) -> T,
+            T: 'static,
         {
             self.workspace.update(self.cx, update)
         }
@@ -831,6 +832,7 @@ mod tests {
         ) -> S
         where
             T: View,
+            S: 'static,
         {
             handle.update(self.cx, update)
         }

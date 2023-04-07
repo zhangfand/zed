@@ -243,7 +243,7 @@ impl ContextMenu {
         cx.defer(move |this, cx| {
             if cx.handle().is_focused(cx) && this.show_count == show_count {
                 let window_id = cx.window_id();
-                (**cx).focus(window_id, this.previously_focused_view_id.take());
+                (**cx).focus(this.previously_focused_view_id.take());
             }
         });
     }

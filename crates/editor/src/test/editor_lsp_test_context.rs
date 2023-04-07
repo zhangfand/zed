@@ -222,6 +222,7 @@ impl<'a> EditorLspTestContext<'a> {
     pub fn update_workspace<F, T>(&mut self, update: F) -> T
     where
         F: FnOnce(&mut Workspace, &mut ViewContext<Workspace>) -> T,
+        T: 'static,
     {
         self.workspace.update(self.cx.cx, update)
     }

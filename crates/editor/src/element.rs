@@ -105,6 +105,7 @@ impl EditorElement {
     fn update_view<F, T>(&self, cx: &mut AppContext, f: F) -> T
     where
         F: FnOnce(&mut Editor, &mut ViewContext<Editor>) -> T,
+        T: 'static,
     {
         self.view.upgrade(cx).unwrap().update(cx, f)
     }

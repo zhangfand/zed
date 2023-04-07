@@ -142,7 +142,7 @@ impl Vim {
         cx.update_default_global(update)
     }
 
-    fn update_active_editor<S>(
+    fn update_active_editor<S: 'static>(
         &self,
         cx: &mut AppContext,
         update: impl FnOnce(&mut Editor, &mut ViewContext<Editor>) -> S,

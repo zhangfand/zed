@@ -66,6 +66,7 @@ impl<'a> EditorTestContext<'a> {
     pub fn update_editor<F, T>(&mut self, update: F) -> T
     where
         F: FnOnce(&mut Editor, &mut ViewContext<Editor>) -> T,
+        T: 'static,
     {
         self.editor.update(self.cx, update)
     }
@@ -80,6 +81,7 @@ impl<'a> EditorTestContext<'a> {
     pub fn update_multibuffer<F, T>(&mut self, update: F) -> T
     where
         F: FnOnce(&mut MultiBuffer, &mut ModelContext<MultiBuffer>) -> T,
+        T: 'static,
     {
         self.update_editor(|editor, cx| editor.buffer().update(cx, update))
     }
@@ -101,6 +103,7 @@ impl<'a> EditorTestContext<'a> {
     pub fn update_buffer<F, T>(&mut self, update: F) -> T
     where
         F: FnOnce(&mut Buffer, &mut ModelContext<Buffer>) -> T,
+        T: 'static,
     {
         self.update_multibuffer(|multibuffer, cx| {
             let buffer = multibuffer.as_singleton().unwrap();
@@ -254,10 +257,10 @@ impl<'a> EditorTestContext<'a> {
             panic!(
                 indoc! {"
                     {}Editor has unexpected selections.
-                    
+
                     Expected selections:
                     {}
-                    
+
                     Actual selections:
                     {}
                 "},
