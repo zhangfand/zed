@@ -97,7 +97,6 @@ pub struct Project {
     language_server_ids: HashMap<(WorktreeId, LanguageServerName), usize>,
     language_server_statuses: BTreeMap<usize, LanguageServerStatus>,
     last_workspace_edits_by_language_server: HashMap<usize, ProjectTransaction>,
-    next_language_server_id: usize,
     client: Arc<client::Client>,
     next_entry_id: Arc<AtomicUsize>,
     next_diagnostic_group_id: usize,
@@ -443,7 +442,6 @@ impl Project {
             language_server_statuses: Default::default(),
             last_workspace_edits_by_language_server: Default::default(),
             buffers_being_formatted: Default::default(),
-            next_language_server_id: 0,
             nonce: StdRng::from_entropy().gen(),
             terminals: Terminals {
                 local_handles: Vec::new(),
@@ -520,7 +518,6 @@ impl Project {
                     })
                     .collect(),
                 last_workspace_edits_by_language_server: Default::default(),
-                next_language_server_id: 0,
                 opened_buffers: Default::default(),
                 buffers_being_formatted: Default::default(),
                 buffer_snapshots: Default::default(),
@@ -609,7 +606,7 @@ impl Project {
 
         let mut language_servers_to_stop = Vec::new();
         for language in self.languages.to_vec() {
-            if let Some(lsp_adapter) = language.lsp_adapter() {
+            for lsp_adapter in language.lsp_adapters() {
                 if !settings.enable_language_server(Some(&language.name())) {
                     let lsp_name = &lsp_adapter.name;
                     for (worktree_id, started_lsp_name) in self.language_server_ids.keys() {
@@ -1474,7 +1471,7 @@ impl Project {
                 .await?;
             this.update(&mut cx, |this, cx| {
                 this.detect_language_for_buffer(&buffer, cx);
-                this.register_buffer_with_language_server(&buffer, cx);
+                this.register_buffer_with_language_servers(&buffer, cx);
             });
             Ok(())
         })
@@ -1541,7 +1538,7 @@ impl Project {
         .detach();
 
         self.detect_language_for_buffer(buffer, cx);
-        self.register_buffer_with_language_server(buffer, cx);
+        self.register_buffer_with_language_servers(buffer, cx);
         cx.observe_release(buffer, |this, buffer, cx| {
             if let Some(file) = File::from_dyn(buffer.file()) {
                 if file.is_local() {
@@ -1564,46 +1561,50 @@ impl Project {
         Ok(())
     }
 
-    fn register_buffer_with_language_server(
+    fn register_buffer_with_language_servers(
         &mut self,
         buffer_handle: &ModelHandle<Buffer>,
         cx: &mut ModelContext<Self>,
     ) {
         let buffer = buffer_handle.read(cx);
         let buffer_id = buffer.remote_id();
+
         if let Some(file) = File::from_dyn(buffer.file()) {
-            if file.is_local() {
-                let uri = lsp::Url::from_file_path(file.abs_path(cx)).unwrap();
-                let initial_snapshot = buffer.text_snapshot();
+            if !file.is_local() {
+                return;
+            }
 
-                let mut language_server = None;
-                let mut language_id = None;
-                if let Some(language) = buffer.language() {
-                    let worktree_id = file.worktree_id(cx);
-                    if let Some(adapter) = language.lsp_adapter() {
-                        language_id = adapter.language_ids.get(language.name().as_ref()).cloned();
-                        language_server = self
-                            .language_server_ids
-                            .get(&(worktree_id, adapter.name.clone()))
-                            .and_then(|id| self.language_servers.get(id))
-                            .and_then(|server_state| {
-                                if let LanguageServerState::Running { server, .. } = server_state {
-                                    Some(server.clone())
-                                } else {
-                                    None
-                                }
-                            });
-                    }
+            let uri = lsp::Url::from_file_path(file.abs_path(cx)).unwrap();
+            let initial_snapshot = buffer.text_snapshot();
+
+            if let Some(local_worktree) = file.worktree.read(cx).as_local() {
+                if let Some(diagnostics) = local_worktree.diagnostics_for_path(file.path()) {
+                    self.update_buffer_diagnostics(buffer_handle, diagnostics, None, cx)
+                        .log_err();
                 }
+            }
 
-                if let Some(local_worktree) = file.worktree.read(cx).as_local() {
-                    if let Some(diagnostics) = local_worktree.diagnostics_for_path(file.path()) {
-                        self.update_buffer_diagnostics(buffer_handle, diagnostics, None, cx)
-                            .log_err();
-                    }
-                }
+            if let Some(language) = buffer.language() {
+                let worktree_id = file.worktree_id(cx);
 
-                if let Some(server) = language_server {
+                for adapter in language.lsp_adapters() {
+                    let language_id = adapter.language_ids.get(language.name().as_ref()).cloned();
+                    let server = self
+                        .language_server_ids
+                        .get(&(worktree_id, adapter.name.clone()))
+                        .and_then(|id| self.language_servers.get(id))
+                        .and_then(|server_state| {
+                            if let LanguageServerState::Running { server, .. } = server_state {
+                                Some(server.clone())
+                            } else {
+                                None
+                            }
+                        });
+                    let server = match server {
+                        Some(server) => server,
+                        None => continue,
+                    };
+
                     server
                         .notify::<lsp::notification::DidOpenTextDocument>(
                             lsp::DidOpenTextDocumentParams {
@@ -1616,6 +1617,7 @@ impl Project {
                             },
                         )
                         .log_err();
+
                     buffer_handle.update(cx, |buffer, cx| {
                         buffer.set_completion_triggers(
                             server
@@ -1625,11 +1627,12 @@ impl Project {
                                 .and_then(|provider| provider.trigger_characters.clone())
                                 .unwrap_or_default(),
                             cx,
-                        )
+                        );
                     });
-                    self.buffer_snapshots
-                        .insert(buffer_id, vec![(0, initial_snapshot)]);
                 }
+
+                self.buffer_snapshots
+                    .insert(buffer_id, vec![(0, initial_snapshot)]);
             }
         }
     }
@@ -1828,7 +1831,7 @@ impl Project {
 
                         for buffer in plain_text_buffers {
                             project.detect_language_for_buffer(&buffer, cx);
-                            project.register_buffer_with_language_server(&buffer, cx);
+                            project.register_buffer_with_language_servers(&buffer, cx);
                         }
 
                         for buffer in buffers_with_unknown_injections {
@@ -1952,9 +1955,7 @@ impl Project {
             .entry(key.clone())
             .or_insert_with(|| {
                 let languages = self.languages.clone();
-                let server_id = post_inc(&mut self.next_language_server_id);
-                let language_server = self.languages.start_language_server(
-                    server_id,
+                let language_server = self.languages.start_language_servers(
                     language.clone(),
                     worktree_path,
                     self.client.http_client(),
@@ -4612,7 +4613,7 @@ impl Project {
         for (buffer, old_path) in renamed_buffers {
             self.unregister_buffer_from_language_server(&buffer, old_path, cx);
             self.detect_language_for_buffer(&buffer, cx);
-            self.register_buffer_with_language_server(&buffer, cx);
+            self.register_buffer_with_language_servers(&buffer, cx);
         }
     }
 
