@@ -520,6 +520,11 @@ struct LanguageRegistryState {
     version: usize,
 }
 
+pub struct PendingLanguageServer {
+    pub server_id: usize,
+    pub task: Task<Result<lsp::LanguageServer>>,
+}
+
 impl LanguageRegistry {
     pub fn new(login_shell_env_loaded: Task<()>) -> Self {
         let (lsp_binary_statuses_tx, lsp_binary_statuses_rx) = async_broadcast::broadcast(16);
@@ -769,11 +774,10 @@ impl LanguageRegistry {
         root_path: Arc<Path>,
         http_client: Arc<dyn HttpClient>,
         cx: &mut AppContext,
-    ) -> Vec<Task<Result<lsp::LanguageServer>>> {
+    ) -> Vec<PendingLanguageServer> {
         #[cfg(any(test, feature = "test-support"))]
         if language.fake_adapter.is_some() {
-            let language = language;
-            return vec![cx.spawn(|cx| async move {
+            let task = cx.spawn(|cx| async move {
                 let (servers_tx, fake_adapter) = language.fake_adapter.as_ref().unwrap();
                 let (server, mut fake_server) = lsp::LanguageServer::fake(
                     fake_adapter.name.to_string(),
@@ -798,7 +802,8 @@ impl LanguageRegistry {
                     })
                     .detach();
                 Ok(server)
-            })];
+            });
+            return vec![PendingLanguageServer { server_id: 0, task }];
         }
 
         let download_dir = self
@@ -824,7 +829,7 @@ impl LanguageRegistry {
             let login_shell_env_loaded = self.login_shell_env_loaded.clone();
             let server_id = post_inc(&mut self.state.write().next_language_server_id);
 
-            results.push(cx.spawn(|cx| async move {
+            let task = cx.spawn(|cx| async move {
                 login_shell_env_loaded.await;
 
                 let mut lock = this.lsp_binary_paths.lock();
@@ -856,7 +861,9 @@ impl LanguageRegistry {
                 )?;
 
                 Ok(server)
-            }));
+            });
+
+            results.push(PendingLanguageServer { server_id, task });
         }
 
         results
