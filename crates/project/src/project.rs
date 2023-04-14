@@ -2978,8 +2978,7 @@ impl Project {
                     let file = File::from_dyn(buffer.file())?;
                     let buffer_abs_path = file.as_local().map(|f| f.abs_path(cx));
                     let server = self
-                        .language_servers_for_buffer(buffer, cx)
-                        .first()
+                        .primary_language_servers_for_buffer(buffer, cx)
                         .map(|s| s.1.clone());
                     Some((buffer_handle, buffer_abs_path, server))
                 })
@@ -3228,7 +3227,7 @@ impl Project {
 
         if let Some(lsp_edits) = lsp_edits {
             this.update(cx, |this, cx| {
-                this.edits_from_lsp(buffer, lsp_edits, None, cx)
+                this.edits_from_lsp(buffer, lsp_edits, language_server.server_id(), None, cx)
             })
             .await
         } else {
@@ -3562,7 +3561,7 @@ impl Project {
 
         if worktree.read(cx).as_local().is_some() {
             let buffer_abs_path = buffer_abs_path.unwrap();
-            let lang_server = match self.language_servers_for_buffer(source_buffer, cx).first() {
+            let lang_server = match self.primary_language_servers_for_buffer(source_buffer, cx) {
                 Some((_, server)) => server.clone(),
                 None => return Task::ready(Ok(Default::default())),
             };
@@ -3733,7 +3732,7 @@ impl Project {
         let buffer_id = buffer.remote_id();
 
         if self.is_local() {
-            let lang_server = match self.language_servers_for_buffer(buffer, cx).first() {
+            let lang_server = match self.primary_language_servers_for_buffer(buffer, cx) {
                 Some((_, server)) => server.clone(),
                 _ => return Task::ready(Ok(Default::default())),
             };
@@ -3746,7 +3745,13 @@ impl Project {
                 if let Some(edits) = resolved_completion.additional_text_edits {
                     let edits = this
                         .update(&mut cx, |this, cx| {
-                            this.edits_from_lsp(&buffer_handle, edits, None, cx)
+                            this.edits_from_lsp(
+                                &buffer_handle,
+                                edits,
+                                lang_server.server_id(),
+                                None,
+                                cx,
+                            )
                         })
                         .await?;
 
@@ -3842,46 +3847,48 @@ impl Project {
 
         if worktree.read(cx).as_local().is_some() {
             let buffer_abs_path = buffer_abs_path.unwrap();
-            let lang_server = if let Some((_, server)) = self.language_server_for_buffer(buffer, cx)
-            {
-                server.clone()
-            } else {
-                return Task::ready(Ok(Vec::new()));
-            };
-
             let lsp_range = range_to_lsp(range.to_point_utf16(buffer));
+
             cx.foreground().spawn(async move {
-                if lang_server.capabilities().code_action_provider.is_none() {
-                    return Ok(Vec::new());
+                let mut actions = Vec::new();
+
+                for (_, lang_server) in self.language_servers_for_buffer(buffer, cx) {
+                    if lang_server.capabilities().code_action_provider.is_none() {
+                        return Ok(Vec::new());
+                    }
+
+                    actions.extend(
+                        lang_server
+                            .request::<lsp::request::CodeActionRequest>(lsp::CodeActionParams {
+                                text_document: lsp::TextDocumentIdentifier::new(
+                                    lsp::Url::from_file_path(buffer_abs_path).unwrap(),
+                                ),
+                                range: lsp_range,
+                                work_done_progress_params: Default::default(),
+                                partial_result_params: Default::default(),
+                                context: lsp::CodeActionContext {
+                                    diagnostics: relevant_diagnostics,
+                                    only: lang_server.code_action_kinds(),
+                                },
+                            })
+                            .await?
+                            .unwrap_or_default()
+                            .into_iter()
+                            .filter_map(|entry| {
+                                if let lsp::CodeActionOrCommand::CodeAction(lsp_action) = entry {
+                                    Some(CodeAction {
+                                        server_id: lang_server.server_id(),
+                                        range: range.clone(),
+                                        lsp_action,
+                                    })
+                                } else {
+                                    None
+                                }
+                            }),
+                    )
                 }
 
-                Ok(lang_server
-                    .request::<lsp::request::CodeActionRequest>(lsp::CodeActionParams {
-                        text_document: lsp::TextDocumentIdentifier::new(
-                            lsp::Url::from_file_path(buffer_abs_path).unwrap(),
-                        ),
-                        range: lsp_range,
-                        work_done_progress_params: Default::default(),
-                        partial_result_params: Default::default(),
-                        context: lsp::CodeActionContext {
-                            diagnostics: relevant_diagnostics,
-                            only: lang_server.code_action_kinds(),
-                        },
-                    })
-                    .await?
-                    .unwrap_or_default()
-                    .into_iter()
-                    .filter_map(|entry| {
-                        if let lsp::CodeActionOrCommand::CodeAction(lsp_action) = entry {
-                            Some(CodeAction {
-                                range: range.clone(),
-                                lsp_action,
-                            })
-                        } else {
-                            None
-                        }
-                    })
-                    .collect())
+                Ok(actions)
             })
         } else if let Some(project_id) = self.remote_id() {
             let rpc = self.client.clone();
@@ -3920,7 +3927,7 @@ impl Project {
                 }
             })
         } else {
-            Task::ready(Ok(Default::default()))
+            Task::ready(Ok(Vec::new()))
         }
     }
 
@@ -3933,12 +3940,13 @@ impl Project {
     ) -> Task<Result<ProjectTransaction>> {
         if self.is_local() {
             let buffer = buffer_handle.read(cx);
-            let (lsp_adapter, lang_server) =
-                if let Some((adapter, server)) = self.language_server_for_buffer(buffer, cx) {
-                    (adapter.clone(), server.clone())
-                } else {
-                    return Task::ready(Ok(Default::default()));
-                };
+            let (lsp_adapter, lang_server) = if let Some((adapter, server)) =
+                self.language_server_for_buffer(buffer, action.server_id, cx)
+            {
+                (adapter.clone(), server.clone())
+            } else {
+                return Task::ready(Ok(Default::default()));
+            };
             let range = action.range.to_point_utf16(buffer);
 
             cx.spawn(|this, mut cx| async move {
@@ -4072,6 +4080,7 @@ impl Project {
                             .await?;
                     }
                 }
+
                 lsp::DocumentChangeOperation::Op(lsp::ResourceOp::Rename(op)) => {
                     let source_abs_path = op
                         .old_uri
@@ -4088,6 +4097,7 @@ impl Project {
                     )
                     .await?;
                 }
+
                 lsp::DocumentChangeOperation::Op(lsp::ResourceOp::Delete(op)) => {
                     let abs_path = op
                         .uri
@@ -4100,6 +4110,7 @@ impl Project {
                         fs.remove_file(&abs_path, options).await?;
                     }
                 }
+
                 lsp::DocumentChangeOperation::Edit(op) => {
                     let buffer_to_edit = this
                         .update(cx, |this, cx| {
@@ -4121,6 +4132,7 @@ impl Project {
                             this.edits_from_lsp(
                                 &buffer_to_edit,
                                 edits,
+                                language_server.server_id(),
                                 op.text_document.version,
                                 cx,
                             )
@@ -4390,6 +4402,7 @@ impl Project {
         }
     }
 
+    // TODO: Wire this up to allow selecting a server?
     fn request_lsp<R: LspCommand>(
         &self,
         buffer_handle: ModelHandle<Buffer>,
@@ -4403,7 +4416,7 @@ impl Project {
         if self.is_local() {
             let file = File::from_dyn(buffer.file()).and_then(File::as_local);
             if let Some((file, language_server)) = file.zip(
-                self.language_server_for_buffer(buffer, cx)
+                self.primary_language_servers_for_buffer(buffer, cx)
                     .map(|(_, server)| server.clone()),
             ) {
                 let lsp_params = request.to_lsp(&file.abs_path(cx), cx);
@@ -6338,10 +6351,11 @@ impl Project {
         &mut self,
         buffer: &ModelHandle<Buffer>,
         lsp_edits: impl 'static + Send + IntoIterator<Item = lsp::TextEdit>,
+        server_id: usize,
         version: Option<i32>,
         cx: &mut ModelContext<Self>,
     ) -> Task<Result<Vec<(Range<Anchor>, String)>>> {
-        let snapshot = self.buffer_snapshot_for_lsp_version(buffer, version, cx);
+        let snapshot = self.buffer_snapshot_for_lsp_version(buffer, server_id, version, cx);
         cx.background().spawn(async move {
             let snapshot = snapshot?;
             let mut lsp_edits = lsp_edits
@@ -6470,11 +6484,11 @@ impl Project {
         }
     }
 
-    fn language_servers_for_buffer(
+    fn running_language_servers_for_buffer(
         &self,
         buffer: &Buffer,
         cx: &AppContext,
-    ) -> Vec<(&Arc<CachedLspAdapter>, &Arc<LanguageServer>)> {
+    ) -> impl Iterator<Item = (&Arc<CachedLspAdapter>, &Arc<LanguageServer>)> {
         self.language_server_ids_for_buffer(buffer, cx)
             .into_iter()
             .filter_map(|server_id| {
@@ -6488,7 +6502,33 @@ impl Project {
                     None
                 }
             })
+    }
+
+    fn language_servers_for_buffer(
+        &self,
+        buffer: &Buffer,
+        cx: &AppContext,
+    ) -> Vec<(&Arc<CachedLspAdapter>, &Arc<LanguageServer>)> {
+        self.running_language_servers_for_buffer(buffer, cx)
             .collect()
+    }
+
+    fn primary_language_servers_for_buffer(
+        &self,
+        buffer: &Buffer,
+        cx: &AppContext,
+    ) -> Option<(&Arc<CachedLspAdapter>, &Arc<LanguageServer>)> {
+        self.running_language_servers_for_buffer(buffer, cx).next()
+    }
+
+    fn language_server_for_buffer(
+        &self,
+        buffer: &Buffer,
+        server_id: usize,
+        cx: &AppContext,
+    ) -> Option<(&Arc<CachedLspAdapter>, &Arc<LanguageServer>)> {
+        self.running_language_servers_for_buffer(buffer, cx)
+            .find(|(_, s)| s.server_id() == server_id)
     }
 
     fn language_server_ids_for_buffer(&self, buffer: &Buffer, cx: &AppContext) -> Vec<usize> {
