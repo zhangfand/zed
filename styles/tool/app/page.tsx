@@ -28,7 +28,8 @@ function buttonStyles(
     styles.borderRadius = borderRadius && `${borderRadius}px`
     styles.border =
         border &&
-        `${border.width}px solid ${border.color} ${border.overlay ? "inset" : ""
+        `${border.width}px solid ${border.color} ${
+            border.overlay ? "inset" : ""
         }`
     styles.width =
         typeof s.container.width === "number"

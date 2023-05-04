@@ -37,10 +37,7 @@ type SurfaceStyle = Pick<Required<ContainerStyle>, "background" | "border">
 
 type InteractiveSurfaceStyles = Record<State, SurfaceStyle>
 
-function useSurfaceIntensity(
-    theme: Theme,
-    surface: Surface
-): IntensitySet {
+function useSurfaceIntensity(theme: Theme, surface: Surface): IntensitySet {
     const level = surfaceLevel[surface]
 
     const BASE_SURFACE_INTENSITIES: IntensitySet = {

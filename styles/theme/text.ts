@@ -6,8 +6,6 @@ import {
     containedText,
     Interactive,
     buildIntensitiesForStates,
-    container,
-    State,
 } from "./container"
 import {
     Intensity,
@@ -15,7 +13,10 @@ import {
     IntensitySet,
 } from "./intensity"
 import { Prettify } from "./types/utility"
-import { ContainedTextOptions, DEFAULT_CONTAINED_TEXT_OPTIONS } from "./container/containedText"
+import {
+    ContainedTextOptions,
+    DEFAULT_CONTAINED_TEXT_OPTIONS,
+} from "./container/containedText"
 import { useIntensityColor } from "./color"
 
 type Font = "Zed Mono" | "Zed Sans"
@@ -146,10 +147,7 @@ export const DEFAULT_TEXT_OPTIONS: TextOptions = {
     lineHeight: 1,
 }
 
-function buildText(
-    theme: Theme,
-    options?: Partial<TextOptions>
-): TextStyle {
+function buildText(theme: Theme, options?: Partial<TextOptions>): TextStyle {
     const themeColor = useColors(theme)
     const defaultOptions = DEFAULT_TEXT_OPTIONS
 
@@ -217,20 +215,28 @@ export function interactiveTextStyle(
         DEFAULT_INTENSITIES
     )
 
-    const stateStyle = (theme: Theme, options: ContainedTextOptions, intensities: IntensitySet) => {
+    const stateStyle = (
+        theme: Theme,
+        options: ContainedTextOptions,
+        intensities: IntensitySet
+    ) => {
         const stateOptions: ContainedTextOptions = {
             ...options,
             intensity: intensities.fg,
             border: {
                 ...options.border,
-                color: useIntensityColor(theme, options.color, intensities.border),
+                color: useIntensityColor(
+                    theme,
+                    options.color,
+                    intensities.border
+                ),
             },
             background: useIntensityColor(theme, options.color, intensities.bg),
         }
 
         const style = containedText({
             theme,
-            options: stateOptions
+            options: stateOptions,
         })
 
         return style

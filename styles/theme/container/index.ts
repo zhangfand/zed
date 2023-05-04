@@ -1,6 +1,5 @@
 import { Border, Theme } from "@/theme"
 import {
-    UnresolvedIntensitySet,
     Intensity,
     calculateIntensity,
     resolveElementIntensities,
@@ -114,7 +113,10 @@ export function buildIntensitiesForStates(
         (intensity) => intensity * scaleFactor
     )
 
-    const resolvedIntensity = resolveElementIntensities(theme, startingIntensity)
+    const resolvedIntensity = resolveElementIntensities(
+        theme,
+        startingIntensity
+    )
 
     const defaultState = {
         bg: resolvedIntensity.bg,

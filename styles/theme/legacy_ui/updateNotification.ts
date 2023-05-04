@@ -11,22 +11,18 @@ export default function updateNotification(theme: Theme) {
         theme,
         options: {
             size: size.xs,
-            margin: margin(0, HEADER_PADDING)
-        }
+            margin: margin(0, HEADER_PADDING),
+        },
     })
 
     const close = iconButton(theme)
 
-
     // This should be actionMessage when the legacy properties are removed
     // This should probably be renamed with a more descriptive name
-    const actionMessageStyle = interactiveTextStyle(
-        theme,
-        {
-            size: size.xs,
-            margin: margin(6, 0, 6, HEADER_PADDING)
-        }
-    )
+    const actionMessageStyle = interactiveTextStyle(theme, {
+        size: size.xs,
+        margin: margin(6, 0, 6, HEADER_PADDING),
+    })
 
     const legacy_properties = {
         dismissButton: {
@@ -43,8 +39,8 @@ export default function updateNotification(theme: Theme) {
             ...actionMessageStyle.default.text,
             hover: {
                 color: actionMessageStyle.hovered.text.color,
-            }
-        }
+            },
+        },
     }
 
     return {

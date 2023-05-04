@@ -19,7 +19,10 @@ export function popoverContainerStyle({
     const themeColor = useColors(theme)
     const surfaceStyle = useSurfaceStyle(theme, "popover")
     const surfaceIntensity = useSurfaceIntensity(theme, "popover")
-    const resolvedIntensities = resolveElementIntensities(theme, surfaceIntensity)
+    const resolvedIntensities = resolveElementIntensities(
+        theme,
+        surfaceIntensity
+    )
 
     let background
     let border

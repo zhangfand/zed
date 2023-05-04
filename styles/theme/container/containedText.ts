@@ -1,6 +1,16 @@
-import { DEFAULT_TEXT_OPTIONS, TextOptions, TextStyle, textStyle } from "@theme/text"
+import {
+    DEFAULT_TEXT_OPTIONS,
+    TextOptions,
+    TextStyle,
+    textStyle,
+} from "@theme/text"
 import { Prettify } from "@theme/types/utility"
-import { ContainerOptions, ContainerStyle, DEFAULT_CONTAINER_OPTIONS, containerStyle } from "."
+import {
+    ContainerOptions,
+    ContainerStyle,
+    DEFAULT_CONTAINER_OPTIONS,
+    containerStyle,
+} from "."
 import { Theme } from "@theme*"
 
 export interface ContainedText {
@@ -8,10 +18,12 @@ export interface ContainedText {
     text: TextStyle
 }
 
-export type ContainedTextOptions = Prettify<Partial<TextOptions> & ContainerOptions>
+export type ContainedTextOptions = Prettify<
+    Partial<TextOptions> & ContainerOptions
+>
 
 export interface ContainedTextProps {
-    theme: Theme,
+    theme: Theme
     options: ContainedTextOptions
 }
 
