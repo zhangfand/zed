@@ -2529,6 +2529,7 @@ async fn test_buffer_identity_across_renames(
     deterministic: Arc<Deterministic>,
     cx: &mut gpui::TestAppContext,
 ) {
+    println!("start");
     let fs = FakeFs::new(cx.background());
     fs.insert_tree(
         "/dir",
@@ -2562,6 +2563,7 @@ async fn test_buffer_identity_across_renames(
         .unwrap();
     buffer.read_with(cx, |buffer, _| assert!(!buffer.is_dirty()));
 
+    println!("renaming");
     project
         .update(cx, |project, cx| {
             project.rename_entry(dir_id, Path::new("b"), cx)

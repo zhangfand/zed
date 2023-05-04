@@ -1224,6 +1224,7 @@ impl Snapshot {
     }
 
     pub(crate) fn insert_entry(&mut self, entry: proto::Entry) -> Result<Entry> {
+        println!("insert entry {:?}", &entry);
         let entry = Entry::try_from((&self.root_char_bag, entry))?;
         let old_entry = self.entries_by_id.insert_or_replace(
             PathEntry {
@@ -1242,6 +1243,7 @@ impl Snapshot {
     }
 
     fn delete_entry(&mut self, entry_id: ProjectEntryId) -> Option<Arc<Path>> {
+        println!("delete entry {:?}", entry_id);
         let removed_entry = self.entries_by_id.remove(&entry_id, &())?;
         self.entries_by_path = {
             let mut cursor = self.entries_by_path.cursor();
@@ -1263,6 +1265,7 @@ impl Snapshot {
     }
 
     pub(crate) fn apply_remote_update(&mut self, update: proto::UpdateWorktree) -> Result<()> {
+        println!("remote update");
         let mut entries_by_path_edits = Vec::new();
         let mut entries_by_id_edits = Vec::new();
         for entry_id in update.removed_entries {
@@ -1397,9 +1400,17 @@ impl Snapshot {
             })
     }
 
+    pub fn entries_by_path(&self) -> Vec<&Entry> {
+        self.entries_by_path.iter().collect()
+    }
+
     pub fn entry_for_id(&self, id: ProjectEntryId) -> Option<&Entry> {
         let entry = self.entries_by_id.get(&id, &())?;
         self.entry_for_path(&entry.path)
+    }
+
+    pub fn entries_by_id(&self) -> Vec<&PathEntry> {
+        self.entries_by_id.iter().collect()
     }
 
     pub fn inode_for_path(&self, path: impl AsRef<Path>) -> Option<u64> {
@@ -1544,9 +1555,11 @@ impl LocalSnapshot {
         let removed = self.entries_by_path.insert_or_replace(entry.clone(), &());
         if let Some(removed) = removed {
             if removed.id != entry.id {
+                println!("insert entry removing");
                 self.entries_by_id.remove(&removed.id, &());
             }
         }
+        println!("insert entry insert_or_replace");
         self.entries_by_id.insert_or_replace(
             PathEntry {
                 id: entry.id,
@@ -1567,6 +1580,7 @@ impl LocalSnapshot {
         ignore: Option<Arc<Gitignore>>,
         fs: &dyn Fs,
     ) {
+        println!("populate dir");
         let mut parent_entry = if let Some(parent_entry) =
             self.entries_by_path.get(&PathKey(parent_path.clone()), &())
         {
@@ -1642,6 +1656,7 @@ impl LocalSnapshot {
     }
 
     fn remove_path(&mut self, path: &Path) {
+        println!("remove path {:?}", path);
         let mut new_entries;
         let removed_entries;
         {
@@ -2120,7 +2135,7 @@ impl sum_tree::Summary for EntrySummary {
 }
 
 #[derive(Clone, Debug)]
-struct PathEntry {
+pub struct PathEntry {
     id: ProjectEntryId,
     path: Arc<Path>,
     is_ignored: bool,
@@ -2144,7 +2159,7 @@ impl sum_tree::KeyedItem for PathEntry {
 }
 
 #[derive(Clone, Debug, Default)]
-struct PathEntrySummary {
+pub struct PathEntrySummary {
     max_id: ProjectEntryId,
 }
 
@@ -2717,6 +2732,7 @@ impl BackgroundScanner {
     }
 
     async fn update_ignore_status(&self, job: UpdateIgnoreStatusJob, snapshot: &LocalSnapshot) {
+        println!("update_ignore_status");
         let mut ignore_stack = job.ignore_stack;
         if let Some((ignore, _)) = snapshot.ignores_by_parent_abs_path.get(&job.abs_path) {
             ignore_stack = ignore_stack.append(job.abs_path.clone(), ignore.clone());

@@ -4579,7 +4579,8 @@ impl Project {
         let snapshot = worktree_handle.read(cx).snapshot();
 
         let mut renamed_buffers = Vec::new();
-        for path in changes.keys() {
+        for (path, change) in changes {
+            println!("{:?} {:?}", path, change);
             let worktree_id = worktree_handle.read(cx).id();
             let project_path = ProjectPath {
                 worktree_id,
@@ -4587,19 +4588,29 @@ impl Project {
             };
 
             if let Some(&buffer_id) = self.local_buffer_ids_by_path.get(&project_path) {
+                println!("has buffer id {}", buffer_id);
                 if let Some(buffer) = self
                     .opened_buffers
                     .get(&buffer_id)
                     .and_then(|buffer| buffer.upgrade(cx))
                 {
+                    println!("has upgraded buffer");
                     buffer.update(cx, |buffer, cx| {
                         if let Some(old_file) = File::from_dyn(buffer.file()) {
                             if old_file.worktree != *worktree_handle {
+                                println!("worktree mismatch, bailing");
                                 return;
                             }
 
+                            dbg!(
+                                old_file.entry_id,
+                                snapshot.entries_by_id(),
+                                old_file.path().as_ref(),
+                                snapshot.entries_by_path()
+                            );
                             let new_file =
                                 if let Some(entry) = snapshot.entry_for_id(old_file.entry_id) {
+                                    println!("a");
                                     File {
                                         is_local: true,
                                         entry_id: entry.id,
@@ -4611,6 +4622,7 @@ impl Project {
                                 } else if let Some(entry) =
                                     snapshot.entry_for_path(old_file.path().as_ref())
                                 {
+                                    println!("b");
                                     File {
                                         is_local: true,
                                         entry_id: entry.id,
@@ -4620,6 +4632,7 @@ impl Project {
                                         is_deleted: false,
                                     }
                                 } else {
+                                    println!("c");
                                     File {
                                         is_local: true,
                                         entry_id: old_file.entry_id,
@@ -4631,6 +4644,7 @@ impl Project {
                                 };
 
                             let old_path = old_file.abs_path(cx);
+                            dbg!(&old_path, new_file.abs_path(cx));
                             if new_file.abs_path(cx) != old_path {
                                 renamed_buffers.push((cx.handle(), old_file.clone()));
                                 self.local_buffer_ids_by_path.remove(&project_path);
