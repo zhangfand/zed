@@ -3,7 +3,7 @@ import { Theme, useColors } from "@theme*"
 import { ContainerOptions, ContainerStyle, containerStyle } from "."
 import { shadow } from "@theme/shadow"
 import { ThemeColor } from "@theme/config"
-import { useElementIntensities } from "@theme/intensity"
+import { resolveElementIntensities } from "@theme/intensity"
 
 interface PopoverContainerProps {
     theme: Theme
@@ -19,7 +19,7 @@ export function popoverContainerStyle({
     const themeColor = useColors(theme)
     const surfaceStyle = useSurfaceStyle(theme, "popover")
     const surfaceIntensity = useSurfaceIntensity(theme, "popover")
-    const resolvedIntensities = useElementIntensities(theme, surfaceIntensity)
+    const resolvedIntensities = resolveElementIntensities(theme, surfaceIntensity)
 
     let background
     let border

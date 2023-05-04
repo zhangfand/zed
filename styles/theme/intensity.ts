@@ -74,9 +74,9 @@ export function addToIntensity(
 }
 
 export function addToElementIntensities(
-    startingIntensity: ElementIntensities<Intensity>,
+    startingIntensity: IntensitySet,
     intensityToAdd: Intensity
-): ElementIntensities<Intensity> {
+): IntensitySet {
     return {
         bg: addToIntensity(startingIntensity.bg, intensityToAdd),
         border: addToIntensity(startingIntensity.border, intensityToAdd),
@@ -141,17 +141,23 @@ function calculateScaleFactor(min: number, max: number): number {
  *
  * Array = [dark intensity, light intensity]
  */
-export type ElementIntensity = Intensity | [Intensity, Intensity]
+export type UnresolvedIntensity = Intensity | [Intensity, Intensity]
 
-export interface ElementIntensities<T = ElementIntensity> {
-    bg: T
-    border: T
-    fg: T
+export interface UnresolvedIntensitySet {
+    bg: UnresolvedIntensity
+    border: UnresolvedIntensity
+    fg: UnresolvedIntensity
+}
+
+export interface IntensitySet {
+    bg: Intensity
+    border: Intensity
+    fg: Intensity
 }
 
 export function resolveThemeColorIntensity(
     theme: Theme,
-    intensity: ElementIntensity
+    intensity: UnresolvedIntensity
 ): Intensity {
     if (Array.isArray(intensity)) {
         return theme.appearance === "light" ? intensity[1] : intensity[0]
@@ -165,11 +171,11 @@ export function resolveThemeColorIntensity(
  *
  * If one intensity is provided, it is used for both dark and light appearance
  */
-export function useElementIntensities(
+export function resolveElementIntensities(
     theme: Theme,
-    intensity: ElementIntensities<ElementIntensity>
-): ElementIntensities<Intensity> {
-    const elementIntensities: ElementIntensities<Intensity> = {
+    intensity: UnresolvedIntensitySet
+): IntensitySet {
+    const elementIntensities: IntensitySet = {
         bg: resolveThemeColorIntensity(theme, intensity.bg),
         border: resolveThemeColorIntensity(theme, intensity.border),
         fg: resolveThemeColorIntensity(theme, intensity.fg),

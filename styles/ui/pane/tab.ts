@@ -16,7 +16,7 @@ import { FlexStyle, flex } from "@theme/element/flex"
 import { IconStyle, iconStyle } from "@theme/icon"
 import {
     addToElementIntensities,
-    useElementIntensities,
+    resolveElementIntensities,
 } from "@theme/intensity"
 import { padding } from "@theme/properties"
 import { background } from "@theme/properties/background"
@@ -54,7 +54,7 @@ function tabState({ theme, active = false, state }: TabProps): Tab {
         ? useSurfaceIntensity(theme, "pane")
         : addToElementIntensities(useSurfaceIntensity(theme, "pane"), 20)
 
-    const resolvedIntensities = useElementIntensities(theme, intensities)
+    const resolvedIntensities = resolveElementIntensities(theme, intensities)
 
     const interactiveIntensities = buildIntensitiesForStates(
         theme,

@@ -1,5 +1,5 @@
 import { Theme } from "@theme*"
-import { size } from "@theme/text"
+import { interactiveTextStyle, size } from "@theme/text"
 import { margin } from "@theme/properties"
 import { containedText } from "@theme/container"
 import { iconButton } from "@components/button"
@@ -18,6 +18,16 @@ export default function updateNotification(theme: Theme) {
     const close = iconButton(theme)
 
 
+    // This should be actionMessage when the legacy properties are removed
+    // This should probably be renamed with a more descriptive name
+    const actionMessageStyle = interactiveTextStyle(
+        theme,
+        {
+            size: size.xs,
+            margin: margin(6, 0, 6, HEADER_PADDING)
+        }
+    )
+
     const legacy_properties = {
         dismissButton: {
             color: close.default.icon.color,
@@ -29,24 +39,16 @@ export default function updateNotification(theme: Theme) {
                 color: close.hovered.icon.color,
             },
         },
+        actionMessage: {
+            ...actionMessageStyle.default.text,
+            hover: {
+                color: actionMessageStyle.hovered.text.color,
+            }
+        }
     }
 
     return {
         ...legacy_properties,
         message,
-    }
-}
-
-
-function legacyupdateNotification(colorScheme: ColorScheme): Object {
-    let layer = colorScheme.middle
-    return {
-        actionMessage: {
-            ...text(layer, "sans", { size: "xs" }),
-            margin: { left: headerPadding, top: 6, bottom: 6 },
-            hover: {
-                color: foreground(layer, "hovered"),
-            },
-        },
     }
 }

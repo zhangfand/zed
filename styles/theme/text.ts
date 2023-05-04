@@ -3,16 +3,20 @@ import { useColors } from "./colors"
 import { Theme, ThemeColor } from "./config"
 import {
     ContainedText,
+    containedText,
     Interactive,
     buildIntensitiesForStates,
     container,
+    State,
 } from "./container"
 import {
-    ElementIntensities,
     Intensity,
     resolveThemeColorIntensity,
+    IntensitySet,
 } from "./intensity"
 import { Prettify } from "./types/utility"
+import { ContainedTextOptions, DEFAULT_CONTAINED_TEXT_OPTIONS } from "./container/containedText"
+import { useIntensityColor } from "./color"
 
 type Font = "Zed Mono" | "Zed Sans"
 
@@ -194,13 +198,18 @@ export type InteractiveTextStyle = Prettify<Interactive<TextStyle>>
 
 export function interactiveTextStyle(
     theme: Theme,
-    options?: Partial<TextOptions>
+    options?: ContainedTextOptions
 ): Interactive<ContainedText> {
-    const DEFAULT_INTENSITIES: ElementIntensities = {
+    const DEFAULT_INTENSITIES: IntensitySet = {
         bg: 1,
         border: 15,
         fg: 100,
     } as const
+
+    const mergedOptions = {
+        ...DEFAULT_CONTAINED_TEXT_OPTIONS,
+        ...options,
+    }
 
     const states = buildIntensitiesForStates(
         theme,
@@ -208,31 +217,30 @@ export function interactiveTextStyle(
         DEFAULT_INTENSITIES
     )
 
-    const text = {
-        default: buildText(theme, {
+    const stateStyle = (theme: Theme, options: ContainedTextOptions, intensities: IntensitySet) => {
+        const stateOptions: ContainedTextOptions = {
             ...options,
-            intensity: states.default.fg,
-        }),
-        hovered: buildText(theme, {
-            ...options,
-            intensity: states.hovered.fg,
-        }),
-        pressed: buildText(theme, {
-            ...options,
-            intensity: states.pressed.fg,
-        }),
-    }
-
-    const buildContainedText = (text: TextStyle) => {
-        return {
-            container: container.blank,
-            text,
+            intensity: intensities.fg,
+            border: {
+                ...options.border,
+                color: useIntensityColor(theme, options.color, intensities.border),
+            },
+            background: useIntensityColor(theme, options.color, intensities.bg),
         }
+
+        const style = containedText({
+            theme,
+            options: stateOptions
+        })
+
+        return style
     }
 
-    return {
-        default: buildContainedText(text.default),
-        hovered: buildContainedText(text.hovered),
-        pressed: buildContainedText(text.pressed),
+    const text = {
+        default: stateStyle(theme, mergedOptions, states.default),
+        hovered: stateStyle(theme, mergedOptions, states.hovered),
+        pressed: stateStyle(theme, mergedOptions, states.pressed),
     }
+
+    return text
 }

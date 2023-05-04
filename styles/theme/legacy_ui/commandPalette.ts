@@ -21,14 +21,14 @@ export default function commandPalette(theme: Theme) {
     const key = containedText({
         text: text.textStyle(theme, {
             intensity: 70,
-            size: text.size.xs,
+            fontSize: text.size.xs,
         }),
         container: keyContainer,
     })
 
     const active_key_text = text.textStyle(theme, {
         intensity: 100,
-        size: text.size.xs,
+        fontSize: text.size.xs,
     })
 
     const active_key_background = relativeIntensityToSurface(surface.bg, 10)

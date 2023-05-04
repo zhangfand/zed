@@ -1,9 +1,9 @@
 import {
-    ElementIntensities,
     Intensity,
     addToElementIntensities,
     addToIntensity,
-    useElementIntensities,
+    resolveElementIntensities,
+    IntensitySet,
 } from "@theme/intensity"
 import { ContainerStyle, State } from "@theme/container"
 import { Theme } from "@theme/config"
@@ -40,16 +40,16 @@ type InteractiveSurfaceStyles = Record<State, SurfaceStyle>
 function useSurfaceIntensity(
     theme: Theme,
     surface: Surface
-): ElementIntensities<Intensity> {
+): IntensitySet {
     const level = surfaceLevel[surface]
 
-    const BASE_SURFACE_INTENSITIES: ElementIntensities<Intensity> = {
+    const BASE_SURFACE_INTENSITIES: IntensitySet = {
         bg: 1,
         border: 12,
         fg: 100,
-    }
+    } as const
 
-    const intensity = useElementIntensities(theme, BASE_SURFACE_INTENSITIES)
+    const intensity = BASE_SURFACE_INTENSITIES
 
     switch (level) {
         case 1:

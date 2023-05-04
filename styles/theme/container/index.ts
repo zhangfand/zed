@@ -1,9 +1,10 @@
 import { Border, Theme } from "@/theme"
 import {
-    ElementIntensities,
+    UnresolvedIntensitySet,
     Intensity,
     calculateIntensity,
-    useElementIntensities,
+    resolveElementIntensities,
+    IntensitySet,
 } from "../intensity"
 import { Padding, Margin } from "@theme/properties"
 import {
@@ -84,27 +85,20 @@ export interface Interactive<T = InteractiveState> {
     dragged?: T
 }
 
-export interface InteractiveToggleableContainer<T = Interactive> {
+export interface Toggleable<T = Interactive> {
     inactive: T
     active: T
 }
 
 export type State = "default" | "hovered" | "pressed"
 
-type ContainerIntensities = {
-    bg: Intensity
-    border: Intensity
-    fg: Intensity
-}
-
-export type StateIntensitySet = ContainerIntensities
-export type StateIntensities = Record<State, StateIntensitySet>
+export type StateIntensities = Record<State, IntensitySet>
 
 /** Returns a StateIntensitySet for each default state */
 export function buildIntensitiesForStates(
     theme: Theme,
     name: string,
-    startingIntensity: ElementIntensities
+    startingIntensity: IntensitySet
 ): StateIntensities {
     const light = theme.appearance === "light"
     const multiplier = light ? 1 : 1.2
@@ -120,9 +114,9 @@ export function buildIntensitiesForStates(
         (intensity) => intensity * scaleFactor
     )
 
-    const resolvedIntensity = useElementIntensities(theme, startingIntensity)
+    const resolvedIntensity = resolveElementIntensities(theme, startingIntensity)
 
-    const defaultState: StateIntensitySet = {
+    const defaultState = {
         bg: resolvedIntensity.bg,
         border: resolvedIntensity.border,
         fg: resolvedIntensity.fg,
@@ -150,14 +144,14 @@ export function buildIntensitiesForStates(
 export function buildStateIntensity(
     componentName: string,
     name: string,
-    startingIntensity: StateIntensitySet,
+    startingIntensity: IntensitySet,
     change?: number
-): StateIntensitySet {
+): IntensitySet {
     if (!change) {
         return startingIntensity
     }
 
-    const stateIntensity: StateIntensitySet = {
+    const stateIntensity: IntensitySet = {
         bg: calculateIntensity(startingIntensity.bg, change),
         border: calculateIntensity(startingIntensity.border, change),
         fg: calculateIntensity(startingIntensity.fg, change),

@@ -28,8 +28,7 @@ function buttonStyles(
     styles.borderRadius = borderRadius && `${borderRadius}px`
     styles.border =
         border &&
-        `${border.width}px solid ${border.color} ${
-            border.overlay ? "inset" : ""
+        `${border.width}px solid ${border.color} ${border.overlay ? "inset" : ""
         }`
     styles.width =
         typeof s.container.width === "number"
@@ -46,7 +45,7 @@ function buttonStyles(
     } else if (s.hasOwnProperty("text")) {
         const t = s as ContainedText
         styles.color = t.text.color
-        styles.fontSize = `${t.text.size}px`
+        styles.fontSize = `${t.text.fontSize}px`
         styles.fontWeight = t.text.weight
         // styles.fontFamily = t.text.family;
         styles.lineHeight = t.text.lineHeight

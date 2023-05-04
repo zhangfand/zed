@@ -1,6 +1,6 @@
 import { DEFAULT_TEXT_OPTIONS, TextOptions, TextStyle, textStyle } from "@theme/text"
 import { Prettify } from "@theme/types/utility"
-import { ContainerOptions, ContainerStyle, DEFAULT_CONTAINER_OPTIONS, Interactive, containerStyle } from "."
+import { ContainerOptions, ContainerStyle, DEFAULT_CONTAINER_OPTIONS, containerStyle } from "."
 import { Theme } from "@theme*"
 
 export interface ContainedText {
@@ -15,7 +15,7 @@ export interface ContainedTextProps {
     options: ContainedTextOptions
 }
 
-const DEFAULT_CONTAINED_TEXT_OPTIONS: ContainedTextOptions = {
+export const DEFAULT_CONTAINED_TEXT_OPTIONS: ContainedTextOptions = {
     ...DEFAULT_TEXT_OPTIONS,
     ...DEFAULT_CONTAINER_OPTIONS,
 }
@@ -38,19 +38,5 @@ export const containedText = ({
     return {
         text,
         container,
-    }
-}
-
-export const interactiveContainedText = ({
-    theme,
-    options,
-}: ContainedTextProps): Interactive<ContainedText> => {
-
-    const state = {
-        default: containedText({ theme, options })
-    }
-
-    return {
-        default: state.default,
     }
 }

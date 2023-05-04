@@ -6,11 +6,10 @@ import {
     ContainedText,
     ContainerStyle,
     Interactive,
-    StateIntensitySet,
     buildIntensitiesForStates,
 } from "@theme/container"
 import { TextStyle } from "@theme/text"
-import { ElementIntensities, useElementIntensities } from "@theme/intensity"
+import { IntensitySet, resolveElementIntensities } from "@theme/intensity"
 import { margin, padding } from "@theme/properties"
 import { textStyle } from "@theme/text"
 import { iconStyle } from "@theme/icon"
@@ -24,7 +23,7 @@ const buttonSize: Record<ButtonSizes, number> = {
     large: 25,
 }
 
-const DEFAULT_BUTTON_INTENSITIES: ElementIntensities = {
+const DEFAULT_BUTTON_INTENSITIES: IntensitySet = {
     bg: 5,
     border: 8,
     fg: 100,
@@ -37,7 +36,7 @@ interface ButtonProps {
      *  Used for debugging & contrast validation  */
     name: string
     kind: ButtonKind
-    intensities?: ElementIntensities
+    intensities?: IntensitySet
     size?: ButtonSize
 }
 
@@ -53,7 +52,7 @@ export function buildButton({
     size = buttonSize.medium,
 }: ButtonProps): Button {
     const color = useColors(theme)
-    const resolvedIntensities = useElementIntensities(theme, intensities)
+    const resolvedIntensities = resolveElementIntensities(theme, intensities)
 
     const container: ContainerStyle = {
         background: color.neutral(resolvedIntensities.bg),
@@ -77,7 +76,7 @@ export function buildButton({
 
     const states = buildIntensitiesForStates(theme, name, resolvedIntensities)
 
-    const buildStates = (intensities: StateIntensitySet) => {
+    const buildStates = (intensities: IntensitySet) => {
         const updatedContainer = {
             ...container,
             background: color.neutral(intensities.bg),
