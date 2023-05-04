@@ -1,28 +1,49 @@
-import { ColorScheme } from "../themes/common/colorScheme"
-import { foreground, text } from "./components"
+import { Theme } from "@theme*"
+import { size } from "@theme/text"
+import { margin } from "@theme/properties"
+import { containedText } from "@theme/container"
+import { iconButton } from "@components/button"
 
-const headerPadding = 8
+export default function updateNotification(theme: Theme) {
+    const HEADER_PADDING = 8 as const
 
-export default function updateNotification(colorScheme: ColorScheme): Object {
+    const message = containedText({
+        theme,
+        options: {
+            size: size.xs,
+            margin: margin(0, HEADER_PADDING)
+        }
+    })
+
+    const close = iconButton(theme)
+
+
+    const legacy_properties = {
+        dismissButton: {
+            color: close.default.icon.color,
+            iconWidth: close.default.icon.size,
+            iconHeight: close.default.icon.size,
+            buttonWidth: close.default.icon.size,
+            buttonHeight: close.default.icon.size,
+            hover: {
+                color: close.hovered.icon.color,
+            },
+        },
+    }
+
+    return {
+        ...legacy_properties,
+        message,
+    }
+}
+
+
+function legacyupdateNotification(colorScheme: ColorScheme): Object {
     let layer = colorScheme.middle
     return {
-        message: {
-            ...text(layer, "sans", { size: "xs" }),
-            margin: { left: headerPadding, right: headerPadding },
-        },
         actionMessage: {
             ...text(layer, "sans", { size: "xs" }),
             margin: { left: headerPadding, top: 6, bottom: 6 },
-            hover: {
-                color: foreground(layer, "hovered"),
-            },
-        },
-        dismissButton: {
-            color: foreground(layer),
-            iconWidth: 8,
-            iconHeight: 8,
-            buttonWidth: 8,
-            buttonHeight: 8,
             hover: {
                 color: foreground(layer, "hovered"),
             },

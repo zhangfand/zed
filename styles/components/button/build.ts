@@ -6,7 +6,7 @@ import {
     ContainedText,
     ContainerStyle,
     Interactive,
-    StateIntensity,
+    StateIntensitySet,
     buildIntensitiesForStates,
 } from "@theme/container"
 import { TextStyle } from "@theme/text"
@@ -55,7 +55,7 @@ export function buildButton({
     const color = useColors(theme)
     const resolvedIntensities = useElementIntensities(theme, intensities)
 
-    let container: ContainerStyle = {
+    const container: ContainerStyle = {
         background: color.neutral(resolvedIntensities.bg),
         margin: margin(0, 0, 0, 0),
         padding: padding(6, 4),
@@ -71,25 +71,25 @@ export function buildButton({
         size: "md",
     })
 
-    let text: TextStyle = textStyle(theme, {
+    const text: TextStyle = textStyle(theme, {
         intensity: resolvedIntensities.fg,
     })
 
     const states = buildIntensitiesForStates(theme, name, resolvedIntensities)
 
-    const buildStates = (intensities: StateIntensity) => {
-        let updatedContainer = {
+    const buildStates = (intensities: StateIntensitySet) => {
+        const updatedContainer = {
             ...container,
             background: color.neutral(intensities.bg),
             border: border(theme, intensities.border),
         }
 
-        let updatedIcon = {
+        const updatedIcon = {
             ...icon,
             color: color.neutral(intensities.fg),
         }
 
-        let updatedText = {
+        const updatedText = {
             ...text,
             color: color.neutral(intensities.fg),
         }
@@ -115,7 +115,7 @@ export function buildButton({
         }
     }
 
-    let button = {
+    const button = {
         default: buildStates(states.default),
         hovered: buildStates(states.hovered),
         pressed: buildStates(states.pressed),

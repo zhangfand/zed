@@ -12,6 +12,7 @@ import {
     Intensity,
     resolveThemeColorIntensity,
 } from "./intensity"
+import { Prettify } from "./types/utility"
 
 type Font = "Zed Mono" | "Zed Sans"
 
@@ -118,20 +119,22 @@ export interface TextStyle {
     underline?: boolean
 }
 
-/** Text options. Will be merged with DEFAULT_TEXT_OPTIONS */
-interface BuildTextOptions extends Partial<Omit<TextStyle, "color">> {
+interface _TextOptions extends Partial<Omit<TextStyle, "color">> {
     // The number relative font sizes are multiplied by to get the actual font size
-    baseSize: number
+    baseFontSize: number
     intensity: Intensity
     /** A color family from the theme */
     color: ThemeColor
 }
 
+/** Options for constructing TextStyles */
+export type TextOptions = Prettify<_TextOptions>
+
 const DEFAULT_BASE_TEXT_SIZE = 13 as const
 
-const DEFAULT_TEXT_OPTIONS: BuildTextOptions = {
+export const DEFAULT_TEXT_OPTIONS: TextOptions = {
     family: family.sans,
-    baseSize: DEFAULT_BASE_TEXT_SIZE,
+    baseFontSize: DEFAULT_BASE_TEXT_SIZE,
     size: size.md,
     weight: weight.regular,
     color: "neutral",
@@ -141,7 +144,7 @@ const DEFAULT_TEXT_OPTIONS: BuildTextOptions = {
 
 function buildText(
     theme: Theme,
-    options?: Partial<BuildTextOptions>
+    options?: Partial<TextOptions>
 ): TextStyle {
     const themeColor = useColors(theme)
     const defaultOptions = DEFAULT_TEXT_OPTIONS
@@ -154,7 +157,7 @@ function buildText(
     const {
         family,
         weight,
-        baseSize,
+        baseFontSize: baseSize,
         lineHeight,
         color: colorScale,
         intensity,
@@ -182,14 +185,16 @@ function buildText(
 
 export function textStyle(
     theme: Theme,
-    options?: Partial<BuildTextOptions>
+    options?: Partial<TextOptions>
 ): TextStyle {
     return buildText(theme, options)
 }
 
-export function useInteractiveText(
+export type InteractiveTextStyle = Prettify<Interactive<TextStyle>>
+
+export function interactiveTextStyle(
     theme: Theme,
-    options?: Partial<BuildTextOptions>
+    options?: Partial<TextOptions>
 ): Interactive<ContainedText> {
     const DEFAULT_INTENSITIES: ElementIntensities = {
         bg: 1,

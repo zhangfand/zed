@@ -1,14 +1,10 @@
-import { text } from "./components"
 import contactFinder from "./contactFinder"
-import contactsPopover from "./contactsPopover"
-import commandPalette from "./commandPalette"
 import editor from "./editor"
 import projectPanel from "./projectPanel"
 import search from "./search"
 import picker from "./picker"
 import workspace from "./workspace"
 import contextMenu from "./contextMenu"
-import sharedScreen from "./sharedScreen"
 import projectDiagnostics from "./projectDiagnostics"
 import contactNotification from "./contactNotification"
 import updateNotification from "./updateNotification"
@@ -19,17 +15,15 @@ import terminal from "./terminal"
 import contactList from "./contactList"
 import incomingCallNotification from "./incomingCallNotification"
 import { ColorScheme } from "../themes/common/colorScheme"
-import feedback from "./feedback"
 import welcome from "./welcome"
 import copilot from "./copilot"
 
-export default function app(colorScheme: ColorScheme): Object {
+export default function app(colorScheme: ColorScheme): object {
     return {
         meta: {
             name: colorScheme.name,
             isLight: colorScheme.isLight,
         },
-        commandPalette: commandPalette(colorScheme),
         contactNotification: contactNotification(colorScheme),
         projectSharedNotification: projectSharedNotification(colorScheme),
         incomingCallNotification: incomingCallNotification(colorScheme),
@@ -41,16 +35,13 @@ export default function app(colorScheme: ColorScheme): Object {
         editor: editor(colorScheme),
         projectDiagnostics: projectDiagnostics(colorScheme),
         projectPanel: projectPanel(colorScheme),
-        contactsPopover: contactsPopover(colorScheme),
         contactFinder: contactFinder(colorScheme),
         contactList: contactList(colorScheme),
         search: search(colorScheme),
-        sharedScreen: sharedScreen(colorScheme),
         updateNotification: updateNotification(colorScheme),
         simpleMessageNotification: simpleMessageNotification(colorScheme),
         tooltip: tooltip(colorScheme),
         terminal: terminal(colorScheme),
-        feedback: feedback(colorScheme),
         colorScheme: {
             ...colorScheme,
             players: Object.values(colorScheme.players),

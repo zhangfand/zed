@@ -42,7 +42,7 @@ export enum BorderRadius {
 
 export type ContainerOptions = Partial<ContainerStyle>
 
-const DEFAULT_OPTIONS: ContainerOptions = {
+export const DEFAULT_CONTAINER_OPTIONS: ContainerOptions = {
     borderRadius: 0,
     width: "auto",
     height: "auto",
@@ -50,7 +50,7 @@ const DEFAULT_OPTIONS: ContainerOptions = {
 
 export function containerStyle(options: ContainerOptions): ContainerStyle {
     const mergedOptions = {
-        ...DEFAULT_OPTIONS,
+        ...DEFAULT_CONTAINER_OPTIONS,
         ...options,
     }
 
@@ -91,15 +91,16 @@ export interface InteractiveToggleableContainer<T = Interactive> {
 
 export type State = "default" | "hovered" | "pressed"
 
-type ContainerColors = {
+type ContainerIntensities = {
     bg: Intensity
     border: Intensity
     fg: Intensity
 }
 
-export type StateIntensity = ContainerColors
-export type StateIntensities = Record<State, StateIntensity>
+export type StateIntensitySet = ContainerIntensities
+export type StateIntensities = Record<State, StateIntensitySet>
 
+/** Returns a StateIntensitySet for each default state */
 export function buildIntensitiesForStates(
     theme: Theme,
     name: string,
@@ -121,7 +122,7 @@ export function buildIntensitiesForStates(
 
     const resolvedIntensity = useElementIntensities(theme, startingIntensity)
 
-    const defaultState: StateIntensity = {
+    const defaultState: StateIntensitySet = {
         bg: resolvedIntensity.bg,
         border: resolvedIntensity.border,
         fg: resolvedIntensity.fg,
@@ -149,14 +150,14 @@ export function buildIntensitiesForStates(
 export function buildStateIntensity(
     componentName: string,
     name: string,
-    startingIntensity: StateIntensity,
+    startingIntensity: StateIntensitySet,
     change?: number
-): StateIntensity {
+): StateIntensitySet {
     if (!change) {
         return startingIntensity
     }
 
-    const stateIntensity: StateIntensity = {
+    const stateIntensity: StateIntensitySet = {
         bg: calculateIntensity(startingIntensity.bg, change),
         border: calculateIntensity(startingIntensity.border, change),
         fg: calculateIntensity(startingIntensity.fg, change),

@@ -1,23 +1,56 @@
-import { TextStyle } from "@theme/text"
-import { ContainerStyle } from "."
+import { DEFAULT_TEXT_OPTIONS, TextOptions, TextStyle, textStyle } from "@theme/text"
+import { Prettify } from "@theme/types/utility"
+import { ContainerOptions, ContainerStyle, DEFAULT_CONTAINER_OPTIONS, Interactive, containerStyle } from "."
+import { Theme } from "@theme*"
 
 export interface ContainedText {
     container: ContainerStyle
     text: TextStyle
 }
 
+export type ContainedTextOptions = Prettify<Partial<TextOptions> & ContainerOptions>
+
 export interface ContainedTextProps {
-    text: TextStyle
-    container: ContainerStyle
+    theme: Theme,
+    options: ContainedTextOptions
 }
 
-// Placeholder for containedText logic
+const DEFAULT_CONTAINED_TEXT_OPTIONS: ContainedTextOptions = {
+    ...DEFAULT_TEXT_OPTIONS,
+    ...DEFAULT_CONTAINER_OPTIONS,
+}
+
 export const containedText = ({
-    text,
-    container,
+    theme,
+    options,
 }: ContainedTextProps): ContainedText => {
+    const mergedOptions = {
+        ...DEFAULT_CONTAINED_TEXT_OPTIONS,
+        ...options,
+    }
+
+    const textOptions: Partial<TextOptions> = mergedOptions
+    const containerOptions: Partial<ContainerOptions> = mergedOptions
+
+    const text = textStyle(theme, textOptions)
+    const container = containerStyle(containerOptions)
+
     return {
         text,
         container,
+    }
+}
+
+export const interactiveContainedText = ({
+    theme,
+    options,
+}: ContainedTextProps): Interactive<ContainedText> => {
+
+    const state = {
+        default: containedText({ theme, options })
+    }
+
+    return {
+        default: state.default,
     }
 }
