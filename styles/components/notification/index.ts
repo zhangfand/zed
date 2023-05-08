@@ -1,4 +1,4 @@
-import { Theme } from "@theme*"
+import { Theme } from "@theme"
 import { interactiveTextStyle, size } from "@theme/text"
 import { margin } from "@theme/properties"
 import { containedText } from "@theme/container"
