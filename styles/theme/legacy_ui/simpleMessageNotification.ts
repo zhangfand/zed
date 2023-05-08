@@ -1,29 +1,29 @@
 import { Theme } from "@theme"
-import notification from "@components/notification"
+import notificationStyle from "@components/notification"
 
 export default function simpleMessageNotification(theme: Theme) {
-  const n = notification(theme)
+    const notification = notificationStyle(theme)
 
-  const legacy_properties = {
-    message: n.message,
-    dismissButton: {
-      color: n.close.default.icon.color,
-      iconWidth: n.close.default.icon.size,
-      iconHeight: n.close.default.icon.size,
-      buttonWidth: n.close.default.icon.size,
-      buttonHeight: n.close.default.icon.size,
-      hover: {
-        color: n.close.hovered.icon.color,
-      },
-    },
-    actionMessage: {
-      ...n.cta.default.text,
-      hover: {
-        color: n.cta.hovered.text.color,
-      },
-    },
-  }
-  return {
-    ...legacy_properties,
-  }
+    const legacy_properties = {
+        dismissButton: {
+            color: notification.close.default.icon.color,
+            iconWidth: notification.close.default.icon.size,
+            iconHeight: notification.close.default.icon.size,
+            buttonWidth: notification.close.default.icon.size,
+            buttonHeight: notification.close.default.icon.size,
+            hover: {
+                color: notification.close.hovered.icon.color,
+            },
+        },
+        actionMessage: {
+            ...n.cta.default.text,
+            hover: {
+                color: notification.cta.hovered.text.color,
+            },
+        },
+    }
+    return {
+        ...legacy_properties,
+        message: notification.message,
+    }
 }

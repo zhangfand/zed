@@ -3,9 +3,12 @@ import { interactiveTextStyle, size } from "@theme/text"
 import { margin } from "@theme/properties"
 import { containedText } from "@theme/container"
 import { iconButton } from "@components/button"
+import { popoverContainerStyle } from "@theme/container/popover"
 
-export default function notification(theme: Theme) {
+export default function notificationStyle(theme: Theme) {
   const HEADER_PADDING = 8 as const
+
+  const container = popoverContainerStyle({ theme })
 
   const message = containedText({
     theme,
@@ -23,8 +26,9 @@ export default function notification(theme: Theme) {
   })
 
   return {
+    container,
     message,
     close,
-    cta
+    cta,
   }
 }
