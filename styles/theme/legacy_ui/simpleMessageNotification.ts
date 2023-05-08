@@ -1,7 +1,7 @@
-import notification from "@components/notification"
 import { Theme } from "@theme"
+import notification from "@components/notification"
 
-export default function updateNotification(theme: Theme) {
+export default function simpleMessageNotification(theme: Theme) {
   const n = notification(theme)
 
   const legacy_properties = {
