@@ -2,21 +2,21 @@ import { useIntensityColor } from "./color"
 import { Theme, ThemeColor } from "./config"
 import { Intensity } from "./intensity"
 
-type Size = "sm" | "md" | "lg"
+export type Size = "sm" | "md" | "lg"
 
 type Sizes = Record<Size, number>
 
 const iconSize: Sizes = {
-    sm: 7,
-    md: 11,
-    lg: 15,
+  sm: 7,
+  md: 11,
+  lg: 15,
 } as const
 
 interface IconProps {
-    theme: Theme
-    size: Size
-    intensity?: Intensity
-    color?: ThemeColor
+  theme: Theme
+  size: Size
+  intensity?: Intensity
+  color?: ThemeColor
 }
 
 const DEFAULT_ICON_INTENSITY: Intensity = 100 as const
@@ -29,17 +29,17 @@ const DEFAULT_ICON_INTENSITY: Intensity = 100 as const
  * If no color is specified, neutral is used.
  */
 export const iconStyle = ({
-    theme,
-    size,
-    intensity = DEFAULT_ICON_INTENSITY,
-    color = "neutral",
+  theme,
+  size,
+  intensity = DEFAULT_ICON_INTENSITY,
+  color = "neutral",
 }: IconProps): IconStyle => {
-    const resolvedColor = useIntensityColor(theme, color, intensity)
-    const sizeValue = iconSize[size]
-    return { color: resolvedColor, size: sizeValue }
+  const resolvedColor = useIntensityColor(theme, color, intensity)
+  const sizeValue = iconSize[size]
+  return { color: resolvedColor, size: sizeValue }
 }
 
 export interface IconStyle {
-    color: string
-    size: number
+  color: string
+  size: number
 }

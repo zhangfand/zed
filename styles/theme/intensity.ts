@@ -2,28 +2,28 @@ import chroma from "chroma-js"
 import { Theme, ThemeConfig } from "./config"
 
 export function hexToIntensity(hex: string): Intensity {
-    const hsl = chroma(hex).hsl()
+  const hsl = chroma(hex).hsl()
 
-    // Round intensity up so that we never end up with a value of 0
-    const intensity = Math.ceil(hsl[2] * 100)
+  // Round intensity up so that we never end up with a value of 0
+  const intensity = Math.ceil(hsl[2] * 100)
 
-    if (intensity < 1 || intensity > 100)
-        throw new Error(
-            `Intensity ${intensity} out of range. Intensity must be between 1 and 100`
-        )
+  if (intensity < 1 || intensity > 100)
+    throw new Error(
+      `Intensity ${intensity} out of range. Intensity must be between 1 and 100`
+    )
 
-    return intensity as Intensity
+  return intensity as Intensity
 }
 
 export function numberToIntensity(number: number): Intensity {
-    const i = Math.ceil(Math.min(Math.max(number, 1), 100))
+  const i = Math.ceil(Math.min(Math.max(number, 1), 100))
 
-    if (i < 1 || i > 100)
-        throw new Error(
-            `Intensity ${i} out of range. Intensity must be between 1 and 100`
-        )
+  if (i < 1 || i > 100)
+    throw new Error(
+      `Intensity ${i} out of range. Intensity must be between 1 and 100`
+    )
 
-    return i as Intensity
+  return i as Intensity
 }
 
 // Dumb but it works
@@ -31,109 +31,109 @@ export function numberToIntensity(number: number): Intensity {
 export type Intensity = | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34 | 35 | 36 | 37 | 38 | 39 | 40 | 41 | 42 | 43 | 44 | 45 | 46 | 47 | 48 | 49 | 50 | 51 | 52 | 53 | 54 | 55 | 56 | 57 | 58 | 59 | 60 | 61 | 62 | 63 | 64 | 65 | 66 | 67 | 68 | 69 | 70 | 71 | 72 | 73 | 74 | 75 | 76 | 77 | 78 | 79 | 80 | 81 | 82 | 83 | 84 | 85 | 86 | 87 | 88 | 89 | 90 | 91 | 92 | 93 | 94 | 95 | 96 | 97 | 98 | 99 | 100
 
 interface IntensityRange {
-    min: Intensity
-    max: Intensity
-    scaleFactor: number
+  min: Intensity
+  max: Intensity
+  scaleFactor: number
 }
 
 function checkIntensity(number: number | Intensity): Intensity {
-    let intensity: Intensity
+  let intensity: Intensity
 
-    if (typeof number === "number") {
-        intensity = numberToIntensity(number)
-    } else {
-        intensity = number
-    }
+  if (typeof number === "number") {
+    intensity = numberToIntensity(number)
+  } else {
+    intensity = number
+  }
 
-    if (intensity < 1 || intensity > 100) {
-        throw new Error(
-            `Intensity ${intensity} out of range. Intensity must be between 1 and 100`
-        )
-    }
+  if (intensity < 1 || intensity > 100) {
+    throw new Error(
+      `Intensity ${intensity} out of range. Intensity must be between 1 and 100`
+    )
+  }
 
-    return intensity
+  return intensity
 }
 
 export function addToIntensity(
-    startingIntensity: Intensity,
-    intensityToAdd: Intensity
+  startingIntensity: Intensity,
+  intensityToAdd: Intensity
 ): Intensity {
-    checkIntensity(startingIntensity)
-    checkIntensity(intensityToAdd)
+  checkIntensity(startingIntensity)
+  checkIntensity(intensityToAdd)
 
-    let newIntensity = startingIntensity + intensityToAdd
+  let newIntensity = startingIntensity + intensityToAdd
 
-    // Bounce back if we're out of range
-    if (newIntensity > 100) {
-        newIntensity = startingIntensity - intensityToAdd
-    } else if (newIntensity < 1) {
-        newIntensity = startingIntensity + Math.abs(intensityToAdd)
-    }
+  // Bounce back if we're out of range
+  if (newIntensity > 100) {
+    newIntensity = startingIntensity - intensityToAdd
+  } else if (newIntensity < 1) {
+    newIntensity = startingIntensity + Math.abs(intensityToAdd)
+  }
 
-    return checkIntensity(newIntensity)
+  return checkIntensity(newIntensity)
 }
 
 export function addToElementIntensities(
-    startingIntensity: IntensitySet,
-    intensityToAdd: Intensity
+  startingIntensity: IntensitySet,
+  intensityToAdd: Intensity
 ): IntensitySet {
-    return {
-        bg: addToIntensity(startingIntensity.bg, intensityToAdd),
-        border: addToIntensity(startingIntensity.border, intensityToAdd),
-        fg: addToIntensity(startingIntensity.fg, intensityToAdd),
-    }
+  return {
+    bg: addToIntensity(startingIntensity.bg, intensityToAdd),
+    border: addToIntensity(startingIntensity.border, intensityToAdd),
+    fg: addToIntensity(startingIntensity.fg, intensityToAdd),
+  }
 }
 
 export function buildThemeIntensity(themeConfig: ThemeConfig): IntensityRange {
-    const neutral = themeConfig.colors.neutral
-    const appearance = themeConfig.appearance // "light" or "dark"
+  const neutral = themeConfig.colors.neutral
+  const appearance = themeConfig.appearance // "light" or "dark"
 
-    if (appearance === "light" && Array.isArray(neutral)) {
-        neutral.reverse()
-    }
+  if (appearance === "light" && Array.isArray(neutral)) {
+    neutral.reverse()
+  }
 
-    const firstColor = neutral[0]
-    const lastColor = neutral[neutral.length - 1]
+  const firstColor = neutral[0]
+  const lastColor = neutral[neutral.length - 1]
 
-    let minIntensity = hexToIntensity(chroma(firstColor).hex())
-    let maxIntensity = hexToIntensity(chroma(lastColor).hex())
+  let minIntensity = hexToIntensity(chroma(firstColor).hex())
+  let maxIntensity = hexToIntensity(chroma(lastColor).hex())
 
-    if (appearance === "light") {
-        ;[minIntensity, maxIntensity] = [maxIntensity, minIntensity]
-    }
+  if (appearance === "light") {
+    ;[minIntensity, maxIntensity] = [maxIntensity, minIntensity]
+  }
 
-    if (minIntensity < 1) {
-        throw new Error(
-            `Intensity ${minIntensity} too low. Intensity must be between 1 and 100`
-        )
-    }
+  if (minIntensity < 1) {
+    throw new Error(
+      `Intensity ${minIntensity} too low. Intensity must be between 1 and 100`
+    )
+  }
 
-    if (maxIntensity > 100) {
-        throw new Error(
-            `Intensity ${maxIntensity} too high. Intensity must be between 1 and 100`
-        )
-    }
+  if (maxIntensity > 100) {
+    throw new Error(
+      `Intensity ${maxIntensity} too high. Intensity must be between 1 and 100`
+    )
+  }
 
-    if (minIntensity > maxIntensity) {
-        throw new Error(
-            `${themeConfig.name}: Min intensity must be less than max intensity`
-        )
-    }
+  if (minIntensity > maxIntensity) {
+    throw new Error(
+      `${themeConfig.name}: Min intensity must be less than max intensity`
+    )
+  }
 
-    const intensity: IntensityRange = {
-        min: minIntensity,
-        max: maxIntensity,
-        scaleFactor: calculateScaleFactor(minIntensity, maxIntensity),
-    }
+  const intensity: IntensityRange = {
+    min: minIntensity,
+    max: maxIntensity,
+    scaleFactor: calculateScaleFactor(minIntensity, maxIntensity),
+  }
 
-    return intensity
+  return intensity
 }
 
 function calculateScaleFactor(min: number, max: number): number {
-    const smallerScaleDifference = Math.abs(max - min)
-    const maxDistance = 99
-    const scaleFactor = maxDistance / smallerScaleDifference
-    return +scaleFactor.toFixed(3)
+  const smallerScaleDifference = Math.abs(max - min)
+  const maxDistance = 99
+  const scaleFactor = maxDistance / smallerScaleDifference
+  return +scaleFactor.toFixed(3)
 }
 
 /**
@@ -144,25 +144,25 @@ function calculateScaleFactor(min: number, max: number): number {
 export type UnresolvedIntensity = Intensity | [Intensity, Intensity]
 
 export interface UnresolvedIntensitySet {
-    bg: UnresolvedIntensity
-    border: UnresolvedIntensity
-    fg: UnresolvedIntensity
+  bg: UnresolvedIntensity
+  border: UnresolvedIntensity
+  fg: UnresolvedIntensity
 }
 
 export interface IntensitySet {
-    bg: Intensity
-    border: Intensity
-    fg: Intensity
+  bg: Intensity
+  border: Intensity
+  fg: Intensity
 }
 
 export function resolveThemeColorIntensity(
-    theme: Theme,
-    intensity: UnresolvedIntensity
+  theme: Theme,
+  intensity: UnresolvedIntensity
 ): Intensity {
-    if (Array.isArray(intensity)) {
-        return theme.appearance === "light" ? intensity[1] : intensity[0]
-    }
-    return intensity
+  if (Array.isArray(intensity)) {
+    return theme.appearance === "light" ? intensity[1] : intensity[0]
+  }
+  return intensity
 }
 
 /** Resolves ElementIntensity down to a single Intensity per property based on the theme's appearance
@@ -172,38 +172,38 @@ export function resolveThemeColorIntensity(
  * If one intensity is provided, it is used for both dark and light appearance
  */
 export function resolveElementIntensities(
-    theme: Theme,
-    intensity: UnresolvedIntensitySet
+  theme: Theme,
+  intensity: UnresolvedIntensitySet
 ): IntensitySet {
-    const elementIntensities: IntensitySet = {
-        bg: resolveThemeColorIntensity(theme, intensity.bg),
-        border: resolveThemeColorIntensity(theme, intensity.border),
-        fg: resolveThemeColorIntensity(theme, intensity.fg),
-    }
+  const elementIntensities: IntensitySet = {
+    bg: resolveThemeColorIntensity(theme, intensity.bg),
+    border: resolveThemeColorIntensity(theme, intensity.border),
+    fg: resolveThemeColorIntensity(theme, intensity.fg),
+  }
 
-    return { ...intensity, ...elementIntensities }
+  return { ...intensity, ...elementIntensities }
 }
 
 export const calculateIntensity = (
-    intensity: number,
-    change: number
+  intensity: number,
+  change: number
 ): Intensity => {
-    let newIntensity = intensity + change
-    if (newIntensity > 100) {
-        // If the new intensity is too high, change the direction and use the same change value
-        newIntensity = intensity - change
-    }
+  let newIntensity = intensity + change
+  if (newIntensity > 100) {
+    // If the new intensity is too high, change the direction and use the same change value
+    newIntensity = intensity - change
+  }
 
-    const finalIntensity = numberToIntensity(newIntensity)
+  const finalIntensity = numberToIntensity(newIntensity)
 
-    return finalIntensity
+  return finalIntensity
 }
 
 interface SemanticIntensities {
-    primary: Readonly<Intensity>
-    secondary: Readonly<Intensity>
-    inactive: Readonly<Intensity>
-    disabled: Readonly<Intensity>
+  primary: Readonly<Intensity>
+  secondary: Readonly<Intensity>
+  inactive: Readonly<Intensity>
+  disabled: Readonly<Intensity>
 }
 const PRIMARY_INTENSITY: Readonly<Intensity> = 100
 const SECONDARY_INTENSITY: Readonly<Intensity> = 75
@@ -250,10 +250,10 @@ const DISABLED_INTENSITY: Readonly<Intensity> = 30
  * - Use for anything a user can interact with.
  */
 const intensity: SemanticIntensities = {
-    primary: PRIMARY_INTENSITY,
-    secondary: SECONDARY_INTENSITY,
-    inactive: INACTIVE_INTENSITY,
-    disabled: DISABLED_INTENSITY,
+  primary: PRIMARY_INTENSITY,
+  secondary: SECONDARY_INTENSITY,
+  inactive: INACTIVE_INTENSITY,
+  disabled: DISABLED_INTENSITY,
 }
 
 export { intensity }
