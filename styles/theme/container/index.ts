@@ -81,6 +81,7 @@ export interface Interactive<T = Element> {
   hovered: T
   pressed: T
   dragged?: T
+  disabled?: T
 }
 
 export interface Toggleable<T = Interactive> {
@@ -88,9 +89,9 @@ export interface Toggleable<T = Interactive> {
   active: T
 }
 
-export type State = "default" | "hovered" | "pressed"
+export type State = "default" | "hovered" | "pressed" | "dragged" | "disabled"
 
-export type StateIntensities = Record<State, IntensitySet>
+export type StateIntensities = Partial<Record<State, IntensitySet>>
 
 /** Returns a StateIntensitySet for each default state */
 export function buildIntensitiesForStates(
@@ -123,6 +124,12 @@ export function buildIntensitiesForStates(
     fg: resolvedIntensity.fg,
   }
 
+  const disabledState: IntensitySet = {
+    bg: 5 as Intensity,
+    border: 10 as Intensity,
+    fg: 35 as Intensity,
+  }
+
   const elementStates = {
     default: buildStateIntensity(name, "default", defaultState),
     hovered: buildStateIntensity(
@@ -137,6 +144,7 @@ export function buildIntensitiesForStates(
       defaultState,
       scaledIntensitySteps[2]
     ),
+    disabled: disabledState
   }
 
   return elementStates

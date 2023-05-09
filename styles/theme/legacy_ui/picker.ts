@@ -5,6 +5,7 @@ import { intensity } from "@theme/intensity"
 import { margin, padding } from "@theme/properties"
 import { interactiveTextStyle, textStyle } from "@theme/text"
 
+// TODO: picker -> palette, move to components
 export default function picker(theme: Theme) {
   const container = popoverContainerStyle({ theme })
 

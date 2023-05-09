@@ -1,7 +1,7 @@
 import { Border } from "./border"
-import { Theme } from "./config"
+import { Theme, ThemeColor, ThemeConfig } from "./config"
 import { Color, UIColor, UIColors, Scale } from "./color"
 import { useColors } from "./colors"
 import { Intensity } from "./intensity"
 
-export { Theme, Border, Intensity, Color, UIColor, UIColors, Scale, useColors }
+export { Theme, ThemeColor, ThemeConfig, Border, Intensity, Color, UIColor, UIColors, Scale, useColors }

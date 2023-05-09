@@ -44,7 +44,7 @@ type ButtonOptions = {
 
 type ButtonKind = "icon" | "label" | "labelAndIcon"
 
-interface ButtonProps {
+interface BuildButtonProps {
   theme: Theme
   /** A unique name for the button
    *
@@ -68,7 +68,7 @@ export function buildButton({
   name,
   kind = "label",
   options
-}: ButtonProps): Button {
+}: BuildButtonProps): Button {
 
   const mergedOptions = {
     ...DEFAULT_BUTTON_OPTIONS,
