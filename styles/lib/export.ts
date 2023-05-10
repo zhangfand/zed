@@ -1,15 +1,18 @@
-import fs from "fs"
-export const EXPORT_PATH = "./target"
+import { clearDirectory } from './clearDirectory';
+import { writeToDisk } from './writeToDisk';
+export { clearDirectory, writeToDisk }
 
-export function writeToDisk(name: string, json: string, path: string): void {
-  const slug = name.toLowerCase().replace(/ /g, "_")
-  path = `${path}/${slug}.json`
+export const EXPORT_PATH = './target';
+const DIRECTORIES_TO_KEEP = ['tokens'];
 
-  fs.writeFile(path, json, (err) => {
-    if (err) {
-      console.error(err)
-      return
-    }
-    console.log(`Wrote ${name} to ${path}`)
-  })
+export function exportData(data: Array<{ name: string, json: string, path: string }>): void {
+  clearDirectory(EXPORT_PATH, DIRECTORIES_TO_KEEP);
+
+  data.forEach(({ name, json, path }) => {
+    const slug = name.toLowerCase().replace(/ /g, '_');
+    const filePath = `${path}/${slug}.json`;
+    writeToDisk(filePath, json);
+  });
+
+  console.log(`Exported data to: ${EXPORT_PATH}`);
 }
