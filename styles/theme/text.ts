@@ -123,7 +123,7 @@ interface _TextOptions extends Partial<Omit<TextStyle, "color">> {
   baseFontSize: number
   intensity: Intensity
   /** A color family from the theme */
-  color: ThemeColor
+  themeColor: ThemeColor
 }
 
 /** Options for constructing TextStyles */
@@ -136,17 +136,16 @@ export const DEFAULT_TEXT_OPTIONS: TextOptions = {
   baseFontSize: DEFAULT_BASE_TEXT_SIZE,
   size: size.md,
   weight: weight.regular,
-  color: "neutral",
+  themeColor: "neutral",
   intensity: 100,
   lineHeight: 1,
 }
 
 function buildText(theme: Theme, options?: Partial<TextOptions>): TextStyle {
-  const themeColor = useColors(theme)
-  const defaultOptions = DEFAULT_TEXT_OPTIONS
+  const color = useColors(theme)
 
   const mergedOptions = {
-    ...defaultOptions,
+    ...DEFAULT_TEXT_OPTIONS,
     ...options,
   }
 
@@ -155,12 +154,12 @@ function buildText(theme: Theme, options?: Partial<TextOptions>): TextStyle {
     weight,
     baseFontSize: baseSize,
     lineHeight,
-    color: colorScale,
+    themeColor,
     intensity,
   } = mergedOptions
 
   const resolvedIntensity = resolveThemeColorIntensity(theme, intensity)
-  const color = themeColor[colorScale](resolvedIntensity)
+  const textColor = color[themeColor](resolvedIntensity)
 
   // Ensure the color is valid
   chroma.valid(color)
@@ -173,7 +172,11 @@ function buildText(theme: Theme, options?: Partial<TextOptions>): TextStyle {
     weight,
     size,
     lineHeight,
-    color,
+    color: textColor,
+  }
+
+  if (!text.color) {
+    throw new Error(`No text color provided`)
   }
 
   return text
@@ -221,9 +224,9 @@ export function interactiveTextStyle(
       intensity: intensities.fg,
       border: {
         ...options.border,
-        color: color[options.color](intensities.border),
+        color: color[options.themeColor](intensities.border),
       },
-      background: color[options.color](intensities.bg)
+      background: color[options.themeColor](intensities.bg)
     }
 
     const style = containedText({

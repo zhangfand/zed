@@ -19,7 +19,7 @@ import { TextOptions, TextStyle, textStyle } from "@theme/text"
 
 interface InputOptions {
   intensities?: IntensitySet
-  color: ThemeColor
+  themeColor: ThemeColor
   width: number
   height: number
   margin: Margin
@@ -50,7 +50,7 @@ export function inputStyle({
 }: InputProps): Interactive<InputStyle> {
   const DEFAULT_INPUT_OPTIONS: Partial<InputOptions> = {
     intensities: DEFAULT_INPUT_INTENSITIES,
-    color: "neutral",
+    themeColor: "neutral",
   }
 
   const mergedOptions = {
@@ -90,19 +90,19 @@ export function inputStyle({
   const buildStates = (intensities: IntensitySet): InputStyle => {
     const updatedContainer = {
       ...container,
-      background: color[mergedOptions.color](intensities.bg),
+      background: color[mergedOptions.themeColor](intensities.bg),
       border: border({
         theme,
         intensity: intensities.border,
         options: {
-          color: mergedOptions.color,
+          color: mergedOptions.themeColor,
         },
       }),
     }
 
     const updatedText = {
       ...text,
-      color: color[mergedOptions.color](intensities.fg),
+      color: color[mergedOptions.themeColor](intensities.fg),
     }
 
     return {

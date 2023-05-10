@@ -12,7 +12,7 @@ export default function picker(theme: Theme) {
   // TODO: You shouldn't need to specify the color here
   const itemStyle = interactiveTextStyle(theme, {
     ...textStyle(theme, { intensity: intensity.secondary }),
-    color: "neutral",
+    themeColor: "neutral",
     padding: padding(4, 12),
     margin: margin(1, 4, 0, 4),
     borderRadius: 8,
@@ -20,7 +20,7 @@ export default function picker(theme: Theme) {
 
   const activeItem = interactiveTextStyle(theme, {
     ...textStyle(theme),
-    color: "accent",
+    themeColor: "accent",
     weight: "bold",
     padding: padding(4, 12),
     margin: margin(1, 4, 0, 4),
@@ -35,7 +35,7 @@ export default function picker(theme: Theme) {
 
   const highlightText = textStyle(theme, {
     weight: "bold",
-    color: "accent",
+    themeColor: "accent",
   })
 
   const noMatches = containedText({

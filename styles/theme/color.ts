@@ -56,6 +56,8 @@ export function useIntensityColor(
   }
 
   const scale = theme.color[themeColor]
-  const c = scale[intensity]
+  // scale is 0 to 100, intensity is 1 to 100
+  // so we need to subtract 1 from intensity
+  const c = scale[intensity - 1]
   return c
 }

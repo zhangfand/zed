@@ -22,8 +22,7 @@ export function buildThemes(): void {
     // Format the styles the way Zed will consume them
     const formattedStyles = snakeCaseTree(styles)
 
-    const json = JSON.stringify(formattedStyles)
-    themes.push({ name: theme.name, json: json, path: EXPORT_PATH })
+    themes.push({ name: theme.name, json: formattedStyles, path: EXPORT_PATH })
   }
   // Pass the array of themes to the export function
   // Which will clear the target directory and write the themes
