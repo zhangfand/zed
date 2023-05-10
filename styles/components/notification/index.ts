@@ -18,7 +18,10 @@ export default function notificationStyle(theme: Theme) {
         },
     })
 
-    const close = iconButton(theme)
+    const close = iconButton({
+        theme,
+        componentName: "notificationCloseButton",
+    })
 
     const cta = interactiveTextStyle(theme, {
         size: size.xs,

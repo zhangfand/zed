@@ -2,14 +2,12 @@ import {
     Intensity,
     addToElementIntensities,
     addToIntensity,
-    resolveElementIntensities,
     IntensitySet,
 } from "@theme/intensity"
 import { ContainerStyle, State } from "@theme/container"
 import { Theme } from "@theme/config"
 import { useColors } from "@theme/colors"
 import { border } from "@theme/border"
-import { buildSurfaceTokens } from "./tokens"
 
 type SurfaceLevel = 0 | 1 | 2
 type SurfaceName =
@@ -66,7 +64,7 @@ function buildSurfaceStyle(theme: Theme, surface: Surface): SurfaceStyle {
 
     return {
         background: color.neutral(intensity.bg),
-        border: border(theme, borderIntensity),
+        border: border({ theme, intensity: borderIntensity }),
     }
 }
 
@@ -84,8 +82,6 @@ function buildSurfaceLevels(theme: Theme) {
 const useSurfaceStyle = buildSurfaceStyle
 
 const surface = (theme: Theme) => {
-    buildSurfaceTokens(theme)
-
     return {
         level: surfaceLevel,
         style: buildSurfaceLevels(theme),

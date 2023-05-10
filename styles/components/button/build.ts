@@ -59,7 +59,7 @@ export function buildButton({
         margin: margin(0, 0, 0, 0),
         padding: padding(6, 4),
         borderRadius: BorderRadius.Medium,
-        border: border(theme, resolvedIntensities.border),
+        border: border({ theme, intensity: resolvedIntensities.border }),
         width: "auto",
         height: size,
     }
@@ -80,7 +80,7 @@ export function buildButton({
         const updatedContainer = {
             ...container,
             background: color.neutral(intensities.bg),
-            border: border(theme, intensities.border),
+            border: border({ theme, intensity: intensities.border }),
         }
 
         const updatedIcon = {

@@ -93,8 +93,12 @@ export function inputStyle({
         const updatedContainer = {
             ...container,
             background: color[mergedOptions.color](intensities.bg),
-            border: border(theme, intensities.border, {
-                color: mergedOptions.color,
+            border: border({
+                theme,
+                intensity: intensities.border,
+                options: {
+                    color: mergedOptions.color,
+                },
             }),
         }
 
