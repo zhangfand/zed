@@ -11,6 +11,7 @@ use std::{
         Arc,
     },
 };
+use util::ResultExt as _;
 
 pub struct ThemeRegistry {
     assets: Box<dyn AssetSource>,
@@ -44,7 +45,9 @@ impl ThemeRegistry {
         dirs.into_iter().filter_map(|path| {
             let filename = path.strip_prefix("themes/")?;
             let theme_name = filename.strip_suffix(".json")?;
-            self.get(theme_name).ok().map(|theme| theme.meta.clone())
+            self.get(theme_name)
+                .log_err()
+                .map(|theme| theme.meta.clone())
         })
     }
 

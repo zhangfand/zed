@@ -45,7 +45,7 @@ export const size: Sizes = {
   xl: 1.25, // 16.25px (16px)
 }
 
-export type Weight = 400 | 700
+export type Weight = "normal" | "bold"
 
 export interface Weights {
   regular: Weight
@@ -53,8 +53,8 @@ export interface Weights {
 }
 
 export const weight: Weights = {
-  regular: 400,
-  bold: 700,
+  regular: "normal",
+  bold: "bold",
 }
 
 export interface Features {

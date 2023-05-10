@@ -1,16 +1,16 @@
 import { Theme, ThemeColor, useColors } from "@theme"
 import { border } from "@theme/border"
 import {
-    ContainerOptions,
-    ContainerStyle,
-    Interactive,
-    buildIntensitiesForStates,
-    containerStyle,
+  ContainerOptions,
+  ContainerStyle,
+  Interactive,
+  buildIntensitiesForStates,
+  containerStyle,
 } from "@theme/container"
 import {
-    IntensitySet,
-    intensity,
-    resolveElementIntensities,
+  IntensitySet,
+  intensity,
+  resolveElementIntensities,
 } from "@theme/intensity"
 import { padding } from "@theme/padding"
 import { Margin } from "@theme/properties"
@@ -18,108 +18,106 @@ import { SelectionStyle, selectionStyle } from "@theme/selection"
 import { TextOptions, TextStyle, textStyle } from "@theme/text"
 
 interface InputOptions {
-    intensities?: IntensitySet
-    color: ThemeColor
-    width: number
-    height: number
-    margin: Margin
+  intensities?: IntensitySet
+  color: ThemeColor
+  width: number
+  height: number
+  margin: Margin
 }
 
 interface InputStyle {
-    container: ContainerStyle
-    text: TextStyle
-    placeholder: TextStyle
-    selection: SelectionStyle
+  container: ContainerStyle
+  text: TextStyle
+  placeholder: TextStyle
+  selection: SelectionStyle
 }
 
 const DEFAULT_INPUT_INTENSITIES: IntensitySet = {
-    bg: 5,
-    border: 8,
-    fg: 100,
+  bg: 5,
+  border: 8,
+  fg: 100,
 }
 
 interface InputProps {
-    theme: Theme
-    options?: Partial<InputOptions>
+  theme: Theme
+  options?: Partial<InputOptions>
 }
 
 //* A single line input */
 export function inputStyle({
-    theme,
-    options,
+  theme,
+  options,
 }: InputProps): Interactive<InputStyle> {
-    const DEFAULT_INPUT_OPTIONS: Partial<InputOptions> = {
-        intensities: DEFAULT_INPUT_INTENSITIES,
-        color: "neutral",
-    }
+  const DEFAULT_INPUT_OPTIONS: Partial<InputOptions> = {
+    intensities: DEFAULT_INPUT_INTENSITIES,
+    color: "neutral",
+  }
 
-    const mergedOptions = {
-        ...DEFAULT_INPUT_OPTIONS,
-        ...options,
-    }
+  const mergedOptions = {
+    ...DEFAULT_INPUT_OPTIONS,
+    ...options,
+  }
 
-    const color = useColors(theme)
-    const resolvedIntensities = resolveElementIntensities(
+  const color = useColors(theme)
+  const resolvedIntensities = resolveElementIntensities(
+    theme,
+    mergedOptions.intensities
+  )
+  const states = buildIntensitiesForStates(
+    theme,
+    "input",
+    resolvedIntensities
+  )
+
+  const textOptions: Partial<TextOptions> = mergedOptions
+  const containerOptions: Partial<ContainerOptions> = {
+    ...containerStyle({
+      ...mergedOptions
+    }),
+    padding: padding(4),
+    borderRadius: 4,
+  }
+  const placeholderOptions: Partial<TextOptions> = {
+    ...mergedOptions,
+    intensity: intensity.inactive,
+  }
+
+  const text = textStyle(theme, textOptions)
+  const placeholder = textStyle(theme, placeholderOptions)
+  const container = containerStyle(containerOptions)
+  const selection = selectionStyle(theme)
+
+  const buildStates = (intensities: IntensitySet): InputStyle => {
+    const updatedContainer = {
+      ...container,
+      background: color[mergedOptions.color](intensities.bg),
+      border: border({
         theme,
-        mergedOptions.intensities
-    )
-    const states = buildIntensitiesForStates(
-        theme,
-        "input",
-        resolvedIntensities
-    )
-
-    const textOptions: Partial<TextOptions> = mergedOptions
-    const containerOptions: Partial<ContainerOptions> = {
-        ...containerStyle({
-            ...mergedOptions,
-            width: mergedOptions.width ?? "auto",
-            height: mergedOptions.height ?? "auto",
-        }),
-        padding: padding(4),
-        borderRadius: 4,
-    }
-    const placeholderOptions: Partial<TextOptions> = {
-        ...mergedOptions,
-        intensity: intensity.inactive,
+        intensity: intensities.border,
+        options: {
+          color: mergedOptions.color,
+        },
+      }),
     }
 
-    const text = textStyle(theme, textOptions)
-    const placeholder = textStyle(theme, placeholderOptions)
-    const container = containerStyle(containerOptions)
-    const selection = selectionStyle(theme)
-
-    const buildStates = (intensities: IntensitySet): InputStyle => {
-        const updatedContainer = {
-            ...container,
-            background: color[mergedOptions.color](intensities.bg),
-            border: border({
-                theme,
-                intensity: intensities.border,
-                options: {
-                    color: mergedOptions.color,
-                },
-            }),
-        }
-
-        const updatedText = {
-            ...text,
-            color: color[mergedOptions.color](intensities.fg),
-        }
-
-        return {
-            container: updatedContainer,
-            text: updatedText,
-            placeholder,
-            selection,
-        }
+    const updatedText = {
+      ...text,
+      color: color[mergedOptions.color](intensities.fg),
     }
 
     return {
-        default: buildStates(states.default),
-        hovered: buildStates(states.hovered),
-        // TODO: We should have some proper way to do a focused state
-        pressed: buildStates(states.pressed),
-        disabled: buildStates(states.disabled),
+      container: updatedContainer,
+      text: updatedText,
+      placeholder,
+      selection,
     }
+  }
+
+  return {
+    default: buildStates(states.default),
+    hovered: buildStates(states.hovered),
+    // TODO: We should have some proper way to do a focused state
+    pressed: buildStates(states.pressed),
+    disabled: buildStates(states.disabled),
+  }
 }

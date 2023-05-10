@@ -3,6 +3,7 @@ import { buildUI } from "@/ui"
 import { buildTheme } from "./buildTheme"
 import { EXPORT_PATH, exportData } from "@/lib/export"
 import legacy_ui from "@theme/legacy_ui"
+import snakeCaseTree from "@lib/snakeCase"
 
 export function buildThemes(): void {
   // Make an array of themes
@@ -18,7 +19,10 @@ export function buildThemes(): void {
       ui: ui,
     }
 
-    const json = JSON.stringify(styles)
+    // Format the styles the way Zed will consume them
+    const formattedStyles = snakeCaseTree(styles)
+
+    const json = JSON.stringify(formattedStyles)
     themes.push({ name: theme.name, json: json, path: EXPORT_PATH })
   }
   // Pass the array of themes to the export function

@@ -19,6 +19,17 @@ import * as staticRamps from "./static_json/ramps.json"
 import * as color_scheme from "./static_json/color_scheme.json"
 import * as syntax from "./static_json/syntax.json"
 
+import * as contact_list from "./static_json/contact_list.json"
+import * as context_menu from "./static_json/context_menu.json"
+import * as copilot from "./static_json/copilot.json"
+import * as editor from "./static_json/editor.json"
+import * as project_diagnostics from "./static_json/project_diagnostics.json"
+import * as project_panel from "./static_json/project_panel.json"
+import * as search from "./static_json/search.json"
+import * as terminal from "./static_json/terminal.json"
+import * as welcome from "./static_json/welcome.json"
+import * as workspace from "./static_json/workspace.json"
+
 export default function app(theme: Theme) {
   const legacy_properties = {
     colorScheme: {
@@ -30,63 +41,36 @@ export default function app(theme: Theme) {
   }
 
   return {
-    // TODO
-    // workspace: workspace(theme),
-    // copilot: copilot(theme),
-    // welcome: welcome(theme),
-    // editor: editor(theme),
-    // projectDiagnostics: projectDiagnostics(theme),
-    // projectPanel: projectPanel(theme),
-    // contactList: contactList(theme),
-    // search: search(theme),
-    // terminal: terminal(theme),
-
     meta: {
       name: theme.name,
       isLight: theme.appearance === "light",
     },
     commandPalette: commandPalette(theme),
-    contactFinder: {
-      comment: "Not added yet"
-    },
-    contactList: {
-      comment: "Not added yet"
-    },
     contactNotification: contactNotification(theme),
-    contactsPopover: contactsPopover(theme),
-    copilot: {
-      comment: "Not added yet"
-    },
-    editor: {
-      comment: "Not added yet"
-    },
-    feedback: feedback(theme),
-    hoverPopover: hoverPopover(theme),
+    projectSharedNotification: projectSharedNotification(theme),
     incomingCallNotification: incomingCallNotification(theme),
     picker: picker(theme),
-    projectDiagnostics: {
-      comment: "Not added yet"
+    workspace: workspace,
+    ...copilot,
+    ...welcome,
+    ...context_menu,
+    editor: {
+      ...editor.editor,
+      hoverPopover: hoverPopover(theme),
     },
-    projectPanel: {
-      comment: "Not added yet"
-    },
-    projectSharedNotification: projectSharedNotification(theme),
-    search: {
-      comment: "Not added yet"
-    },
+    ...project_diagnostics,
+    ...project_panel,
+    contactsPopover: contactsPopover(theme),
+    contactFinder: contactFinder(theme),
+    ...contact_list,
+    ...search,
     sharedScreen: sharedScreen(theme),
-    simpleMessageNotification: simpleMessageNotification(theme),
-    terminal: {
-      comment: "Not added yet"
-    },
-    tooltip: tooltip(theme),
     updateNotification: updateNotification(theme),
-    welcome: {
-      comment: "Not added yet"
-    },
-    workspace: {
-      comment: "Not added yet"
-    },
+    simpleMessageNotification: simpleMessageNotification(theme),
+    tooltip: tooltip(theme),
+    ...terminal,
+    feedback: feedback(theme),
+
     ...legacy_properties,
   }
 }

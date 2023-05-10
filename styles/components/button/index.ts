@@ -97,7 +97,6 @@ export function buildButton({
         color: mergedOptions.color,
       },
     }),
-    width: "auto",
     height: mergedOptions.size,
   })
 
