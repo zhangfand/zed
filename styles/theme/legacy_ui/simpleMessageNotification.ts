@@ -16,7 +16,7 @@ export default function simpleMessageNotification(theme: Theme) {
             },
         },
         actionMessage: {
-            ...n.cta.default.text,
+            ...notification.cta.default.text,
             hover: {
                 color: notification.cta.hovered.text.color,
             },

@@ -18,6 +18,9 @@ export default function feedback(theme: Theme) {
 
     return {
         ...legacy_properties,
-        submit_button: labelButton(theme),
+        submit_button: labelButton({
+            theme,
+            componentName: "feedbackSubmitButton",
+        }),
     }
 }

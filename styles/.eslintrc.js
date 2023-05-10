@@ -10,7 +10,7 @@ module.exports = {
         "plugin:@typescript-eslint/recommended",
         "prettier",
     ],
-    ignorePatterns: ["**/src/*", ".eslintrc.js"],
+    ignorePatterns: ["/src/*", "/theme/legacy_ui/wip/**/*.ts", "/.eslintrc.js"],
     rules: {
         "@typescript-eslint/explicit-module-boundary-types": "off",
         "@typescript-eslint/no-explicit-any": "off",
