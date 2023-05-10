@@ -20,7 +20,7 @@ export type ThemeColor =
     | "success"
 
 type ThemeConfigColors = Record<ThemeColor, InputColor>
-type ThemeColors = Record<ThemeColor, string[]>
+export type ThemeColors = Record<ThemeColor, string[]>
 
 export interface ThemeConfigProperties {
     name: string

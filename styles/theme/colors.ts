@@ -1,17 +1,9 @@
 import { useIntensityColor } from "./color"
-import { Theme } from "./config"
+import { Theme, ThemeColor } from "./config"
 import { Intensity } from "./intensity"
 
-function getColor(
-    theme: Theme,
-    colorKey: keyof Theme["colors"],
-    intensity: Intensity
-): string {
-    return useIntensityColor(theme, colorKey, intensity)
-}
-
 interface ColorFunctions {
-    [colorKey: string]: (intensity: Intensity) => string
+  [colorKey: string]: (intensity: Intensity) => string
 }
 
 /**
@@ -25,11 +17,11 @@ interface ColorFunctions {
  * ```
  */
 export function useColors(theme: Theme): ColorFunctions {
-    const functions: ColorFunctions = {}
-    for (const colorKey in theme.colors) {
-        const key = colorKey as keyof Theme["colors"]
-        functions[key] = (intensity: Intensity) =>
-            getColor(theme, key, intensity)
-    }
-    return functions
+  const functions: ColorFunctions = {}
+  for (const c in theme.colors) {
+    const themeColor = c as ThemeColor
+    functions[themeColor] = (intensity: Intensity) =>
+      useIntensityColor(theme, themeColor, intensity)
+  }
+  return functions
 }
