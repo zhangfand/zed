@@ -27,17 +27,13 @@ export interface ContainedTextProps {
   options: ContainedTextOptions
 }
 
-export const DEFAULT_CONTAINED_TEXT_OPTIONS: ContainedTextOptions = {
-  ...DEFAULT_TEXT_OPTIONS,
-  ...DEFAULT_CONTAINER_OPTIONS,
-}
-
 export const containedText = ({
   theme,
   options,
 }: ContainedTextProps): ContainedText => {
   const mergedOptions = {
-    ...DEFAULT_CONTAINED_TEXT_OPTIONS,
+    ...DEFAULT_TEXT_OPTIONS,
+    ...DEFAULT_CONTAINER_OPTIONS,
     ...options,
   }
 

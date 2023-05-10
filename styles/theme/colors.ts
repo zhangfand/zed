@@ -3,7 +3,7 @@ import { Theme, ThemeColor } from "./config"
 import { Intensity } from "./intensity"
 
 interface ColorFunctions {
-  [colorKey: string]: (intensity: Intensity) => string
+  [themeColor: string]: (intensity: Intensity) => string
 }
 
 /**

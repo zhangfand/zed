@@ -14,9 +14,9 @@ import {
 } from "./intensity"
 import { Prettify } from "./types/utility"
 import {
-  ContainedTextOptions,
-  DEFAULT_CONTAINED_TEXT_OPTIONS,
+  ContainedTextOptions
 } from "./container/containedText"
+import { DEFAULT_CONTAINER_OPTIONS } from "./container"
 type Font = "Zed Mono" | "Zed Sans"
 
 export interface Families {
@@ -199,7 +199,8 @@ export function interactiveTextStyle(
   } as const
 
   const mergedOptions = {
-    ...DEFAULT_CONTAINED_TEXT_OPTIONS,
+    ...DEFAULT_TEXT_OPTIONS,
+    ...DEFAULT_CONTAINER_OPTIONS,
     ...options,
   }
 
