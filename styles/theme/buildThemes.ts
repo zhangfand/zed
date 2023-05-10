@@ -3,22 +3,24 @@ import { buildUI } from "@/ui"
 import { buildTheme } from "./buildTheme"
 import { EXPORT_PATH, writeToDisk } from "@/lib/export"
 import { writeTokens } from "./tokens"
-import { buildComponents } from "@components/buildComponents"
+import legacy_ui from "@theme/legacy_ui"
 
 export function buildThemes(): void {
     for (const themeConfig of Object.values(themeConfigs)) {
         // ThemeConfig => Theme
         const theme = buildTheme(themeConfig)
 
-        // Build the common components used acrossed UI elements
-        buildComponents(theme)
-
         const ui = buildUI(theme)
 
         // Write outputs
         writeTokens(theme.name)
 
-        const json = JSON.stringify(ui)
+        const styles = {
+            ...legacy_ui(theme),
+            ui: ui,
+        }
+
+        const json = JSON.stringify(styles)
         writeToDisk(theme.name, json, EXPORT_PATH)
     }
 }

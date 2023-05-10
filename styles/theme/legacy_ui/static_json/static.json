@@ -232,10 +232,7 @@
         "shadow": {
             "blur": 16,
             "color": "#00000d33",
-            "offset": [
-                0,
-                2
-            ]
+            "offset": [0, 2]
         },
         "corner_radius": 12,
         "padding": {
@@ -250,10 +247,7 @@
             "shadow": {
                 "blur": 16,
                 "color": "#00000d33",
-                "offset": [
-                    0,
-                    2
-                ]
+                "offset": [0, 2]
             },
             "corner_radius": 12,
             "padding": {}
@@ -619,10 +613,7 @@
                 "shadow": {
                     "blur": 4,
                     "color": "#00000d33",
-                    "offset": [
-                        1,
-                        2
-                    ]
+                    "offset": [1, 2]
                 }
             },
             "pane_button": {
@@ -1215,10 +1206,7 @@
             "shadow": {
                 "blur": 4,
                 "color": "#00000d33",
-                "offset": [
-                    1,
-                    2
-                ]
+                "offset": [1, 2]
             }
         },
         "notifications": {
@@ -1248,10 +1236,7 @@
                 "shadow": {
                     "blur": 16,
                     "color": "#00000d33",
-                    "offset": [
-                        0,
-                        2
-                    ]
+                    "offset": [0, 2]
                 }
             }
         },
@@ -1756,10 +1741,7 @@
         "shadow": {
             "blur": 4,
             "color": "#00000d33",
-            "offset": [
-                1,
-                2
-            ]
+            "offset": [1, 2]
         },
         "border": {
             "color": "#363c46",
@@ -1945,10 +1927,7 @@
             "shadow": {
                 "blur": 4,
                 "color": "#00000d33",
-                "offset": [
-                    1,
-                    2
-                ]
+                "offset": [1, 2]
             },
             "match_highlight": "#74ade8",
             "item": {
@@ -2237,10 +2216,7 @@
                 "shadow": {
                     "blur": 4,
                     "color": "#00000d33",
-                    "offset": [
-                        1,
-                        2
-                    ]
+                    "offset": [1, 2]
                 },
                 "border": {
                     "color": "#363c46",
@@ -2262,10 +2238,7 @@
                 "shadow": {
                     "blur": 4,
                     "color": "#00000d33",
-                    "offset": [
-                        1,
-                        2
-                    ]
+                    "offset": [1, 2]
                 },
                 "border": {
                     "color": "#293c5b",
@@ -2287,10 +2260,7 @@
                 "shadow": {
                     "blur": 4,
                     "color": "#00000d33",
-                    "offset": [
-                        1,
-                        2
-                    ]
+                    "offset": [1, 2]
                 },
                 "border": {
                     "color": "#5d4c2f",
@@ -2312,10 +2282,7 @@
                 "shadow": {
                     "blur": 4,
                     "color": "#00000d33",
-                    "offset": [
-                        1,
-                        2
-                    ]
+                    "offset": [1, 2]
                 },
                 "border": {
                     "color": "#4c2b2c",
@@ -2686,10 +2653,7 @@
         "shadow": {
             "blur": 4,
             "color": "#00000d33",
-            "offset": [
-                1,
-                2
-            ]
+            "offset": [1, 2]
         },
         "border": {
             "color": "#363c46",
@@ -3314,10 +3278,7 @@
         "shadow": {
             "blur": 4,
             "color": "#00000d33",
-            "offset": [
-                1,
-                2
-            ]
+            "offset": [1, 2]
         },
         "corner_radius": 6,
         "text": {
@@ -5038,18 +4999,12 @@
         "popover_shadow": {
             "blur": 4,
             "color": "#00000d33",
-            "offset": [
-                1,
-                2
-            ]
+            "offset": [1, 2]
         },
         "modal_shadow": {
             "blur": 16,
             "color": "#00000d33",
-            "offset": [
-                0,
-                2
-            ]
+            "offset": [0, 2]
         },
         "players": [
             {
