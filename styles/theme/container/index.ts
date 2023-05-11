@@ -40,9 +40,7 @@ export enum BorderRadius {
 
 export type ContainerOptions = Partial<ContainerStyle>
 
-export const DEFAULT_CONTAINER_OPTIONS: ContainerOptions = {
-  borderRadius: 0,
-} as const
+export const DEFAULT_CONTAINER_OPTIONS: ContainerOptions = {} as const
 
 export function containerStyle(options: ContainerOptions): ContainerStyle {
   const mergedOptions = {
@@ -50,10 +48,18 @@ export function containerStyle(options: ContainerOptions): ContainerStyle {
     ...options,
   }
 
+  // TODO: This was a spread of merged options
+  // But text options from containedText were leaking in
+  // Need to figure out what was happening there
   return {
     width: mergedOptions.width,
     height: mergedOptions.height,
-    ...mergedOptions,
+    background: mergedOptions.background,
+    margin: mergedOptions.margin,
+    padding: mergedOptions.padding,
+    borderRadius: mergedOptions.borderRadius,
+    border: mergedOptions.border,
+    shadow: mergedOptions.shadow,
   }
 }
 

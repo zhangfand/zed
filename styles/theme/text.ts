@@ -152,6 +152,7 @@ function buildText(theme: Theme, options?: Partial<TextOptions>): TextStyle {
   const {
     family,
     weight,
+    size,
     baseFontSize: baseSize,
     lineHeight,
     themeColor,
@@ -165,18 +166,22 @@ function buildText(theme: Theme, options?: Partial<TextOptions>): TextStyle {
   chroma.valid(color)
 
   /** Calculate the final font size, rounded to the nearest whole number */
-  const size = Math.round(mergedOptions.size * baseSize)
+  const fontSize = Math.round(size * baseSize)
 
   const text: TextStyle = {
     family,
     weight,
-    size,
+    size: fontSize,
     lineHeight,
     color: textColor,
   }
 
   if (!text.color) {
     throw new Error(`No text color provided`)
+  }
+
+  if (fontSize < 4) {
+    throw new Error(`Font size was likely exported as a relative value, not a pixel value.`)
   }
 
   return text

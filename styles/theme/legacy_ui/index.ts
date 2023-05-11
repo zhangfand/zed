@@ -34,8 +34,19 @@ export default function app(theme: Theme) {
   const legacy_properties = {
     colorScheme: {
       ...color_scheme,
+      // TODO: Remove these ASAP
+      "popover_shadow": {
+        "blur": 4,
+        "color": "#00000d33",
+        "offset": [1, 2]
+      },
+      "modal_shadow": {
+        "blur": 16,
+        "color": "#00000d33",
+        "offset": [0, 2]
+      },
       players: players(theme),
-      ramps: staticRamps,
+      ...staticRamps,
       ...syntax,
     },
   }
