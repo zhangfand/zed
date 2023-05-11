@@ -2,30 +2,25 @@ import { iconButton } from "@components/button"
 import { Button } from "@components/button/build"
 import { useSurfaceIntensity } from "@components/surface"
 import { Theme } from "@theme"
-import { border } from "@theme/border"
-import {
-  ContainedIcon,
-  ContainedText,
-  ContainerStyle,
-  Interactive,
-  State,
-  buildIntensitiesForStates,
-  container,
-} from "@theme/container"
+import { borderStyle } from "@theme/properties/border"
+import { ContainedIcon, ContainedText, container } from "@theme/container"
+import { buildIntensitiesForStates } from "@theme/state/buildIntensitiesForStates"
+import { ContainerStyle } from "@theme/container/containerStyle"
 import { FlexStyle, flex } from "@theme/element/flex"
-import { IconStyle, iconStyle } from "@theme/icon"
+import { IconStyle, iconStyle } from "@theme/icon/icon"
 import {
-  addToElementIntensities,
-  resolveElementIntensities,
-} from "@theme/intensity"
+  addToIntensitySet,
+  resolveIntensitySet,
+} from "@theme/intensity/intensity"
 import { padding } from "@theme/properties"
 import { background } from "@theme/properties/background"
-import { TextStyle, textStyle } from "@theme/text"
+import { TextStyle, textStyle } from "@theme/text/text"
+import { Interactive, ElementState } from "@theme/state"
 
 interface TabProps {
   theme: Theme
   active?: boolean
-  state: State
+  state: ElementState
 }
 
 interface Indicators {
@@ -52,9 +47,9 @@ function tabState({ theme, active = false, state }: TabProps): Tab {
 
   const intensities = active
     ? useSurfaceIntensity(theme, "pane")
-    : addToElementIntensities(useSurfaceIntensity(theme, "pane"), 20)
+    : addToIntensitySet(useSurfaceIntensity(theme, "pane"), 20)
 
-  const resolvedIntensities = resolveElementIntensities(theme, intensities)
+  const resolvedIntensities = resolveIntensitySet(theme, intensities)
 
   const interactiveIntensities = buildIntensitiesForStates(
     theme,
@@ -62,11 +57,14 @@ function tabState({ theme, active = false, state }: TabProps): Tab {
     resolvedIntensities
   )
 
-  const containerStyle = (state: State): ContainerStyle => {
+  const containerStyle = (state: ElementState): ContainerStyle => {
     return {
       height: TAB_HEIGHT,
       background: background(theme, interactiveIntensities[state].bg),
-      border: border(theme, interactiveIntensities[state].border),
+      border: borderStyle({
+        theme,
+        intensity: interactiveIntensities[state].border,
+      }),
       padding: padding(0, 12, 0, 8),
     }
   }
@@ -89,12 +87,12 @@ function tabState({ theme, active = false, state }: TabProps): Tab {
       dirty: iconStyle({
         theme,
         iconSize: "sm",
-        color: "accent",
+        themeColor: "accent",
       }),
       conflict: iconStyle({
         theme,
         iconSize: "sm",
-        color: "warning",
+        themeColor: "warning",
       }),
     },
     label: text,
@@ -106,7 +104,7 @@ function tabState({ theme, active = false, state }: TabProps): Tab {
         intensity: 50,
       }),
     },
-    close: iconButton(theme),
+    close: iconButton({ theme }),
   }
 }
 

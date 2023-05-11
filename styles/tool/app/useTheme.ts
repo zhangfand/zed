@@ -1,5 +1,5 @@
 import { zedLight } from "../../themes"
-import { buildTheme } from "../../theme/buildTheme"
+import { buildTheme } from "../../theme/build/buildTheme"
 import { buildUI } from "../../ui"
 
 export function useTheme() {

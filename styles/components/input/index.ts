@@ -1,21 +1,18 @@
 import { Theme, ThemeColor, useColors } from "@theme"
-import { border } from "@theme/border"
-import {
-  ContainerOptions,
-  ContainerStyle,
-  Interactive,
-  buildIntensitiesForStates,
-  containerStyle,
-} from "@theme/container"
+import { borderStyle } from "@theme/properties/border"
+import { buildIntensitiesForStates } from "@theme/state/buildIntensitiesForStates"
+import { ContainerOptions } from "@theme/container/containerStyle"
+import { ContainerStyle } from "@theme/container/containerStyle"
+import { containerStyle } from "@theme/container/containerStyle"
 import {
   IntensitySet,
   intensity,
-  resolveElementIntensities,
-} from "@theme/intensity"
-import { padding } from "@theme/padding"
-import { Margin } from "@theme/properties"
-import { SelectionStyle, selectionStyle } from "@theme/selection"
-import { TextOptions, TextStyle, textStyle } from "@theme/text"
+  resolveIntensitySet,
+} from "@theme/intensity/intensity"
+import { Margin, padding } from "@theme/properties"
+import { SelectionStyle, selectionStyle } from "@theme/properties/selection"
+import { TextOptions, TextStyle, textStyle } from "@theme/text/text"
+import { Interactive } from "@theme/state"
 
 interface InputOptions {
   intensities?: IntensitySet
@@ -61,7 +58,7 @@ export function inputStyle({
   console.log(JSON.stringify(mergedOptions, null, 2))
 
   const color = useColors(theme)
-  const resolvedIntensities = resolveElementIntensities(
+  const resolvedIntensities = resolveIntensitySet(
     theme,
     mergedOptions.intensities
   )
@@ -74,7 +71,8 @@ export function inputStyle({
   const textOptions: Partial<TextOptions> = mergedOptions
   const containerOptions: Partial<ContainerOptions> = {
     ...containerStyle({
-      ...mergedOptions
+      theme,
+      options: mergedOptions,
     }),
     padding: padding(4),
     borderRadius: 4,
@@ -87,14 +85,14 @@ export function inputStyle({
   const text = textStyle(theme, textOptions)
   console.log(JSON.stringify(text, null, 2))
   const placeholder = textStyle(theme, placeholderOptions)
-  const container = containerStyle(containerOptions)
+  const container = containerStyle({ theme, options: containerOptions })
   const selection = selectionStyle(theme)
 
   const buildStates = (intensities: IntensitySet): InputStyle => {
     const updatedContainer = {
       ...container,
       background: color[mergedOptions.themeColor](intensities.bg),
-      border: border({
+      border: borderStyle({
         theme,
         intensity: intensities.border,
         options: {

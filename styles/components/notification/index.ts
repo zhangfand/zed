@@ -1,9 +1,9 @@
 import { Theme } from "@theme"
-import { interactiveTextStyle, size } from "@theme/text"
+import { interactiveTextStyle, size } from "@theme/text/text"
 import { margin } from "@theme/properties"
 import { containedText } from "@theme/container"
 import { iconButton } from "@components/button"
-import { popoverContainerStyle } from "@theme/container/popover"
+import { popoverContainerStyle } from "@components/popover"
 
 export default function notificationStyle(theme: Theme) {
   const HEADER_PADDING = 8 as const

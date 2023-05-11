@@ -1,21 +1,24 @@
 import { Theme, useColors } from "@/theme"
-import { border } from "@theme/border"
+import { borderStyle } from "@theme/properties/border"
 import {
-  BorderRadius,
   ContainedIcon,
   ContainedText,
   ContainedTextAndIcon,
-  Interactive,
-  buildIntensitiesForStates,
-  containerStyle,
 } from "@theme/container"
-import { TextStyle } from "@theme/text"
-import { IntensitySet, resolveElementIntensities } from "@theme/intensity"
+import { buildIntensitiesForStates } from "@theme/state/buildIntensitiesForStates"
+import { containerStyle } from "@theme/container/containerStyle"
+import { TextStyle } from "@theme/text/text"
+import {
+  IntensitySet,
+  resolveIntensitySet,
+} from "@theme/intensity/intensity"
 import { margin, padding } from "@theme/properties"
-import { textStyle, Size as TextSize } from "@theme/text"
-import { iconStyle, Size as IconSize } from "@theme/icon"
+import { textStyle, Size as TextSize } from "@theme/text/text"
+import { iconStyle, Size as IconSize } from "@theme/icon/icon"
 import { ThemeColor } from "@theme/config"
 import { background } from "@theme/properties/background"
+import { Interactive } from "@theme/state"
+import { BorderRadius } from "@theme/properties/borderRadius"
 
 type ButtonSizes = "small" | "medium" | "large"
 type ButtonSize = (typeof buttonSize)[keyof typeof buttonSize]
@@ -76,29 +79,32 @@ export function buildButton({
   }
 
   const color = useColors(theme)
-  const resolvedIntensities = resolveElementIntensities(
+  const resolvedIntensities = resolveIntensitySet(
     theme,
     mergedOptions.intensities
   )
 
   const container = containerStyle({
-    background: background(
-      theme,
-      resolvedIntensities.bg,
-      mergedOptions.color
-    ),
-    margin: margin(0, 0, 0, 0),
-    padding: padding(6, 4),
-    borderRadius: BorderRadius.Medium,
-    border: border({
-      theme,
-      intensity: resolvedIntensities.border,
-      options: {
-        color: mergedOptions.color,
-      },
-    }),
-    height: mergedOptions.size,
-    width: mergedOptions.width,
+    theme,
+    options: {
+      background: background(
+        theme,
+        resolvedIntensities.bg,
+        mergedOptions.color
+      ),
+      margin: margin(0, 0, 0, 0),
+      padding: padding(6, 4),
+      borderRadius: BorderRadius.Medium,
+      border: borderStyle({
+        theme,
+        intensity: resolvedIntensities.border,
+        options: {
+          color: mergedOptions.color,
+        },
+      }),
+      height: mergedOptions.size,
+      width: mergedOptions.width,
+    }
   })
 
   const icon = iconStyle({
@@ -117,7 +123,7 @@ export function buildButton({
     const updatedContainer = {
       ...container,
       background: color.neutral(intensities.bg),
-      border: border({ theme, intensity: intensities.border }),
+      border: borderStyle({ theme, intensity: intensities.border }),
     }
 
     const updatedIcon = {

@@ -1,8 +1,8 @@
 export type Spacing = {
-    top: number
-    bottom: number
-    left: number
-    right: number
+  top: number
+  bottom: number
+  left: number
+  right: number
 }
 
 /**
@@ -24,30 +24,30 @@ export type Spacing = {
 export function spacing(all: number): Padding | Margin
 export function spacing(x: number, y: number): Padding | Margin
 export function spacing(
-    top: number,
-    right: number,
-    bottom: number,
-    left: number
+  top: number,
+  right: number,
+  bottom: number,
+  left: number
 ): Padding | Margin
 export function spacing(
-    a: number,
-    b?: number,
-    c?: never,
-    d?: number
+  a: number,
+  b?: number,
+  c?: never,
+  d?: number
 ): Padding | Margin {
-    if (b === undefined && c === undefined && d === undefined) {
-        // One argument, apply it to all sides
-        return { top: a, bottom: a, left: a, right: a }
-    } else if (c === undefined && d === undefined) {
-        // Two arguments, apply the first to left/right, the second to top/bottom
-        return { top: b!, bottom: b!, left: a, right: a }
-    } else if (d === undefined) {
-        // Three arguments not allowed, throw an error
-        throw new Error("Invalid number of arguments")
-    } else {
-        // Four arguments, apply each to the corresponding side
-        return { top: a, bottom: c!, left: d!, right: b! }
-    }
+  if (b === undefined && c === undefined && d === undefined) {
+    // One argument, apply it to all sides
+    return { top: a, bottom: a, left: a, right: a }
+  } else if (c === undefined && d === undefined) {
+    // Two arguments, apply the first to left/right, the second to top/bottom
+    return { top: b!, bottom: b!, left: a, right: a }
+  } else if (d === undefined) {
+    // Three arguments not allowed, throw an error
+    throw new Error("Invalid number of arguments")
+  } else {
+    // Four arguments, apply each to the corresponding side
+    return { top: a, bottom: c!, left: d!, right: b! }
+  }
 }
 
 export type Padding = Spacing

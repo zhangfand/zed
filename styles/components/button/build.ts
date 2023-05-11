@@ -1,18 +1,21 @@
 import { Theme, useColors } from "@/theme"
-import { border } from "@theme/border"
+import { borderStyle } from "@theme/properties/border"
 import {
-  BorderRadius,
   ContainedIcon,
   ContainedText,
-  ContainerStyle,
-  Interactive,
-  buildIntensitiesForStates,
 } from "@theme/container"
-import { TextStyle } from "@theme/text"
-import { IntensitySet, resolveElementIntensities } from "@theme/intensity"
+import { buildIntensitiesForStates } from "@theme/state/buildIntensitiesForStates"
+import { ContainerStyle } from "@theme/container/containerStyle"
+import { TextStyle } from "@theme/text/text"
+import {
+  IntensitySet,
+  resolveIntensitySet,
+} from "@theme/intensity/intensity"
 import { margin, padding } from "@theme/properties"
-import { textStyle } from "@theme/text"
-import { iconStyle } from "@theme/icon"
+import { textStyle } from "@theme/text/text"
+import { iconStyle } from "@theme/icon/icon"
+import { Interactive } from "@theme/state"
+import { BorderRadius } from "@theme/properties/borderRadius"
 
 type ButtonSizes = "small" | "medium" | "large"
 type ButtonSize = (typeof buttonSize)[keyof typeof buttonSize]
@@ -52,14 +55,14 @@ export function buildButton({
   size = buttonSize.medium,
 }: ButtonProps): Button {
   const color = useColors(theme)
-  const resolvedIntensities = resolveElementIntensities(theme, intensities)
+  const resolvedIntensities = resolveIntensitySet(theme, intensities)
 
   const container: ContainerStyle = {
     background: color.neutral(resolvedIntensities.bg),
     margin: margin(0, 0, 0, 0),
     padding: padding(6, 4),
     borderRadius: BorderRadius.Medium,
-    border: border({ theme, intensity: resolvedIntensities.border }),
+    border: borderStyle({ theme, intensity: resolvedIntensities.border }),
     height: size,
   }
 
@@ -79,7 +82,7 @@ export function buildButton({
     const updatedContainer = {
       ...container,
       background: color.neutral(intensities.bg),
-      border: border({ theme, intensity: intensities.border }),
+      border: borderStyle({ theme, intensity: intensities.border }),
     }
 
     const updatedIcon = {
