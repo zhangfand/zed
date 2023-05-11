@@ -57,9 +57,7 @@ export default function incomingCallNotification(theme: Theme) {
       ...secondaryText,
       margin: { top: WORKTREE_ROOTS_MARGIN_TOP },
     },
-    buttonWidth: {
-      width: BUTTON_WIDTH,
-    },
+    buttonWidth: BUTTON_WIDTH,
     acceptButton: {
       background: acceptButton.default.container.background,
       border: acceptButton.default.container.border,

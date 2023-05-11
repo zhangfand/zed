@@ -60,11 +60,18 @@ export default function contactNotification(theme: Theme) {
         color: notification.close.hovered.icon.color,
       },
     },
+    button: {
+      ...button.default.text,
+      ...button.default.container,
+      margin: margin(0, 0, 0, 8),
+      hover: {
+        background: button.hovered.container.background,
+      }
+    }
   }
 
   return {
     ...legacy_properties,
     headerAvatar,
-    button,
   }
 }

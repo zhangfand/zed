@@ -3,6 +3,7 @@ import { containedText } from "@theme/container"
 import { popoverContainerStyle } from "@theme/container/popover"
 import { intensity } from "@theme/intensity"
 import { margin, padding } from "@theme/properties"
+import { selectionStyle } from "@theme/selection"
 import { interactiveTextStyle, textStyle } from "@theme/text"
 
 // TODO: picker -> palette, move to components
@@ -48,27 +49,30 @@ export default function picker(theme: Theme) {
 
   const legacy_properties = {
     inputEditor: {
-      ...input,
+      ...input.default.container,
+      text: input.default.text,
       placeholderText: textStyle(theme, {
         intensity: intensity.inactive,
       }),
       // TODO: Add player selection color
-      selection: "#FF0000",
+      selection: selectionStyle(theme),
     },
     emptyInputEditor: {
-      ...input,
+      ...input.default.container,
+      text: input.default.text,
       placeholderText: textStyle(theme, {
         intensity: intensity.inactive,
       }),
       // TODO: Add player selection color
-      selection: "#FF0000",
+      selection: selectionStyle(theme),
     },
     emptyContainer: {
       ...container,
       padding: padding(0),
     },
     item: {
-      ...itemStyle,
+      ...itemStyle.default.container,
+      text: itemStyle.default.text,
       highlightText,
       active: activeItem,
     },

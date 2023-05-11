@@ -224,6 +224,7 @@ export function interactiveTextStyle(
       intensity: intensities.fg,
       border: {
         ...options.border,
+        width: options.border?.width ?? 1,
         color: color[options.themeColor](intensities.border),
       },
       background: color[options.themeColor](intensities.bg)

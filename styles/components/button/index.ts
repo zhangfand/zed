@@ -98,6 +98,7 @@ export function buildButton({
       },
     }),
     height: mergedOptions.size,
+    width: mergedOptions.width,
   })
 
   const icon = iconStyle({

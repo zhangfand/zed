@@ -12,7 +12,7 @@ export default function projectSharedNotification(theme: Theme) {
   const OWNER_USERNAME_MARGIN_TOP: Readonly<number> = -3
   const OWNER_METADATA_MARGIN_LEFT: Readonly<number> = 10
   const WORKTREE_ROOTS_MARGIN_TOP: Readonly<number> = -3
-  const BUTTON_WIDTH: Readonly<number> = 48
+  const BUTTON_WIDTH: Readonly<number> = 96
 
   const notification = notificationStyle(theme)
   const primaryText = textStyle(theme, {
@@ -22,6 +22,10 @@ export default function projectSharedNotification(theme: Theme) {
   const openButton = labelButton({
     theme,
     componentName: "projectSharedOpenButton",
+  })
+  const dismissButton = labelButton({
+    theme,
+    componentName: "projectSharedDismissButton",
   })
 
   const legacy_properties = {
@@ -47,15 +51,15 @@ export default function projectSharedNotification(theme: Theme) {
       ...secondaryText,
       margin: { top: WORKTREE_ROOTS_MARGIN_TOP },
     },
-    buttonWidth: {
-      width: BUTTON_WIDTH,
-    },
+    buttonWidth: BUTTON_WIDTH,
     openButton: {
       background: openButton.default.container.background,
       border: openButton.default.container.border,
       ...openButton.default.text,
     },
     dismissButton: {
+      // TODO: Clean this up
+      ...dismissButton.default.text,
       color: notification.close.default.icon.color,
       iconWidth: notification.close.default.icon.size,
       iconHeight: notification.close.default.icon.size,
@@ -65,10 +69,13 @@ export default function projectSharedNotification(theme: Theme) {
         color: notification.close.hovered.icon.color,
       },
     },
+    message: {
+      ...notification.message.text,
+      ...notification.message.container,
+    }
   }
 
   return {
     ...legacy_properties,
-    message: notification.message,
   }
 }
