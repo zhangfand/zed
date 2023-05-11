@@ -422,7 +422,7 @@
       "text": {
         "family": "Zed Sans",
         "weight": "normal",
-        "size": 169,
+        "size": 13,
         "line_height": 1,
         "color": "#ffffff"
       },
@@ -438,7 +438,7 @@
           "text": {
             "family": "Zed Sans",
             "weight": "bold",
-            "size": 169,
+            "size": 13,
             "line_height": 1,
             "color": "#c43e00"
           },
@@ -467,7 +467,7 @@
           "text": {
             "family": "Zed Sans",
             "weight": "bold",
-            "size": 169,
+            "size": 13,
             "line_height": 1,
             "color": "#d95b00"
           },
@@ -496,7 +496,7 @@
           "text": {
             "family": "Zed Sans",
             "weight": "bold",
-            "size": 169,
+            "size": 13,
             "line_height": 1,
             "color": "#e16500"
           },
@@ -3877,7 +3877,7 @@
         "text": {
           "family": "Zed Sans",
           "weight": "normal",
-          "size": 169,
+          "size": 13,
           "line_height": 1,
           "color": "#ffffff"
         },
@@ -3893,7 +3893,7 @@
             "text": {
               "family": "Zed Sans",
               "weight": "bold",
-              "size": 169,
+              "size": 13,
               "line_height": 1,
               "color": "#c43e00"
             },
@@ -3922,7 +3922,7 @@
             "text": {
               "family": "Zed Sans",
               "weight": "bold",
-              "size": 169,
+              "size": 13,
               "line_height": 1,
               "color": "#d95b00"
             },
@@ -3951,7 +3951,7 @@
             "text": {
               "family": "Zed Sans",
               "weight": "bold",
-              "size": 169,
+              "size": 13,
               "line_height": 1,
               "color": "#e16500"
             },

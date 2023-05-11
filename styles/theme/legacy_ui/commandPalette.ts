@@ -24,7 +24,7 @@ export default function commandPalette(theme: Theme) {
   const key = containedText({
     theme,
     options: {
-      size: text.size.xs,
+      fontSize: text.size.xs,
       intensity: intensity.secondary,
       ...keyContainer,
     },
@@ -32,7 +32,7 @@ export default function commandPalette(theme: Theme) {
 
   const active_key_text = text.textStyle(theme, {
     intensity: intensity.primary,
-    size: text.size.xs,
+    fontSize: text.size.xs,
   })
 
   const active_key_background_intensity = relativeIntensityToSurface(surface.bg, 10)

@@ -104,7 +104,7 @@ export function buildButton({
   const icon = iconStyle({
     theme,
     intensity: resolvedIntensities.fg,
-    size: mergedOptions.iconSize ? mergedOptions.iconSize : "md",
+    iconSize: mergedOptions.iconSize ? mergedOptions.iconSize : "md",
   })
 
   const text: TextStyle = textStyle(theme, {

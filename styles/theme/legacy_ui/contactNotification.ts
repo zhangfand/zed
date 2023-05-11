@@ -23,7 +23,7 @@ export default function contactNotification(theme: Theme) {
   const headerMessage = containedText({
     theme,
     options: {
-      size: size.xs,
+      fontSize: size.xs,
       margin: margin(HEADER_PADDING, 0),
     },
   })
@@ -36,7 +36,7 @@ export default function contactNotification(theme: Theme) {
   const bodyMessage = containedText({
     theme,
     options: {
-      size: size.xs,
+      fontSize: size.xs,
       margin: margin(6, 0, 6, AVATAR_SIZE + HEADER_PADDING),
     },
   })

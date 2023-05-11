@@ -118,7 +118,13 @@ export interface TextStyle {
   underline?: boolean
 }
 
-interface _TextOptions extends Partial<Omit<TextStyle, "color">> {
+interface _TextOptions {
+  family: Font
+  // The relative font size
+  fontSize: number
+  weight: Weight
+  lineHeight: number
+  underline?: boolean
   // The number relative font sizes are multiplied by to get the actual font size
   baseFontSize: number
   intensity: Intensity
@@ -129,12 +135,10 @@ interface _TextOptions extends Partial<Omit<TextStyle, "color">> {
 /** Options for constructing TextStyles */
 export type TextOptions = Prettify<_TextOptions>
 
-const DEFAULT_BASE_TEXT_SIZE = 13 as const
-
 export const DEFAULT_TEXT_OPTIONS: TextOptions = {
   family: family.sans,
-  baseFontSize: DEFAULT_BASE_TEXT_SIZE,
-  size: size.md,
+  baseFontSize: 13,
+  fontSize: size.md,
   weight: weight.regular,
   themeColor: "neutral",
   intensity: 100,
@@ -144,7 +148,7 @@ export const DEFAULT_TEXT_OPTIONS: TextOptions = {
 function buildText(theme: Theme, options?: Partial<TextOptions>): TextStyle {
   const color = useColors(theme)
 
-  const mergedOptions = {
+  const mergedOptions: Partial<TextOptions> = {
     ...DEFAULT_TEXT_OPTIONS,
     ...options,
   }
@@ -152,8 +156,8 @@ function buildText(theme: Theme, options?: Partial<TextOptions>): TextStyle {
   const {
     family,
     weight,
-    size,
-    baseFontSize: baseSize,
+    fontSize,
+    baseFontSize,
     lineHeight,
     themeColor,
     intensity,
@@ -165,13 +169,18 @@ function buildText(theme: Theme, options?: Partial<TextOptions>): TextStyle {
   // Ensure the color is valid
   chroma.valid(color)
 
+  // if (size > 2) {
+  //   console.log(`size: ${size}`)
+  //   console.log(JSON.stringify(mergedOptions, null, 2))
+  // }
+
   /** Calculate the final font size, rounded to the nearest whole number */
-  const fontSize = Math.round(size * baseSize)
+  const size = Math.round(fontSize * baseFontSize)
 
   const text: TextStyle = {
     family,
     weight,
-    size: fontSize,
+    size,
     lineHeight,
     color: textColor,
   }
@@ -180,8 +189,16 @@ function buildText(theme: Theme, options?: Partial<TextOptions>): TextStyle {
     throw new Error(`No text color provided`)
   }
 
-  if (fontSize < 4) {
-    throw new Error(`Font size was likely exported as a relative value, not a pixel value.`)
+  // if (fontSize < 4) {
+  //   console.log(`size: ${size}`)
+  //   throw new Error(`Font size was likely exported as a relative value, not a pixel value.`)
+  // }
+
+  if (fontSize > 32) {
+    console.log(`
+      size: ${size}
+      baseFontSize: ${baseFontSize}
+      fontSize: ${fontSize}`)
   }
 
   return text

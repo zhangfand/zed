@@ -58,6 +58,8 @@ export function inputStyle({
     ...options,
   }
 
+  console.log(JSON.stringify(mergedOptions, null, 2))
+
   const color = useColors(theme)
   const resolvedIntensities = resolveElementIntensities(
     theme,
@@ -83,6 +85,7 @@ export function inputStyle({
   }
 
   const text = textStyle(theme, textOptions)
+  console.log(JSON.stringify(text, null, 2))
   const placeholder = textStyle(theme, placeholderOptions)
   const container = containerStyle(containerOptions)
   const selection = selectionStyle(theme)

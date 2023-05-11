@@ -82,18 +82,18 @@ function tabState({ theme, active = false, state }: TabProps): Tab {
     }),
     icon: iconStyle({
       theme,
-      size: "md",
+      iconSize: "md",
       intensity: 70,
     }),
     indicator: {
       dirty: iconStyle({
         theme,
-        size: "sm",
+        iconSize: "sm",
         color: "accent",
       }),
       conflict: iconStyle({
         theme,
-        size: "sm",
+        iconSize: "sm",
         color: "warning",
       }),
     },
