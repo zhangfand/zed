@@ -332,6 +332,31 @@
     }
   },
   "picker": {
+    "background": "#2f3d50",
+    "padding": {
+      "top": 0,
+      "bottom": 4,
+      "left": 0,
+      "right": 0
+    },
+    "border": {
+      "color": "#435165",
+      "width": 1,
+      "overlay": false,
+      "top": true,
+      "bottom": true,
+      "left": true,
+      "right": true
+    },
+    "shadow": {
+      "blur": 16,
+      "color": "#313f531f",
+      "offset": [
+        1,
+        2
+      ]
+    },
+    "cornder_radius": 12,
     "input_editor": {
       "background": "#0f172a",
       "margin": {
@@ -434,12 +459,14 @@
         "right": true
       },
       "shadow": {
-        "blur": 4,
+        "blur": 16,
+        "color": "#313f531f",
         "offset": [
           1,
           2
         ]
-      }
+      },
+      "cornder_radius": 12
     },
     "item": {
       "background": "#0f172a",
@@ -450,10 +477,10 @@
         "right": 4
       },
       "padding": {
-        "top": 12,
-        "bottom": 12,
-        "left": 4,
-        "right": 4
+        "top": 4,
+        "bottom": 4,
+        "left": 12,
+        "right": 12
       },
       "border_radius": 8,
       "border": {
@@ -497,14 +524,14 @@
               "right": 4
             },
             "padding": {
-              "top": 12,
-              "bottom": 12,
-              "left": 4,
-              "right": 4
+              "top": 4,
+              "bottom": 4,
+              "left": 12,
+              "right": 12
             },
             "border_radius": 8,
             "border": {
-              "color": "#2d3a4e",
+              "color": "#435165",
               "width": 1,
               "overlay": false,
               "top": true,
@@ -531,14 +558,14 @@
               "right": 4
             },
             "padding": {
-              "top": 12,
-              "bottom": 12,
-              "left": 4,
-              "right": 4
+              "top": 4,
+              "bottom": 4,
+              "left": 12,
+              "right": 12
             },
             "border_radius": 8,
             "border": {
-              "color": "#2d3a4e",
+              "color": "#435165",
               "width": 1,
               "overlay": false,
               "top": true,
@@ -565,14 +592,14 @@
               "right": 4
             },
             "padding": {
-              "top": 12,
-              "bottom": 12,
-              "left": 4,
-              "right": 4
+              "top": 4,
+              "bottom": 4,
+              "left": 12,
+              "right": 12
             },
             "border_radius": 8,
             "border": {
-              "color": "#2d3a4e",
+              "color": "#435165",
               "width": 1,
               "overlay": false,
               "top": true,
@@ -582,25 +609,6 @@
             }
           }
         }
-      }
-    },
-    "container": {
-      "background": "#2f3d50",
-      "border": {
-        "color": "#435165",
-        "width": 1,
-        "overlay": false,
-        "top": true,
-        "bottom": true,
-        "left": true,
-        "right": true
-      },
-      "shadow": {
-        "blur": 4,
-        "offset": [
-          1,
-          2
-        ]
       }
     },
     "no_matches": {
@@ -2582,7 +2590,8 @@
           "right": true
         },
         "shadow": {
-          "blur": 4,
+          "blur": 16,
+          "color": "#313f531f",
           "offset": [
             1,
             2
@@ -2614,7 +2623,8 @@
           "right": true
         },
         "shadow": {
-          "blur": 4,
+          "blur": 16,
+          "color": "#313f531f",
           "offset": [
             1,
             2
@@ -2646,7 +2656,8 @@
           "right": true
         },
         "shadow": {
-          "blur": 4,
+          "blur": 16,
+          "color": "#313f531f",
           "offset": [
             1,
             2
@@ -2678,7 +2689,8 @@
           "right": true
         },
         "shadow": {
-          "blur": 4,
+          "blur": 16,
+          "color": "#313f531f",
           "offset": [
             1,
             2
@@ -3157,7 +3169,8 @@
       "right": true
     },
     "shadow": {
-      "blur": 4,
+      "blur": 16,
+      "color": "#313f531f",
       "offset": [
         1,
         2
@@ -3174,10 +3187,10 @@
           "right": 6
         },
         "padding": {
-          "top": 12,
-          "bottom": 12,
-          "left": 4,
-          "right": 4
+          "top": 4,
+          "bottom": 4,
+          "left": 12,
+          "right": 12
         },
         "border_radius": 8,
         "border": {
@@ -3221,14 +3234,14 @@
                 "right": 4
               },
               "padding": {
-                "top": 12,
-                "bottom": 12,
-                "left": 4,
-                "right": 4
+                "top": 4,
+                "bottom": 4,
+                "left": 12,
+                "right": 12
               },
               "border_radius": 8,
               "border": {
-                "color": "#2d3a4e",
+                "color": "#435165",
                 "width": 1,
                 "overlay": false,
                 "top": true,
@@ -3255,14 +3268,14 @@
                 "right": 4
               },
               "padding": {
-                "top": 12,
-                "bottom": 12,
-                "left": 4,
-                "right": 4
+                "top": 4,
+                "bottom": 4,
+                "left": 12,
+                "right": 12
               },
               "border_radius": 8,
               "border": {
-                "color": "#2d3a4e",
+                "color": "#435165",
                 "width": 1,
                 "overlay": false,
                 "top": true,
@@ -3289,14 +3302,14 @@
                 "right": 4
               },
               "padding": {
-                "top": 12,
-                "bottom": 12,
-                "left": 4,
-                "right": 4
+                "top": 4,
+                "bottom": 4,
+                "left": 12,
+                "right": 12
               },
               "border_radius": 8,
               "border": {
-                "color": "#2d3a4e",
+                "color": "#435165",
                 "width": 1,
                 "overlay": false,
                 "top": true,
@@ -4003,7 +4016,8 @@
       "right": true
     },
     "shadow": {
-      "blur": 4,
+      "blur": 16,
+      "color": "#313f531f",
       "offset": [
         1,
         2
