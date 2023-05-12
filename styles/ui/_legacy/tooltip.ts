@@ -11,7 +11,7 @@ export default function tooltip(theme: Theme) {
   const color = useColors(theme)
 
   const text = textStyle(theme, {
-    fontSize: size.xs,
+    fontSize: size.sm,
   })
 
   const container = popoverContainerStyle({

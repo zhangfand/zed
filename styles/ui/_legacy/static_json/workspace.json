@@ -251,10 +251,7 @@
             "shadow": {
                 "blur": 4,
                 "color": "#00000d33",
-                "offset": [
-                    1,
-                    2
-                ]
+                "offset": [1, 2]
             }
         },
         "pane_button": {
@@ -847,10 +844,7 @@
         "shadow": {
             "blur": 4,
             "color": "#00000d33",
-            "offset": [
-                1,
-                2
-            ]
+            "offset": [1, 2]
         }
     },
     "notifications": {
@@ -880,10 +874,7 @@
             "shadow": {
                 "blur": 16,
                 "color": "#00000d33",
-                "offset": [
-                    0,
-                    2
-                ]
+                "offset": [0, 2]
             }
         }
     },

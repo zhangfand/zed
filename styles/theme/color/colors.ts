@@ -3,7 +3,7 @@ import { Theme, ThemeColor } from "../config"
 import { Intensity } from "../intensity/intensity"
 
 interface ColorFunctions {
-  [themeColor: string]: (intensity: Intensity) => string
+    [themeColor: string]: (intensity: Intensity) => string
 }
 
 /**
@@ -17,11 +17,11 @@ interface ColorFunctions {
  * ```
  */
 export function useColors(theme: Theme): ColorFunctions {
-  const functions: ColorFunctions = {}
-  for (const c in theme.colors) {
-    const themeColor = c as ThemeColor
-    functions[themeColor] = (intensity: Intensity) =>
-      useIntensityColor(theme, themeColor, intensity)
-  }
-  return functions
+    const functions: ColorFunctions = {}
+    for (const c in theme.colors) {
+        const themeColor = c as ThemeColor
+        functions[themeColor] = (intensity: Intensity) =>
+            useIntensityColor(theme, themeColor, intensity)
+    }
+    return functions
 }

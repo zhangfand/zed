@@ -1,3 +1,3 @@
 export enum BorderRadius {
-  "Medium" = 4,
+    "Medium" = 4,
 }

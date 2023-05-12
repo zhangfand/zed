@@ -120,10 +120,7 @@
             "shadow": {
                 "blur": 4,
                 "color": "#00000d33",
-                "offset": [
-                    1,
-                    2
-                ]
+                "offset": [1, 2]
             },
             "match_highlight": "#74ade8",
             "item": {
@@ -412,10 +409,7 @@
                 "shadow": {
                     "blur": 4,
                     "color": "#00000d33",
-                    "offset": [
-                        1,
-                        2
-                    ]
+                    "offset": [1, 2]
                 },
                 "border": {
                     "color": "#363c46",
@@ -437,10 +431,7 @@
                 "shadow": {
                     "blur": 4,
                     "color": "#00000d33",
-                    "offset": [
-                        1,
-                        2
-                    ]
+                    "offset": [1, 2]
                 },
                 "border": {
                     "color": "#293c5b",
@@ -462,10 +453,7 @@
                 "shadow": {
                     "blur": 4,
                     "color": "#00000d33",
-                    "offset": [
-                        1,
-                        2
-                    ]
+                    "offset": [1, 2]
                 },
                 "border": {
                     "color": "#5d4c2f",
@@ -487,10 +475,7 @@
                 "shadow": {
                     "blur": 4,
                     "color": "#00000d33",
-                    "offset": [
-                        1,
-                        2
-                    ]
+                    "offset": [1, 2]
                 },
                 "border": {
                     "color": "#4c2b2c",

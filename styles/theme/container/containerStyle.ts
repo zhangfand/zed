@@ -22,7 +22,7 @@ export interface ContainerOptions extends Partial<ContainerStyle> {
 
 export const DEFAULT_CONTAINER_INTENSITY_SET: Readonly<IntensitySet> = {
   bg: 1,
-  border: 15,
+  border: 20,
   fg: 100,
 }
 
@@ -32,11 +32,14 @@ export const DEFAULT_CONTAINER_OPTIONS: ContainerOptions = {
 } as const
 
 interface ContainerProps {
-  theme: Theme,
+  theme: Theme
   options?: Partial<ContainerOptions>
 }
 
-export function containerStyle({ theme, options }: ContainerProps): ContainerStyle {
+export function containerStyle({
+  theme,
+  options,
+}: ContainerProps): ContainerStyle {
   const color = useColors(theme)
 
   const mergedOptions = {
@@ -49,7 +52,9 @@ export function containerStyle({ theme, options }: ContainerProps): ContainerSty
   if (options.background) {
     background = mergedOptions.background
   } else {
-    background = color[mergedOptions.themeColor](mergedOptions.intensitySet.bg)
+    background = color[mergedOptions.themeColor](
+      mergedOptions.intensitySet.bg
+    )
   }
 
   let border

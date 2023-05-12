@@ -6,10 +6,7 @@
         "shadow": {
             "blur": 4,
             "color": "#00000d33",
-            "offset": [
-                1,
-                2
-            ]
+            "offset": [1, 2]
         },
         "border": {
             "color": "#363c46",

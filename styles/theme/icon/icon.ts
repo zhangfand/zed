@@ -7,16 +7,16 @@ export type Size = "sm" | "md" | "lg"
 type Sizes = Record<Size, number>
 
 export const iconSize: Sizes = {
-  sm: 7,
-  md: 11,
-  lg: 15,
+    sm: 7,
+    md: 11,
+    lg: 15,
 } as const
 
 interface IconProps {
-  theme: Theme
-  iconSize: Size
-  intensity?: Intensity
-  themeColor?: ThemeColor
+    theme: Theme
+    iconSize: keyof Sizes
+    intensity?: Intensity
+    themeColor?: ThemeColor
 }
 
 const DEFAULT_ICON_INTENSITY: Intensity = 100 as const
@@ -29,20 +29,20 @@ const DEFAULT_ICON_INTENSITY: Intensity = 100 as const
  * If no color is specified, neutral is used.
  */
 export const iconStyle = ({
-  theme,
-  iconSize: size,
-  intensity = DEFAULT_ICON_INTENSITY,
-  themeColor = "neutral",
+    theme,
+    iconSize: size,
+    intensity = DEFAULT_ICON_INTENSITY,
+    themeColor = "neutral",
 }: IconProps): IconStyle => {
-  const color = useColors(theme)
+    const color = useColors(theme)
 
-  return {
-    color: color[themeColor](intensity),
-    size: iconSize[size],
-  }
+    return {
+        color: color[themeColor](intensity),
+        size: iconSize[size],
+    }
 }
 
 export interface IconStyle {
-  color: string
-  size: number
+    color: string
+    size: number
 }

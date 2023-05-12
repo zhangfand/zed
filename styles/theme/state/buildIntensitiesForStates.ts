@@ -1,7 +1,11 @@
 import { Theme } from "@/theme"
 import { buildStateIntensity } from "@theme/state/buildStateIntensity"
 import { ElementState } from "."
-import { Intensity, IntensitySet, resolveIntensitySet } from "@theme/intensity/intensity"
+import {
+  Intensity,
+  IntensitySet,
+  resolveIntensitySet,
+} from "@theme/intensity/intensity"
 
 export type StateIntensities = Partial<Record<ElementState, IntensitySet>>
 
@@ -14,7 +18,7 @@ export function buildIntensitiesForStates(
   const light = theme.appearance === "light"
   const multiplier = light ? 1 : 1.2
   const stepSize = 5
-  const startingOffset = light ? 5 : 12
+  const startingOffset = light ? 5 : 8
   const intensitySteps = [0, 1, 2, 3].map(
     (step) => multiplier * stepSize * step + startingOffset
   )
@@ -25,10 +29,7 @@ export function buildIntensitiesForStates(
     (intensity) => intensity * scaleFactor
   )
 
-  const resolvedIntensity = resolveIntensitySet(
-    theme,
-    startingIntensity
-  )
+  const resolvedIntensity = resolveIntensitySet(theme, startingIntensity)
 
   const defaultState = {
     bg: resolvedIntensity.bg,

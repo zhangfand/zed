@@ -8,78 +8,78 @@ import { interactiveTextStyle, textStyle } from "@theme/text/text"
 
 // TODO: picker -> palette, move to components
 export default function picker(theme: Theme) {
-  const container = popoverContainerStyle({ theme })
+    const container = popoverContainerStyle({ theme })
 
-  // TODO: You shouldn't need to specify the color here
-  const itemStyle = interactiveTextStyle(theme, {
-    ...textStyle(theme, { intensity: intensity.secondary }),
-    themeColor: "neutral",
-    padding: padding(4, 12),
-    margin: margin(1, 4, 0, 4),
-    borderRadius: 8,
-  })
+    // TODO: You shouldn't need to specify the color here
+    const itemStyle = interactiveTextStyle(theme, {
+        ...textStyle(theme, { intensity: intensity.secondary }),
+        themeColor: "neutral",
+        padding: padding(4, 12),
+        margin: margin(1, 4, 0, 4),
+        borderRadius: 8,
+    })
 
-  const activeItem = interactiveTextStyle(theme, {
-    ...textStyle(theme),
-    themeColor: "accent",
-    weight: "bold",
-    padding: padding(4, 12),
-    margin: margin(1, 4, 0, 4),
-    borderRadius: 8,
-  })
+    const activeItem = interactiveTextStyle(theme, {
+        ...textStyle(theme),
+        themeColor: "accent",
+        weight: "bold",
+        padding: padding(4, 12),
+        margin: margin(1, 4, 0, 4),
+        borderRadius: 8,
+    })
 
-  // TODO: Make an input component with placeholder text
-  const input = interactiveTextStyle(theme, {
-    padding: padding(16, 8),
-    margin: margin(0, 0, 4, 0),
-  })
+    // TODO: Make an input component with placeholder text
+    const input = interactiveTextStyle(theme, {
+        padding: padding(16, 8),
+        margin: margin(0, 0, 4, 0),
+    })
 
-  const highlightText = textStyle(theme, {
-    weight: "bold",
-    themeColor: "accent",
-  })
+    const highlightText = textStyle(theme, {
+        weight: "bold",
+        themeColor: "accent",
+    })
 
-  const noMatches = containedText({
-    theme,
-    options: {
-      intensity: intensity.secondary,
-      padding: padding(16, 8),
-    },
-  })
+    const noMatches = containedText({
+        theme,
+        options: {
+            intensity: intensity.secondary,
+            padding: padding(16, 8),
+        },
+    })
 
-  const legacy_properties = {
-    inputEditor: {
-      ...input.default.container,
-      text: input.default.text,
-      placeholderText: textStyle(theme, {
-        intensity: intensity.inactive,
-      }),
-      // TODO: Add player selection color
-      selection: selectionStyle(theme),
-    },
-    emptyInputEditor: {
-      ...input.default.container,
-      text: input.default.text,
-      placeholderText: textStyle(theme, {
-        intensity: intensity.inactive,
-      }),
-      // TODO: Add player selection color
-      selection: selectionStyle(theme),
-    },
-    emptyContainer: {
-      ...container,
-      padding: padding(0),
-    },
-    item: {
-      ...itemStyle.default.container,
-      text: itemStyle.default.text,
-      highlightText,
-      active: activeItem,
-    },
-  }
-  return {
-    ...legacy_properties,
-    container,
-    noMatches,
-  }
+    const legacy_properties = {
+        inputEditor: {
+            ...input.default.container,
+            text: input.default.text,
+            placeholderText: textStyle(theme, {
+                intensity: intensity.inactive,
+            }),
+            // TODO: Add player selection color
+            selection: selectionStyle(theme),
+        },
+        emptyInputEditor: {
+            ...input.default.container,
+            text: input.default.text,
+            placeholderText: textStyle(theme, {
+                intensity: intensity.inactive,
+            }),
+            // TODO: Add player selection color
+            selection: selectionStyle(theme),
+        },
+        emptyContainer: {
+            ...container,
+            padding: padding(0),
+        },
+        item: {
+            ...itemStyle.default.container,
+            text: itemStyle.default.text,
+            highlightText,
+            active: activeItem,
+        },
+    }
+    return {
+        ...legacy_properties,
+        container,
+        noMatches,
+    }
 }
