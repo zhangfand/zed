@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, fmt::Debug};
+use std::{cmp::Ordering, fmt::Debug, any::type_name};
 
 use crate::{Bias, Dimension, Edit, Item, KeyedItem, SeekTarget, SumTree, Summary};
 
@@ -173,6 +173,83 @@ impl<K: Clone + Debug + Default + Ord, V: Clone + Debug> TreeMap<K, V> {
         new_tree.push_tree(cursor.suffix(&()), &());
         drop(cursor);
         self.0 = new_tree;
+    }
+
+    pub fn remove_between_targets(&mut self, from: Target<K>, until: Target<K>) {
+        let cursor = self.0.cursor::<MapKeyRef<'_, K>>();
+         let mut new_tree = from.with_real_target(|from| {
+            cursor.slice(&from, Bias::Left, &())
+
+        });
+        until.with_real_target(|until| {
+            cursor.seek_forward(&until, Bias::Right, &());
+        });
+        new_tree.push_tree(cursor.suffix(&()), &());
+        drop(cursor);
+        self.0 = new_tree;
+    }
+}
+
+impl<'a, K: Debug + Clone + Default + Ord> SeekTarget<'a, MapKey<K>, MapKeyRef<'a, K>> for &dyn TargetTrait<'a, K> {
+    fn cmp(&self, cursor_location: &MapKeyRef<'a, K>, _cx: &<MapKey<K> as Summary>::Context) -> Ordering {
+        if let Some(cursor_location) = cursor_location.0 {
+             self.target_cmp(cursor_location)
+        } else {
+            Ordering::Greater
+        }
+    }
+}
+
+impl<'a, K> Debug for &dyn TargetTrait<'a, K> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct(&format!("&dyn TargetTrait<{}>", type_name::<K>()))
+            .finish()
+    }
+}
+
+trait TargetTrait<'a, K> {
+    fn target_cmp<'b>(&self, second: &'b K) -> Ordering where 'b: 'a;
+}
+
+struct EqTarget<'a, K>(MapKeyRef<'a, K>);
+
+impl<'a, K: Ord> TargetTrait<'a, K> for EqTarget<'a, &'a K> {
+   fn target_cmp<'b>(&self, second: &'b K) -> Ordering where 'b: 'a {
+        self.0.0.unwrap().cmp(&&second)
+    }
+}
+
+struct WhileTarget<'a, K>(MapKeyRef<'a, K>, &'a dyn Fn(K) -> bool);
+
+impl<'a, K: Ord> TargetTrait<'a, K> for WhileTarget<'a, &'a K>  {
+    fn target_cmp<'b>(&self, second: &'b K) -> Ordering where 'b: 'a {
+        if (self.1)(second) {
+            Ordering::Equal
+        } else {
+            self.0.0.unwrap().cmp(&&second)
+        }
+    }
+}
+
+pub enum Target<'a, K> {
+    Eq(&'a K),
+    While(&'a K, &'a dyn Fn(&K) -> bool),
+}
+
+impl<'a, K> Target<'a, K> {
+    fn eq(k: &'a K) -> Target<'a, K> {
+        Target::Eq(k)
+    }
+}
+
+impl<'a, K: Ord> Target<'a, K> {
+    fn with_real_target<R, F>(&self,  f: F) -> R
+    where F: FnOnce(&dyn TargetTrait<K>) -> R
+    {
+        match self {
+            Target::Eq(k) => f(&EqTarget(MapKeyRef(Some(k)))),
+            Target::While(k, pred) => f(&WhileTarget(MapKeyRef(Some(k)), *pred)),
+        }
     }
 }
 
