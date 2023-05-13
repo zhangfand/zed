@@ -7,7 +7,7 @@ use client::{
 use editor::Editor;
 use futures::{FutureExt, StreamExt};
 use gpui::{
-    actions, anyhow, elements::*, CursorStyle, Entity, MouseButton, MutableAppContext,
+    actions, anyhow, elements::*, AppContext, CursorStyle, Entity, MouseButton, MutableAppContext,
     RenderContext, View, ViewContext, ViewHandle, WeakViewHandle,
 };
 use language::LanguageRegistry;

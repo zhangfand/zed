@@ -312,7 +312,7 @@ pub struct Search {
     pub editor: SearchEditor,
     pub invalid_editor: ContainerStyle,
     pub option_button_group: ContainerStyle,
-    pub include_exclude_editor: FindEditor,
+    pub include_exclude_editor: SearchEditor,
     pub invalid_include_exclude_editor: ContainerStyle,
     pub include_exclude_inputs: ContainedText,
     pub option_button: Interactive<ContainedText>,
