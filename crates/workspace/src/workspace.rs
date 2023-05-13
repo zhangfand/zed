@@ -1502,11 +1502,6 @@ impl Workspace {
         }
     }
 
-    pub fn add_item_to_dock(&mut self, item: Box<dyn ItemHandle>, cx: &mut ViewContext<Self>) {
-        let dock_pane = self.dock_pane().clone();
-        Pane::add_item(self, &dock_pane, item, true, true, None, cx);
-    }
-
     pub fn add_item(&mut self, item: Box<dyn ItemHandle>, cx: &mut ViewContext<Self>) {
         let active_pane = self.active_pane().clone();
         Pane::add_item(self, &active_pane, item, true, true, None, cx);

@@ -11,16 +11,13 @@ use async_tungstenite::tungstenite::{
     http::{Request, StatusCode},
 };
 use futures::{
-    future::LocalBoxFuture, future::LocalBoxFuture, AsyncReadExt, AsyncReadExt, FutureExt,
-    FutureExt, SinkExt, SinkExt, Stream, StreamExt, StreamExt, TryFutureExt as _, TryStreamExt,
+    future::LocalBoxFuture, AsyncReadExt, FutureExt, SinkExt, Stream, StreamExt, TryFutureExt as _,
     TryStreamExt,
 };
 use gpui::{
-    actions,
-    platform::AppVersion,
-    serde_json::{self},
-    AnyModelHandle, AnyWeakModelHandle, AnyWeakViewHandle, AppContext, AsyncAppContext, Entity,
-    ModelHandle, Task, View, ViewContext, WeakViewHandle,
+    actions, platform::AppVersion, serde_json, AnyModelHandle, AnyWeakModelHandle,
+    AnyWeakViewHandle, AppContext, AsyncAppContext, Entity, ModelHandle, Task, View, ViewContext,
+    WeakViewHandle,
 };
 use lazy_static::lazy_static;
 use parking_lot::RwLock;

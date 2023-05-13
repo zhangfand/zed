@@ -4,7 +4,7 @@ pub mod menus;
 pub mod test;
 use anyhow::Context;
 use assets::Assets;
-use assistant::AssistantButton;
+use assistant::Assistant;
 use breadcrumbs::Breadcrumbs;
 pub use client;
 use collab_ui::{CollabTitlebarItem, ToggleContactsMenu};
@@ -319,6 +319,10 @@ pub fn initialize_workspace(
 
     let terminal_panel = cx.add_view(|cx| TerminalPanel::new(workspace, cx));
     workspace.add_panel(terminal_panel, cx);
+
+    let assistant =
+        cx.add_view(|cx| Assistant::new(app_state.languages.clone(), app_state.client.clone(), cx));
+    workspace.add_panel(assistant, cx);
 
     let copilot = cx.add_view(|cx| copilot_button::CopilotButton::new(cx));
     let diagnostic_summary =

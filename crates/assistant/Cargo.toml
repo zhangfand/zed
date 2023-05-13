@@ -21,4 +21,4 @@ workspace = { path = "../workspace" }
 
 futures = "0.3"
 log = "0.4"
-unindent = "0.1"
+unindent.workspace = true

@@ -4,7 +4,6 @@ mod sign_in;
 use anyhow::{anyhow, Context, Result};
 use async_compression::futures::bufread::GzipDecoder;
 use async_tar::Archive;
-use client::Client;
 use collections::HashMap;
 use futures::{channel::oneshot, future::Shared, Future, FutureExt, TryFutureExt};
 use gpui::{
