@@ -2,18 +2,8 @@ use std::sync::Arc;
 
 use crate::notifications::render_user_notification;
 use client::{ContactEventKind, User, UserStore};
-use gpui::{
-    elements::*, impl_internal_actions, Entity, ModelHandle, MutableAppContext, RenderContext,
-    View, ViewContext,
-};
+use gpui::{elements::*, Entity, ModelHandle, View, ViewContext};
 use workspace::notifications::Notification;
-
-impl_internal_actions!(contact_notifications, [Dismiss, RespondToContactRequest]);
-
-pub fn init(cx: &mut MutableAppContext) {
-    cx.add_action(ContactNotification::dismiss);
-    cx.add_action(ContactNotification::respond_to_contact_request);
-}
 
 pub struct ContactNotification {
     user_store: ModelHandle<UserStore>,
@@ -43,26 +33,24 @@ impl View for ContactNotification {
         "ContactNotification"
     }
 
-    fn render(&mut self, cx: &mut RenderContext<Self>) -> ElementBox {
+    fn render(&mut self, cx: &mut ViewContext<Self>) -> AnyElement<Self> {
         match self.kind {
             ContactEventKind::Requested => render_user_notification(
                 self.user.clone(),
                 "wants to add you as a contact",
                 Some("They won't be alerted if you decline."),
-                Dismiss(self.user.id),
+                |notification, cx| notification.dismiss(cx),
                 vec![
                     (
                         "Decline",
-                        Box::new(RespondToContactRequest {
-                            user_id: self.user.id,
-                            accept: false,
+                        Box::new(|notification, cx| {
+                            notification.respond_to_contact_request(false, cx)
                         }),
                     ),
                     (
                         "Accept",
-                        Box::new(RespondToContactRequest {
-                            user_id: self.user.id,
-                            accept: true,
+                        Box::new(|notification, cx| {
+                            notification.respond_to_contact_request(true, cx)
                         }),
                     ),
                 ],
@@ -72,7 +60,7 @@ impl View for ContactNotification {
                 self.user.clone(),
                 "accepted your contact request",
                 None,
-                Dismiss(self.user.id),
+                |notification, cx| notification.dismiss(cx),
                 vec![],
                 cx,
             ),
@@ -114,7 +102,7 @@ impl ContactNotification {
         }
     }
 
-    fn dismiss(&mut self, _: &Dismiss, cx: &mut ViewContext<Self>) {
+    fn dismiss(&mut self, cx: &mut ViewContext<Self>) {
         self.user_store.update(cx, |store, cx| {
             store
                 .dismiss_contact_request(self.user.id, cx)
@@ -123,14 +111,10 @@ impl ContactNotification {
         cx.emit(Event::Dismiss);
     }
 
-    fn respond_to_contact_request(
-        &mut self,
-        action: &RespondToContactRequest,
-        cx: &mut ViewContext<Self>,
-    ) {
+    fn respond_to_contact_request(&mut self, accept: bool, cx: &mut ViewContext<Self>) {
         self.user_store
             .update(cx, |store, cx| {
-                store.respond_to_contact_request(action.user_id, action.accept, cx)
+                store.respond_to_contact_request(self.user.id, accept, cx)
             })
             .detach();
     }

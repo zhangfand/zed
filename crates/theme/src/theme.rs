@@ -4,7 +4,7 @@ use gpui::{
     color::Color,
     elements::{ContainerStyle, ImageStyle, LabelStyle, Shadow, TooltipStyle},
     fonts::{HighlightStyle, TextStyle},
-    Border, MouseState,
+    platform, Border, MouseState,
 };
 use serde::{de::DeserializeOwned, Deserialize};
 use serde_json::Value;
@@ -47,6 +47,8 @@ pub struct Theme {
 
 #[derive(Deserialize, Default, Clone)]
 pub struct ThemeMeta {
+    #[serde(skip_deserializing)]
+    pub id: usize,
     pub name: String,
     pub is_light: bool,
 }
@@ -60,19 +62,20 @@ pub struct Workspace {
     pub pane_divider: Border,
     pub leader_border_opacity: f32,
     pub leader_border_width: f32,
-    pub sidebar: Sidebar,
+    pub dock: Dock,
     pub status_bar: StatusBar,
     pub toolbar: Toolbar,
     pub breadcrumb_height: f32,
     pub breadcrumbs: Interactive<ContainedText>,
     pub disconnected_overlay: ContainedText,
     pub modal: ContainerStyle,
+    pub zoomed_foreground: ContainerStyle,
+    pub zoomed_background: ContainerStyle,
     pub notification: ContainerStyle,
     pub notifications: Notifications,
     pub joining_project_avatar: ImageStyle,
     pub joining_project_message: ContainedText,
     pub external_location_message: ContainedText,
-    pub dock: Dock,
     pub drop_target_overlay_color: Color,
 }
 
@@ -92,6 +95,7 @@ pub struct Titlebar {
     pub container: ContainerStyle,
     pub height: f32,
     pub title: TextStyle,
+    pub highlight_color: Color,
     pub item_spacing: f32,
     pub face_pile_spacing: f32,
     pub avatar_ribbon: AvatarRibbon,
@@ -295,15 +299,6 @@ pub struct Toolbar {
 }
 
 #[derive(Clone, Deserialize, Default)]
-pub struct Dock {
-    pub initial_size_right: f32,
-    pub initial_size_bottom: f32,
-    pub wash_color: Color,
-    pub panel: ContainerStyle,
-    pub maximized: ContainerStyle,
-}
-
-#[derive(Clone, Deserialize, Default)]
 pub struct Notifications {
     #[serde(flatten)]
     pub container: ContainerStyle,
@@ -317,6 +312,9 @@ pub struct Search {
     pub editor: SearchEditor,
     pub invalid_editor: ContainerStyle,
     pub option_button_group: ContainerStyle,
+    pub include_exclude_editor: FindEditor,
+    pub invalid_include_exclude_editor: ContainerStyle,
+    pub include_exclude_inputs: ContainedText,
     pub option_button: Interactive<ContainedText>,
     pub match_background: Color,
     pub match_index: ContainedText,
@@ -343,17 +341,17 @@ pub struct StatusBar {
     pub auto_update_progress_message: TextStyle,
     pub auto_update_done_message: TextStyle,
     pub lsp_status: Interactive<StatusBarLspStatus>,
-    pub sidebar_buttons: StatusBarSidebarButtons,
+    pub panel_buttons: StatusBarPanelButtons,
     pub diagnostic_summary: Interactive<StatusBarDiagnosticSummary>,
     pub diagnostic_message: Interactive<ContainedText>,
 }
 
 #[derive(Deserialize, Default)]
-pub struct StatusBarSidebarButtons {
+pub struct StatusBarPanelButtons {
     pub group_left: ContainerStyle,
+    pub group_bottom: ContainerStyle,
     pub group_right: ContainerStyle,
-    pub item: Interactive<SidebarItem>,
-    pub badge: ContainerStyle,
+    pub button: Interactive<PanelButton>,
 }
 
 #[derive(Deserialize, Default)]
@@ -383,14 +381,14 @@ pub struct StatusBarLspStatus {
 }
 
 #[derive(Deserialize, Default)]
-pub struct Sidebar {
+pub struct Dock {
     pub initial_size: f32,
     #[serde(flatten)]
     pub container: ContainerStyle,
 }
 
 #[derive(Clone, Deserialize, Default)]
-pub struct SidebarItem {
+pub struct PanelButton {
     #[serde(flatten)]
     pub container: ContainerStyle,
     pub icon_color: Color,
@@ -635,6 +633,7 @@ pub struct Editor {
     pub composition_mark: HighlightStyle,
     pub jump_icon: Interactive<IconButton>,
     pub scrollbar: Scrollbar,
+    pub whitespace: Color,
 }
 
 #[derive(Clone, Deserialize, Default)]
@@ -658,6 +657,7 @@ pub struct DiagnosticPathHeader {
 pub struct DiagnosticHeader {
     #[serde(flatten)]
     pub container: ContainerStyle,
+    pub source: ContainedLabel,
     pub message: ContainedLabel,
     pub code: ContainedText,
     pub text_scale_factor: f32,
@@ -755,14 +755,15 @@ impl<T> Interactive<T> {
                 self.hover_and_active
                     .as_ref()
                     .unwrap_or(self.active.as_ref().unwrap_or(&self.default))
-            } else if state.clicked() == Some(gpui::MouseButton::Left) && self.clicked.is_some() {
+            } else if state.clicked() == Some(platform::MouseButton::Left) && self.clicked.is_some()
+            {
                 self.click_and_active
                     .as_ref()
                     .unwrap_or(self.active.as_ref().unwrap_or(&self.default))
             } else {
                 self.active.as_ref().unwrap_or(&self.default)
             }
-        } else if state.clicked() == Some(gpui::MouseButton::Left) && self.clicked.is_some() {
+        } else if state.clicked() == Some(platform::MouseButton::Left) && self.clicked.is_some() {
             self.clicked.as_ref().unwrap()
         } else if state.hovered() {
             self.hover.as_ref().unwrap_or(&self.default)
@@ -887,6 +888,7 @@ pub struct HoverPopover {
     pub error_container: ContainerStyle,
     pub block_style: ContainerStyle,
     pub prose: TextStyle,
+    pub diagnostic_source_highlight: HighlightStyle,
     pub highlight: Color,
 }
 

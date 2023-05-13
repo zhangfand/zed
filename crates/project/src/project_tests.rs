@@ -2,6 +2,7 @@ use crate::{worktree::WorktreeHandle, Event, *};
 use fs::LineEnding;
 use fs::{FakeFs, RealFs};
 use futures::{future, StreamExt};
+use gpui::AppContext;
 use gpui::{executor::Deterministic, test::subscribe};
 use language::{
     tree_sitter_rust, tree_sitter_typescript, Diagnostic, FakeLspAdapter, LanguageConfig,
@@ -302,6 +303,7 @@ async fn test_managing_language_servers(
 
     rust_buffer2.update(cx, |buffer, cx| {
         buffer.update_diagnostics(
+            LanguageServerId(0),
             DiagnosticSet::from_sorted_entries(
                 vec![DiagnosticEntry {
                     diagnostic: Default::default(),
@@ -398,7 +400,7 @@ async fn test_managing_language_servers(
             .text_document,
         lsp::TextDocumentItem {
             uri: lsp::Url::from_file_path("/the-root/test.rs").unwrap(),
-            version: 1,
+            version: 0,
             text: rust_buffer.read_with(cx, |buffer, _| buffer.text()),
             language_id: Default::default()
         }
@@ -425,7 +427,7 @@ async fn test_managing_language_servers(
             },
             lsp::TextDocumentItem {
                 uri: lsp::Url::from_file_path("/the-root/test3.json").unwrap(),
-                version: 1,
+                version: 0,
                 text: rust_buffer2.read_with(cx, |buffer, _| buffer.text()),
                 language_id: Default::default()
             }
@@ -580,7 +582,7 @@ async fn test_single_file_worktrees_diagnostics(cx: &mut gpui::TestAppContext) {
     project.update(cx, |project, cx| {
         project
             .update_diagnostics(
-                0,
+                LanguageServerId(0),
                 lsp::PublishDiagnosticsParams {
                     uri: Url::from_file_path("/dir/a.rs").unwrap(),
                     version: None,
@@ -597,7 +599,7 @@ async fn test_single_file_worktrees_diagnostics(cx: &mut gpui::TestAppContext) {
             .unwrap();
         project
             .update_diagnostics(
-                0,
+                LanguageServerId(0),
                 lsp::PublishDiagnosticsParams {
                     uri: Url::from_file_path("/dir/b.rs").unwrap(),
                     version: None,
@@ -673,7 +675,7 @@ async fn test_hidden_worktrees_diagnostics(cx: &mut gpui::TestAppContext) {
     project.update(cx, |project, cx| {
         project
             .update_diagnostics(
-                0,
+                LanguageServerId(0),
                 lsp::PublishDiagnosticsParams {
                     uri: Url::from_file_path("/root/other.rs").unwrap(),
                     version: None,
@@ -765,7 +767,7 @@ async fn test_disk_based_diagnostics_progress(cx: &mut gpui::TestAppContext) {
     assert_eq!(
         events.next().await.unwrap(),
         Event::DiskBasedDiagnosticsStarted {
-            language_server_id: 0,
+            language_server_id: LanguageServerId(0),
         }
     );
 
@@ -782,7 +784,7 @@ async fn test_disk_based_diagnostics_progress(cx: &mut gpui::TestAppContext) {
     assert_eq!(
         events.next().await.unwrap(),
         Event::DiagnosticsUpdated {
-            language_server_id: 0,
+            language_server_id: LanguageServerId(0),
             path: (worktree_id, Path::new("a.rs")).into()
         }
     );
@@ -791,7 +793,7 @@ async fn test_disk_based_diagnostics_progress(cx: &mut gpui::TestAppContext) {
     assert_eq!(
         events.next().await.unwrap(),
         Event::DiskBasedDiagnosticsFinished {
-            language_server_id: 0
+            language_server_id: LanguageServerId(0)
         }
     );
 
@@ -829,7 +831,7 @@ async fn test_disk_based_diagnostics_progress(cx: &mut gpui::TestAppContext) {
     assert_eq!(
         events.next().await.unwrap(),
         Event::DiagnosticsUpdated {
-            language_server_id: 0,
+            language_server_id: LanguageServerId(0),
             path: (worktree_id, Path::new("a.rs")).into()
         }
     );
@@ -890,7 +892,7 @@ async fn test_restarting_server_with_diagnostics_running(cx: &mut gpui::TestAppC
     assert_eq!(
         events.next().await.unwrap(),
         Event::DiskBasedDiagnosticsStarted {
-            language_server_id: 1
+            language_server_id: LanguageServerId(1)
         }
     );
     project.read_with(cx, |project, _| {
@@ -898,7 +900,7 @@ async fn test_restarting_server_with_diagnostics_running(cx: &mut gpui::TestAppC
             project
                 .language_servers_running_disk_based_diagnostics()
                 .collect::<Vec<_>>(),
-            [1]
+            [LanguageServerId(1)]
         );
     });
 
@@ -908,7 +910,7 @@ async fn test_restarting_server_with_diagnostics_running(cx: &mut gpui::TestAppC
     assert_eq!(
         events.next().await.unwrap(),
         Event::DiskBasedDiagnosticsFinished {
-            language_server_id: 1
+            language_server_id: LanguageServerId(1)
         }
     );
     project.read_with(cx, |project, _| {
@@ -916,7 +918,7 @@ async fn test_restarting_server_with_diagnostics_running(cx: &mut gpui::TestAppC
             project
                 .language_servers_running_disk_based_diagnostics()
                 .collect::<Vec<_>>(),
-            [0; 0]
+            [LanguageServerId(0); 0]
         );
     });
 }
@@ -1188,6 +1190,7 @@ async fn test_transforming_diagnostics(cx: &mut gpui::TestAppContext) {
                 DiagnosticEntry {
                     range: Point::new(3, 9)..Point::new(3, 11),
                     diagnostic: Diagnostic {
+                        source: Some("disk".into()),
                         severity: DiagnosticSeverity::ERROR,
                         message: "undefined variable 'BB'".to_string(),
                         is_disk_based: true,
@@ -1199,6 +1202,7 @@ async fn test_transforming_diagnostics(cx: &mut gpui::TestAppContext) {
                 DiagnosticEntry {
                     range: Point::new(4, 9)..Point::new(4, 12),
                     diagnostic: Diagnostic {
+                        source: Some("disk".into()),
                         severity: DiagnosticSeverity::ERROR,
                         message: "undefined variable 'CCC'".to_string(),
                         is_disk_based: true,
@@ -1264,6 +1268,7 @@ async fn test_transforming_diagnostics(cx: &mut gpui::TestAppContext) {
                 DiagnosticEntry {
                     range: Point::new(2, 9)..Point::new(2, 12),
                     diagnostic: Diagnostic {
+                        source: Some("disk".into()),
                         severity: DiagnosticSeverity::WARNING,
                         message: "unreachable statement".to_string(),
                         is_disk_based: true,
@@ -1275,6 +1280,7 @@ async fn test_transforming_diagnostics(cx: &mut gpui::TestAppContext) {
                 DiagnosticEntry {
                     range: Point::new(2, 9)..Point::new(2, 10),
                     diagnostic: Diagnostic {
+                        source: Some("disk".into()),
                         severity: DiagnosticSeverity::ERROR,
                         message: "undefined variable 'A'".to_string(),
                         is_disk_based: true,
@@ -1354,6 +1360,7 @@ async fn test_transforming_diagnostics(cx: &mut gpui::TestAppContext) {
                 DiagnosticEntry {
                     range: Point::new(2, 21)..Point::new(2, 22),
                     diagnostic: Diagnostic {
+                        source: Some("disk".into()),
                         severity: DiagnosticSeverity::WARNING,
                         message: "undefined variable 'A'".to_string(),
                         is_disk_based: true,
@@ -1365,6 +1372,7 @@ async fn test_transforming_diagnostics(cx: &mut gpui::TestAppContext) {
                 DiagnosticEntry {
                     range: Point::new(3, 9)..Point::new(3, 14),
                     diagnostic: Diagnostic {
+                        source: Some("disk".into()),
                         severity: DiagnosticSeverity::ERROR,
                         message: "undefined variable 'BB'".to_string(),
                         is_disk_based: true,
@@ -1401,6 +1409,8 @@ async fn test_empty_diagnostic_ranges(cx: &mut gpui::TestAppContext) {
         project
             .update_buffer_diagnostics(
                 &buffer,
+                LanguageServerId(0),
+                None,
                 vec![
                     DiagnosticEntry {
                         range: Unclipped(PointUtf16::new(0, 10))..Unclipped(PointUtf16::new(0, 10)),
@@ -1419,7 +1429,6 @@ async fn test_empty_diagnostic_ranges(cx: &mut gpui::TestAppContext) {
                         },
                     },
                 ],
-                None,
                 cx,
             )
             .unwrap();
@@ -1442,6 +1451,64 @@ async fn test_empty_diagnostic_ranges(cx: &mut gpui::TestAppContext) {
                 (" ", Some(DiagnosticSeverity::ERROR)),
                 ("\nlet three = 3;\n", None)
             ]
+        );
+    });
+}
+
+#[gpui::test]
+async fn test_diagnostics_from_multiple_language_servers(cx: &mut gpui::TestAppContext) {
+    println!("hello from stdout");
+    eprintln!("hello from stderr");
+    cx.foreground().forbid_parking();
+
+    let fs = FakeFs::new(cx.background());
+    fs.insert_tree("/dir", json!({ "a.rs": "one two three" }))
+        .await;
+
+    let project = Project::test(fs, ["/dir".as_ref()], cx).await;
+
+    project.update(cx, |project, cx| {
+        project
+            .update_diagnostic_entries(
+                LanguageServerId(0),
+                Path::new("/dir/a.rs").to_owned(),
+                None,
+                vec![DiagnosticEntry {
+                    range: Unclipped(PointUtf16::new(0, 0))..Unclipped(PointUtf16::new(0, 3)),
+                    diagnostic: Diagnostic {
+                        severity: DiagnosticSeverity::ERROR,
+                        is_primary: true,
+                        message: "syntax error a1".to_string(),
+                        ..Default::default()
+                    },
+                }],
+                cx,
+            )
+            .unwrap();
+        project
+            .update_diagnostic_entries(
+                LanguageServerId(1),
+                Path::new("/dir/a.rs").to_owned(),
+                None,
+                vec![DiagnosticEntry {
+                    range: Unclipped(PointUtf16::new(0, 0))..Unclipped(PointUtf16::new(0, 3)),
+                    diagnostic: Diagnostic {
+                        severity: DiagnosticSeverity::ERROR,
+                        is_primary: true,
+                        message: "syntax error b1".to_string(),
+                        ..Default::default()
+                    },
+                }],
+                cx,
+            )
+            .unwrap();
+
+        assert_eq!(
+            project.diagnostic_summary(cx),
+            DiagnosticSummary {
+                error_count: 2,
+                warning_count: 0,
+            }
         );
     });
 }
@@ -1572,6 +1639,7 @@ async fn test_edits_from_lsp_with_past_version(cx: &mut gpui::TestAppContext) {
                         new_text: "".into(),
                     },
                 ],
+                LanguageServerId(0),
                 Some(lsp_document_version),
                 cx,
             )
@@ -1666,6 +1734,7 @@ async fn test_edits_from_lsp_with_edits_on_adjacent_lines(cx: &mut gpui::TestApp
                         new_text: "".into(),
                     },
                 ],
+                LanguageServerId(0),
                 None,
                 cx,
             )
@@ -1769,6 +1838,7 @@ async fn test_invalid_edits_from_lsp(cx: &mut gpui::TestAppContext) {
                         .unindent(),
                     },
                 ],
+                LanguageServerId(0),
                 None,
                 cx,
             )
@@ -2182,7 +2252,7 @@ async fn test_apply_code_actions_with_commands(cx: &mut gpui::TestAppContext) {
     });
 }
 
-#[gpui::test]
+#[gpui::test(iterations = 10)]
 async fn test_save_file(cx: &mut gpui::TestAppContext) {
     let fs = FakeFs::new(cx.background());
     fs.insert_tree(
@@ -2257,7 +2327,7 @@ async fn test_save_as(cx: &mut gpui::TestAppContext) {
             ..Default::default()
         },
         tree_sitter_rust::language(),
-        None,
+        vec![],
         |_| Default::default(),
     );
 
@@ -2947,7 +3017,9 @@ async fn test_grouped_diagnostics(cx: &mut gpui::TestAppContext) {
     };
 
     project
-        .update(cx, |p, cx| p.update_diagnostics(0, message, &[], cx))
+        .update(cx, |p, cx| {
+            p.update_diagnostics(LanguageServerId(0), message, &[], cx)
+        })
         .unwrap();
     let buffer = buffer.read_with(cx, |buffer, _| buffer.snapshot());
 
@@ -3225,9 +3297,13 @@ async fn test_search(cx: &mut gpui::TestAppContext) {
     .await;
     let project = Project::test(fs.clone(), ["/dir".as_ref()], cx).await;
     assert_eq!(
-        search(&project, SearchQuery::text("TWO", false, true), cx)
-            .await
-            .unwrap(),
+        search(
+            &project,
+            SearchQuery::text("TWO", false, true, Vec::new(), Vec::new()),
+            cx
+        )
+        .await
+        .unwrap(),
         HashMap::from_iter([
             ("two.rs".to_string(), vec![6..9]),
             ("three.rs".to_string(), vec![37..40])
@@ -3246,37 +3322,361 @@ async fn test_search(cx: &mut gpui::TestAppContext) {
     });
 
     assert_eq!(
-        search(&project, SearchQuery::text("TWO", false, true), cx)
-            .await
-            .unwrap(),
+        search(
+            &project,
+            SearchQuery::text("TWO", false, true, Vec::new(), Vec::new()),
+            cx
+        )
+        .await
+        .unwrap(),
         HashMap::from_iter([
             ("two.rs".to_string(), vec![6..9]),
             ("three.rs".to_string(), vec![37..40]),
             ("four.rs".to_string(), vec![25..28, 36..39])
         ])
     );
+}
 
-    async fn search(
-        project: &ModelHandle<Project>,
-        query: SearchQuery,
-        cx: &mut gpui::TestAppContext,
-    ) -> Result<HashMap<String, Vec<Range<usize>>>> {
-        let results = project
-            .update(cx, |project, cx| project.search(query, cx))
-            .await?;
+#[gpui::test]
+async fn test_search_with_inclusions(cx: &mut gpui::TestAppContext) {
+    let search_query = "file";
 
-        Ok(results
-            .into_iter()
-            .map(|(buffer, ranges)| {
-                buffer.read_with(cx, |buffer, _| {
-                    let path = buffer.file().unwrap().path().to_string_lossy().to_string();
-                    let ranges = ranges
-                        .into_iter()
-                        .map(|range| range.to_offset(buffer))
-                        .collect::<Vec<_>>();
-                    (path, ranges)
-                })
+    let fs = FakeFs::new(cx.background());
+    fs.insert_tree(
+        "/dir",
+        json!({
+            "one.rs": r#"// Rust file one"#,
+            "one.ts": r#"// TypeScript file one"#,
+            "two.rs": r#"// Rust file two"#,
+            "two.ts": r#"// TypeScript file two"#,
+        }),
+    )
+    .await;
+    let project = Project::test(fs.clone(), ["/dir".as_ref()], cx).await;
+
+    assert!(
+        search(
+            &project,
+            SearchQuery::text(
+                search_query,
+                false,
+                true,
+                vec![glob::Pattern::new("*.odd").unwrap()],
+                Vec::new()
+            ),
+            cx
+        )
+        .await
+        .unwrap()
+        .is_empty(),
+        "If no inclusions match, no files should be returned"
+    );
+
+    assert_eq!(
+        search(
+            &project,
+            SearchQuery::text(
+                search_query,
+                false,
+                true,
+                vec![glob::Pattern::new("*.rs").unwrap()],
+                Vec::new()
+            ),
+            cx
+        )
+        .await
+        .unwrap(),
+        HashMap::from_iter([
+            ("one.rs".to_string(), vec![8..12]),
+            ("two.rs".to_string(), vec![8..12]),
+        ]),
+        "Rust only search should give only Rust files"
+    );
+
+    assert_eq!(
+        search(
+            &project,
+            SearchQuery::text(
+                search_query,
+                false,
+                true,
+                vec![
+                    glob::Pattern::new("*.ts").unwrap(),
+                    glob::Pattern::new("*.odd").unwrap(),
+                ],
+                Vec::new()
+            ),
+            cx
+        )
+        .await
+        .unwrap(),
+        HashMap::from_iter([
+            ("one.ts".to_string(), vec![14..18]),
+            ("two.ts".to_string(), vec![14..18]),
+        ]),
+        "TypeScript only search should give only TypeScript files, even if other inclusions don't match anything"
+    );
+
+    assert_eq!(
+        search(
+            &project,
+            SearchQuery::text(
+                search_query,
+                false,
+                true,
+                vec![
+                    glob::Pattern::new("*.rs").unwrap(),
+                    glob::Pattern::new("*.ts").unwrap(),
+                    glob::Pattern::new("*.odd").unwrap(),
+                ],
+                Vec::new()
+            ),
+            cx
+        )
+        .await
+        .unwrap(),
+        HashMap::from_iter([
+            ("one.rs".to_string(), vec![8..12]),
+            ("one.ts".to_string(), vec![14..18]),
+            ("two.rs".to_string(), vec![8..12]),
+            ("two.ts".to_string(), vec![14..18]),
+        ]),
+        "Rust and typescript search should give both Rust and TypeScript files, even if other inclusions don't match anything"
+    );
+}
+
+#[gpui::test]
+async fn test_search_with_exclusions(cx: &mut gpui::TestAppContext) {
+    let search_query = "file";
+
+    let fs = FakeFs::new(cx.background());
+    fs.insert_tree(
+        "/dir",
+        json!({
+            "one.rs": r#"// Rust file one"#,
+            "one.ts": r#"// TypeScript file one"#,
+            "two.rs": r#"// Rust file two"#,
+            "two.ts": r#"// TypeScript file two"#,
+        }),
+    )
+    .await;
+    let project = Project::test(fs.clone(), ["/dir".as_ref()], cx).await;
+
+    assert_eq!(
+        search(
+            &project,
+            SearchQuery::text(
+                search_query,
+                false,
+                true,
+                Vec::new(),
+                vec![glob::Pattern::new("*.odd").unwrap()],
+            ),
+            cx
+        )
+        .await
+        .unwrap(),
+        HashMap::from_iter([
+            ("one.rs".to_string(), vec![8..12]),
+            ("one.ts".to_string(), vec![14..18]),
+            ("two.rs".to_string(), vec![8..12]),
+            ("two.ts".to_string(), vec![14..18]),
+        ]),
+        "If no exclusions match, all files should be returned"
+    );
+
+    assert_eq!(
+        search(
+            &project,
+            SearchQuery::text(
+                search_query,
+                false,
+                true,
+                Vec::new(),
+                vec![glob::Pattern::new("*.rs").unwrap()],
+            ),
+            cx
+        )
+        .await
+        .unwrap(),
+        HashMap::from_iter([
+            ("one.ts".to_string(), vec![14..18]),
+            ("two.ts".to_string(), vec![14..18]),
+        ]),
+        "Rust exclusion search should give only TypeScript files"
+    );
+
+    assert_eq!(
+        search(
+            &project,
+            SearchQuery::text(
+                search_query,
+                false,
+                true,
+                Vec::new(),
+                vec![
+                    glob::Pattern::new("*.ts").unwrap(),
+                    glob::Pattern::new("*.odd").unwrap(),
+                ],
+            ),
+            cx
+        )
+        .await
+        .unwrap(),
+        HashMap::from_iter([
+            ("one.rs".to_string(), vec![8..12]),
+            ("two.rs".to_string(), vec![8..12]),
+        ]),
+        "TypeScript exclusion search should give only Rust files, even if other exclusions don't match anything"
+    );
+
+    assert!(
+        search(
+            &project,
+            SearchQuery::text(
+                search_query,
+                false,
+                true,
+                Vec::new(),
+                vec![
+                    glob::Pattern::new("*.rs").unwrap(),
+                    glob::Pattern::new("*.ts").unwrap(),
+                    glob::Pattern::new("*.odd").unwrap(),
+                ],
+            ),
+            cx
+        )
+        .await
+        .unwrap().is_empty(),
+        "Rust and typescript exclusion should give no files, even if other exclusions don't match anything"
+    );
+}
+
+#[gpui::test]
+async fn test_search_with_exclusions_and_inclusions(cx: &mut gpui::TestAppContext) {
+    let search_query = "file";
+
+    let fs = FakeFs::new(cx.background());
+    fs.insert_tree(
+        "/dir",
+        json!({
+            "one.rs": r#"// Rust file one"#,
+            "one.ts": r#"// TypeScript file one"#,
+            "two.rs": r#"// Rust file two"#,
+            "two.ts": r#"// TypeScript file two"#,
+        }),
+    )
+    .await;
+    let project = Project::test(fs.clone(), ["/dir".as_ref()], cx).await;
+
+    assert!(
+        search(
+            &project,
+            SearchQuery::text(
+                search_query,
+                false,
+                true,
+                vec![glob::Pattern::new("*.odd").unwrap()],
+                vec![glob::Pattern::new("*.odd").unwrap()],
+            ),
+            cx
+        )
+        .await
+        .unwrap()
+        .is_empty(),
+        "If both no exclusions and inclusions match, exclusions should win and return nothing"
+    );
+
+    assert!(
+        search(
+            &project,
+            SearchQuery::text(
+                search_query,
+                false,
+                true,
+                vec![glob::Pattern::new("*.ts").unwrap()],
+                vec![glob::Pattern::new("*.ts").unwrap()],
+            ),
+            cx
+        )
+        .await
+        .unwrap()
+        .is_empty(),
+        "If both TypeScript exclusions and inclusions match, exclusions should win and return nothing files."
+    );
+
+    assert!(
+        search(
+            &project,
+            SearchQuery::text(
+                search_query,
+                false,
+                true,
+                vec![
+                    glob::Pattern::new("*.ts").unwrap(),
+                    glob::Pattern::new("*.odd").unwrap()
+                ],
+                vec![
+                    glob::Pattern::new("*.ts").unwrap(),
+                    glob::Pattern::new("*.odd").unwrap()
+                ],
+            ),
+            cx
+        )
+        .await
+        .unwrap()
+        .is_empty(),
+        "Non-matching inclusions and exclusions should not change that."
+    );
+
+    assert_eq!(
+        search(
+            &project,
+            SearchQuery::text(
+                search_query,
+                false,
+                true,
+                vec![
+                    glob::Pattern::new("*.ts").unwrap(),
+                    glob::Pattern::new("*.odd").unwrap()
+                ],
+                vec![
+                    glob::Pattern::new("*.rs").unwrap(),
+                    glob::Pattern::new("*.odd").unwrap()
+                ],
+            ),
+            cx
+        )
+        .await
+        .unwrap(),
+        HashMap::from_iter([
+            ("one.ts".to_string(), vec![14..18]),
+            ("two.ts".to_string(), vec![14..18]),
+        ]),
+        "Non-intersecting TypeScript inclusions and Rust exclusions should return TypeScript files"
+    );
+}
+
+async fn search(
+    project: &ModelHandle<Project>,
+    query: SearchQuery,
+    cx: &mut gpui::TestAppContext,
+) -> Result<HashMap<String, Vec<Range<usize>>>> {
+    let results = project
+        .update(cx, |project, cx| project.search(query, cx))
+        .await?;
+
+    Ok(results
+        .into_iter()
+        .map(|(buffer, ranges)| {
+            buffer.read_with(cx, |buffer, _| {
+                let path = buffer.file().unwrap().path().to_string_lossy().to_string();
+                let ranges = ranges
+                    .into_iter()
+                    .map(|range| range.to_offset(buffer))
+                    .collect::<Vec<_>>();
+                (path, ranges)
             })
-            .collect())
-    }
+        })
+        .collect())
 }

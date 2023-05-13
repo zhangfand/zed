@@ -3,52 +3,53 @@ use gpui::{
     color::Color,
     elements::{Canvas, MouseEventHandler, ParentElement, Stack},
     geometry::{rect::RectF, vector::Vector2F},
+    platform::MouseButton,
     scene::MouseUp,
-    AppContext, Element, ElementBox, EventContext, MouseButton, MouseState, Quad, RenderContext,
-    WeakViewHandle,
+    AppContext, Element, EventContext, MouseState, Quad, View, ViewContext, WeakViewHandle,
 };
 use project::ProjectEntryId;
 use settings::Settings;
 
-use crate::{
-    MoveItem, OpenProjectEntryInPane, Pane, SplitDirection, SplitWithItem, SplitWithProjectEntry,
-    Workspace,
-};
+use crate::{Pane, SplitDirection, Workspace};
 
 use super::DraggedItem;
 
-pub fn dragged_item_receiver<Tag, F>(
+pub fn dragged_item_receiver<Tag, D, F>(
+    pane: &Pane,
     region_id: usize,
     drop_index: usize,
     allow_same_pane: bool,
     split_margin: Option<f32>,
-    cx: &mut RenderContext<Pane>,
+    cx: &mut ViewContext<Pane>,
     render_child: F,
-) -> MouseEventHandler<Tag>
+) -> MouseEventHandler<Tag, Pane>
 where
     Tag: 'static,
-    F: FnOnce(&mut MouseState, &mut RenderContext<Pane>) -> ElementBox,
+    D: Element<Pane>,
+    F: FnOnce(&mut MouseState, &mut ViewContext<Pane>) -> D,
 {
-    MouseEventHandler::<Tag>::above(region_id, cx, |state, cx| {
+    let drag_and_drop = cx.global::<DragAndDrop<Workspace>>();
+    let drag_position = if (pane.can_drop)(drag_and_drop, cx) {
+        drag_and_drop
+            .currently_dragged::<DraggedItem>(cx.window_id())
+            .map(|(drag_position, _)| drag_position)
+            .or_else(|| {
+                drag_and_drop
+                    .currently_dragged::<ProjectEntryId>(cx.window_id())
+                    .map(|(drag_position, _)| drag_position)
+            })
+    } else {
+        None
+    };
+
+    let mut handler = MouseEventHandler::<Tag, _>::above(region_id, cx, |state, cx| {
         // Observing hovered will cause a render when the mouse enters regardless
         // of if mouse position was accessed before
-        let drag_position = if state.hovered() {
-            cx.global::<DragAndDrop<Workspace>>()
-                .currently_dragged::<DraggedItem>(cx.window_id())
-                .map(|(drag_position, _)| drag_position)
-                .or_else(|| {
-                    cx.global::<DragAndDrop<Workspace>>()
-                        .currently_dragged::<ProjectEntryId>(cx.window_id())
-                        .map(|(drag_position, _)| drag_position)
-                })
-        } else {
-            None
-        };
-
+        let drag_position = if state.hovered() { drag_position } else { None };
         Stack::new()
             .with_child(render_child(state, cx))
             .with_children(drag_position.map(|drag_position| {
-                Canvas::new(move |bounds, _, cx| {
+                Canvas::new(move |scene, bounds, _, _, cx| {
                     if bounds.contains_point(drag_position) {
                         let overlay_region = split_margin
                             .and_then(|split_margin| {
@@ -58,8 +59,8 @@ where
                             .map(|(dir, margin)| dir.along_edge(bounds, margin))
                             .unwrap_or(bounds);
 
-                        cx.paint_stacking_context(None, None, |cx| {
-                            cx.scene.push_quad(Quad {
+                        scene.paint_stacking_context(None, None, |scene| {
+                            scene.push_quad(Quad {
                                 bounds: overlay_region,
                                 background: Some(overlay_color(cx)),
                                 border: Default::default(),
@@ -68,41 +69,55 @@ where
                         });
                     }
                 })
-                .boxed()
             }))
-            .boxed()
-    })
-    .on_up(MouseButton::Left, {
-        let pane = cx.handle();
-        move |event, cx| {
-            handle_dropped_item(event, &pane, drop_index, allow_same_pane, split_margin, cx);
-            cx.notify();
-        }
-    })
-    .on_move(|_, cx| {
-        let drag_and_drop = cx.global::<DragAndDrop<Workspace>>();
+    });
 
-        if drag_and_drop
-            .currently_dragged::<DraggedItem>(cx.window_id())
-            .is_some()
-            || drag_and_drop
-                .currently_dragged::<ProjectEntryId>(cx.window_id())
-                .is_some()
-        {
-            cx.notify();
-        } else {
-            cx.propagate_event();
-        }
-    })
+    if drag_position.is_some() {
+        handler = handler
+            .on_up(MouseButton::Left, {
+                move |event, pane, cx| {
+                    let workspace = pane.workspace.clone();
+                    let pane = cx.weak_handle();
+                    handle_dropped_item(
+                        event,
+                        workspace,
+                        &pane,
+                        drop_index,
+                        allow_same_pane,
+                        split_margin,
+                        cx,
+                    );
+                    cx.notify();
+                }
+            })
+            .on_move(|_, _, cx| {
+                let drag_and_drop = cx.global::<DragAndDrop<Workspace>>();
+
+                if drag_and_drop
+                    .currently_dragged::<DraggedItem>(cx.window_id())
+                    .is_some()
+                    || drag_and_drop
+                        .currently_dragged::<ProjectEntryId>(cx.window_id())
+                        .is_some()
+                {
+                    cx.notify();
+                } else {
+                    cx.propagate_event();
+                }
+            })
+    }
+
+    handler
 }
 
-pub fn handle_dropped_item(
+pub fn handle_dropped_item<V: View>(
     event: MouseUp,
+    workspace: WeakViewHandle<Workspace>,
     pane: &WeakViewHandle<Pane>,
     index: usize,
     allow_same_pane: bool,
     split_margin: Option<f32>,
-    cx: &mut EventContext,
+    cx: &mut EventContext<V>,
 ) {
     enum Action {
         Move(WeakViewHandle<Pane>, usize),
@@ -110,11 +125,11 @@ pub fn handle_dropped_item(
     }
     let drag_and_drop = cx.global::<DragAndDrop<Workspace>>();
     let action = if let Some((_, dragged_item)) =
-        drag_and_drop.currently_dragged::<DraggedItem>(cx.window_id)
+        drag_and_drop.currently_dragged::<DraggedItem>(cx.window_id())
     {
-        Action::Move(dragged_item.pane.clone(), dragged_item.item.id())
+        Action::Move(dragged_item.pane.clone(), dragged_item.handle.id())
     } else if let Some((_, project_entry)) =
-        drag_and_drop.currently_dragged::<ProjectEntryId>(cx.window_id)
+        drag_and_drop.currently_dragged::<ProjectEntryId>(cx.window_id())
     {
         Action::Open(*project_entry)
     } else {
@@ -127,36 +142,74 @@ pub fn handle_dropped_item(
     {
         let pane_to_split = pane.clone();
         match action {
-            Action::Move(from, item_id_to_move) => cx.dispatch_action(SplitWithItem {
-                from,
-                item_id_to_move,
-                pane_to_split,
-                split_direction,
-            }),
-            Action::Open(project_entry) => cx.dispatch_action(SplitWithProjectEntry {
-                pane_to_split,
-                split_direction,
-                project_entry,
-            }),
+            Action::Move(from, item_id_to_move) => {
+                cx.window_context().defer(move |cx| {
+                    if let Some(workspace) = workspace.upgrade(cx) {
+                        workspace.update(cx, |workspace, cx| {
+                            workspace.split_pane_with_item(
+                                pane_to_split,
+                                split_direction,
+                                from,
+                                item_id_to_move,
+                                cx,
+                            );
+                        })
+                    }
+                });
+            }
+            Action::Open(project_entry) => {
+                cx.window_context().defer(move |cx| {
+                    if let Some(workspace) = workspace.upgrade(cx) {
+                        workspace.update(cx, |workspace, cx| {
+                            if let Some(task) = workspace.split_pane_with_project_entry(
+                                pane_to_split,
+                                split_direction,
+                                project_entry,
+                                cx,
+                            ) {
+                                task.detach_and_log_err(cx);
+                            }
+                        })
+                    }
+                });
+            }
         };
     } else {
         match action {
             Action::Move(from, item_id) => {
                 if pane != &from || allow_same_pane {
-                    cx.dispatch_action(MoveItem {
-                        item_id,
-                        from,
-                        to: pane.clone(),
-                        destination_index: index,
-                    })
+                    let pane = pane.clone();
+                    cx.window_context().defer(move |cx| {
+                        if let Some(((workspace, from), to)) = workspace
+                            .upgrade(cx)
+                            .zip(from.upgrade(cx))
+                            .zip(pane.upgrade(cx))
+                        {
+                            workspace.update(cx, |workspace, cx| {
+                                Pane::move_item(workspace, from, to, item_id, index, cx);
+                            })
+                        }
+                    });
                 } else {
                     cx.propagate_event();
                 }
             }
-            Action::Open(project_entry) => cx.dispatch_action(OpenProjectEntryInPane {
-                pane: pane.clone(),
-                project_entry,
-            }),
+            Action::Open(project_entry) => {
+                let pane = pane.clone();
+                cx.window_context().defer(move |cx| {
+                    if let Some(workspace) = workspace.upgrade(cx) {
+                        workspace.update(cx, |workspace, cx| {
+                            if let Some(path) =
+                                workspace.project.read(cx).path_for_entry(project_entry, cx)
+                            {
+                                workspace
+                                    .open_path(path, Some(pane), true, cx)
+                                    .detach_and_log_err(cx);
+                            }
+                        });
+                    }
+                });
+            }
         }
     }
 }

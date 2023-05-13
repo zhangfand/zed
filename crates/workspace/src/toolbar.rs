@@ -1,7 +1,7 @@
 use crate::{ItemHandle, Pane};
 use gpui::{
-    elements::*, platform::CursorStyle, Action, AnyViewHandle, AppContext, ElementBox, Entity,
-    MouseButton, MutableAppContext, RenderContext, View, ViewContext, ViewHandle, WeakViewHandle,
+    elements::*, platform::CursorStyle, platform::MouseButton, Action, AnyElement, AnyViewHandle,
+    AppContext, Entity, View, ViewContext, ViewHandle, WeakViewHandle, WindowContext,
 };
 use settings::Settings;
 
@@ -21,18 +21,26 @@ pub trait ToolbarItemView: View {
         current_location
     }
 
-    fn pane_focus_update(&mut self, _pane_focused: bool, _cx: &mut MutableAppContext) {}
+    fn pane_focus_update(&mut self, _pane_focused: bool, _cx: &mut ViewContext<Self>) {}
+
+    /// Number of times toolbar's height will be repeated to get the effective height.
+    /// Useful when multiple rows one under each other are needed.
+    /// The rows have the same width and act as a whole when reacting to resizes and similar events.
+    fn row_count(&self) -> usize {
+        1
+    }
 }
 
 trait ToolbarItemViewHandle {
     fn id(&self) -> usize;
-    fn to_any(&self) -> AnyViewHandle;
+    fn as_any(&self) -> &AnyViewHandle;
     fn set_active_pane_item(
         &self,
         active_pane_item: Option<&dyn ItemHandle>,
-        cx: &mut MutableAppContext,
+        cx: &mut WindowContext,
     ) -> ToolbarItemLocation;
-    fn pane_focus_update(&mut self, pane_focused: bool, cx: &mut MutableAppContext);
+    fn pane_focus_update(&mut self, pane_focused: bool, cx: &mut WindowContext);
+    fn row_count(&self, cx: &WindowContext) -> usize;
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -59,46 +67,52 @@ impl View for Toolbar {
         "Toolbar"
     }
 
-    fn render(&mut self, cx: &mut RenderContext<Self>) -> ElementBox {
+    fn render(&mut self, cx: &mut ViewContext<Self>) -> AnyElement<Self> {
         let theme = &cx.global::<Settings>().theme.workspace.toolbar;
 
         let mut primary_left_items = Vec::new();
         let mut primary_right_items = Vec::new();
         let mut secondary_item = None;
         let spacing = theme.item_spacing;
+        let mut primary_items_row_count = 1;
 
         for (item, position) in &self.items {
             match *position {
                 ToolbarItemLocation::Hidden => {}
+
                 ToolbarItemLocation::PrimaryLeft { flex } => {
-                    let left_item = ChildView::new(item.as_ref(), cx)
+                    primary_items_row_count = primary_items_row_count.max(item.row_count(cx));
+                    let left_item = ChildView::new(item.as_any(), cx)
                         .aligned()
                         .contained()
                         .with_margin_right(spacing);
                     if let Some((flex, expanded)) = flex {
-                        primary_left_items.push(left_item.flex(flex, expanded).boxed());
+                        primary_left_items.push(left_item.flex(flex, expanded).into_any());
                     } else {
-                        primary_left_items.push(left_item.boxed());
+                        primary_left_items.push(left_item.into_any());
                     }
                 }
+
                 ToolbarItemLocation::PrimaryRight { flex } => {
-                    let right_item = ChildView::new(item.as_ref(), cx)
+                    primary_items_row_count = primary_items_row_count.max(item.row_count(cx));
+                    let right_item = ChildView::new(item.as_any(), cx)
                         .aligned()
                         .contained()
                         .with_margin_left(spacing)
                         .flex_float();
                     if let Some((flex, expanded)) = flex {
-                        primary_right_items.push(right_item.flex(flex, expanded).boxed());
+                        primary_right_items.push(right_item.flex(flex, expanded).into_any());
                     } else {
-                        primary_right_items.push(right_item.boxed());
+                        primary_right_items.push(right_item.into_any());
                     }
                 }
+
                 ToolbarItemLocation::Secondary => {
                     secondary_item = Some(
-                        ChildView::new(item.as_ref(), cx)
+                        ChildView::new(item.as_any(), cx)
                             .constrained()
-                            .with_height(theme.height)
-                            .boxed(),
+                            .with_height(theme.height * item.row_count(cx) as f32)
+                            .into_any(),
                     );
                 }
             }
@@ -114,7 +128,8 @@ impl View for Toolbar {
         }
 
         let container_style = theme.container;
-        let height = theme.height;
+        let height = theme.height * primary_items_row_count as f32;
+        let nav_button_height = theme.height;
         let button_style = theme.nav_button;
         let tooltip_style = cx.global::<Settings>().theme.tooltip.clone();
 
@@ -124,11 +139,27 @@ impl View for Toolbar {
                     .with_child(nav_button(
                         "icons/arrow_left_16.svg",
                         button_style,
+                        nav_button_height,
                         tooltip_style.clone(),
                         enable_go_backward,
                         spacing,
-                        super::GoBack {
-                            pane: Some(pane.clone()),
+                        {
+                            let pane = pane.clone();
+                            move |toolbar, cx| {
+                                if let Some(workspace) = toolbar
+                                    .pane
+                                    .upgrade(cx)
+                                    .and_then(|pane| pane.read(cx).workspace().upgrade(cx))
+                                {
+                                    let pane = pane.clone();
+                                    cx.window_context().defer(move |cx| {
+                                        workspace.update(cx, |workspace, cx| {
+                                            Pane::go_back(workspace, Some(pane.clone()), cx)
+                                                .detach_and_log_err(cx);
+                                        });
+                                    })
+                                }
+                            }
                         },
                         super::GoBack { pane: None },
                         "Go Back",
@@ -137,10 +168,28 @@ impl View for Toolbar {
                     .with_child(nav_button(
                         "icons/arrow_right_16.svg",
                         button_style,
+                        nav_button_height,
                         tooltip_style,
                         enable_go_forward,
                         spacing,
-                        super::GoForward { pane: Some(pane) },
+                        {
+                            let pane = pane.clone();
+                            move |toolbar, cx| {
+                                if let Some(workspace) = toolbar
+                                    .pane
+                                    .upgrade(cx)
+                                    .and_then(|pane| pane.read(cx).workspace().upgrade(cx))
+                                {
+                                    let pane = pane.clone();
+                                    cx.window_context().defer(move |cx| {
+                                        workspace.update(cx, |workspace, cx| {
+                                            Pane::go_forward(workspace, Some(pane.clone()), cx)
+                                                .detach_and_log_err(cx);
+                                        });
+                                    });
+                                }
+                            }
+                        },
                         super::GoForward { pane: None },
                         "Go Forward",
                         cx,
@@ -148,29 +197,29 @@ impl View for Toolbar {
                     .with_children(primary_left_items)
                     .with_children(primary_right_items)
                     .constrained()
-                    .with_height(height)
-                    .boxed(),
+                    .with_height(height),
             )
             .with_children(secondary_item)
             .contained()
             .with_style(container_style)
-            .boxed()
+            .into_any_named("toolbar")
     }
 }
 
 #[allow(clippy::too_many_arguments)]
-fn nav_button<A: Action + Clone>(
+fn nav_button<A: Action, F: 'static + Fn(&mut Toolbar, &mut ViewContext<Toolbar>)>(
     svg_path: &'static str,
     style: theme::Interactive<theme::IconButton>,
+    nav_button_height: f32,
     tooltip_style: TooltipStyle,
     enabled: bool,
     spacing: f32,
-    action: A,
+    on_click: F,
     tooltip_action: A,
     action_name: &str,
-    cx: &mut RenderContext<Toolbar>,
-) -> ElementBox {
-    MouseEventHandler::<A>::new(0, cx, |state, _| {
+    cx: &mut ViewContext<Toolbar>,
+) -> AnyElement<Toolbar> {
+    MouseEventHandler::<A, _>::new(0, cx, |state, _| {
         let style = if enabled {
             style.style_for(state, false)
         } else {
@@ -185,19 +234,19 @@ fn nav_button<A: Action + Clone>(
             .with_style(style.container)
             .constrained()
             .with_width(style.button_width)
-            .with_height(style.button_width)
+            .with_height(nav_button_height)
             .aligned()
-            .boxed()
+            .top()
     })
     .with_cursor_style(if enabled {
         CursorStyle::PointingHand
     } else {
         CursorStyle::default()
     })
-    .on_click(MouseButton::Left, move |_, cx| {
-        cx.dispatch_action(action.clone())
+    .on_click(MouseButton::Left, move |_, toolbar, cx| {
+        on_click(toolbar, cx)
     })
-    .with_tooltip::<A, _>(
+    .with_tooltip::<A>(
         0,
         action_name.to_string(),
         Some(Box::new(tooltip_action)),
@@ -206,7 +255,7 @@ fn nav_button<A: Action + Clone>(
     )
     .contained()
     .with_margin_right(spacing)
-    .boxed()
+    .into_any_named("nav button")
 }
 
 impl Toolbar {
@@ -263,7 +312,7 @@ impl Toolbar {
         }
     }
 
-    pub fn pane_focus_update(&mut self, pane_focused: bool, cx: &mut MutableAppContext) {
+    pub fn pane_focus_update(&mut self, pane_focused: bool, cx: &mut ViewContext<Self>) {
         for (toolbar_item, _) in self.items.iter_mut() {
             toolbar_item.pane_focus_update(pane_focused, cx);
         }
@@ -272,7 +321,7 @@ impl Toolbar {
     pub fn item_of_type<T: ToolbarItemView>(&self) -> Option<ViewHandle<T>> {
         self.items
             .iter()
-            .find_map(|(item, _)| item.to_any().downcast())
+            .find_map(|(item, _)| item.as_any().clone().downcast())
     }
 
     pub fn hidden(&self) -> bool {
@@ -285,27 +334,34 @@ impl<T: ToolbarItemView> ToolbarItemViewHandle for ViewHandle<T> {
         self.id()
     }
 
-    fn to_any(&self) -> AnyViewHandle {
-        self.into()
+    fn as_any(&self) -> &AnyViewHandle {
+        self
     }
 
     fn set_active_pane_item(
         &self,
         active_pane_item: Option<&dyn ItemHandle>,
-        cx: &mut MutableAppContext,
+        cx: &mut WindowContext,
     ) -> ToolbarItemLocation {
         self.update(cx, |this, cx| {
             this.set_active_pane_item(active_pane_item, cx)
         })
     }
 
-    fn pane_focus_update(&mut self, pane_focused: bool, cx: &mut MutableAppContext) {
-        self.update(cx, |this, cx| this.pane_focus_update(pane_focused, cx));
+    fn pane_focus_update(&mut self, pane_focused: bool, cx: &mut WindowContext) {
+        self.update(cx, |this, cx| {
+            this.pane_focus_update(pane_focused, cx);
+            cx.notify();
+        });
+    }
+
+    fn row_count(&self, cx: &WindowContext) -> usize {
+        self.read(cx).row_count()
     }
 }
 
 impl From<&dyn ToolbarItemViewHandle> for AnyViewHandle {
     fn from(val: &dyn ToolbarItemViewHandle) -> Self {
-        val.to_any()
+        val.as_any().clone()
     }
 }

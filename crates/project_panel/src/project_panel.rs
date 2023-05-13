@@ -6,30 +6,32 @@ use gpui::{
     actions,
     anyhow::{anyhow, Result},
     elements::{
-        AnchorCorner, ChildView, ConstrainedBox, ContainerStyle, Empty, Flex, Label,
-        MouseEventHandler, ParentElement, ScrollTarget, Stack, Svg, UniformList, UniformListState,
+        AnchorCorner, ChildView, ContainerStyle, Empty, Flex, Label, MouseEventHandler,
+        ParentElement, ScrollTarget, Stack, Svg, UniformList, UniformListState,
     },
     geometry::vector::Vector2F,
-    impl_internal_actions,
     keymap_matcher::KeymapContext,
-    platform::CursorStyle,
-    AppContext, ClipboardItem, Element, ElementBox, Entity, ModelHandle, MouseButton,
-    MutableAppContext, PromptLevel, RenderContext, Task, View, ViewContext, ViewHandle,
+    platform::{CursorStyle, MouseButton, PromptLevel},
+    AnyElement, AppContext, ClipboardItem, Element, Entity, ModelHandle, Task, View, ViewContext,
+    ViewHandle, WeakViewHandle,
 };
 use menu::{Confirm, SelectNext, SelectPrev};
 use project::{Entry, EntryKind, Project, ProjectEntryId, ProjectPath, Worktree, WorktreeId};
-use settings::Settings;
+use settings::{settings_file::SettingsFile, Settings};
 use std::{
     cmp::Ordering,
     collections::{hash_map, HashMap},
     ffi::OsStr,
     ops::Range,
-    path::{Path, PathBuf},
+    path::Path,
     sync::Arc,
 };
 use theme::ProjectPanelEntry;
 use unicase::UniCase;
-use workspace::Workspace;
+use workspace::{
+    dock::{DockPosition, Panel},
+    Workspace,
+};
 
 const NEW_ENTRY_ID: ProjectEntryId = ProjectEntryId::MAX;
 
@@ -45,6 +47,7 @@ pub struct ProjectPanel {
     clipboard_entry: Option<ClipboardEntry>,
     context_menu: ViewHandle<ContextMenu>,
     dragged_entry_destination: Option<Arc<Path>>,
+    workspace: WeakViewHandle<Workspace>,
 }
 
 #[derive(Copy, Clone)]
@@ -88,28 +91,6 @@ pub struct EntryDetails {
     is_cut: bool,
 }
 
-#[derive(Clone, PartialEq)]
-pub struct ToggleExpanded(pub ProjectEntryId);
-
-#[derive(Clone, PartialEq)]
-pub struct Open {
-    pub entry_id: ProjectEntryId,
-    pub change_focus: bool,
-}
-
-#[derive(Clone, PartialEq)]
-pub struct MoveProjectEntry {
-    pub entry_to_move: ProjectEntryId,
-    pub destination: ProjectEntryId,
-    pub destination_is_file: bool,
-}
-
-#[derive(Clone, PartialEq)]
-pub struct DeployContextMenu {
-    pub position: Vector2F,
-    pub entry_id: ProjectEntryId,
-}
-
 actions!(
     project_panel,
     [
@@ -119,6 +100,7 @@ actions!(
         NewFile,
         Copy,
         CopyPath,
+        CopyRelativePath,
         RevealInFinder,
         Cut,
         Paste,
@@ -127,35 +109,28 @@ actions!(
         ToggleFocus
     ]
 );
-impl_internal_actions!(
-    project_panel,
-    [Open, ToggleExpanded, DeployContextMenu, MoveProjectEntry]
-);
 
-pub fn init(cx: &mut MutableAppContext) {
-    cx.add_action(ProjectPanel::deploy_context_menu);
+pub fn init(cx: &mut AppContext) {
     cx.add_action(ProjectPanel::expand_selected_entry);
     cx.add_action(ProjectPanel::collapse_selected_entry);
-    cx.add_action(ProjectPanel::toggle_expanded);
     cx.add_action(ProjectPanel::select_prev);
     cx.add_action(ProjectPanel::select_next);
-    cx.add_action(ProjectPanel::open_entry);
     cx.add_action(ProjectPanel::new_file);
     cx.add_action(ProjectPanel::new_directory);
     cx.add_action(ProjectPanel::rename);
     cx.add_async_action(ProjectPanel::delete);
     cx.add_async_action(ProjectPanel::confirm);
     cx.add_action(ProjectPanel::cancel);
+    cx.add_action(ProjectPanel::cut);
     cx.add_action(ProjectPanel::copy);
     cx.add_action(ProjectPanel::copy_path);
+    cx.add_action(ProjectPanel::copy_relative_path);
     cx.add_action(ProjectPanel::reveal_in_finder);
-    cx.add_action(ProjectPanel::cut);
     cx.add_action(
         |this: &mut ProjectPanel, action: &Paste, cx: &mut ViewContext<ProjectPanel>| {
             this.paste(action, cx);
         },
     );
-    cx.add_action(ProjectPanel::move_entry);
 }
 
 pub enum Event {
@@ -163,10 +138,12 @@ pub enum Event {
         entry_id: ProjectEntryId,
         focus_opened_item: bool,
     },
+    DockPositionChanged,
 }
 
 impl ProjectPanel {
-    pub fn new(project: ModelHandle<Project>, cx: &mut ViewContext<Workspace>) -> ViewHandle<Self> {
+    pub fn new(workspace: &mut Workspace, cx: &mut ViewContext<Workspace>) -> ViewHandle<Self> {
+        let project = workspace.project().clone();
         let project_panel = cx.add_view(|cx: &mut ViewContext<Self>| {
             cx.observe(&project, |this, _, cx| {
                 this.update_visible_entries(None, cx);
@@ -223,6 +200,7 @@ impl ProjectPanel {
             })
             .detach();
 
+            let view_id = cx.view_id();
             let mut this = Self {
                 project: project.clone(),
                 list: Default::default(),
@@ -233,10 +211,23 @@ impl ProjectPanel {
                 edit_state: None,
                 filename_editor,
                 clipboard_entry: None,
-                context_menu: cx.add_view(ContextMenu::new),
+                context_menu: cx.add_view(|cx| ContextMenu::new(view_id, cx)),
                 dragged_entry_destination: None,
+                workspace: workspace.weak_handle(),
             };
             this.update_visible_entries(None, cx);
+
+            // Update the dock position when the setting changes.
+            let mut old_dock_position = this.position(cx);
+            cx.observe_global::<Settings, _>(move |this, cx| {
+                let new_dock_position = this.position(cx);
+                if new_dock_position != old_dock_position {
+                    old_dock_position = new_dock_position;
+                    cx.emit(Event::DockPositionChanged);
+                }
+            })
+            .detach();
+
             this
         });
 
@@ -268,6 +259,7 @@ impl ProjectPanel {
                         }
                     }
                 }
+                Event::DockPositionChanged => {}
             }
         })
         .detach();
@@ -275,10 +267,14 @@ impl ProjectPanel {
         project_panel
     }
 
-    fn deploy_context_menu(&mut self, action: &DeployContextMenu, cx: &mut ViewContext<Self>) {
+    fn deploy_context_menu(
+        &mut self,
+        position: Vector2F,
+        entry_id: ProjectEntryId,
+        cx: &mut ViewContext<Self>,
+    ) {
         let project = self.project.read(cx);
 
-        let entry_id = action.entry_id;
         let worktree_id = if let Some(id) = project.worktree_id_for_entry(entry_id, cx) {
             id
         } else {
@@ -294,38 +290,43 @@ impl ProjectPanel {
         if let Some((worktree, entry)) = self.selected_entry(cx) {
             let is_root = Some(entry) == worktree.root_entry();
             if !project.is_remote() {
-                menu_entries.push(ContextMenuItem::item(
+                menu_entries.push(ContextMenuItem::action(
                     "Add Folder to Project",
                     workspace::AddFolderToProject,
                 ));
                 if is_root {
-                    menu_entries.push(ContextMenuItem::item(
-                        "Remove from Project",
-                        workspace::RemoveWorktreeFromProject(worktree_id),
-                    ));
+                    let project = self.project.clone();
+                    menu_entries.push(ContextMenuItem::handler("Remove from Project", move |cx| {
+                        project.update(cx, |project, cx| project.remove_worktree(worktree_id, cx));
+                    }));
                 }
             }
-            menu_entries.push(ContextMenuItem::item("New File", NewFile));
-            menu_entries.push(ContextMenuItem::item("New Folder", NewDirectory));
-            menu_entries.push(ContextMenuItem::item("Reveal in Finder", RevealInFinder));
+            menu_entries.push(ContextMenuItem::action("New File", NewFile));
+            menu_entries.push(ContextMenuItem::action("New Folder", NewDirectory));
             menu_entries.push(ContextMenuItem::Separator);
-            menu_entries.push(ContextMenuItem::item("Copy", Copy));
-            menu_entries.push(ContextMenuItem::item("Copy Path", CopyPath));
-            menu_entries.push(ContextMenuItem::item("Cut", Cut));
+            menu_entries.push(ContextMenuItem::action("Cut", Cut));
+            menu_entries.push(ContextMenuItem::action("Copy", Copy));
+            menu_entries.push(ContextMenuItem::Separator);
+            menu_entries.push(ContextMenuItem::action("Copy Path", CopyPath));
+            menu_entries.push(ContextMenuItem::action(
+                "Copy Relative Path",
+                CopyRelativePath,
+            ));
+            menu_entries.push(ContextMenuItem::action("Reveal in Finder", RevealInFinder));
             if let Some(clipboard_entry) = self.clipboard_entry {
                 if clipboard_entry.worktree_id() == worktree.id() {
-                    menu_entries.push(ContextMenuItem::item("Paste", Paste));
+                    menu_entries.push(ContextMenuItem::action("Paste", Paste));
                 }
             }
             menu_entries.push(ContextMenuItem::Separator);
-            menu_entries.push(ContextMenuItem::item("Rename", Rename));
+            menu_entries.push(ContextMenuItem::action("Rename", Rename));
             if !is_root {
-                menu_entries.push(ContextMenuItem::item("Delete", Delete));
+                menu_entries.push(ContextMenuItem::action("Delete", Delete));
             }
         }
 
         self.context_menu.update(cx, |menu, cx| {
-            menu.show(action.position, AnchorCorner::TopLeft, menu_entries, cx);
+            menu.show(position, AnchorCorner::TopLeft, menu_entries, cx);
         });
 
         cx.notify();
@@ -384,8 +385,7 @@ impl ProjectPanel {
         }
     }
 
-    fn toggle_expanded(&mut self, action: &ToggleExpanded, cx: &mut ViewContext<Self>) {
-        let entry_id = action.0;
+    fn toggle_expanded(&mut self, entry_id: ProjectEntryId, cx: &mut ViewContext<Self>) {
         if let Some(worktree_id) = self.project.read(cx).worktree_id_for_entry(entry_id, cx) {
             if let Some(expanded_dir_ids) = self.expanded_dir_ids.get_mut(&worktree_id) {
                 match expanded_dir_ids.binary_search(&entry_id) {
@@ -433,13 +433,7 @@ impl ProjectPanel {
             Some(task)
         } else if let Some((_, entry)) = self.selected_entry(cx) {
             if entry.is_file() {
-                self.open_entry(
-                    &Open {
-                        entry_id: entry.id,
-                        change_focus: true,
-                    },
-                    cx,
-                );
+                self.open_entry(entry.id, true, cx);
             }
             None
         } else {
@@ -491,7 +485,7 @@ impl ProjectPanel {
             this.update(&mut cx, |this, cx| {
                 this.edit_state.take();
                 cx.notify();
-            });
+            })?;
 
             let new_entry = new_entry?;
             this.update(&mut cx, |this, cx| {
@@ -503,16 +497,10 @@ impl ProjectPanel {
                 }
                 this.update_visible_entries(None, cx);
                 if is_new_entry && !is_dir {
-                    this.open_entry(
-                        &Open {
-                            entry_id: new_entry.id,
-                            change_focus: true,
-                        },
-                        cx,
-                    );
+                    this.open_entry(new_entry.id, true, cx);
                 }
                 cx.notify();
-            });
+            })?;
             Ok(())
         }))
     }
@@ -524,10 +512,15 @@ impl ProjectPanel {
         cx.notify();
     }
 
-    fn open_entry(&mut self, action: &Open, cx: &mut ViewContext<Self>) {
+    fn open_entry(
+        &mut self,
+        entry_id: ProjectEntryId,
+        focus_opened_item: bool,
+        cx: &mut ViewContext<Self>,
+    ) {
         cx.emit(Event::OpenedEntry {
-            entry_id: action.entry_id,
-            focus_opened_item: action.change_focus,
+            entry_id,
+            focus_opened_item,
         });
     }
 
@@ -648,7 +641,7 @@ impl ProjectPanel {
                 this.project
                     .update(cx, |project, cx| project.delete_entry(entry_id, cx))
                     .ok_or_else(|| anyhow!("no such entry"))
-            })?
+            })??
             .await
         }))
     }
@@ -785,10 +778,19 @@ impl ProjectPanel {
 
     fn copy_path(&mut self, _: &CopyPath, cx: &mut ViewContext<Self>) {
         if let Some((worktree, entry)) = self.selected_entry(cx) {
-            let mut path = PathBuf::new();
-            path.push(worktree.root_name());
-            path.push(&entry.path);
-            cx.write_to_clipboard(ClipboardItem::new(path.to_string_lossy().to_string()));
+            cx.write_to_clipboard(ClipboardItem::new(
+                worktree
+                    .abs_path()
+                    .join(&entry.path)
+                    .to_string_lossy()
+                    .to_string(),
+            ));
+        }
+    }
+
+    fn copy_relative_path(&mut self, _: &CopyRelativePath, cx: &mut ViewContext<Self>) {
+        if let Some((_, entry)) = self.selected_entry(cx) {
+            cx.write_to_clipboard(ClipboardItem::new(entry.path.to_string_lossy().to_string()));
         }
     }
 
@@ -800,11 +802,9 @@ impl ProjectPanel {
 
     fn move_entry(
         &mut self,
-        &MoveProjectEntry {
-            entry_to_move,
-            destination,
-            destination_is_file,
-        }: &MoveProjectEntry,
+        entry_to_move: ProjectEntryId,
+        destination: ProjectEntryId,
+        destination_is_file: bool,
         cx: &mut ViewContext<Self>,
     ) {
         let destination_worktree = self.project.update(cx, |project, cx| {
@@ -999,8 +999,8 @@ impl ProjectPanel {
     fn for_each_visible_entry(
         &self,
         range: Range<usize>,
-        cx: &mut RenderContext<ProjectPanel>,
-        mut callback: impl FnMut(ProjectEntryId, EntryDetails, &mut RenderContext<ProjectPanel>),
+        cx: &mut ViewContext<ProjectPanel>,
+        mut callback: impl FnMut(ProjectEntryId, EntryDetails, &mut ViewContext<ProjectPanel>),
     ) {
         let mut ix = 0;
         for (worktree_id, visible_worktree_entries) in &self.visible_entries {
@@ -1081,55 +1081,51 @@ impl ProjectPanel {
         padding: f32,
         row_container_style: ContainerStyle,
         style: &ProjectPanelEntry,
-        cx: &mut RenderContext<V>,
-    ) -> ElementBox {
+        cx: &mut ViewContext<V>,
+    ) -> AnyElement<V> {
         let kind = details.kind;
         let show_editor = details.is_editing && !details.is_processing;
 
         Flex::row()
             .with_child(
-                ConstrainedBox::new(if kind == EntryKind::Dir {
+                if kind == EntryKind::Dir {
                     if details.is_expanded {
-                        Svg::new("icons/chevron_down_8.svg")
-                            .with_color(style.icon_color)
-                            .boxed()
+                        Svg::new("icons/chevron_down_8.svg").with_color(style.icon_color)
                     } else {
-                        Svg::new("icons/chevron_right_8.svg")
-                            .with_color(style.icon_color)
-                            .boxed()
+                        Svg::new("icons/chevron_right_8.svg").with_color(style.icon_color)
                     }
+                    .constrained()
                 } else {
-                    Empty::new().boxed()
-                })
+                    Empty::new().constrained()
+                }
                 .with_max_width(style.icon_size)
                 .with_max_height(style.icon_size)
                 .aligned()
                 .constrained()
-                .with_width(style.icon_size)
-                .boxed(),
+                .with_width(style.icon_size),
             )
             .with_child(if show_editor && editor.is_some() {
-                ChildView::new(editor.unwrap().clone(), cx)
+                ChildView::new(editor.as_ref().unwrap(), cx)
                     .contained()
                     .with_margin_left(style.icon_spacing)
                     .aligned()
                     .left()
                     .flex(1.0, true)
-                    .boxed()
+                    .into_any()
             } else {
                 Label::new(details.filename.clone(), style.text.clone())
                     .contained()
                     .with_margin_left(style.icon_spacing)
                     .aligned()
                     .left()
-                    .boxed()
+                    .into_any()
             })
             .constrained()
             .with_height(style.height)
             .contained()
             .with_style(row_container_style)
             .with_padding_left(padding)
-            .boxed()
+            .into_any_named("project panel entry visual element")
     }
 
     fn render_entry(
@@ -1138,9 +1134,8 @@ impl ProjectPanel {
         editor: &ViewHandle<Editor>,
         dragged_entry_destination: &mut Option<Arc<Path>>,
         theme: &theme::ProjectPanel,
-        cx: &mut RenderContext<Self>,
-    ) -> ElementBox {
-        let this = cx.handle();
+        cx: &mut ViewContext<Self>,
+    ) -> AnyElement<Self> {
         let kind = details.kind;
         let path = details.path.clone();
         let padding = theme.container.padding.left + details.depth as f32 * theme.indent_width;
@@ -1155,7 +1150,7 @@ impl ProjectPanel {
 
         let show_editor = details.is_editing && !details.is_processing;
 
-        MouseEventHandler::<Self>::new(entry_id.to_usize(), cx, |state, cx| {
+        MouseEventHandler::<Self, _>::new(entry_id.to_usize(), cx, |state, cx| {
             let mut style = entry_style.style_for(state, details.is_selected).clone();
 
             if cx
@@ -1185,57 +1180,48 @@ impl ProjectPanel {
                 cx,
             )
         })
-        .on_click(MouseButton::Left, move |e, cx| {
+        .on_click(MouseButton::Left, move |event, this, cx| {
             if !show_editor {
                 if kind == EntryKind::Dir {
-                    cx.dispatch_action(ToggleExpanded(entry_id))
+                    this.toggle_expanded(entry_id, cx);
                 } else {
-                    cx.dispatch_action(Open {
-                        entry_id,
-                        change_focus: e.click_count > 1,
-                    })
+                    this.open_entry(entry_id, event.click_count > 1, cx);
                 }
             }
         })
-        .on_down(MouseButton::Right, move |e, cx| {
-            cx.dispatch_action(DeployContextMenu {
-                entry_id,
-                position: e.position,
-            })
+        .on_down(MouseButton::Right, move |event, this, cx| {
+            this.deploy_context_menu(event.position, entry_id, cx);
         })
-        .on_up(MouseButton::Left, move |_, cx| {
+        .on_up(MouseButton::Left, move |_, this, cx| {
             if let Some((_, dragged_entry)) = cx
                 .global::<DragAndDrop<Workspace>>()
                 .currently_dragged::<ProjectEntryId>(cx.window_id())
             {
-                cx.dispatch_action(MoveProjectEntry {
-                    entry_to_move: *dragged_entry,
-                    destination: entry_id,
-                    destination_is_file: matches!(details.kind, EntryKind::File(_)),
-                });
+                this.move_entry(
+                    *dragged_entry,
+                    entry_id,
+                    matches!(details.kind, EntryKind::File(_)),
+                    cx,
+                );
             }
         })
-        .on_move(move |_, cx| {
+        .on_move(move |_, this, cx| {
             if cx
                 .global::<DragAndDrop<Workspace>>()
                 .currently_dragged::<ProjectEntryId>(cx.window_id())
                 .is_some()
             {
-                if let Some(this) = this.upgrade(cx.app) {
-                    this.update(cx.app, |this, _| {
-                        this.dragged_entry_destination = if matches!(kind, EntryKind::File(_)) {
-                            path.parent().map(|parent| Arc::from(parent))
-                        } else {
-                            Some(path.clone())
-                        };
-                    })
-                }
+                this.dragged_entry_destination = if matches!(kind, EntryKind::File(_)) {
+                    path.parent().map(|parent| Arc::from(parent))
+                } else {
+                    Some(path.clone())
+                };
             }
         })
         .as_draggable(entry_id, {
             let row_container_style = theme.dragged_entry.container;
 
-            move |_, cx: &mut RenderContext<Workspace>| {
+            move |_, cx: &mut ViewContext<Workspace>| {
                 let theme = cx.global::<Settings>().theme.clone();
                 Self::render_entry_visual_element(
                     &details,
@@ -1248,7 +1234,7 @@ impl ProjectPanel {
             }
         })
         .with_cursor_style(CursorStyle::PointingHand)
-        .boxed()
+        .into_any_named("project panel entry")
     }
 }
 
@@ -1257,7 +1243,7 @@ impl View for ProjectPanel {
         "ProjectPanel"
     }
 
-    fn render(&mut self, cx: &mut gpui::RenderContext<'_, Self>) -> gpui::ElementBox {
+    fn render(&mut self, cx: &mut gpui::ViewContext<Self>) -> gpui::AnyElement<Self> {
         enum ProjectPanel {}
         let theme = &cx.global::<Settings>().theme.project_panel;
         let mut container_style = theme.container;
@@ -1269,7 +1255,7 @@ impl View for ProjectPanel {
         if has_worktree {
             Stack::new()
                 .with_child(
-                    MouseEventHandler::<ProjectPanel>::new(0, cx, |_, cx| {
+                    MouseEventHandler::<ProjectPanel, _>::new(0, cx, |_, cx| {
                         UniformList::new(
                             self.list.clone(),
                             self.visible_entries
@@ -1299,26 +1285,21 @@ impl View for ProjectPanel {
                         .contained()
                         .with_style(container_style)
                         .expanded()
-                        .boxed()
                     })
-                    .on_down(MouseButton::Right, move |e, cx| {
+                    .on_down(MouseButton::Right, move |event, this, cx| {
                         // When deploying the context menu anywhere below the last project entry,
                         // act as if the user clicked the root of the last worktree.
                         if let Some(entry_id) = last_worktree_root_id {
-                            cx.dispatch_action(DeployContextMenu {
-                                entry_id,
-                                position: e.position,
-                            })
+                            this.deploy_context_menu(event.position, entry_id, cx);
                         }
-                    })
-                    .boxed(),
+                    }),
                 )
-                .with_child(ChildView::new(&self.context_menu, cx).boxed())
-                .boxed()
+                .with_child(ChildView::new(&self.context_menu, cx))
+                .into_any_named("project panel")
         } else {
             Flex::column()
                 .with_child(
-                    MouseEventHandler::<Self>::new(2, cx, {
+                    MouseEventHandler::<Self, _>::new(2, cx, {
                         let button_style = theme.open_project_button.clone();
                         let context_menu_item_style =
                             cx.global::<Settings>().theme.context_menu.item.clone();
@@ -1334,25 +1315,28 @@ impl View for ProjectPanel {
                                 Box::new(workspace::Open),
                                 cx,
                             )
-                            .boxed()
                         }
                     })
-                    .on_click(MouseButton::Left, move |_, cx| {
-                        cx.dispatch_action(workspace::Open)
+                    .on_click(MouseButton::Left, move |_, this, cx| {
+                        if let Some(workspace) = this.workspace.upgrade(cx) {
+                            workspace.update(cx, |workspace, cx| {
+                                if let Some(task) = workspace.open(&Default::default(), cx) {
+                                    task.detach_and_log_err(cx);
+                                }
+                            })
+                        }
                     })
-                    .with_cursor_style(CursorStyle::PointingHand)
-                    .boxed(),
+                    .with_cursor_style(CursorStyle::PointingHand),
                 )
                 .contained()
                 .with_style(container_style)
-                .boxed()
+                .into_any_named("empty project panel")
         }
     }
 
-    fn keymap_context(&self, _: &AppContext) -> KeymapContext {
-        let mut cx = Self::default_keymap_context();
-        cx.add_identifier("menu");
-        cx
+    fn update_keymap_context(&self, keymap: &mut KeymapContext, _: &AppContext) {
+        Self::reset_to_default_keymap_context(keymap);
+        keymap.add_identifier("menu");
     }
 }
 
@@ -1360,8 +1344,52 @@ impl Entity for ProjectPanel {
     type Event = Event;
 }
 
-impl workspace::sidebar::SidebarItem for ProjectPanel {
-    fn should_show_badge(&self, _: &AppContext) -> bool {
+impl workspace::dock::Panel for ProjectPanel {
+    fn position(&self, cx: &gpui::WindowContext) -> DockPosition {
+        let settings = cx.global::<Settings>();
+        match settings.project_panel.dock {
+            settings::ProjectPanelDockPosition::Left => DockPosition::Left,
+            settings::ProjectPanelDockPosition::Right => DockPosition::Right,
+        }
+    }
+
+    fn position_is_valid(&self, position: DockPosition) -> bool {
+        matches!(position, DockPosition::Left | DockPosition::Right)
+    }
+
+    fn set_position(&mut self, position: DockPosition, cx: &mut ViewContext<Self>) {
+        SettingsFile::update(cx, move |settings| {
+            let dock = match position {
+                DockPosition::Left | DockPosition::Bottom => {
+                    settings::ProjectPanelDockPosition::Left
+                }
+                DockPosition::Right => settings::ProjectPanelDockPosition::Right,
+            };
+            settings.project_panel.dock = Some(dock);
+        })
+    }
+
+    fn default_size(&self, cx: &gpui::WindowContext) -> f32 {
+        cx.global::<Settings>().project_panel.default_width
+    }
+
+    fn icon_path(&self) -> &'static str {
+        "icons/folder_tree_16.svg"
+    }
+
+    fn icon_tooltip(&self) -> String {
+        "Project Panel".into()
+    }
+
+    fn should_change_position_on_event(event: &Self::Event) -> bool {
+        matches!(event, Event::DockPositionChanged)
+    }
+
+    fn should_activate_on_event(&self, _: &Self::Event, _: &AppContext) -> bool {
+        false
+    }
+
+    fn should_close_on_event(&self, _: &Self::Event, _: &AppContext) -> bool {
         false
     }
 }
@@ -1442,7 +1470,7 @@ mod tests {
 
         let project = Project::test(fs.clone(), ["/root1".as_ref(), "/root2".as_ref()], cx).await;
         let (_, workspace) = cx.add_window(|cx| Workspace::test_new(project.clone(), cx));
-        let panel = workspace.update(cx, |_, cx| ProjectPanel::new(project, cx));
+        let panel = workspace.update(cx, |workspace, cx| ProjectPanel::new(workspace, cx));
         assert_eq!(
             visible_entries_as_strings(&panel, 0..50, cx),
             &[
@@ -1533,8 +1561,8 @@ mod tests {
         .await;
 
         let project = Project::test(fs.clone(), ["/root1".as_ref(), "/root2".as_ref()], cx).await;
-        let (_, workspace) = cx.add_window(|cx| Workspace::test_new(project.clone(), cx));
-        let panel = workspace.update(cx, |_, cx| ProjectPanel::new(project, cx));
+        let (window_id, workspace) = cx.add_window(|cx| Workspace::test_new(project.clone(), cx));
+        let panel = workspace.update(cx, |workspace, cx| ProjectPanel::new(workspace, cx));
 
         select_path(&panel, "root1", cx);
         assert_eq!(
@@ -1555,7 +1583,10 @@ mod tests {
         // Add a file with the root folder selected. The filename editor is placed
         // before the first file in the root folder.
         panel.update(cx, |panel, cx| panel.new_file(&NewFile, cx));
-        assert!(panel.read_with(cx, |panel, cx| panel.filename_editor.is_focused(cx)));
+        cx.read_window(window_id, |cx| {
+            let panel = panel.read(cx);
+            assert!(panel.filename_editor.is_focused(cx));
+        });
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
             &[
@@ -1824,7 +1855,7 @@ mod tests {
 
         let project = Project::test(fs.clone(), ["/root1".as_ref()], cx).await;
         let (_, workspace) = cx.add_window(|cx| Workspace::test_new(project.clone(), cx));
-        let panel = workspace.update(cx, |_, cx| ProjectPanel::new(project, cx));
+        let panel = workspace.update(cx, |workspace, cx| ProjectPanel::new(workspace, cx));
 
         panel.update(cx, |panel, cx| {
             panel.select_next(&Default::default(), cx);
@@ -1889,7 +1920,7 @@ mod tests {
                 let worktree = worktree.read(cx);
                 if let Ok(relative_path) = path.strip_prefix(worktree.root_name()) {
                     let entry_id = worktree.entry_for_path(relative_path).unwrap().id;
-                    panel.toggle_expanded(&ToggleExpanded(entry_id), cx);
+                    panel.toggle_expanded(entry_id, cx);
                     return;
                 }
             }
@@ -1927,7 +1958,8 @@ mod tests {
         let mut result = Vec::new();
         let mut project_entries = HashSet::new();
         let mut has_editor = false;
-        cx.render(panel, |panel, cx| {
+
+        panel.update(cx, |panel, cx| {
             panel.for_each_visible_entry(range, cx, |project_entry, details, _| {
                 if details.is_editing {
                     assert!(!has_editor, "duplicate editor entry");

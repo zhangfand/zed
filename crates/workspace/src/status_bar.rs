@@ -1,7 +1,15 @@
+use std::ops::Range;
+
 use crate::{ItemHandle, Pane};
 use gpui::{
-    elements::*, AnyViewHandle, ElementBox, Entity, MutableAppContext, RenderContext, Subscription,
-    View, ViewContext, ViewHandle,
+    elements::*,
+    geometry::{
+        rect::RectF,
+        vector::{vec2f, Vector2F},
+    },
+    json::{json, ToJson},
+    AnyElement, AnyViewHandle, Entity, LayoutContext, SceneBuilder, SizeConstraint, Subscription,
+    View, ViewContext, ViewHandle, WindowContext,
 };
 use settings::Settings;
 
@@ -14,11 +22,11 @@ pub trait StatusItemView: View {
 }
 
 trait StatusItemViewHandle {
-    fn to_any(&self) -> AnyViewHandle;
+    fn as_any(&self) -> &AnyViewHandle;
     fn set_active_pane_item(
         &self,
         active_pane_item: Option<&dyn ItemHandle>,
-        cx: &mut MutableAppContext,
+        cx: &mut WindowContext,
     );
 }
 
@@ -38,29 +46,33 @@ impl View for StatusBar {
         "StatusBar"
     }
 
-    fn render(&mut self, cx: &mut RenderContext<Self>) -> ElementBox {
+    fn render(&mut self, cx: &mut ViewContext<Self>) -> AnyElement<Self> {
         let theme = &cx.global::<Settings>().theme.workspace.status_bar;
-        Flex::row()
-            .with_children(self.left_items.iter().map(|i| {
-                ChildView::new(i.as_ref(), cx)
-                    .aligned()
-                    .contained()
-                    .with_margin_right(theme.item_spacing)
-                    .boxed()
-            }))
-            .with_children(self.right_items.iter().rev().map(|i| {
-                ChildView::new(i.as_ref(), cx)
-                    .aligned()
-                    .contained()
-                    .with_margin_left(theme.item_spacing)
-                    .flex_float()
-                    .boxed()
-            }))
-            .contained()
-            .with_style(theme.container)
-            .constrained()
-            .with_height(theme.height)
-            .boxed()
+
+        StatusBarElement {
+            left: Flex::row()
+                .with_children(self.left_items.iter().map(|i| {
+                    ChildView::new(i.as_any(), cx)
+                        .aligned()
+                        .contained()
+                        .with_margin_right(theme.item_spacing)
+                }))
+                .into_any(),
+
+            right: Flex::row()
+                .with_children(self.right_items.iter().rev().map(|i| {
+                    ChildView::new(i.as_any(), cx)
+                        .aligned()
+                        .contained()
+                        .with_margin_left(theme.item_spacing)
+                }))
+                .into_any(),
+        }
+        .contained()
+        .with_style(theme.container)
+        .constrained()
+        .with_height(theme.height)
+        .into_any()
     }
 }
 
@@ -81,7 +93,6 @@ impl StatusBar {
     where
         T: 'static + StatusItemView,
     {
-        cx.reparent(&item);
         self.left_items.push(Box::new(item));
         cx.notify();
     }
@@ -90,7 +101,6 @@ impl StatusBar {
     where
         T: 'static + StatusItemView,
     {
-        cx.reparent(&item);
         self.right_items.push(Box::new(item));
         cx.notify();
     }
@@ -111,14 +121,14 @@ impl StatusBar {
 }
 
 impl<T: StatusItemView> StatusItemViewHandle for ViewHandle<T> {
-    fn to_any(&self) -> AnyViewHandle {
-        self.into()
+    fn as_any(&self) -> &AnyViewHandle {
+        self
     }
 
     fn set_active_pane_item(
         &self,
         active_pane_item: Option<&dyn ItemHandle>,
-        cx: &mut MutableAppContext,
+        cx: &mut WindowContext,
     ) {
         self.update(cx, |this, cx| {
             this.set_active_pane_item(active_pane_item, cx)
@@ -128,6 +138,84 @@ impl<T: StatusItemView> StatusItemViewHandle for ViewHandle<T> {
 
 impl From<&dyn StatusItemViewHandle> for AnyViewHandle {
     fn from(val: &dyn StatusItemViewHandle) -> Self {
-        val.to_any()
+        val.as_any().clone()
+    }
+}
+
+struct StatusBarElement {
+    left: AnyElement<StatusBar>,
+    right: AnyElement<StatusBar>,
+}
+
+impl Element<StatusBar> for StatusBarElement {
+    type LayoutState = ();
+    type PaintState = ();
+
+    fn layout(
+        &mut self,
+        mut constraint: SizeConstraint,
+        view: &mut StatusBar,
+        cx: &mut LayoutContext<StatusBar>,
+    ) -> (Vector2F, Self::LayoutState) {
+        let max_width = constraint.max.x();
+        constraint.min = vec2f(0., constraint.min.y());
+
+        let right_size = self.right.layout(constraint, view, cx);
+        let constraint = SizeConstraint::new(
+            vec2f(0., constraint.min.y()),
+            vec2f(max_width - right_size.x(), constraint.max.y()),
+        );
+
+        self.left.layout(constraint, view, cx);
+
+        (vec2f(max_width, right_size.y()), ())
+    }
+
+    fn paint(
+        &mut self,
+        scene: &mut SceneBuilder,
+        bounds: RectF,
+        visible_bounds: RectF,
+        _: &mut Self::LayoutState,
+        view: &mut StatusBar,
+        cx: &mut ViewContext<StatusBar>,
+    ) -> Self::PaintState {
+        let origin_y = bounds.upper_right().y();
+        let visible_bounds = bounds.intersection(visible_bounds).unwrap_or_default();
+
+        let left_origin = vec2f(bounds.lower_left().x(), origin_y);
+        self.left
+            .paint(scene, left_origin, visible_bounds, view, cx);
+
+        let right_origin = vec2f(bounds.upper_right().x() - self.right.size().x(), origin_y);
+        self.right
+            .paint(scene, right_origin, visible_bounds, view, cx);
+    }
+
+    fn rect_for_text_range(
+        &self,
+        _: Range<usize>,
+        _: RectF,
+        _: RectF,
+        _: &Self::LayoutState,
+        _: &Self::PaintState,
+        _: &StatusBar,
+        _: &ViewContext<StatusBar>,
+    ) -> Option<RectF> {
+        None
+    }
+
+    fn debug(
+        &self,
+        bounds: RectF,
+        _: &Self::LayoutState,
+        _: &Self::PaintState,
+        _: &StatusBar,
+        _: &ViewContext<StatusBar>,
+    ) -> serde_json::Value {
+        json!({
+            "type": "StatusBarElement",
+            "bounds": bounds.to_json()
+        })
     }
 }

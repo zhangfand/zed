@@ -3,7 +3,7 @@ import { ColorScheme, Layer, StyleSets } from "../themes/common/colorScheme"
 import { background, border, borderColor, foreground, text } from "./components"
 import hoverPopover from "./hoverPopover"
 
-import { buildSyntax } from "../themes/common/syntax"
+import { SyntaxHighlightStyle, buildSyntax } from "../themes/common/syntax"
 
 export default function editor(colorScheme: ColorScheme) {
     let layer = colorScheme.highest
@@ -44,9 +44,7 @@ export default function editor(colorScheme: ColorScheme) {
         activeLineBackground: withOpacity(background(layer, "on"), 0.75),
         highlightedLineBackground: background(layer, "on"),
         // Inline autocomplete suggestions, Co-pilot suggestions, etc.
-        suggestion: {
-            color: syntax.predictive.color,
-        },
+        suggestion: syntax.predictive,
         codeActions: {
             indicator: {
                 color: foreground(layer, "variant"),
@@ -103,8 +101,8 @@ export default function editor(colorScheme: ColorScheme) {
             modified: foreground(layer, "warning"),
             inserted: foreground(layer, "positive"),
             removedWidthEm: 0.275,
-            widthEm: 0.16,
-            cornerRadius: 0.05,
+            widthEm: 0.22,
+            cornerRadius: 0.2,
         },
         /** Highlights matching occurences of what is under the cursor
          * as well as matched brackets
@@ -125,6 +123,7 @@ export default function editor(colorScheme: ColorScheme) {
         renameFade: 0.6,
         unnecessaryCodeFade: 0.5,
         selection: colorScheme.players[0],
+        whitespace: colorScheme.ramps.neutral(0.5).hex(),
         guestSelections: [
             colorScheme.players[1],
             colorScheme.players[2],
@@ -177,6 +176,9 @@ export default function editor(colorScheme: ColorScheme) {
                 margin: {
                     left: 10,
                 },
+            },
+            source: {
+                text: text(colorScheme.middle, "sans", { size: "sm", weight: "bold", }),
             },
             message: {
                 highlightText: text(colorScheme.middle, "sans", {

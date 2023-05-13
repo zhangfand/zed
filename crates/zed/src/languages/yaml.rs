@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use futures::{future::BoxFuture, FutureExt, StreamExt};
-use gpui::MutableAppContext;
+use gpui::AppContext;
 use language::{LanguageServerBinary, LanguageServerName, LspAdapter};
 use node_runtime::NodeRuntime;
 use serde_json::Value;
@@ -61,7 +61,7 @@ impl LspAdapter for YamlLspAdapter {
 
         if fs::metadata(&server_path).await.is_err() {
             self.node
-                .npm_install_packages([("yaml-language-server", version.as_str())], &container_dir)
+                .npm_install_packages(&container_dir, [("yaml-language-server", version.as_str())])
                 .await?;
         }
 
@@ -99,13 +99,13 @@ impl LspAdapter for YamlLspAdapter {
         .log_err()
     }
 
-    fn workspace_configuration(
-        &self,
-        cx: &mut MutableAppContext,
-    ) -> Option<BoxFuture<'static, Value>> {
+    fn workspace_configuration(&self, cx: &mut AppContext) -> Option<BoxFuture<'static, Value>> {
         let settings = cx.global::<Settings>();
         Some(
             future::ready(serde_json::json!({
+                "yaml": {
+                    "keyOrdering": false
+                },
                 "[yaml]": {
                     "editor.tabSize": settings.tab_size(Some("YAML"))
                 }

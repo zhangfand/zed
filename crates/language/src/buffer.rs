@@ -15,10 +15,12 @@ use anyhow::{anyhow, Result};
 use clock::ReplicaId;
 use fs::LineEnding;
 use futures::FutureExt as _;
-use gpui::{fonts::HighlightStyle, AppContext, Entity, ModelContext, MutableAppContext, Task};
+use gpui::{fonts::HighlightStyle, AppContext, Entity, ModelContext, Task};
+use lsp::LanguageServerId;
 use parking_lot::Mutex;
 use settings::Settings;
 use similar::{ChangeTag, TextDiff};
+use smallvec::SmallVec;
 use smol::future::yield_now;
 use std::{
     any::Any,
@@ -37,7 +39,7 @@ use std::{
 };
 use sum_tree::TreeMap;
 use text::operation_queue::OperationQueue;
-pub use text::{Buffer as TextBuffer, BufferSnapshot as TextBufferSnapshot, Operation as _, *};
+pub use text::{Buffer as TextBuffer, BufferSnapshot as TextBufferSnapshot, *};
 use theme::SyntaxTheme;
 #[cfg(any(test, feature = "test-support"))]
 use util::RandomCharIter;
@@ -71,7 +73,7 @@ pub struct Buffer {
     syntax_map: Mutex<SyntaxMap>,
     parsing_in_background: bool,
     parse_count: usize,
-    diagnostics: DiagnosticSet,
+    diagnostics: SmallVec<[(LanguageServerId, DiagnosticSet); 2]>,
     remote_selections: TreeMap<ReplicaId, SelectionSet>,
     selections_update_count: usize,
     diagnostics_update_count: usize,
@@ -88,7 +90,7 @@ pub struct BufferSnapshot {
     pub git_diff: git::diff::BufferDiff,
     pub(crate) syntax: SyntaxSnapshot,
     file: Option<Arc<dyn File>>,
-    diagnostics: DiagnosticSet,
+    diagnostics: SmallVec<[(LanguageServerId, DiagnosticSet); 2]>,
     diagnostics_update_count: usize,
     file_update_count: usize,
     git_diff_update_count: usize,
@@ -136,6 +138,7 @@ pub struct GroupId {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Diagnostic {
+    pub source: Option<String>,
     pub code: Option<String>,
     pub severity: DiagnosticSeverity,
     pub message: String,
@@ -156,6 +159,7 @@ pub struct Completion {
 
 #[derive(Clone, Debug)]
 pub struct CodeAction {
+    pub server_id: LanguageServerId,
     pub range: Range<Anchor>,
     pub lsp_action: lsp::CodeAction,
 }
@@ -163,16 +167,20 @@ pub struct CodeAction {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Operation {
     Buffer(text::Operation),
+
     UpdateDiagnostics {
+        server_id: LanguageServerId,
         diagnostics: Arc<[DiagnosticEntry<Anchor>]>,
         lamport_timestamp: clock::Lamport,
     },
+
     UpdateSelections {
         selections: Arc<[Selection<Anchor>]>,
         lamport_timestamp: clock::Lamport,
         line_mode: bool,
         cursor_shape: CursorShape,
     },
+
     UpdateCompletionTriggers {
         triggers: Vec<String>,
         lamport_timestamp: clock::Lamport,
@@ -187,6 +195,7 @@ pub enum Event {
     Saved,
     FileHandleChanged,
     Reloaded,
+    LanguageChanged,
     Reparsed,
     DiagnosticsUpdated,
     Closed,
@@ -232,7 +241,7 @@ pub trait LocalFile: File {
         fingerprint: RopeFingerprint,
         line_ending: LineEnding,
         mtime: SystemTime,
-        cx: &mut MutableAppContext,
+        cx: &mut AppContext,
     );
 }
 
@@ -302,6 +311,7 @@ pub struct Chunk<'a> {
     pub highlight_style: Option<HighlightStyle>,
     pub diagnostic_severity: Option<DiagnosticSeverity>,
     pub is_unnecessary: bool,
+    pub is_tab: bool,
 }
 
 pub struct Diff {
@@ -348,20 +358,6 @@ impl Buffer {
         )
     }
 
-    pub fn from_file<T: Into<String>>(
-        replica_id: ReplicaId,
-        base_text: T,
-        diff_base: Option<T>,
-        file: Arc<dyn File>,
-        cx: &mut ModelContext<Self>,
-    ) -> Self {
-        Self::build(
-            TextBuffer::new(replica_id, cx.model_id() as u64, base_text.into()),
-            diff_base.map(|h| h.into().into_boxed_str().into()),
-            Some(file),
-        )
-    }
-
     pub fn from_proto(
         replica_id: ReplicaId,
         message: proto::BufferState,
@@ -377,7 +373,7 @@ impl Buffer {
             rpc::proto::LineEnding::from_i32(message.line_ending)
                 .ok_or_else(|| anyhow!("missing line_ending"))?,
         ));
-        this.saved_version = proto::deserialize_version(message.saved_version);
+        this.saved_version = proto::deserialize_version(&message.saved_version);
         this.saved_version_fingerprint =
             proto::deserialize_fingerprint(&message.saved_version_fingerprint)?;
         this.saved_mtime = message
@@ -407,6 +403,7 @@ impl Buffer {
     ) -> Task<Vec<proto::Operation>> {
         let mut operations = Vec::new();
         operations.extend(self.deferred_ops.iter().map(proto::serialize_operation));
+
         operations.extend(self.remote_selections.iter().map(|(_, set)| {
             proto::serialize_operation(&Operation::UpdateSelections {
                 selections: set.selections.clone(),
@@ -415,10 +412,15 @@ impl Buffer {
                 cursor_shape: set.cursor_shape,
             })
         }));
-        operations.push(proto::serialize_operation(&Operation::UpdateDiagnostics {
-            diagnostics: self.diagnostics.iter().cloned().collect(),
-            lamport_timestamp: self.diagnostics_timestamp,
-        }));
+
+        for (server_id, diagnostics) in &self.diagnostics {
+            operations.push(proto::serialize_operation(&Operation::UpdateDiagnostics {
+                lamport_timestamp: self.diagnostics_timestamp,
+                server_id: *server_id,
+                diagnostics: diagnostics.iter().cloned().collect(),
+            }));
+        }
+
         operations.push(proto::serialize_operation(
             &Operation::UpdateCompletionTriggers {
                 triggers: self.completion_triggers.clone(),
@@ -445,7 +447,11 @@ impl Buffer {
         self
     }
 
-    fn build(buffer: TextBuffer, diff_base: Option<String>, file: Option<Arc<dyn File>>) -> Self {
+    pub fn build(
+        buffer: TextBuffer,
+        diff_base: Option<String>,
+        file: Option<Arc<dyn File>>,
+    ) -> Self {
         let saved_mtime = if let Some(file) = file.as_ref() {
             file.mtime()
         } else {
@@ -536,6 +542,7 @@ impl Buffer {
         self.syntax_map.lock().clear();
         self.language = language;
         self.reparse(cx);
+        cx.emit(Event::LanguageChanged);
     }
 
     pub fn set_language_registry(&mut self, language_registry: Arc<LanguageRegistry>) {
@@ -863,13 +870,19 @@ impl Buffer {
         cx.notify();
     }
 
-    pub fn update_diagnostics(&mut self, diagnostics: DiagnosticSet, cx: &mut ModelContext<Self>) {
+    pub fn update_diagnostics(
+        &mut self,
+        server_id: LanguageServerId,
+        diagnostics: DiagnosticSet,
+        cx: &mut ModelContext<Self>,
+    ) {
         let lamport_timestamp = self.text.lamport_clock.tick();
         let op = Operation::UpdateDiagnostics {
+            server_id,
             diagnostics: diagnostics.iter().cloned().collect(),
             lamport_timestamp,
         };
-        self.apply_diagnostic_update(diagnostics, lamport_timestamp, cx);
+        self.apply_diagnostic_update(server_id, diagnostics, lamport_timestamp, cx);
         self.send_operation(op, cx);
     }
 
@@ -1309,19 +1322,23 @@ impl Buffer {
     pub fn wait_for_edits(
         &mut self,
         edit_ids: impl IntoIterator<Item = clock::Local>,
-    ) -> impl Future<Output = ()> {
+    ) -> impl Future<Output = Result<()>> {
         self.text.wait_for_edits(edit_ids)
     }
 
-    pub fn wait_for_anchors<'a>(
+    pub fn wait_for_anchors(
         &mut self,
-        anchors: impl IntoIterator<Item = &'a Anchor>,
-    ) -> impl Future<Output = ()> {
+        anchors: impl IntoIterator<Item = Anchor>,
+    ) -> impl 'static + Future<Output = Result<()>> {
         self.text.wait_for_anchors(anchors)
     }
 
-    pub fn wait_for_version(&mut self, version: clock::Global) -> impl Future<Output = ()> {
+    pub fn wait_for_version(&mut self, version: clock::Global) -> impl Future<Output = Result<()>> {
         self.text.wait_for_version(version)
+    }
+
+    pub fn give_up_waiting(&mut self) {
+        self.text.give_up_waiting();
     }
 
     pub fn set_active_selections(
@@ -1573,11 +1590,13 @@ impl Buffer {
                 unreachable!("buffer operations should never be applied at this layer")
             }
             Operation::UpdateDiagnostics {
+                server_id,
                 diagnostics: diagnostic_set,
                 lamport_timestamp,
             } => {
                 let snapshot = self.snapshot();
                 self.apply_diagnostic_update(
+                    server_id,
                     DiagnosticSet::from_sorted_entries(diagnostic_set.iter().cloned(), &snapshot),
                     lamport_timestamp,
                     cx,
@@ -1619,12 +1638,16 @@ impl Buffer {
 
     fn apply_diagnostic_update(
         &mut self,
+        server_id: LanguageServerId,
         diagnostics: DiagnosticSet,
         lamport_timestamp: clock::Lamport,
         cx: &mut ModelContext<Self>,
     ) {
         if lamport_timestamp > self.diagnostics_timestamp {
-            self.diagnostics = diagnostics;
+            match self.diagnostics.binary_search_by_key(&server_id, |e| e.0) {
+                Err(ix) => self.diagnostics.insert(ix, (server_id, diagnostics)),
+                Ok(ix) => self.diagnostics[ix].1 = diagnostics,
+            };
             self.diagnostics_timestamp = lamport_timestamp;
             self.diagnostics_update_count += 1;
             self.text.lamport_clock.observe(lamport_timestamp);
@@ -2498,14 +2521,55 @@ impl BufferSnapshot {
     ) -> impl 'a + Iterator<Item = DiagnosticEntry<O>>
     where
         T: 'a + Clone + ToOffset,
-        O: 'a + FromAnchor,
+        O: 'a + FromAnchor + Ord,
     {
-        self.diagnostics.range(search_range, self, true, reversed)
+        let mut iterators: Vec<_> = self
+            .diagnostics
+            .iter()
+            .map(|(_, collection)| {
+                collection
+                    .range::<T, O>(search_range.clone(), self, true, reversed)
+                    .peekable()
+            })
+            .collect();
+
+        std::iter::from_fn(move || {
+            let (next_ix, _) = iterators
+                .iter_mut()
+                .enumerate()
+                .flat_map(|(ix, iter)| Some((ix, iter.peek()?)))
+                .min_by(|(_, a), (_, b)| a.range.start.cmp(&b.range.start))?;
+            iterators[next_ix].next()
+        })
     }
 
-    pub fn diagnostic_groups(&self) -> Vec<DiagnosticGroup<Anchor>> {
+    pub fn diagnostic_groups(
+        &self,
+        language_server_id: Option<LanguageServerId>,
+    ) -> Vec<(LanguageServerId, DiagnosticGroup<Anchor>)> {
         let mut groups = Vec::new();
-        self.diagnostics.groups(&mut groups, self);
+
+        if let Some(language_server_id) = language_server_id {
+            if let Ok(ix) = self
+                .diagnostics
+                .binary_search_by_key(&language_server_id, |e| e.0)
+            {
+                self.diagnostics[ix]
+                    .1
+                    .groups(language_server_id, &mut groups, self);
+            }
+        } else {
+            for (language_server_id, diagnostics) in self.diagnostics.iter() {
+                diagnostics.groups(*language_server_id, &mut groups, self);
+            }
+        }
+
+        groups.sort_by(|(id_a, group_a), (id_b, group_b)| {
+            let a_start = &group_a.entries[group_a.primary_ix].range.start;
+            let b_start = &group_b.entries[group_b.primary_ix].range.start;
+            a_start.cmp(b_start, self).then_with(|| id_a.cmp(&id_b))
+        });
+
         groups
     }
 
@@ -2516,7 +2580,9 @@ impl BufferSnapshot {
     where
         O: 'a + FromAnchor,
     {
-        self.diagnostics.group(group_id, self)
+        self.diagnostics
+            .iter()
+            .flat_map(move |(_, set)| set.group(group_id, self))
     }
 
     pub fn diagnostics_update_count(&self) -> usize {
@@ -2775,9 +2841,9 @@ impl<'a> Iterator for BufferChunks<'a> {
             Some(Chunk {
                 text: slice,
                 syntax_highlight_id: highlight_id,
-                highlight_style: None,
                 diagnostic_severity: self.current_diagnostic_severity(),
                 is_unnecessary: self.current_code_is_unnecessary(),
+                ..Default::default()
             })
         } else {
             None
@@ -2807,6 +2873,7 @@ impl operation_queue::Operation for Operation {
 impl Default for Diagnostic {
     fn default() -> Self {
         Self {
+            source: Default::default(),
             code: None,
             severity: DiagnosticSeverity::ERROR,
             message: Default::default(),

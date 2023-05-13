@@ -1,10 +1,13 @@
-use crate::{FollowerStatesByLeader, JoinProject, Pane, Workspace};
+use std::sync::Arc;
+
+use crate::{AppState, FollowerStatesByLeader, Pane, Workspace};
 use anyhow::{anyhow, Result};
 use call::{ActiveCall, ParticipantLocation};
 use gpui::{
     elements::*,
     geometry::{rect::RectF, vector::Vector2F},
-    Axis, Border, CursorStyle, ModelHandle, MouseButton, RenderContext, ViewHandle,
+    platform::{CursorStyle, MouseButton},
+    Axis, Border, ModelHandle, ViewContext, ViewHandle,
 };
 use project::Project;
 use serde::Deserialize;
@@ -69,14 +72,16 @@ impl PaneGroup {
         follower_states: &FollowerStatesByLeader,
         active_call: Option<&ModelHandle<ActiveCall>>,
         active_pane: &ViewHandle<Pane>,
-        cx: &mut RenderContext<Workspace>,
-    ) -> ElementBox {
+        app_state: &Arc<AppState>,
+        cx: &mut ViewContext<Workspace>,
+    ) -> AnyElement<Workspace> {
         self.root.render(
             project,
             theme,
             follower_states,
             active_call,
             active_pane,
+            app_state,
             cx,
         )
     }
@@ -130,12 +135,19 @@ impl Member {
         follower_states: &FollowerStatesByLeader,
         active_call: Option<&ModelHandle<ActiveCall>>,
         active_pane: &ViewHandle<Pane>,
-        cx: &mut RenderContext<Workspace>,
-    ) -> ElementBox {
+        app_state: &Arc<AppState>,
+        cx: &mut ViewContext<Workspace>,
+    ) -> AnyElement<Workspace> {
         enum FollowIntoExternalProject {}
 
         match self {
             Member::Pane(pane) => {
+                let pane_element = if pane.read(cx).is_zoomed() {
+                    Empty::new().into_any()
+                } else {
+                    ChildView::new(pane, cx).into_any()
+                };
+
                 let leader = follower_states
                     .iter()
                     .find_map(|(leader_id, follower_states)| {
@@ -164,7 +176,7 @@ impl Member {
                     Border::default()
                 };
 
-                let prompt = if let Some((_, leader)) = leader {
+                let leader_status_box = if let Some((_, leader)) = leader {
                     match leader.location {
                         ParticipantLocation::SharedProject {
                             project_id: leader_project_id,
@@ -174,8 +186,9 @@ impl Member {
                             } else {
                                 let leader_user = leader.user.clone();
                                 let leader_user_id = leader.user.id;
+                                let app_state = Arc::downgrade(app_state);
                                 Some(
-                                    MouseEventHandler::<FollowIntoExternalProject>::new(
+                                    MouseEventHandler::<FollowIntoExternalProject, _>::new(
                                         pane.id(),
                                         cx,
                                         |_, _| {
@@ -194,20 +207,24 @@ impl Member {
                                             .with_style(
                                                 theme.workspace.external_location_message.container,
                                             )
-                                            .boxed()
                                         },
                                     )
                                     .with_cursor_style(CursorStyle::PointingHand)
-                                    .on_click(MouseButton::Left, move |_, cx| {
-                                        cx.dispatch_action(JoinProject {
-                                            project_id: leader_project_id,
-                                            follow_user_id: leader_user_id,
-                                        })
+                                    .on_click(MouseButton::Left, move |_, _, cx| {
+                                        if let Some(app_state) = app_state.upgrade() {
+                                            crate::join_remote_project(
+                                                leader_project_id,
+                                                leader_user_id,
+                                                app_state,
+                                                cx,
+                                            )
+                                            .detach_and_log_err(cx);
+                                        }
                                     })
                                     .aligned()
                                     .bottom()
                                     .right()
-                                    .boxed(),
+                                    .into_any(),
                                 )
                             }
                         }
@@ -224,7 +241,7 @@ impl Member {
                             .aligned()
                             .bottom()
                             .right()
-                            .boxed(),
+                            .into_any(),
                         ),
                         ParticipantLocation::External => Some(
                             Label::new(
@@ -239,7 +256,7 @@ impl Member {
                             .aligned()
                             .bottom()
                             .right()
-                            .boxed(),
+                            .into_any(),
                         ),
                     }
                 } else {
@@ -247,14 +264,9 @@ impl Member {
                 };
 
                 Stack::new()
-                    .with_child(
-                        ChildView::new(pane, cx)
-                            .contained()
-                            .with_border(border)
-                            .boxed(),
-                    )
-                    .with_children(prompt)
-                    .boxed()
+                    .with_child(pane_element.contained().with_border(border))
+                    .with_children(leader_status_box)
+                    .into_any()
             }
             Member::Axis(axis) => axis.render(
                 project,
@@ -262,6 +274,7 @@ impl Member {
                 follower_states,
                 active_call,
                 active_pane,
+                app_state,
                 cx,
             ),
         }
@@ -365,8 +378,9 @@ impl PaneAxis {
         follower_state: &FollowerStatesByLeader,
         active_call: Option<&ModelHandle<ActiveCall>>,
         active_pane: &ViewHandle<Pane>,
-        cx: &mut RenderContext<Workspace>,
-    ) -> ElementBox {
+        app_state: &Arc<AppState>,
+        cx: &mut ViewContext<Workspace>,
+    ) -> AnyElement<Workspace> {
         let last_member_ix = self.members.len() - 1;
         Flex::new(self.axis)
             .with_children(self.members.iter().enumerate().map(|(ix, member)| {
@@ -375,8 +389,15 @@ impl PaneAxis {
                     flex = cx.global::<Settings>().active_pane_magnification;
                 }
 
-                let mut member =
-                    member.render(project, theme, follower_state, active_call, active_pane, cx);
+                let mut member = member.render(
+                    project,
+                    theme,
+                    follower_state,
+                    active_call,
+                    active_pane,
+                    app_state,
+                    cx,
+                );
                 if ix < last_member_ix {
                     let mut border = theme.workspace.pane_divider;
                     border.left = false;
@@ -387,12 +408,12 @@ impl PaneAxis {
                         Axis::Vertical => border.bottom = true,
                         Axis::Horizontal => border.right = true,
                     }
-                    member = Container::new(member).with_border(border).boxed();
+                    member = member.contained().with_border(border).into_any();
                 }
 
-                FlexItem::new(member).flex(flex, true).boxed()
+                FlexItem::new(member).flex(flex, true)
             }))
-            .boxed()
+            .into_any()
     }
 }
 

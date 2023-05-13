@@ -163,6 +163,7 @@
         "context": "Editor && mode == full",
         "bindings": {
             "enter": "editor::Newline",
+            "cmd-shift-enter": "editor::NewlineAbove",
             "cmd-enter": "editor::NewlineBelow",
             "alt-z": "editor::ToggleSoftWrap",
             "cmd-f": [
@@ -177,9 +178,9 @@
                     "focus": false
                 }
             ],
+            "alt-\\": "copilot::Suggest",
             "alt-]": "copilot::NextSuggestion",
-            "alt-[": "copilot::PreviousSuggestion",
-            "alt-\\": "copilot::Toggle"
+            "alt-[": "copilot::PreviousSuggestion"
         }
     },
     {
@@ -200,6 +201,18 @@
         }
     },
     {
+        "context": "ProjectSearchBar > Editor",
+        "bindings": {
+            "escape": "project_search::ToggleFocus"
+        }
+    },
+    {
+        "context": "ProjectSearchView > Editor",
+        "bindings": {
+            "escape": "project_search::ToggleFocus"
+        }
+    },
+    {
         "context": "Pane",
         "bindings": {
             "cmd-f": "project_search::ToggleFocus",
@@ -207,7 +220,8 @@
             "cmd-shift-g": "search::SelectPrevMatch",
             "alt-cmd-c": "search::ToggleCaseSensitive",
             "alt-cmd-w": "search::ToggleWholeWord",
-            "alt-cmd-r": "search::ToggleRegex"
+            "alt-cmd-r": "search::ToggleRegex",
+            "shift-escape": "pane::ToggleZoom"
         }
     },
     // Bindings from VS Code
@@ -349,7 +363,7 @@
                 "workspace::ActivatePane",
                 8
             ],
-            "cmd-b": "workspace::ToggleLeftSidebar",
+            "cmd-b": "workspace::ToggleLeftDock",
             "cmd-shift-f": "workspace::NewSearch",
             "cmd-k cmd-t": "theme_selector::Toggle",
             "cmd-k cmd-s": "zed::OpenKeymap",
@@ -444,32 +458,6 @@
         }
     },
     {
-        "context": "Workspace",
-        "bindings": {
-            "shift-escape": "dock::FocusDock"
-        }
-    },
-    {
-        "bindings": {
-            "cmd-shift-k cmd-shift-right": "dock::AnchorDockRight",
-            "cmd-shift-k cmd-shift-down": "dock::AnchorDockBottom",
-            "cmd-shift-k cmd-shift-up": "dock::ExpandDock"
-        }
-    },
-    {
-        "context": "Pane",
-        "bindings": {
-            "cmd-escape": "dock::AddTabToDock"
-        }
-    },
-    {
-        "context": "Pane && docked",
-        "bindings": {
-            "shift-escape": "dock::HideDock",
-            "cmd-escape": "dock::RemoveTabFromDock"
-        }
-    },
-    {
         "context": "ProjectPanel",
         "bindings": {
             "left": "project_panel::CollapseSelectedEntry",
@@ -478,6 +466,7 @@
             "cmd-c": "project_panel::Copy",
             "cmd-v": "project_panel::Paste",
             "cmd-alt-c": "project_panel::CopyPath",
+            "alt-cmd-shift-c": "project_panel::CopyRelativePath",
             "f2": "project_panel::Rename",
             "backspace": "project_panel::Delete",
             "alt-cmd-r": "project_panel::RevealInFinder"

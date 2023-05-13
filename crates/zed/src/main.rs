@@ -10,18 +10,19 @@ use cli::{
 };
 use client::{self, UserStore, ZED_APP_VERSION, ZED_SECRET_CLIENT_TOKEN};
 use db::kvp::KEY_VALUE_STORE;
+use editor::Editor;
 use futures::{
     channel::{mpsc, oneshot},
     FutureExt, SinkExt, StreamExt,
 };
-use gpui::{Action, App, AssetSource, AsyncAppContext, MutableAppContext, Task, ViewContext};
+use gpui::{Action, App, AppContext, AssetSource, AsyncAppContext, Task, ViewContext};
 use isahc::{config::Configurable, Request};
 use language::LanguageRegistry;
 use log::LevelFilter;
 use node_runtime::NodeRuntime;
 use parking_lot::Mutex;
 use project::Fs;
-use serde_json::json;
+use serde::{Deserialize, Serialize};
 use settings::{
     self, settings_file::SettingsFile, KeymapFileContent, Settings, SettingsFileContent,
     WorkingDirectory,
@@ -29,8 +30,16 @@ use settings::{
 use simplelog::ConfigBuilder;
 use smol::process::Command;
 use std::{
-    env, ffi::OsStr, fs::OpenOptions, io::Write as _, os::unix::prelude::OsStrExt, panic,
-    path::PathBuf, sync::Arc, thread, time::Duration,
+    env,
+    ffi::OsStr,
+    fs::OpenOptions,
+    io::Write as _,
+    os::unix::prelude::OsStrExt,
+    panic,
+    path::PathBuf,
+    sync::{Arc, Weak},
+    thread,
+    time::Duration,
 };
 use terminal_view::{get_working_directory, TerminalView};
 use util::http::{self, HttpClient};
@@ -38,15 +47,14 @@ use welcome::{show_welcome_experience, FIRST_OPEN};
 
 use fs::RealFs;
 use settings::watched_json::WatchedJsonFile;
-use theme::ThemeRegistry;
 #[cfg(debug_assertions)]
-use util::StaffMode;
+use staff_mode::StaffMode;
+use theme::ThemeRegistry;
 use util::{channel::RELEASE_CHANNEL, paths, ResultExt, TryFutureExt};
 use workspace::{
-    self, dock::FocusDock, item::ItemHandle, notifications::NotifyResultExt, AppState, NewFile,
-    OpenPaths, Workspace,
+    item::ItemHandle, notifications::NotifyResultExt, AppState, OpenSettings, Workspace,
 };
-use zed::{self, build_window_options, initialize_workspace, languages, menus, OpenSettings};
+use zed::{self, build_window_options, initialize_workspace, languages, menus};
 
 fn main() {
     let http = http::client();
@@ -104,7 +112,16 @@ fn main() {
                 .log_err();
         }
     })
-    .on_reopen(move |cx| cx.dispatch_global_action(NewFile));
+    .on_reopen(move |cx| {
+        if cx.has_global::<Weak<AppState>>() {
+            if let Some(app_state) = cx.global::<Weak<AppState>>().upgrade() {
+                workspace::open_new(&app_state, cx, |workspace, cx| {
+                    Editor::new_file(workspace, &Default::default(), cx)
+                })
+                .detach();
+            }
+        }
+    });
 
     app.run(move |cx| {
         cx.set_global(*RELEASE_CHANNEL);
@@ -160,8 +177,7 @@ fn main() {
         vim::init(cx);
         terminal_view::init(cx);
         theme_testbench::init(cx);
-        recent_projects::init(cx);
-        copilot::init(client.clone(), node_runtime, cx);
+        copilot::init(http.clone(), node_runtime, cx);
 
         cx.spawn(|cx| watch_themes(fs.clone(), themes.clone(), cx))
             .detach();
@@ -173,8 +189,8 @@ fn main() {
         })
         .detach();
 
-        client.start_telemetry();
-        client.report_event(
+        client.telemetry().start();
+        client.telemetry().report_mixpanel_event(
             "start app",
             Default::default(),
             cx.global::<Settings>().telemetry(),
@@ -188,19 +204,20 @@ fn main() {
             fs,
             build_window_options,
             initialize_workspace,
-            dock_default_item_factory,
             background_actions,
         });
+        cx.set_global(Arc::downgrade(&app_state));
         auto_update::init(http, client::ZED_SERVER_URL.clone(), cx);
 
         workspace::init(app_state.clone(), cx);
+        recent_projects::init(cx);
 
         journal::init(app_state.clone(), cx);
-        language_selector::init(app_state.clone(), cx);
-        theme_selector::init(app_state.clone(), cx);
+        language_selector::init(cx);
+        theme_selector::init(cx);
         zed::init(&app_state, cx);
-        collab_ui::init(app_state.clone(), cx);
-        feedback::init(app_state.clone(), cx);
+        collab_ui::init(&app_state, cx);
+        feedback::init(cx);
         welcome::init(cx);
 
         cx.set_menus(menus::menus());
@@ -212,7 +229,7 @@ fn main() {
                 cx.spawn(|cx| async move { restore_or_create_workspace(&app_state, cx).await })
                     .detach()
             } else {
-                cx.dispatch_global_action(OpenPaths { paths });
+                workspace::open_paths(&paths, &app_state, None, cx).detach_and_log_err(cx);
             }
         } else {
             if let Ok(Some(connection)) = cli_connections_rx.try_next() {
@@ -267,16 +284,17 @@ fn main() {
 
 async fn restore_or_create_workspace(app_state: &Arc<AppState>, mut cx: AsyncAppContext) {
     if let Some(location) = workspace::last_opened_workspace_paths().await {
-        cx.update(|cx| {
-            cx.dispatch_global_action(OpenPaths {
-                paths: location.paths().as_ref().clone(),
-            })
-        });
+        cx.update(|cx| workspace::open_paths(location.paths().as_ref(), app_state, None, cx))
+            .await
+            .log_err();
     } else if matches!(KEY_VALUE_STORE.read_kvp(FIRST_OPEN), Ok(None)) {
         cx.update(|cx| show_welcome_experience(app_state, cx));
     } else {
         cx.update(|cx| {
-            cx.dispatch_global_action(NewFile);
+            workspace::open_new(app_state, cx, |workspace, cx| {
+                Editor::new_file(workspace, &Default::default(), cx)
+            })
+            .detach();
         });
     }
 }
@@ -317,6 +335,30 @@ fn init_logger() {
     }
 }
 
+#[derive(Serialize, Deserialize)]
+struct LocationData {
+    file: String,
+    line: u32,
+}
+
+#[derive(Serialize, Deserialize)]
+struct Panic {
+    thread: String,
+    payload: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    location_data: Option<LocationData>,
+    backtrace: Vec<String>,
+    // TODO
+    // stripped_backtrace: String,
+}
+
+#[derive(Serialize)]
+struct PanicRequest {
+    panic: Panic,
+    version: String,
+    token: String,
+}
+
 fn init_panic_hook(app_version: String) {
     let is_pty = stdout_is_a_pty();
     panic::set_hook(Box::new(move |info| {
@@ -333,44 +375,43 @@ fn init_panic_hook(app_version: String) {
             },
         };
 
-        let message = match info.location() {
-            Some(location) => {
-                format!(
-                    "thread '{}' panicked at '{}': {}:{}{:?}",
-                    thread,
-                    payload,
-                    location.file(),
-                    location.line(),
-                    backtrace
-                )
-            }
-            None => format!(
-                "thread '{}' panicked at '{}'{:?}",
-                thread, payload, backtrace
-            ),
+        let panic_data = Panic {
+            thread: thread.into(),
+            payload: payload.into(),
+            location_data: info.location().map(|location| LocationData {
+                file: location.file().into(),
+                line: location.line(),
+            }),
+            backtrace: format!("{:?}", backtrace)
+                .split("\n")
+                .map(|line| line.to_string())
+                .collect(),
+            // modified_backtrace: None,
         };
 
-        if is_pty {
-            eprintln!("{}", message);
-            return;
-        }
+        if let Some(panic_data_json) = serde_json::to_string_pretty(&panic_data).log_err() {
+            if is_pty {
+                eprintln!("{}", panic_data_json);
+                return;
+            }
 
-        let timestamp = chrono::Utc::now().format("%Y_%m_%d %H_%M_%S").to_string();
-        let panic_file_path =
-            paths::LOGS_DIR.join(format!("zed-{}-{}.panic", app_version, timestamp));
-        let panic_file = std::fs::OpenOptions::new()
-            .append(true)
-            .create(true)
-            .open(&panic_file_path)
-            .log_err();
-        if let Some(mut panic_file) = panic_file {
-            write!(&mut panic_file, "{}", message).log_err();
-            panic_file.flush().log_err();
+            let timestamp = chrono::Utc::now().format("%Y_%m_%d %H_%M_%S").to_string();
+            let panic_file_path =
+                paths::LOGS_DIR.join(format!("zed-{}-{}.panic", app_version, timestamp));
+            let panic_file = std::fs::OpenOptions::new()
+                .append(true)
+                .create(true)
+                .open(&panic_file_path)
+                .log_err();
+            if let Some(mut panic_file) = panic_file {
+                write!(&mut panic_file, "{}", panic_data_json).log_err();
+                panic_file.flush().log_err();
+            }
         }
     }));
 }
 
-fn upload_previous_panics(http: Arc<dyn HttpClient>, cx: &mut MutableAppContext) {
+fn upload_previous_panics(http: Arc<dyn HttpClient>, cx: &mut AppContext) {
     let diagnostics_telemetry = cx.global::<Settings>().telemetry_diagnostics();
 
     cx.background()
@@ -402,15 +443,17 @@ fn upload_previous_panics(http: Arc<dyn HttpClient>, cx: &mut MutableAppContext)
                     };
 
                     if diagnostics_telemetry {
-                        let text = smol::fs::read_to_string(&child_path)
+                        let panic_data_text = smol::fs::read_to_string(&child_path)
                             .await
                             .context("error reading panic file")?;
-                        let body = serde_json::to_string(&json!({
-                            "text": text,
-                            "version": version,
-                            "token": ZED_SECRET_CLIENT_TOKEN,
-                        }))
+
+                        let body = serde_json::to_string(&PanicRequest {
+                            panic: serde_json::from_str(&panic_data_text)?,
+                            version: version.to_string(),
+                            token: ZED_SECRET_CLIENT_TOKEN.into(),
+                        })
                         .unwrap();
+
                         let request = Request::post(&panic_report_url)
                             .redirect_policy(isahc::config::RedirectPolicy::Follow)
                             .header("Content-Type", "application/json")
@@ -520,7 +563,7 @@ async fn watch_themes(
             .await
             .log_err()?;
         if output.status.success() {
-            cx.update(|cx| theme_selector::ThemeSelector::reload(themes.clone(), cx))
+            cx.update(|cx| theme_selector::reload(themes.clone(), cx))
         } else {
             eprintln!(
                 "build script failed {}",
@@ -606,70 +649,88 @@ async fn handle_cli_connection(
                 } else {
                     paths
                 };
-                let (workspace, items) = cx
-                    .update(|cx| workspace::open_paths(&paths, &app_state, None, cx))
-                    .await;
 
                 let mut errored = false;
-                let mut item_release_futures = Vec::new();
-                cx.update(|cx| {
-                    for (item, path) in items.into_iter().zip(&paths) {
-                        match item {
-                            Some(Ok(item)) => {
-                                let released = oneshot::channel();
-                                item.on_release(
-                                    cx,
-                                    Box::new(move |_| {
-                                        let _ = released.0.send(());
-                                    }),
-                                )
-                                .detach();
-                                item_release_futures.push(released.1);
+                match cx
+                    .update(|cx| workspace::open_paths(&paths, &app_state, None, cx))
+                    .await
+                {
+                    Ok((workspace, items)) => {
+                        let mut item_release_futures = Vec::new();
+                        cx.update(|cx| {
+                            for (item, path) in items.into_iter().zip(&paths) {
+                                match item {
+                                    Some(Ok(item)) => {
+                                        let released = oneshot::channel();
+                                        item.on_release(
+                                            cx,
+                                            Box::new(move |_| {
+                                                let _ = released.0.send(());
+                                            }),
+                                        )
+                                        .detach();
+                                        item_release_futures.push(released.1);
+                                    }
+                                    Some(Err(err)) => {
+                                        responses
+                                            .send(CliResponse::Stderr {
+                                                message: format!(
+                                                    "error opening {:?}: {}",
+                                                    path, err
+                                                ),
+                                            })
+                                            .log_err();
+                                        errored = true;
+                                    }
+                                    None => {}
+                                }
                             }
-                            Some(Err(err)) => {
-                                responses
-                                    .send(CliResponse::Stderr {
-                                        message: format!("error opening {:?}: {}", path, err),
-                                    })
-                                    .log_err();
-                                errored = true;
+                        });
+
+                        if wait {
+                            let background = cx.background();
+                            let wait = async move {
+                                if paths.is_empty() {
+                                    let (done_tx, done_rx) = oneshot::channel();
+                                    if let Some(workspace) = workspace.upgrade(&cx) {
+                                        let _subscription = cx.update(|cx| {
+                                            cx.observe_release(&workspace, move |_, _| {
+                                                let _ = done_tx.send(());
+                                            })
+                                        });
+                                        drop(workspace);
+                                        let _ = done_rx.await;
+                                    }
+                                } else {
+                                    let _ =
+                                        futures::future::try_join_all(item_release_futures).await;
+                                };
                             }
-                            None => {}
-                        }
-                    }
-                });
+                            .fuse();
+                            futures::pin_mut!(wait);
 
-                if wait {
-                    let background = cx.background();
-                    let wait = async move {
-                        if paths.is_empty() {
-                            let (done_tx, done_rx) = oneshot::channel();
-                            let _subscription = cx.update(|cx| {
-                                cx.observe_release(&workspace, move |_, _| {
-                                    let _ = done_tx.send(());
-                                })
-                            });
-                            drop(workspace);
-                            let _ = done_rx.await;
-                        } else {
-                            let _ = futures::future::try_join_all(item_release_futures).await;
-                        };
-                    }
-                    .fuse();
-                    futures::pin_mut!(wait);
-
-                    loop {
-                        // Repeatedly check if CLI is still open to avoid wasting resources
-                        // waiting for files or workspaces to close.
-                        let mut timer = background.timer(Duration::from_secs(1)).fuse();
-                        futures::select_biased! {
-                            _ = wait => break,
-                            _ = timer => {
-                                if responses.send(CliResponse::Ping).is_err() {
-                                    break;
+                            loop {
+                                // Repeatedly check if CLI is still open to avoid wasting resources
+                                // waiting for files or workspaces to close.
+                                let mut timer = background.timer(Duration::from_secs(1)).fuse();
+                                futures::select_biased! {
+                                    _ = wait => break,
+                                    _ = timer => {
+                                        if responses.send(CliResponse::Ping).is_err() {
+                                            break;
+                                        }
+                                    }
                                 }
                             }
                         }
+                    }
+                    Err(error) => {
+                        errored = true;
+                        responses
+                            .send(CliResponse::Stderr {
+                                message: format!("error opening {:?}: {}", paths, error),
+                            })
+                            .log_err();
                     }
                 }
 
@@ -713,7 +774,6 @@ pub fn background_actions() -> &'static [(&'static str, &'static dyn Action)] {
     &[
         ("Go to file", &file_finder::Toggle),
         ("Open command palette", &command_palette::Toggle),
-        ("Focus the dock", &FocusDock),
         ("Open recent projects", &recent_projects::OpenRecent),
         ("Change your settings", &OpenSettings),
     ]

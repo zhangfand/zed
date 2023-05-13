@@ -1,6 +1,7 @@
 import deepmerge from "deepmerge"
 import { FontWeight, fontWeights } from "../../common"
 import { ColorScheme } from "./colorScheme"
+import chroma from "chroma-js"
 
 export interface SyntaxHighlightStyle {
     color: string
@@ -130,6 +131,8 @@ function buildDefaultSyntax(colorScheme: ColorScheme): Syntax {
         [key: string]: Omit<SyntaxHighlightStyle, "color">
     } = {}
 
+    const light = colorScheme.isLight
+
     // then spread the default to each style
     for (const key of Object.keys({} as Syntax)) {
         syntax[key as keyof Syntax] = {
@@ -137,11 +140,20 @@ function buildDefaultSyntax(colorScheme: ColorScheme): Syntax {
         }
     }
 
+    // Mix the neutral and blue colors to get a
+    // predictive color distinct from any other color in the theme
+    const predictive = chroma.mix(
+        colorScheme.ramps.neutral(0.4).hex(),
+        colorScheme.ramps.blue(0.4).hex(),
+        0.45,
+        "lch"
+    ).hex()
+
     const color = {
         primary: colorScheme.ramps.neutral(1).hex(),
         comment: colorScheme.ramps.neutral(0.71).hex(),
         punctuation: colorScheme.ramps.neutral(0.86).hex(),
-        predictive: colorScheme.ramps.neutral(0.57).hex(),
+        predictive: predictive,
         emphasis: colorScheme.ramps.blue(0.5).hex(),
         string: colorScheme.ramps.orange(0.5).hex(),
         function: colorScheme.ramps.yellow(0.5).hex(),
@@ -171,6 +183,7 @@ function buildDefaultSyntax(colorScheme: ColorScheme): Syntax {
         },
         predictive: {
             color: color.predictive,
+            italic: true,
         },
         generating: {
             color: colorScheme.ramps.neutral(0.60).hex(),

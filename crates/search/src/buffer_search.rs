@@ -5,14 +5,17 @@ use crate::{
 use collections::HashMap;
 use editor::Editor;
 use gpui::{
-    actions, elements::*, impl_actions, platform::CursorStyle, Action, AnyViewHandle, AppContext,
-    Entity, MouseButton, MutableAppContext, RenderContext, Subscription, Task, View, ViewContext,
-    ViewHandle,
+    actions,
+    elements::*,
+    impl_actions,
+    platform::{CursorStyle, MouseButton},
+    Action, AnyViewHandle, AppContext, Entity, Subscription, Task, View, ViewContext, ViewHandle,
 };
 use project::search::SearchQuery;
 use serde::Deserialize;
 use settings::Settings;
 use std::{any::Any, sync::Arc};
+use util::ResultExt;
 use workspace::{
     item::ItemHandle,
     searchable::{Direction, SearchEvent, SearchableItemHandle, WeakSearchableItemHandle},
@@ -31,7 +34,7 @@ pub enum Event {
     UpdateLocation,
 }
 
-pub fn init(cx: &mut MutableAppContext) {
+pub fn init(cx: &mut AppContext) {
     cx.add_action(BufferSearchBar::deploy);
     cx.add_action(BufferSearchBar::dismiss);
     cx.add_action(BufferSearchBar::focus_editor);
@@ -45,7 +48,7 @@ pub fn init(cx: &mut MutableAppContext) {
     add_toggle_option_action::<ToggleRegex>(SearchOption::Regex, cx);
 }
 
-fn add_toggle_option_action<A: Action>(option: SearchOption, cx: &mut MutableAppContext) {
+fn add_toggle_option_action<A: Action>(option: SearchOption, cx: &mut AppContext) {
     cx.add_action(move |pane: &mut Pane, _: &A, cx: &mut ViewContext<Pane>| {
         if let Some(search_bar) = pane.toolbar().read(cx).item_of_type::<BufferSearchBar>() {
             if search_bar.update(cx, |search_bar, cx| search_bar.show(false, false, cx)) {
@@ -89,7 +92,7 @@ impl View for BufferSearchBar {
         }
     }
 
-    fn render(&mut self, cx: &mut RenderContext<Self>) -> ElementBox {
+    fn render(&mut self, cx: &mut ViewContext<Self>) -> AnyElement<Self> {
         let theme = cx.global::<Settings>().theme.clone();
         let editor_container = if self.query_contains_error {
             theme.search.invalid_editor
@@ -111,8 +114,7 @@ impl View for BufferSearchBar {
                                 ChildView::new(&self.query_editor, cx)
                                     .aligned()
                                     .left()
-                                    .flex(1., true)
-                                    .boxed(),
+                                    .flex(1., true),
                             )
                             .with_children(self.active_searchable_item.as_ref().and_then(
                                 |searchable_item| {
@@ -129,8 +131,7 @@ impl View for BufferSearchBar {
                                         Label::new(message, theme.search.match_index.text.clone())
                                             .contained()
                                             .with_style(theme.search.match_index.container)
-                                            .aligned()
-                                            .boxed(),
+                                            .aligned(),
                                     )
                                 },
                             ))
@@ -140,15 +141,13 @@ impl View for BufferSearchBar {
                             .constrained()
                             .with_min_width(theme.search.editor.min_width)
                             .with_max_width(theme.search.editor.max_width)
-                            .flex(1., false)
-                            .boxed(),
+                            .flex(1., false),
                     )
                     .with_child(
                         Flex::row()
                             .with_child(self.render_nav_button("<", Direction::Prev, cx))
                             .with_child(self.render_nav_button(">", Direction::Next, cx))
-                            .aligned()
-                            .boxed(),
+                            .aligned(),
                     )
                     .with_child(
                         Flex::row()
@@ -172,16 +171,14 @@ impl View for BufferSearchBar {
                             ))
                             .contained()
                             .with_style(theme.search.option_button_group)
-                            .aligned()
-                            .boxed(),
+                            .aligned(),
                     )
-                    .flex(1., true)
-                    .boxed(),
+                    .flex(1., true),
             )
             .with_child(self.render_close_button(&theme.search, cx))
             .contained()
             .with_style(theme.search.container)
-            .named("search bar")
+            .into_any_named("search bar")
     }
 }
 
@@ -199,12 +196,12 @@ impl ToolbarItemView for BufferSearchBar {
         if let Some(searchable_item_handle) =
             item.and_then(|item| item.to_searchable_item_handle(cx))
         {
-            let handle = cx.weak_handle();
+            let this = cx.weak_handle();
             self.active_searchable_item_subscription =
                 Some(searchable_item_handle.subscribe_to_search_events(
                     cx,
                     Box::new(move |search_event, cx| {
-                        if let Some(this) = handle.upgrade(cx) {
+                        if let Some(this) = this.upgrade(cx) {
                             this.update(cx, |this, cx| {
                                 this.on_active_searchable_item_event(search_event, cx)
                             });
@@ -272,7 +269,7 @@ impl BufferSearchBar {
             }
         }
         if let Some(active_editor) = self.active_searchable_item.as_ref() {
-            cx.focus(active_editor);
+            cx.focus(active_editor.as_any());
         }
         cx.emit(Event::UpdateLocation);
         cx.notify();
@@ -320,8 +317,8 @@ impl BufferSearchBar {
         option_supported: bool,
         icon: &'static str,
         option: SearchOption,
-        cx: &mut RenderContext<Self>,
-    ) -> Option<ElementBox> {
+        cx: &mut ViewContext<Self>,
+    ) -> Option<AnyElement<Self>> {
         if !option_supported {
             return None;
         }
@@ -329,7 +326,7 @@ impl BufferSearchBar {
         let tooltip_style = cx.global::<Settings>().theme.tooltip.clone();
         let is_active = self.is_search_option_enabled(option);
         Some(
-            MouseEventHandler::<Self>::new(option as usize, cx, |state, cx| {
+            MouseEventHandler::<Self, _>::new(option as usize, cx, |state, cx| {
                 let style = cx
                     .global::<Settings>()
                     .theme
@@ -339,20 +336,19 @@ impl BufferSearchBar {
                 Label::new(icon, style.text.clone())
                     .contained()
                     .with_style(style.container)
-                    .boxed()
             })
-            .on_click(MouseButton::Left, move |_, cx| {
-                cx.dispatch_any_action(option.to_toggle_action())
+            .on_click(MouseButton::Left, move |_, this, cx| {
+                this.toggle_search_option(option, cx);
             })
             .with_cursor_style(CursorStyle::PointingHand)
-            .with_tooltip::<Self, _>(
+            .with_tooltip::<Self>(
                 option as usize,
                 format!("Toggle {}", option.label()),
                 Some(option.to_toggle_action()),
                 tooltip_style,
                 cx,
             )
-            .boxed(),
+            .into_any(),
         )
     }
 
@@ -360,8 +356,8 @@ impl BufferSearchBar {
         &self,
         icon: &'static str,
         direction: Direction,
-        cx: &mut RenderContext<Self>,
-    ) -> ElementBox {
+        cx: &mut ViewContext<Self>,
+    ) -> AnyElement<Self> {
         let action: Box<dyn Action>;
         let tooltip;
         match direction {
@@ -377,7 +373,7 @@ impl BufferSearchBar {
         let tooltip_style = cx.global::<Settings>().theme.tooltip.clone();
 
         enum NavButton {}
-        MouseEventHandler::<NavButton>::new(direction as usize, cx, |state, cx| {
+        MouseEventHandler::<NavButton, _>::new(direction as usize, cx, |state, cx| {
             let style = cx
                 .global::<Settings>()
                 .theme
@@ -387,34 +383,34 @@ impl BufferSearchBar {
             Label::new(icon, style.text.clone())
                 .contained()
                 .with_style(style.container)
-                .boxed()
         })
         .on_click(MouseButton::Left, {
-            let action = action.boxed_clone();
-            move |_, cx| cx.dispatch_any_action(action.boxed_clone())
+            move |_, this, cx| match direction {
+                Direction::Prev => this.select_prev_match(&Default::default(), cx),
+                Direction::Next => this.select_next_match(&Default::default(), cx),
+            }
         })
         .with_cursor_style(CursorStyle::PointingHand)
-        .with_tooltip::<NavButton, _>(
+        .with_tooltip::<NavButton>(
             direction as usize,
             tooltip.to_string(),
             Some(action),
             tooltip_style,
             cx,
         )
-        .boxed()
+        .into_any()
     }
 
     fn render_close_button(
         &self,
         theme: &theme::Search,
-        cx: &mut RenderContext<Self>,
-    ) -> ElementBox {
-        let action = Box::new(Dismiss);
+        cx: &mut ViewContext<Self>,
+    ) -> AnyElement<Self> {
         let tooltip = "Dismiss Buffer Search";
         let tooltip_style = cx.global::<Settings>().theme.tooltip.clone();
 
         enum CloseButton {}
-        MouseEventHandler::<CloseButton>::new(0, cx, |state, _| {
+        MouseEventHandler::<CloseButton, _>::new(0, cx, |state, _| {
             let style = theme.dismiss_button.style_for(state, false);
             Svg::new("icons/x_mark_8.svg")
                 .with_color(style.color)
@@ -425,15 +421,19 @@ impl BufferSearchBar {
                 .with_width(style.button_width)
                 .contained()
                 .with_style(style.container)
-                .boxed()
         })
-        .on_click(MouseButton::Left, {
-            let action = action.boxed_clone();
-            move |_, cx| cx.dispatch_any_action(action.boxed_clone())
+        .on_click(MouseButton::Left, move |_, this, cx| {
+            this.dismiss(&Default::default(), cx)
         })
         .with_cursor_style(CursorStyle::PointingHand)
-        .with_tooltip::<CloseButton, _>(0, tooltip.to_string(), Some(action), tooltip_style, cx)
-        .boxed()
+        .with_tooltip::<CloseButton>(
+            0,
+            tooltip.to_string(),
+            Some(Box::new(Dismiss)),
+            tooltip_style,
+            cx,
+        )
+        .into_any()
     }
 
     fn deploy(pane: &mut Pane, action: &Deploy, cx: &mut ViewContext<Pane>) {
@@ -457,7 +457,7 @@ impl BufferSearchBar {
 
     fn focus_editor(&mut self, _: &FocusEditor, cx: &mut ViewContext<Self>) {
         if let Some(active_editor) = self.active_searchable_item.as_ref() {
-            cx.focus(active_editor);
+            cx.focus(active_editor.as_any());
         }
     }
 
@@ -572,7 +572,13 @@ impl BufferSearchBar {
                 active_searchable_item.clear_matches(cx);
             } else {
                 let query = if self.regex {
-                    match SearchQuery::regex(query, self.whole_word, self.case_sensitive) {
+                    match SearchQuery::regex(
+                        query,
+                        self.whole_word,
+                        self.case_sensitive,
+                        Vec::new(),
+                        Vec::new(),
+                    ) {
                         Ok(query) => query,
                         Err(_) => {
                             self.query_contains_error = true;
@@ -581,41 +587,45 @@ impl BufferSearchBar {
                         }
                     }
                 } else {
-                    SearchQuery::text(query, self.whole_word, self.case_sensitive)
+                    SearchQuery::text(
+                        query,
+                        self.whole_word,
+                        self.case_sensitive,
+                        Vec::new(),
+                        Vec::new(),
+                    )
                 };
 
                 let matches = active_searchable_item.find_matches(query, cx);
 
                 let active_searchable_item = active_searchable_item.downgrade();
-                self.pending_search = Some(cx.spawn_weak(|this, mut cx| async move {
+                self.pending_search = Some(cx.spawn(|this, mut cx| async move {
                     let matches = matches.await;
-                    if let Some(this) = this.upgrade(&cx) {
-                        this.update(&mut cx, |this, cx| {
-                            if let Some(active_searchable_item) = WeakSearchableItemHandle::upgrade(
-                                active_searchable_item.as_ref(),
-                                cx,
-                            ) {
-                                this.seachable_items_with_matches
-                                    .insert(active_searchable_item.downgrade(), matches);
+                    this.update(&mut cx, |this, cx| {
+                        if let Some(active_searchable_item) =
+                            WeakSearchableItemHandle::upgrade(active_searchable_item.as_ref(), cx)
+                        {
+                            this.seachable_items_with_matches
+                                .insert(active_searchable_item.downgrade(), matches);
 
-                                this.update_match_index(cx);
-                                if !this.dismissed {
-                                    let matches = this
-                                        .seachable_items_with_matches
-                                        .get(&active_searchable_item.downgrade())
-                                        .unwrap();
-                                    active_searchable_item.update_matches(matches, cx);
-                                    if select_closest_match {
-                                        if let Some(match_ix) = this.active_match_index {
-                                            active_searchable_item
-                                                .activate_match(match_ix, matches, cx);
-                                        }
+                            this.update_match_index(cx);
+                            if !this.dismissed {
+                                let matches = this
+                                    .seachable_items_with_matches
+                                    .get(&active_searchable_item.downgrade())
+                                    .unwrap();
+                                active_searchable_item.update_matches(matches, cx);
+                                if select_closest_match {
+                                    if let Some(match_ix) = this.active_match_index {
+                                        active_searchable_item
+                                            .activate_match(match_ix, matches, cx);
                                     }
                                 }
-                                cx.notify();
                             }
-                        });
-                    }
+                            cx.notify();
+                        }
+                    })
+                    .log_err();
                 }));
             }
         }
@@ -671,13 +681,11 @@ mod tests {
                 cx,
             )
         });
-        let (_, root_view) = cx.add_window(|_| EmptyView);
+        let (window_id, _root_view) = cx.add_window(|_| EmptyView);
 
-        let editor = cx.add_view(&root_view, |cx| {
-            Editor::for_buffer(buffer.clone(), None, cx)
-        });
+        let editor = cx.add_view(window_id, |cx| Editor::for_buffer(buffer.clone(), None, cx));
 
-        let search_bar = cx.add_view(&root_view, |cx| {
+        let search_bar = cx.add_view(window_id, |cx| {
             let mut search_bar = BufferSearchBar::new(cx);
             search_bar.set_active_pane_item(Some(&editor), cx);
             search_bar.show(false, true, cx);

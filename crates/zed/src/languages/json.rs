@@ -2,12 +2,13 @@ use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use collections::HashMap;
 use futures::{future::BoxFuture, FutureExt, StreamExt};
-use gpui::MutableAppContext;
+use gpui::AppContext;
 use language::{LanguageRegistry, LanguageServerBinary, LanguageServerName, LspAdapter};
 use node_runtime::NodeRuntime;
 use serde_json::json;
 use settings::{keymap_file_json_schema, settings_file_json_schema};
 use smol::fs;
+use staff_mode::StaffMode;
 use std::{
     any::Any,
     ffi::OsString,
@@ -17,7 +18,7 @@ use std::{
 };
 use theme::ThemeRegistry;
 use util::http::HttpClient;
-use util::{paths, ResultExt, StaffMode};
+use util::{paths, ResultExt};
 
 const SERVER_PATH: &'static str =
     "node_modules/vscode-json-languageserver/bin/vscode-json-languageserver";
@@ -75,8 +76,8 @@ impl LspAdapter for JsonLspAdapter {
         if fs::metadata(&server_path).await.is_err() {
             self.node
                 .npm_install_packages(
-                    [("vscode-json-languageserver", version.as_str())],
                     &container_dir,
+                    [("vscode-json-languageserver", version.as_str())],
                 )
                 .await?;
         }
@@ -124,7 +125,7 @@ impl LspAdapter for JsonLspAdapter {
 
     fn workspace_configuration(
         &self,
-        cx: &mut MutableAppContext,
+        cx: &mut AppContext,
     ) -> Option<BoxFuture<'static, serde_json::Value>> {
         let action_names = cx.all_action_names().collect::<Vec<_>>();
         let theme_names = self

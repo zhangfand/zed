@@ -1,14 +1,14 @@
+use crate::toggle_screen_sharing;
 use call::ActiveCall;
 use gpui::{
     color::Color,
     elements::{MouseEventHandler, Svg},
-    Appearance, Element, ElementBox, Entity, MouseButton, MutableAppContext, RenderContext, View,
+    platform::{Appearance, MouseButton},
+    AnyElement, AppContext, Element, Entity, View, ViewContext,
 };
 use settings::Settings;
 
-use crate::ToggleScreenSharing;
-
-pub fn init(cx: &mut MutableAppContext) {
+pub fn init(cx: &mut AppContext) {
     let active_call = ActiveCall::global(cx);
 
     let mut status_indicator = None;
@@ -19,10 +19,10 @@ pub fn init(cx: &mut MutableAppContext) {
                     status_indicator = Some(cx.add_status_bar_item(|_| SharingStatusIndicator));
                 }
             } else if let Some((window_id, _)) = status_indicator.take() {
-                cx.remove_status_bar_item(window_id);
+                cx.update_window(window_id, |cx| cx.remove_window());
             }
         } else if let Some((window_id, _)) = status_indicator.take() {
-            cx.remove_status_bar_item(window_id);
+            cx.update_window(window_id, |cx| cx.remove_window());
         }
     })
     .detach();
@@ -39,23 +39,22 @@ impl View for SharingStatusIndicator {
         "SharingStatusIndicator"
     }
 
-    fn render(&mut self, cx: &mut RenderContext<'_, Self>) -> ElementBox {
-        let color = match cx.appearance {
+    fn render(&mut self, cx: &mut ViewContext<Self>) -> AnyElement<Self> {
+        let color = match cx.window_appearance() {
             Appearance::Light | Appearance::VibrantLight => Color::black(),
             Appearance::Dark | Appearance::VibrantDark => Color::white(),
         };
 
-        MouseEventHandler::<Self>::new(0, cx, |_, _| {
+        MouseEventHandler::<Self, Self>::new(0, cx, |_, _| {
             Svg::new("icons/disable_screen_sharing_12.svg")
                 .with_color(color)
                 .constrained()
                 .with_width(18.)
                 .aligned()
-                .boxed()
         })
-        .on_click(MouseButton::Left, |_, cx| {
-            cx.dispatch_action(ToggleScreenSharing);
+        .on_click(MouseButton::Left, |_, _, cx| {
+            toggle_screen_sharing(&Default::default(), cx)
         })
-        .boxed()
+        .into_any()
     }
 }

@@ -12,7 +12,7 @@ pub fn menus() -> Vec<Menu<'static>> {
                 MenuItem::submenu(Menu {
                     name: "Preferences",
                     items: vec![
-                        MenuItem::action("Open Settings", super::OpenSettings),
+                        MenuItem::action("Open Settings", workspace::OpenSettings),
                         MenuItem::action("Open Key Bindings", super::OpenKeymap),
                         MenuItem::action("Open Default Settings", super::OpenDefaultSettings),
                         MenuItem::action("Open Default Key Bindings", super::OpenDefaultKeymap),
@@ -89,7 +89,7 @@ pub fn menus() -> Vec<Menu<'static>> {
                 MenuItem::action("Zoom Out", super::DecreaseBufferFontSize),
                 MenuItem::action("Reset Zoom", super::ResetBufferFontSize),
                 MenuItem::separator(),
-                MenuItem::action("Toggle Left Sidebar", workspace::ToggleLeftSidebar),
+                MenuItem::action("Toggle Left Dock", workspace::ToggleLeftDock),
                 MenuItem::submenu(Menu {
                     name: "Editor Layout",
                     items: vec![

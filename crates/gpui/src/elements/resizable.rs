@@ -1,28 +1,29 @@
-use std::{cell::Cell, rc::Rc};
+use std::{cell::RefCell, rc::Rc};
 
 use pathfinder_geometry::vector::{vec2f, Vector2F};
 use serde_json::json;
 
 use crate::{
-    geometry::rect::RectF, scene::MouseDrag, Axis, CursorStyle, Element, ElementBox,
-    ElementStateHandle, MouseButton, MouseRegion, RenderContext, View,
+    geometry::rect::RectF,
+    platform::{CursorStyle, MouseButton},
+    scene::MouseDrag,
+    AnyElement, Axis, Element, LayoutContext, MouseRegion, SceneBuilder, SizeConstraint, View,
+    ViewContext,
 };
 
-use super::{ConstrainedBox, Hook};
-
 #[derive(Copy, Clone, Debug)]
-pub enum Side {
+pub enum HandleSide {
     Top,
     Bottom,
     Left,
     Right,
 }
 
-impl Side {
+impl HandleSide {
     fn axis(&self) -> Axis {
         match self {
-            Side::Left | Side::Right => Axis::Horizontal,
-            Side::Top | Side::Bottom => Axis::Vertical,
+            HandleSide::Left | HandleSide::Right => Axis::Horizontal,
+            HandleSide::Top | HandleSide::Bottom => Axis::Vertical,
         }
     }
 
@@ -30,8 +31,8 @@ impl Side {
     /// then top-to-bottom
     fn before_content(self) -> bool {
         match self {
-            Side::Left | Side::Top => true,
-            Side::Right | Side::Bottom => false,
+            HandleSide::Left | HandleSide::Top => true,
+            HandleSide::Right | HandleSide::Bottom => false,
         }
     }
 
@@ -52,14 +53,14 @@ impl Side {
 
     fn of_rect(&self, bounds: RectF, handle_size: f32) -> RectF {
         match self {
-            Side::Top => RectF::new(bounds.origin(), vec2f(bounds.width(), handle_size)),
-            Side::Left => RectF::new(bounds.origin(), vec2f(handle_size, bounds.height())),
-            Side::Bottom => {
+            HandleSide::Top => RectF::new(bounds.origin(), vec2f(bounds.width(), handle_size)),
+            HandleSide::Left => RectF::new(bounds.origin(), vec2f(handle_size, bounds.height())),
+            HandleSide::Bottom => {
                 let mut origin = bounds.lower_left();
                 origin.set_y(origin.y() - handle_size);
                 RectF::new(origin, vec2f(bounds.width(), handle_size))
             }
-            Side::Right => {
+            HandleSide::Right => {
                 let mut origin = bounds.upper_right();
                 origin.set_x(origin.x() - handle_size);
                 RectF::new(origin, vec2f(handle_size, bounds.height()))
@@ -68,123 +69,107 @@ impl Side {
     }
 }
 
-struct ResizeHandleState {
-    actual_dimension: Cell<f32>,
-    custom_dimension: Cell<f32>,
-}
-
-pub struct Resizable {
-    side: Side,
+pub struct Resizable<V: View> {
+    child: AnyElement<V>,
+    handle_side: HandleSide,
     handle_size: f32,
-    child: ElementBox,
-    state: Rc<ResizeHandleState>,
-    _state_handle: ElementStateHandle<Rc<ResizeHandleState>>,
+    on_resize: Rc<RefCell<dyn FnMut(&mut V, f32, &mut ViewContext<V>)>>,
 }
 
-impl Resizable {
-    pub fn new<Tag: 'static, T: View>(
-        child: ElementBox,
-        element_id: usize,
-        side: Side,
-        handle_size: f32,
-        initial_size: f32,
-        cx: &mut RenderContext<T>,
+const DEFAULT_HANDLE_SIZE: f32 = 4.0;
+
+impl<V: View> Resizable<V> {
+    pub fn new(
+        child: AnyElement<V>,
+        handle_side: HandleSide,
+        size: f32,
+        on_resize: impl 'static + FnMut(&mut V, f32, &mut ViewContext<V>),
     ) -> Self {
-        let state_handle = cx.element_state::<Tag, Rc<ResizeHandleState>>(
-            element_id,
-            Rc::new(ResizeHandleState {
-                actual_dimension: Cell::new(initial_size),
-                custom_dimension: Cell::new(initial_size),
-            }),
-        );
-
-        let state = state_handle.read(cx).clone();
-
-        let child = Hook::new({
-            let constrained = ConstrainedBox::new(child);
-            match side.axis() {
-                Axis::Horizontal => constrained.with_max_width(state.custom_dimension.get()),
-                Axis::Vertical => constrained.with_max_height(state.custom_dimension.get()),
-            }
-            .boxed()
-        })
-        .on_after_layout({
-            let state = state.clone();
-            move |size, _| {
-                state.actual_dimension.set(side.relevant_component(size));
-            }
-        })
-        .boxed();
+        let child = match handle_side.axis() {
+            Axis::Horizontal => child.constrained().with_max_width(size),
+            Axis::Vertical => child.constrained().with_max_height(size),
+        }
+        .into_any();
 
         Self {
-            side,
             child,
-            handle_size,
-            state,
-            _state_handle: state_handle,
+            handle_side,
+            handle_size: DEFAULT_HANDLE_SIZE,
+            on_resize: Rc::new(RefCell::new(on_resize)),
         }
     }
 
-    pub fn current_size(&self) -> f32 {
-        self.state.actual_dimension.get()
+    pub fn with_handle_size(mut self, handle_size: f32) -> Self {
+        self.handle_size = handle_size;
+        self
     }
 }
 
-impl Element for Resizable {
-    type LayoutState = ();
+impl<V: View> Element<V> for Resizable<V> {
+    type LayoutState = SizeConstraint;
     type PaintState = ();
 
     fn layout(
         &mut self,
         constraint: crate::SizeConstraint,
-        cx: &mut crate::LayoutContext,
+        view: &mut V,
+        cx: &mut LayoutContext<V>,
     ) -> (Vector2F, Self::LayoutState) {
-        (self.child.layout(constraint, cx), ())
+        (self.child.layout(constraint, view, cx), constraint)
     }
 
     fn paint(
         &mut self,
+        scene: &mut SceneBuilder,
         bounds: pathfinder_geometry::rect::RectF,
         visible_bounds: pathfinder_geometry::rect::RectF,
-        _child_size: &mut Self::LayoutState,
-        cx: &mut crate::PaintContext,
+        constraint: &mut SizeConstraint,
+        view: &mut V,
+        cx: &mut ViewContext<V>,
     ) -> Self::PaintState {
-        cx.scene.push_stacking_context(None, None);
+        scene.push_stacking_context(None, None);
 
-        let handle_region = self.side.of_rect(bounds, self.handle_size);
+        let handle_region = self.handle_side.of_rect(bounds, self.handle_size);
 
         enum ResizeHandle {}
-        cx.scene.push_mouse_region(
+        scene.push_mouse_region(
             MouseRegion::new::<ResizeHandle>(
-                cx.current_view_id(),
-                self.side as usize,
+                cx.view_id(),
+                self.handle_side as usize,
                 handle_region,
             )
-            .on_down(MouseButton::Left, |_, _| {}) // This prevents the mouse down event from being propagated elsewhere
+            .on_down(MouseButton::Left, |_, _: &mut V, _| {}) // This prevents the mouse down event from being propagated elsewhere
             .on_drag(MouseButton::Left, {
-                let state = self.state.clone();
-                let side = self.side;
-                move |e, cx| {
-                    let prev_width = state.actual_dimension.get();
-                    state
-                        .custom_dimension
-                        .set(0f32.max(prev_width + side.compute_delta(e)).round());
-                    cx.notify();
+                let bounds = bounds.clone();
+                let side = self.handle_side;
+                let prev_size = side.relevant_component(bounds.size());
+                let min_size = side.relevant_component(constraint.min);
+                let max_size = side.relevant_component(constraint.max);
+                let on_resize = self.on_resize.clone();
+                move |event, view: &mut V, cx| {
+                    let new_size = min_size
+                        .max(prev_size + side.compute_delta(event))
+                        .min(max_size)
+                        .round();
+                    if new_size != prev_size {
+                        on_resize.borrow_mut()(view, new_size, cx);
+                    }
                 }
             }),
         );
 
-        cx.scene.push_cursor_region(crate::CursorRegion {
+        scene.push_cursor_region(crate::CursorRegion {
             bounds: handle_region,
-            style: match self.side.axis() {
+            style: match self.handle_side.axis() {
                 Axis::Horizontal => CursorStyle::ResizeLeftRight,
                 Axis::Vertical => CursorStyle::ResizeUpDown,
             },
         });
 
-        cx.scene.pop_stacking_context();
+        scene.pop_stacking_context();
 
-        self.child.paint(bounds.origin(), visible_bounds, cx);
+        self.child
+            .paint(scene, bounds.origin(), visible_bounds, view, cx);
     }
 
     fn rect_for_text_range(
@@ -194,9 +179,10 @@ impl Element for Resizable {
         _visible_bounds: pathfinder_geometry::rect::RectF,
         _layout: &Self::LayoutState,
         _paint: &Self::PaintState,
-        cx: &crate::MeasurementContext,
+        view: &V,
+        cx: &ViewContext<V>,
     ) -> Option<pathfinder_geometry::rect::RectF> {
-        self.child.rect_for_text_range(range_utf16, cx)
+        self.child.rect_for_text_range(range_utf16, view, cx)
     }
 
     fn debug(
@@ -204,10 +190,11 @@ impl Element for Resizable {
         _bounds: pathfinder_geometry::rect::RectF,
         _layout: &Self::LayoutState,
         _paint: &Self::PaintState,
-        cx: &crate::DebugContext,
+        view: &V,
+        cx: &ViewContext<V>,
     ) -> serde_json::Value {
         json!({
-            "child": self.child.debug(cx),
+            "child": self.child.debug(view, cx),
         })
     }
 }

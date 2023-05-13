@@ -1,9 +1,9 @@
-use crate::{update_settings_file, watched_json::WatchedJsonFile, SettingsFileContent};
+use crate::{update_settings_file, watched_json::WatchedJsonFile, Settings, SettingsFileContent};
 use anyhow::Result;
 use assets::Assets;
 use fs::Fs;
-use gpui::{AssetSource, MutableAppContext};
-use std::{io::ErrorKind, path::Path, sync::Arc};
+use gpui::AppContext;
+use std::{io::ErrorKind, ops::Range, path::Path, sync::Arc};
 
 // TODO: Switch SettingsFile to open a worktree and buffer for synchronization
 //       And instant updates in the Zed editor
@@ -33,14 +33,7 @@ impl SettingsFile {
             Err(err) => {
                 if let Some(e) = err.downcast_ref::<std::io::Error>() {
                     if e.kind() == ErrorKind::NotFound {
-                        return Ok(std::str::from_utf8(
-                            Assets
-                                .load("settings/initial_user_settings.json")
-                                .unwrap()
-                                .as_ref(),
-                        )
-                        .unwrap()
-                        .to_string());
+                        return Ok(Settings::initial_user_settings_content(&Assets).to_string());
                     }
                 }
                 return Err(err);
@@ -48,28 +41,39 @@ impl SettingsFile {
         }
     }
 
+    pub fn update_unsaved(
+        text: &str,
+        cx: &AppContext,
+        update: impl FnOnce(&mut SettingsFileContent),
+    ) -> Vec<(Range<usize>, String)> {
+        let this = cx.global::<SettingsFile>();
+        let tab_size = cx.global::<Settings>().tab_size(Some("JSON"));
+        let current_file_content = this.settings_file_content.current();
+        update_settings_file(&text, current_file_content, tab_size, update)
+    }
+
     pub fn update(
-        cx: &mut MutableAppContext,
+        cx: &mut AppContext,
         update: impl 'static + Send + FnOnce(&mut SettingsFileContent),
     ) {
         let this = cx.global::<SettingsFile>();
-
+        let tab_size = cx.global::<Settings>().tab_size(Some("JSON"));
         let current_file_content = this.settings_file_content.current();
-
         let fs = this.fs.clone();
         let path = this.path.clone();
 
         cx.background()
             .spawn(async move {
                 let old_text = SettingsFile::load_settings(path, &fs).await?;
-
-                let new_text = update_settings_file(old_text, current_file_content, update);
-
+                let edits = update_settings_file(&old_text, current_file_content, tab_size, update);
+                let mut new_text = old_text;
+                for (range, replacement) in edits.into_iter().rev() {
+                    new_text.replace_range(range, &replacement);
+                }
                 fs.atomic_write(path.to_path_buf(), new_text).await?;
-
-                Ok(()) as Result<()>
+                anyhow::Ok(())
             })
-            .detach_and_log_err(cx);
+            .detach_and_log_err(cx)
     }
 }
 
@@ -80,8 +84,24 @@ mod tests {
         watch_files, watched_json::watch_settings_file, EditorSettings, Settings, SoftWrap,
     };
     use fs::FakeFs;
-    use gpui::{actions, Action};
+    use gpui::{actions, elements::*, Action, Entity, TestAppContext, View, ViewContext};
     use theme::ThemeRegistry;
+
+    struct TestView;
+
+    impl Entity for TestView {
+        type Event = ();
+    }
+
+    impl View for TestView {
+        fn ui_name() -> &'static str {
+            "TestView"
+        }
+
+        fn render(&mut self, _: &mut ViewContext<Self>) -> AnyElement<Self> {
+            Empty::new().into_any()
+        }
+    }
 
     #[gpui::test]
     async fn test_base_keymap(cx: &mut gpui::TestAppContext) {
@@ -148,14 +168,15 @@ mod tests {
 
         cx.foreground().run_until_parked();
 
+        let (window_id, _view) = cx.add_window(|_| TestView);
+
         // Test loading the keymap base at all
-        cx.update(|cx| {
-            assert_key_bindings_for(
-                cx,
-                vec![("backspace", &A), ("k", &ActivatePreviousPane)],
-                line!(),
-            );
-        });
+        assert_key_bindings_for(
+            window_id,
+            cx,
+            vec![("backspace", &A), ("k", &ActivatePreviousPane)],
+            line!(),
+        );
 
         // Test modifying the users keymap, while retaining the base keymap
         fs.save(
@@ -177,13 +198,12 @@ mod tests {
 
         cx.foreground().run_until_parked();
 
-        cx.update(|cx| {
-            assert_key_bindings_for(
-                cx,
-                vec![("backspace", &B), ("k", &ActivatePreviousPane)],
-                line!(),
-            );
-        });
+        assert_key_bindings_for(
+            window_id,
+            cx,
+            vec![("backspace", &B), ("k", &ActivatePreviousPane)],
+            line!(),
+        );
 
         // Test modifying the base, while retaining the users keymap
         fs.save(
@@ -201,31 +221,33 @@ mod tests {
 
         cx.foreground().run_until_parked();
 
-        cx.update(|cx| {
-            assert_key_bindings_for(
-                cx,
-                vec![("backspace", &B), ("[", &ActivatePrevItem)],
-                line!(),
-            );
-        });
+        assert_key_bindings_for(
+            window_id,
+            cx,
+            vec![("backspace", &B), ("[", &ActivatePrevItem)],
+            line!(),
+        );
     }
 
     fn assert_key_bindings_for<'a>(
-        cx: &mut MutableAppContext,
+        window_id: usize,
+        cx: &TestAppContext,
         actions: Vec<(&'static str, &'a dyn Action)>,
         line: u32,
     ) {
         for (key, action) in actions {
             // assert that...
             assert!(
-                cx.available_actions(0, 0).any(|(_, bound_action, b)| {
-                    // action names match...
-                    bound_action.name() == action.name()
+                cx.available_actions(window_id, 0)
+                    .into_iter()
+                    .any(|(_, bound_action, b)| {
+                        // action names match...
+                        bound_action.name() == action.name()
                     && bound_action.namespace() == action.namespace()
                     // and key strokes contain the given key
                     && b.iter()
                         .any(|binding| binding.keystrokes().iter().any(|k| k.key == key))
-                }),
+                    }),
                 "On {} Failed to find {} with key binding {}",
                 line,
                 action.name(),

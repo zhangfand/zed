@@ -20,8 +20,9 @@ mod editor_tests;
 pub mod test;
 
 use aho_corasick::AhoCorasick;
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use blink_manager::BlinkManager;
+use client::ClickhouseEvent;
 use clock::ReplicaId;
 use collections::{BTreeMap, Bound, HashMap, HashSet, VecDeque};
 use copilot::Copilot;
@@ -37,23 +38,22 @@ use gpui::{
     executor,
     fonts::{self, HighlightStyle, TextStyle},
     geometry::vector::Vector2F,
-    impl_actions, impl_internal_actions,
+    impl_actions,
     keymap_matcher::KeymapContext,
-    platform::CursorStyle,
+    platform::{CursorStyle, MouseButton},
     serde_json::{self, json},
-    AnyViewHandle, AppContext, AsyncAppContext, ClipboardItem, Element, ElementBox, Entity,
-    ModelHandle, MouseButton, MutableAppContext, RenderContext, Subscription, Task, View,
-    ViewContext, ViewHandle, WeakViewHandle,
+    AnyElement, AnyViewHandle, AppContext, AsyncAppContext, ClipboardItem, Element, Entity,
+    ModelHandle, Subscription, Task, View, ViewContext, ViewHandle, WeakViewHandle, WindowContext,
 };
 use highlight_matching_bracket::refresh_matching_bracket_highlights;
-use hover_popover::{hide_hover, HideHover, HoverState};
+use hover_popover::{hide_hover, HoverState};
 pub use items::MAX_TAB_TITLE_LEN;
 use itertools::Itertools;
 pub use language::{char_kind, CharKind};
 use language::{
     AutoindentMode, BracketPair, Buffer, CodeAction, CodeLabel, Completion, CursorShape,
-    Diagnostic, DiagnosticSeverity, IndentKind, IndentSize, Language, OffsetRangeExt, OffsetUtf16,
-    Point, Selection, SelectionGoal, TransactionId,
+    Diagnostic, DiagnosticSeverity, File, IndentKind, IndentSize, Language, OffsetRangeExt,
+    OffsetUtf16, Point, Selection, SelectionGoal, TransactionId,
 };
 use link_go_to_definition::{
     hide_link_definition, show_link_definition, LinkDefinitionKind, LinkGoToDefinitionState,
@@ -87,7 +87,7 @@ use std::{
 pub use sum_tree::Bias;
 use theme::{DiagnosticStyle, Theme};
 use util::{post_inc, RangeExt, ResultExt, TryFutureExt};
-use workspace::{ItemNavHistory, ViewId, Workspace, WorkspaceId};
+use workspace::{ItemNavHistory, ViewId, Workspace};
 
 use crate::git::diff_hunk_to_display;
 
@@ -95,6 +95,7 @@ const CURSOR_BLINK_INTERVAL: Duration = Duration::from_millis(500);
 const MAX_LINE_LEN: usize = 1024;
 const MIN_NAVIGATION_HISTORY_ROW_DELTA: i64 = 10;
 const MAX_SELECTION_HISTORY_LEN: usize = 1024;
+const COPILOT_DEBOUNCE_TIMEOUT: Duration = Duration::from_millis(75);
 
 pub const FORMAT_TIMEOUT: Duration = Duration::from_secs(2);
 
@@ -102,16 +103,6 @@ pub const FORMAT_TIMEOUT: Duration = Duration::from_secs(2);
 pub struct SelectNext {
     #[serde(default)]
     pub replace_newest: bool,
-}
-
-#[derive(Clone, PartialEq)]
-pub struct Select(pub SelectPhase);
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct Jump {
-    path: ProjectPath,
-    position: Point,
-    anchor: language::Anchor,
 }
 
 #[derive(Clone, Deserialize, PartialEq)]
@@ -184,6 +175,7 @@ actions!(
         Backspace,
         Delete,
         Newline,
+        NewlineAbove,
         NewlineBelow,
         GoToDiagnostic,
         GoToPrevDiagnostic,
@@ -260,6 +252,8 @@ actions!(
         Format,
         ToggleSoftWrap,
         RevealInFinder,
+        CopyPath,
+        CopyRelativePath,
         CopyHighlightJson
     ]
 );
@@ -282,8 +276,6 @@ impl_actions!(
     ]
 );
 
-impl_internal_actions!(editor, [Select, Jump]);
-
 enum DocumentHighlightRead {}
 enum DocumentHighlightWrite {}
 enum InputComposition {}
@@ -294,11 +286,11 @@ pub enum Direction {
     Next,
 }
 
-pub fn init(cx: &mut MutableAppContext) {
+pub fn init(cx: &mut AppContext) {
     cx.add_action(Editor::new_file);
-    cx.add_action(Editor::select);
     cx.add_action(Editor::cancel);
     cx.add_action(Editor::newline);
+    cx.add_action(Editor::newline_above);
     cx.add_action(Editor::newline_below);
     cx.add_action(Editor::backspace);
     cx.add_action(Editor::delete);
@@ -377,9 +369,10 @@ pub fn init(cx: &mut MutableAppContext) {
     cx.add_action(Editor::show_completions);
     cx.add_action(Editor::toggle_code_actions);
     cx.add_action(Editor::open_excerpts);
-    cx.add_action(Editor::jump);
     cx.add_action(Editor::toggle_soft_wrap);
     cx.add_action(Editor::reveal_in_finder);
+    cx.add_action(Editor::copy_path);
+    cx.add_action(Editor::copy_relative_path);
     cx.add_action(Editor::copy_highlight_json);
     cx.add_async_action(Editor::format);
     cx.add_action(Editor::restart_language_server);
@@ -391,11 +384,9 @@ pub fn init(cx: &mut MutableAppContext) {
     cx.add_async_action(Editor::find_all_references);
     cx.add_action(Editor::next_copilot_suggestion);
     cx.add_action(Editor::previous_copilot_suggestion);
-    cx.add_action(Editor::toggle_copilot_suggestions);
+    cx.add_action(Editor::copilot_suggest);
 
     hover_popover::init(cx);
-    link_go_to_definition::init(cx);
-    mouse_context_menu::init(cx);
     scroll::actions::init(cx);
 
     workspace::register_project_item::<Editor>(cx);
@@ -457,6 +448,7 @@ pub struct EditorStyle {
     pub text: TextStyle,
     pub placeholder_text: Option<TextStyle>,
     pub theme: theme::Editor,
+    pub theme_id: usize,
 }
 
 type CompletionId = usize;
@@ -502,15 +494,16 @@ pub struct Editor {
     pending_rename: Option<RenameState>,
     searchable: bool,
     cursor_shape: CursorShape,
-    workspace_id: Option<WorkspaceId>,
+    workspace: Option<(WeakViewHandle<Workspace>, i64)>,
     keymap_context_layers: BTreeMap<TypeId, KeymapContext>,
     input_enabled: bool,
+    read_only: bool,
     leader_replica_id: Option<u16>,
     remote_id: Option<ViewId>,
     hover_state: HoverState,
     gutter_hovered: bool,
     link_go_to_definition_state: LinkGoToDefinitionState,
-    pub copilot_state: CopilotState,
+    copilot_state: CopilotState,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -718,8 +711,8 @@ impl ContextMenu {
         &self,
         cursor_position: DisplayPoint,
         style: EditorStyle,
-        cx: &mut RenderContext<Editor>,
-    ) -> (DisplayPoint, ElementBox) {
+        cx: &mut ViewContext<Editor>,
+    ) -> (DisplayPoint, AnyElement<Editor>) {
         match self {
             ContextMenu::Completions(menu) => (cursor_position, menu.render(style, cx)),
             ContextMenu::CodeActions(menu) => menu.render(cursor_position, style, cx),
@@ -771,7 +764,7 @@ impl CompletionsMenu {
         !self.matches.is_empty()
     }
 
-    fn render(&self, style: EditorStyle, cx: &mut RenderContext<Editor>) -> ElementBox {
+    fn render(&self, style: EditorStyle, cx: &mut ViewContext<Editor>) -> AnyElement<Editor> {
         enum CompletionTag {}
 
         let completions = self.completions.clone();
@@ -788,7 +781,7 @@ impl CompletionsMenu {
                     let completion = &completions[mat.candidate_id];
                     let item_ix = start_ix + ix;
                     items.push(
-                        MouseEventHandler::<CompletionTag>::new(
+                        MouseEventHandler::<CompletionTag, _>::new(
                             mat.candidate_id,
                             cx,
                             |state, _| {
@@ -813,16 +806,18 @@ impl CompletionsMenu {
                                     ))
                                     .contained()
                                     .with_style(item_style)
-                                    .boxed()
                             },
                         )
                         .with_cursor_style(CursorStyle::PointingHand)
-                        .on_down(MouseButton::Left, move |_, cx| {
-                            cx.dispatch_action(ConfirmCompletion {
-                                item_ix: Some(item_ix),
-                            });
+                        .on_down(MouseButton::Left, move |_, this, cx| {
+                            this.confirm_completion(
+                                &ConfirmCompletion {
+                                    item_ix: Some(item_ix),
+                                },
+                                cx,
+                            );
                         })
-                        .boxed(),
+                        .into_any(),
                     );
                 }
             },
@@ -842,7 +837,7 @@ impl CompletionsMenu {
         )
         .contained()
         .with_style(container_style)
-        .boxed()
+        .into_any()
     }
 
     pub async fn filter(&mut self, query: Option<&str>, executor: Arc<executor::Background>) {
@@ -947,8 +942,8 @@ impl CodeActionsMenu {
         &self,
         mut cursor_position: DisplayPoint,
         style: EditorStyle,
-        cx: &mut RenderContext<Editor>,
-    ) -> (DisplayPoint, ElementBox) {
+        cx: &mut ViewContext<Editor>,
+    ) -> (DisplayPoint, AnyElement<Editor>) {
         enum ActionTag {}
 
         let container_style = style.autocomplete.container;
@@ -963,7 +958,7 @@ impl CodeActionsMenu {
                 for (ix, action) in actions[range].iter().enumerate() {
                     let item_ix = start_ix + ix;
                     items.push(
-                        MouseEventHandler::<ActionTag>::new(item_ix, cx, |state, _| {
+                        MouseEventHandler::<ActionTag, _>::new(item_ix, cx, |state, _| {
                             let item_style = if item_ix == selected_item {
                                 style.autocomplete.selected_item
                             } else if state.hovered() {
@@ -976,15 +971,28 @@ impl CodeActionsMenu {
                                 .with_soft_wrap(false)
                                 .contained()
                                 .with_style(item_style)
-                                .boxed()
                         })
                         .with_cursor_style(CursorStyle::PointingHand)
-                        .on_down(MouseButton::Left, move |_, cx| {
-                            cx.dispatch_action(ConfirmCodeAction {
-                                item_ix: Some(item_ix),
+                        .on_down(MouseButton::Left, move |_, this, cx| {
+                            let workspace = this
+                                .workspace
+                                .as_ref()
+                                .and_then(|(workspace, _)| workspace.upgrade(cx));
+                            cx.window_context().defer(move |cx| {
+                                if let Some(workspace) = workspace {
+                                    workspace.update(cx, |workspace, cx| {
+                                        if let Some(task) = Editor::confirm_code_action(
+                                            workspace,
+                                            &Default::default(),
+                                            cx,
+                                        ) {
+                                            task.detach_and_log_err(cx);
+                                        }
+                                    });
+                                }
                             });
                         })
-                        .boxed(),
+                        .into_any(),
                     );
                 }
             },
@@ -998,7 +1006,7 @@ impl CodeActionsMenu {
         )
         .contained()
         .with_style(container_style)
-        .boxed();
+        .into_any();
 
         if self.deployed_from_indicator {
             *cursor_position.column_mut() = 0;
@@ -1011,24 +1019,30 @@ impl CodeActionsMenu {
 pub struct CopilotState {
     excerpt_id: Option<ExcerptId>,
     pending_refresh: Task<Option<()>>,
+    pending_cycling_refresh: Task<Option<()>>,
+    cycled: bool,
     completions: Vec<copilot::Completion>,
     active_completion_index: usize,
-    pub user_enabled: Option<bool>,
 }
 
 impl Default for CopilotState {
     fn default() -> Self {
         Self {
             excerpt_id: None,
+            pending_cycling_refresh: Task::ready(Some(())),
             pending_refresh: Task::ready(Some(())),
             completions: Default::default(),
             active_completion_index: 0,
-            user_enabled: None,
+            cycled: false,
         }
     }
 }
 
 impl CopilotState {
+    fn active_completion(&self) -> Option<&copilot::Completion> {
+        self.completions.get(self.active_completion_index)
+    }
+
     fn text_for_active_completion(
         &self,
         cursor: Anchor,
@@ -1036,9 +1050,15 @@ impl CopilotState {
     ) -> Option<&str> {
         use language::ToOffset as _;
 
-        let completion = self.completions.get(self.active_completion_index)?;
+        let completion = self.active_completion()?;
         let excerpt_id = self.excerpt_id?;
         let completion_buffer = buffer.buffer_for_excerpt(excerpt_id)?;
+        if excerpt_id != cursor.excerpt_id
+            || !completion.range.start.is_valid(completion_buffer)
+            || !completion.range.end.is_valid(completion_buffer)
+        {
+            return None;
+        }
 
         let mut completion_range = completion.range.to_offset(&completion_buffer);
         let prefix_len = Self::common_prefix(
@@ -1061,9 +1081,29 @@ impl CopilotState {
         }
     }
 
+    fn cycle_completions(&mut self, direction: Direction) {
+        match direction {
+            Direction::Prev => {
+                self.active_completion_index = if self.active_completion_index == 0 {
+                    self.completions.len().saturating_sub(1)
+                } else {
+                    self.active_completion_index - 1
+                };
+            }
+            Direction::Next => {
+                if self.completions.len() == 0 {
+                    self.active_completion_index = 0
+                } else {
+                    self.active_completion_index =
+                        (self.active_completion_index + 1) % self.completions.len();
+                }
+            }
+        }
+    }
+
     fn push_completion(&mut self, new_completion: copilot::Completion) {
         for completion in &self.completions {
-            if *completion == new_completion {
+            if completion.text == new_completion.text && completion.range == new_completion.range {
                 return;
             }
         }
@@ -1187,6 +1227,7 @@ impl Editor {
         get_field_editor_theme: Option<Arc<GetFieldEditorTheme>>,
         cx: &mut ViewContext<Self>,
     ) -> Self {
+        let editor_view_id = cx.view_id();
         let display_map = cx.add_model(|cx| {
             let settings = cx.global::<Settings>();
             let style = build_style(&*settings, get_field_editor_theme.as_deref(), None, cx);
@@ -1234,7 +1275,8 @@ impl Editor {
             background_highlights: Default::default(),
             nav_history: None,
             context_menu: None,
-            mouse_context_menu: cx.add_view(context_menu::ContextMenu::new),
+            mouse_context_menu: cx
+                .add_view(|cx| context_menu::ContextMenu::new(editor_view_id, cx)),
             completion_tasks: Default::default(),
             next_completion_id: 0,
             available_code_actions: Default::default(),
@@ -1244,9 +1286,10 @@ impl Editor {
             searchable: true,
             override_text_style: None,
             cursor_shape: Default::default(),
-            workspace_id: None,
+            workspace: None,
             keymap_context_layers: Default::default(),
             input_enabled: true,
+            read_only: false,
             leader_replica_id: None,
             remote_id: None,
             hover_state: Default::default(),
@@ -1258,6 +1301,7 @@ impl Editor {
                 cx.subscribe(&buffer, Self::on_buffer_event),
                 cx.observe(&display_map, Self::on_display_map_changed),
                 cx.observe(&blink_manager, |_, _, cx| cx.notify()),
+                cx.observe_global::<Settings, _>(Self::settings_changed),
             ],
         };
         this.end_selection(cx);
@@ -1271,7 +1315,7 @@ impl Editor {
             cx.set_global(ScrollbarAutoHide(should_auto_hide_scrollbars));
         }
 
-        this.report_event("open editor", cx);
+        this.report_editor_event("open", cx);
         this
     }
 
@@ -1306,11 +1350,15 @@ impl Editor {
         &self.buffer
     }
 
+    fn workspace(&self, cx: &AppContext) -> Option<ViewHandle<Workspace>> {
+        self.workspace.as_ref()?.0.upgrade(cx)
+    }
+
     pub fn title<'a>(&self, cx: &'a AppContext) -> Cow<'a, str> {
         self.buffer().read(cx).title(cx)
     }
 
-    pub fn snapshot(&mut self, cx: &mut MutableAppContext) -> EditorSnapshot {
+    pub fn snapshot(&mut self, cx: &mut WindowContext) -> EditorSnapshot {
         EditorSnapshot {
             mode: self.mode,
             display_snapshot: self.display_map.update(cx, |map, cx| map.snapshot(cx)),
@@ -1330,6 +1378,10 @@ impl Editor {
         cx: &'a AppContext,
     ) -> Option<Arc<Language>> {
         self.buffer.read(cx).language_at(point, cx)
+    }
+
+    pub fn file_at<'a, T: ToOffset>(&self, point: T, cx: &'a AppContext) -> Option<Arc<dyn File>> {
+        self.buffer.read(cx).read(cx).file_at(point).cloned()
     }
 
     pub fn active_excerpt(
@@ -1375,17 +1427,27 @@ impl Editor {
         }
     }
 
-    pub fn set_keymap_context_layer<Tag: 'static>(&mut self, context: KeymapContext) {
+    pub fn set_keymap_context_layer<Tag: 'static>(
+        &mut self,
+        context: KeymapContext,
+        cx: &mut ViewContext<Self>,
+    ) {
         self.keymap_context_layers
             .insert(TypeId::of::<Tag>(), context);
+        cx.notify();
     }
 
-    pub fn remove_keymap_context_layer<Tag: 'static>(&mut self) {
+    pub fn remove_keymap_context_layer<Tag: 'static>(&mut self, cx: &mut ViewContext<Self>) {
         self.keymap_context_layers.remove(&TypeId::of::<Tag>());
+        cx.notify();
     }
 
     pub fn set_input_enabled(&mut self, input_enabled: bool) {
         self.input_enabled = input_enabled;
+    }
+
+    pub fn set_read_only(&mut self, read_only: bool) {
+        self.read_only = read_only;
     }
 
     fn selections_did_change(
@@ -1451,7 +1513,7 @@ impl Editor {
                 }
             }
 
-            hide_hover(self, &HideHover, cx);
+            hide_hover(self, cx);
 
             if old_cursor_position.to_display_point(&display_map).row()
                 != new_cursor_position.to_display_point(&display_map).row()
@@ -1461,7 +1523,7 @@ impl Editor {
             self.refresh_code_actions(cx);
             self.refresh_document_highlights(cx);
             refresh_matching_bracket_highlights(self, cx);
-            self.refresh_copilot_suggestions(cx);
+            self.discard_copilot_suggestion(cx);
         }
 
         self.blink_manager.update(cx, BlinkManager::pause_blinking);
@@ -1496,6 +1558,10 @@ impl Editor {
         S: ToOffset,
         T: Into<Arc<str>>,
     {
+        if self.read_only {
+            return;
+        }
+
         self.buffer
             .update(cx, |buffer, cx| buffer.edit(edits, None, cx));
     }
@@ -1506,12 +1572,16 @@ impl Editor {
         S: ToOffset,
         T: Into<Arc<str>>,
     {
+        if self.read_only {
+            return;
+        }
+
         self.buffer.update(cx, |buffer, cx| {
             buffer.edit(edits, Some(AutoindentMode::EachLine), cx)
         });
     }
 
-    fn select(&mut self, Select(phase): &Select, cx: &mut ViewContext<Self>) {
+    fn select(&mut self, phase: SelectPhase, cx: &mut ViewContext<Self>) {
         self.hide_context_menu(cx);
 
         match phase {
@@ -1519,20 +1589,20 @@ impl Editor {
                 position,
                 add,
                 click_count,
-            } => self.begin_selection(*position, *add, *click_count, cx),
+            } => self.begin_selection(position, add, click_count, cx),
             SelectPhase::BeginColumnar {
                 position,
                 goal_column,
-            } => self.begin_columnar_selection(*position, *goal_column, cx),
+            } => self.begin_columnar_selection(position, goal_column, cx),
             SelectPhase::Extend {
                 position,
                 click_count,
-            } => self.extend_selection(*position, *click_count, cx),
+            } => self.extend_selection(position, click_count, cx),
             SelectPhase::Update {
                 position,
                 goal_column,
                 scroll_position,
-            } => self.update_selection(*position, *goal_column, *scroll_position, cx),
+            } => self.update_selection(position, goal_column, scroll_position, cx),
             SelectPhase::End => self.end_selection(cx),
         }
     }
@@ -1827,7 +1897,7 @@ impl Editor {
             return;
         }
 
-        if hide_hover(self, &HideHover, cx) {
+        if hide_hover(self, cx) {
             return;
         }
 
@@ -1835,7 +1905,7 @@ impl Editor {
             return;
         }
 
-        if self.clear_copilot_suggestions(cx) {
+        if self.discard_copilot_suggestion(cx) {
             return;
         }
 
@@ -1860,6 +1930,9 @@ impl Editor {
     pub fn handle_input(&mut self, text: &str, cx: &mut ViewContext<Self>) {
         let text: Arc<str> = text.into();
 
+        if self.read_only {
+            return;
+        }
         if !self.input_enabled {
             cx.emit(Event::InputIgnored { text });
             return;
@@ -2014,8 +2087,18 @@ impl Editor {
             }
 
             drop(snapshot);
+            let had_active_copilot_suggestion = this.has_active_copilot_suggestion(cx);
             this.change_selections(Some(Autoscroll::fit()), cx, |s| s.select(new_selections));
-            this.trigger_completion_on_input(&text, cx);
+
+            if had_active_copilot_suggestion {
+                this.refresh_copilot_suggestions(true, cx);
+                if !this.has_active_copilot_suggestion(cx) {
+                    this.trigger_completion_on_input(&text, cx);
+                }
+            } else {
+                this.trigger_completion_on_input(&text, cx);
+                this.refresh_copilot_suggestions(true, cx);
+            }
         });
     }
 
@@ -2096,6 +2179,66 @@ impl Editor {
                 .collect();
 
             this.change_selections(Some(Autoscroll::fit()), cx, |s| s.select(new_selections));
+            this.refresh_copilot_suggestions(true, cx);
+        });
+    }
+
+    pub fn newline_above(&mut self, _: &NewlineAbove, cx: &mut ViewContext<Self>) {
+        let buffer = self.buffer.read(cx);
+        let snapshot = buffer.snapshot(cx);
+
+        let mut edits = Vec::new();
+        let mut rows = Vec::new();
+        let mut rows_inserted = 0;
+
+        for selection in self.selections.all_adjusted(cx) {
+            let cursor = selection.head();
+            let row = cursor.row;
+
+            let start_of_line = snapshot.clip_point(Point::new(row, 0), Bias::Left);
+
+            let newline = "\n".to_string();
+            edits.push((start_of_line..start_of_line, newline));
+
+            rows.push(row + rows_inserted);
+            rows_inserted += 1;
+        }
+
+        self.transact(cx, |editor, cx| {
+            editor.edit(edits, cx);
+
+            editor.change_selections(Some(Autoscroll::fit()), cx, |s| {
+                let mut index = 0;
+                s.move_cursors_with(|map, _, _| {
+                    let row = rows[index];
+                    index += 1;
+
+                    let point = Point::new(row, 0);
+                    let boundary = map.next_line_boundary(point).1;
+                    let clipped = map.clip_point(boundary, Bias::Left);
+
+                    (clipped, SelectionGoal::None)
+                });
+            });
+
+            let mut indent_edits = Vec::new();
+            let multibuffer_snapshot = editor.buffer.read(cx).snapshot(cx);
+            for row in rows {
+                let indents = multibuffer_snapshot.suggested_indents(row..row + 1, cx);
+                for (row, indent) in indents {
+                    if indent.len == 0 {
+                        continue;
+                    }
+
+                    let text = match indent.kind {
+                        IndentKind::Space => " ".repeat(indent.len as usize),
+                        IndentKind::Tab => "\t".repeat(indent.len as usize),
+                    };
+                    let point = Point::new(row, 0);
+                    indent_edits.push((point..point, text));
+                }
+            }
+            editor.edit(indent_edits, cx);
         });
     }
 
@@ -2111,19 +2254,18 @@ impl Editor {
             let cursor = selection.head();
             let row = cursor.row;
 
-            let end_of_line = snapshot
-                .clip_point(Point::new(row, snapshot.line_len(row)), Bias::Left)
-                .to_point(&snapshot);
+            let point = Point::new(row + 1, 0);
+            let start_of_line = snapshot.clip_point(point, Bias::Left);
 
             let newline = "\n".to_string();
-            edits.push((end_of_line..end_of_line, newline));
+            edits.push((start_of_line..start_of_line, newline));
 
             rows_inserted += 1;
             rows.push(row + rows_inserted);
         }
 
         self.transact(cx, |editor, cx| {
-            editor.edit_with_autoindent(edits, cx);
+            editor.edit(edits, cx);
 
             editor.change_selections(Some(Autoscroll::fit()), cx, |s| {
                 let mut index = 0;
@@ -2138,6 +2280,25 @@ impl Editor {
                     (clipped, SelectionGoal::None)
                 });
             });
+
+            let mut indent_edits = Vec::new();
+            let multibuffer_snapshot = editor.buffer.read(cx).snapshot(cx);
+            for row in rows {
+                let indents = multibuffer_snapshot.suggested_indents(row..row + 1, cx);
+                for (row, indent) in indents {
+                    if indent.len == 0 {
+                        continue;
+                    }
+
+                    let text = match indent.kind {
+                        IndentKind::Space => " ".repeat(indent.len as usize),
+                        IndentKind::Tab => "\t".repeat(indent.len as usize),
+                    };
+                    let point = Point::new(row, 0);
+                    indent_edits.push((point..point, text));
+                }
+            }
+            editor.edit(indent_edits, cx);
         });
     }
 
@@ -2157,6 +2318,10 @@ impl Editor {
         autoindent_mode: Option<AutoindentMode>,
         cx: &mut ViewContext<Self>,
     ) {
+        if self.read_only {
+            return;
+        }
+
         let text: Arc<str> = text.into();
         self.transact(cx, |this, cx| {
             let old_selections = this.selections.all_adjusted(cx);
@@ -2331,55 +2496,65 @@ impl Editor {
         });
 
         let id = post_inc(&mut self.next_completion_id);
-        let task = cx.spawn_weak(|this, mut cx| {
+        let task = cx.spawn(|this, mut cx| {
             async move {
-                let completions = completions.await?;
-                if completions.is_empty() {
-                    return Ok(());
-                }
-
-                let mut menu = CompletionsMenu {
-                    id,
-                    initial_position: position,
-                    match_candidates: completions
-                        .iter()
-                        .enumerate()
-                        .map(|(id, completion)| {
-                            StringMatchCandidate::new(
-                                id,
-                                completion.label.text[completion.label.filter_range.clone()].into(),
-                            )
-                        })
-                        .collect(),
-                    buffer,
-                    completions: completions.into(),
-                    matches: Vec::new().into(),
-                    selected_item: 0,
-                    list: Default::default(),
+                let menu = if let Some(completions) = completions.await.log_err() {
+                    let mut menu = CompletionsMenu {
+                        id,
+                        initial_position: position,
+                        match_candidates: completions
+                            .iter()
+                            .enumerate()
+                            .map(|(id, completion)| {
+                                StringMatchCandidate::new(
+                                    id,
+                                    completion.label.text[completion.label.filter_range.clone()]
+                                        .into(),
+                                )
+                            })
+                            .collect(),
+                        buffer,
+                        completions: completions.into(),
+                        matches: Vec::new().into(),
+                        selected_item: 0,
+                        list: Default::default(),
+                    };
+                    menu.filter(query.as_deref(), cx.background()).await;
+                    if menu.matches.is_empty() {
+                        None
+                    } else {
+                        Some(menu)
+                    }
+                } else {
+                    None
                 };
 
-                menu.filter(query.as_deref(), cx.background()).await;
+                this.update(&mut cx, |this, cx| {
+                    this.completion_tasks.retain(|(task_id, _)| *task_id > id);
 
-                if let Some(this) = this.upgrade(&cx) {
-                    this.update(&mut cx, |this, cx| {
-                        match this.context_menu.as_ref() {
-                            None => {}
-                            Some(ContextMenu::Completions(prev_menu)) => {
-                                if prev_menu.id > menu.id {
-                                    return;
-                                }
+                    match this.context_menu.as_ref() {
+                        None => {}
+                        Some(ContextMenu::Completions(prev_menu)) => {
+                            if prev_menu.id > id {
+                                return;
                             }
-                            _ => return,
                         }
+                        _ => return,
+                    }
 
-                        this.completion_tasks.retain(|(id, _)| *id > menu.id);
-                        if this.focused {
-                            this.show_context_menu(ContextMenu::Completions(menu), cx);
+                    if this.focused && menu.is_some() {
+                        let menu = menu.unwrap();
+                        this.show_context_menu(ContextMenu::Completions(menu), cx);
+                    } else if this.completion_tasks.is_empty() {
+                        // If there are no more completion tasks and the last menu was
+                        // empty, we should hide it. If it was already hidden, we should
+                        // also show the copilot suggestion when available.
+                        if this.hide_context_menu(cx).is_none() {
+                            this.update_visible_copilot_suggestion(cx);
                         }
+                    }
+                })?;
 
-                        cx.notify();
-                    });
-                }
                 Ok::<_, anyhow::Error>(())
             }
             .log_err()
@@ -2421,7 +2596,7 @@ impl Editor {
         let old_text = buffer.text_for_range(old_range.clone()).collect::<String>();
 
         let newest_selection = self.selections.newest_anchor();
-        if newest_selection.start.buffer_id != Some(buffer_handle.id()) {
+        if newest_selection.start.buffer_id != Some(buffer_handle.read(cx).remote_id()) {
             return None;
         }
 
@@ -2479,6 +2654,8 @@ impl Editor {
                     );
                 });
             }
+
+            this.refresh_copilot_suggestions(true, cx);
         });
 
         let project = self.project.clone()?;
@@ -2508,32 +2685,29 @@ impl Editor {
 
         let deployed_from_indicator = action.deployed_from_indicator;
         let mut task = self.code_actions_task.take();
-        cx.spawn_weak(|this, mut cx| async move {
+        cx.spawn(|this, mut cx| async move {
             while let Some(prev_task) = task {
                 prev_task.await;
-                task = this
-                    .upgrade(&cx)
-                    .and_then(|this| this.update(&mut cx, |this, _| this.code_actions_task.take()));
+                task = this.update(&mut cx, |this, _| this.code_actions_task.take())?;
             }
 
-            if let Some(this) = this.upgrade(&cx) {
-                this.update(&mut cx, |this, cx| {
-                    if this.focused {
-                        if let Some((buffer, actions)) = this.available_code_actions.clone() {
-                            this.show_context_menu(
-                                ContextMenu::CodeActions(CodeActionsMenu {
-                                    buffer,
-                                    actions,
-                                    selected_item: Default::default(),
-                                    list: Default::default(),
-                                    deployed_from_indicator,
-                                }),
-                                cx,
-                            );
-                        }
+            this.update(&mut cx, |this, cx| {
+                if this.focused {
+                    if let Some((buffer, actions)) = this.available_code_actions.clone() {
+                        this.show_context_menu(
+                            ContextMenu::CodeActions(CodeActionsMenu {
+                                buffer,
+                                actions,
+                                selected_item: Default::default(),
+                                list: Default::default(),
+                                deployed_from_indicator,
+                            }),
+                            cx,
+                        );
                     }
-                })
-            }
+                }
+            })?;
+
             Ok::<_, anyhow::Error>(())
         })
         .detach_and_log_err(cx);
@@ -2560,20 +2734,21 @@ impl Editor {
         let apply_code_actions = workspace.project().clone().update(cx, |project, cx| {
             project.apply_code_action(buffer, action, true, cx)
         });
+        let editor = editor.downgrade();
         Some(cx.spawn(|workspace, cx| async move {
             let project_transaction = apply_code_actions.await?;
-            Self::open_project_transaction(editor, workspace, project_transaction, title, cx).await
+            Self::open_project_transaction(&editor, workspace, project_transaction, title, cx).await
         }))
     }
 
     async fn open_project_transaction(
-        this: ViewHandle<Editor>,
-        workspace: ViewHandle<Workspace>,
+        this: &WeakViewHandle<Editor>,
+        workspace: WeakViewHandle<Workspace>,
         transaction: ProjectTransaction,
         title: String,
         mut cx: AsyncAppContext,
     ) -> Result<()> {
-        let replica_id = this.read_with(&cx, |this, cx| this.replica_id(cx));
+        let replica_id = this.read_with(&cx, |this, cx| this.replica_id(cx))?;
 
         let mut entries = transaction.0.into_iter().collect::<Vec<_>>();
         entries.sort_unstable_by_key(|(buffer, _)| {
@@ -2590,7 +2765,7 @@ impl Editor {
                         .buffer()
                         .read(cx)
                         .excerpt_containing(editor.selections.newest_anchor().head(), cx)
-                });
+                })?;
                 if let Some((_, excerpted_buffer, excerpt_range)) = excerpt {
                     if excerpted_buffer == *buffer {
                         let all_edits_within_excerpt = buffer.read_with(&cx, |buffer, _| {
@@ -2629,7 +2804,7 @@ impl Editor {
                     ),
                 );
             }
-            multibuffer.push_transaction(entries.iter().map(|(b, t)| (b, t)));
+            multibuffer.push_transaction(entries.iter().map(|(b, t)| (b, t)), cx);
             multibuffer
         });
 
@@ -2645,7 +2820,7 @@ impl Editor {
                     cx,
                 );
             });
-        });
+        })?;
 
         Ok(())
     }
@@ -2663,20 +2838,19 @@ impl Editor {
         let actions = project.update(cx, |project, cx| {
             project.code_actions(&start_buffer, start..end, cx)
         });
-        self.code_actions_task = Some(cx.spawn_weak(|this, mut cx| async move {
+        self.code_actions_task = Some(cx.spawn(|this, mut cx| async move {
             let actions = actions.await;
-            if let Some(this) = this.upgrade(&cx) {
-                this.update(&mut cx, |this, cx| {
-                    this.available_code_actions = actions.log_err().and_then(|actions| {
-                        if actions.is_empty() {
-                            None
-                        } else {
-                            Some((start_buffer, actions.into()))
-                        }
-                    });
-                    cx.notify();
-                })
-            }
+            this.update(&mut cx, |this, cx| {
+                this.available_code_actions = actions.log_err().and_then(|actions| {
+                    if actions.is_empty() {
+                        None
+                    } else {
+                        Some((start_buffer, actions.into()))
+                    }
+                });
+                cx.notify();
+            })
+            .log_err();
         }));
         None
     }
@@ -2701,9 +2875,8 @@ impl Editor {
             project.document_highlights(&cursor_buffer, cursor_buffer_position, cx)
         });
 
-        self.document_highlights_task = Some(cx.spawn_weak(|this, mut cx| async move {
-            let highlights = highlights.log_err().await;
-            if let Some((this, highlights)) = this.upgrade(&cx).zip(highlights) {
+        self.document_highlights_task = Some(cx.spawn(|this, mut cx| async move {
+            if let Some(highlights) = highlights.await.log_err() {
                 this.update(&mut cx, |this, cx| {
                     if this.pending_rename.is_some() {
                         return;
@@ -2765,143 +2938,125 @@ impl Editor {
                         cx,
                     );
                     cx.notify();
-                });
+                })
+                .log_err();
             }
         }));
         None
     }
 
-    fn refresh_copilot_suggestions(&mut self, cx: &mut ViewContext<Self>) -> Option<()> {
+    fn refresh_copilot_suggestions(
+        &mut self,
+        debounce: bool,
+        cx: &mut ViewContext<Self>,
+    ) -> Option<()> {
         let copilot = Copilot::global(cx)?;
-
-        if self.mode != EditorMode::Full {
-            return None;
-        }
-
-        let settings = cx.global::<Settings>();
-
-        if !self
-            .copilot_state
-            .user_enabled
-            .unwrap_or_else(|| settings.copilot_on(None))
-        {
-            return None;
-        }
-
-        let snapshot = self.buffer.read(cx).snapshot(cx);
-        let selection = self.selections.newest_anchor();
-
-        if !self.copilot_state.user_enabled.is_some() {
-            let language_name = snapshot
-                .language_at(selection.start)
-                .map(|language| language.name());
-
-            let copilot_enabled = settings.copilot_on(language_name.as_deref());
-
-            if !copilot_enabled {
-                return None;
-            }
-        }
-
-        let cursor = if selection.start == selection.end {
-            selection.start.bias_left(&snapshot)
-        } else {
+        if self.mode != EditorMode::Full || !copilot.read(cx).status().is_authorized() {
             self.clear_copilot_suggestions(cx);
             return None;
-        };
-
-        if let Some(new_text) = self
-            .copilot_state
-            .text_for_active_completion(cursor, &snapshot)
-        {
-            self.display_map.update(cx, |map, cx| {
-                map.replace_suggestion(
-                    Some(Suggestion {
-                        position: cursor,
-                        text: new_text.into(),
-                    }),
-                    cx,
-                )
-            });
-            self.copilot_state
-                .completions
-                .swap(0, self.copilot_state.active_completion_index);
-            self.copilot_state.completions.truncate(1);
-            self.copilot_state.active_completion_index = 0;
-            cx.notify();
-        } else {
-            self.display_map
-                .update(cx, |map, cx| map.replace_suggestion::<usize>(None, cx));
         }
+        self.update_visible_copilot_suggestion(cx);
 
-        if !copilot.read(cx).status().is_authorized() {
+        let snapshot = self.buffer.read(cx).snapshot(cx);
+        let cursor = self.selections.newest_anchor().head();
+        if !self.is_copilot_enabled_at(cursor, &snapshot, cx) {
+            self.clear_copilot_suggestions(cx);
             return None;
         }
 
         let (buffer, buffer_position) =
             self.buffer.read(cx).text_anchor_for_position(cursor, cx)?;
-        self.copilot_state.pending_refresh = cx.spawn_weak(|this, mut cx| async move {
-            let (completion, completions_cycling) = copilot.update(&mut cx, |copilot, cx| {
-                (
-                    copilot.completion(&buffer, buffer_position, cx),
-                    copilot.completions_cycling(&buffer, buffer_position, cx),
-                )
-            });
+        self.copilot_state.pending_refresh = cx.spawn(|this, mut cx| async move {
+            if debounce {
+                cx.background().timer(COPILOT_DEBOUNCE_TIMEOUT).await;
+            }
 
-            let (completion, completions_cycling) = futures::join!(completion, completions_cycling);
-            let mut completions = Vec::new();
-            completions.extend(completion.log_err().flatten());
-            completions.extend(completions_cycling.log_err().into_iter().flatten());
-            this.upgrade(&cx)?.update(&mut cx, |this, cx| {
+            let completions = copilot
+                .update(&mut cx, |copilot, cx| {
+                    copilot.completions(&buffer, buffer_position, cx)
+                })
+                .await
+                .log_err()
+                .into_iter()
+                .flatten()
+                .collect_vec();
+
+            this.update(&mut cx, |this, cx| {
                 if !completions.is_empty() {
+                    this.copilot_state.cycled = false;
+                    this.copilot_state.pending_cycling_refresh = Task::ready(None);
                     this.copilot_state.completions.clear();
                     this.copilot_state.active_completion_index = 0;
                     this.copilot_state.excerpt_id = Some(cursor.excerpt_id);
                     for completion in completions {
                         this.copilot_state.push_completion(completion);
                     }
-
-                    let buffer = this.buffer.read(cx).snapshot(cx);
-                    if let Some(text) = this
-                        .copilot_state
-                        .text_for_active_completion(cursor, &buffer)
-                    {
-                        this.display_map.update(cx, |map, cx| {
-                            map.replace_suggestion(
-                                Some(Suggestion {
-                                    position: cursor,
-                                    text: text.into(),
-                                }),
-                                cx,
-                            )
-                        });
-                    }
-                    cx.notify();
+                    this.update_visible_copilot_suggestion(cx);
                 }
-            });
-
+            })
+            .log_err()?;
             Some(())
         });
 
         Some(())
     }
 
-    fn next_copilot_suggestion(&mut self, _: &copilot::NextSuggestion, cx: &mut ViewContext<Self>) {
-        // Auto re-enable copilot if you're asking for a suggestion
-        if self.copilot_state.user_enabled == Some(false) {
-            cx.notify();
-            self.copilot_state.user_enabled = Some(true);
+    fn cycle_copilot_suggestions(
+        &mut self,
+        direction: Direction,
+        cx: &mut ViewContext<Self>,
+    ) -> Option<()> {
+        let copilot = Copilot::global(cx)?;
+        if self.mode != EditorMode::Full || !copilot.read(cx).status().is_authorized() {
+            return None;
         }
 
-        if self.copilot_state.completions.is_empty() {
-            self.refresh_copilot_suggestions(cx);
+        if self.copilot_state.cycled {
+            self.copilot_state.cycle_completions(direction);
+            self.update_visible_copilot_suggestion(cx);
+        } else {
+            let cursor = self.selections.newest_anchor().head();
+            let (buffer, buffer_position) =
+                self.buffer.read(cx).text_anchor_for_position(cursor, cx)?;
+            self.copilot_state.pending_cycling_refresh = cx.spawn(|this, mut cx| async move {
+                let completions = copilot
+                    .update(&mut cx, |copilot, cx| {
+                        copilot.completions_cycling(&buffer, buffer_position, cx)
+                    })
+                    .await;
+
+                this.update(&mut cx, |this, cx| {
+                    this.copilot_state.cycled = true;
+                    for completion in completions.log_err().into_iter().flatten() {
+                        this.copilot_state.push_completion(completion);
+                    }
+                    this.copilot_state.cycle_completions(direction);
+                    this.update_visible_copilot_suggestion(cx);
+                })
+                .log_err()?;
+
+                Some(())
+            });
+        }
+
+        Some(())
+    }
+
+    fn copilot_suggest(&mut self, _: &copilot::Suggest, cx: &mut ViewContext<Self>) {
+        if !self.has_active_copilot_suggestion(cx) {
+            self.refresh_copilot_suggestions(false, cx);
             return;
         }
 
-        self.copilot_state.active_completion_index =
-            (self.copilot_state.active_completion_index + 1) % self.copilot_state.completions.len();
+        self.update_visible_copilot_suggestion(cx);
+    }
 
-        self.sync_suggestion(cx);
+    fn next_copilot_suggestion(&mut self, _: &copilot::NextSuggestion, cx: &mut ViewContext<Self>) {
+        if self.has_active_copilot_suggestion(cx) {
+            self.cycle_copilot_suggestions(Direction::Next, cx);
+        } else {
+            self.refresh_copilot_suggestions(false, cx);
+        }
     }
 
     fn previous_copilot_suggestion(
@@ -2909,124 +3064,133 @@ impl Editor {
         _: &copilot::PreviousSuggestion,
         cx: &mut ViewContext<Self>,
     ) {
-        // Auto re-enable copilot if you're asking for a suggestion
-        if self.copilot_state.user_enabled == Some(false) {
-            cx.notify();
-            self.copilot_state.user_enabled = Some(true);
-        }
-
-        if self.copilot_state.completions.is_empty() {
-            self.refresh_copilot_suggestions(cx);
-            return;
-        }
-
-        self.copilot_state.active_completion_index =
-            if self.copilot_state.active_completion_index == 0 {
-                self.copilot_state.completions.len() - 1
-            } else {
-                self.copilot_state.active_completion_index - 1
-            };
-
-        self.sync_suggestion(cx);
-    }
-
-    fn toggle_copilot_suggestions(&mut self, _: &copilot::Toggle, cx: &mut ViewContext<Self>) {
-        self.copilot_state.user_enabled = match self.copilot_state.user_enabled {
-            Some(enabled) => Some(!enabled),
-            None => {
-                let selection = self.selections.newest_anchor().start;
-
-                let language_name = self
-                    .snapshot(cx)
-                    .language_at(selection)
-                    .map(|language| language.name());
-
-                let copilot_enabled = cx.global::<Settings>().copilot_on(language_name.as_deref());
-
-                Some(!copilot_enabled)
-            }
-        };
-
-        // We know this can't be None, as we just set it to Some above
-        if self.copilot_state.user_enabled == Some(true) {
-            self.refresh_copilot_suggestions(cx);
+        if self.has_active_copilot_suggestion(cx) {
+            self.cycle_copilot_suggestions(Direction::Prev, cx);
         } else {
-            self.clear_copilot_suggestions(cx);
-        }
-
-        cx.notify();
-    }
-
-    fn sync_suggestion(&mut self, cx: &mut ViewContext<Self>) {
-        let snapshot = self.buffer.read(cx).snapshot(cx);
-        let cursor = self.selections.newest_anchor().head();
-
-        if let Some(text) = self
-            .copilot_state
-            .text_for_active_completion(cursor, &snapshot)
-        {
-            self.display_map.update(cx, |map, cx| {
-                map.replace_suggestion(
-                    Some(Suggestion {
-                        position: cursor,
-                        text: text.into(),
-                    }),
-                    cx,
-                )
-            });
-            cx.notify();
+            self.refresh_copilot_suggestions(false, cx);
         }
     }
 
     fn accept_copilot_suggestion(&mut self, cx: &mut ViewContext<Self>) -> bool {
-        let snapshot = self.buffer.read(cx).snapshot(cx);
-        let cursor = self.selections.newest_anchor().head();
-        if let Some(text) = self
-            .copilot_state
-            .text_for_active_completion(cursor, &snapshot)
+        if let Some(suggestion) = self
+            .display_map
+            .update(cx, |map, cx| map.replace_suggestion::<usize>(None, cx))
         {
-            self.insert_with_autoindent_mode(&text.to_string(), None, cx);
-            self.clear_copilot_suggestions(cx);
+            if let Some((copilot, completion)) =
+                Copilot::global(cx).zip(self.copilot_state.active_completion())
+            {
+                copilot
+                    .update(cx, |copilot, cx| copilot.accept_completion(completion, cx))
+                    .detach_and_log_err(cx);
+            }
+            self.insert_with_autoindent_mode(&suggestion.text.to_string(), None, cx);
+            cx.notify();
             true
         } else {
             false
         }
     }
 
-    fn clear_copilot_suggestions(&mut self, cx: &mut ViewContext<Self>) -> bool {
-        self.display_map
-            .update(cx, |map, cx| map.replace_suggestion::<usize>(None, cx));
-        let was_empty = self.copilot_state.completions.is_empty();
-        self.copilot_state.completions.clear();
-        self.copilot_state.active_completion_index = 0;
-        self.copilot_state.pending_refresh = Task::ready(None);
-        self.copilot_state.excerpt_id = None;
-        cx.notify();
-        !was_empty
+    fn discard_copilot_suggestion(&mut self, cx: &mut ViewContext<Self>) -> bool {
+        if self.has_active_copilot_suggestion(cx) {
+            if let Some(copilot) = Copilot::global(cx) {
+                copilot
+                    .update(cx, |copilot, cx| {
+                        copilot.discard_completions(&self.copilot_state.completions, cx)
+                    })
+                    .detach_and_log_err(cx);
+            }
+
+            self.display_map
+                .update(cx, |map, cx| map.replace_suggestion::<usize>(None, cx));
+            cx.notify();
+            true
+        } else {
+            false
+        }
+    }
+
+    fn is_copilot_enabled_at(
+        &self,
+        location: Anchor,
+        snapshot: &MultiBufferSnapshot,
+        cx: &mut ViewContext<Self>,
+    ) -> bool {
+        let settings = cx.global::<Settings>();
+
+        let path = snapshot.file_at(location).map(|file| file.path());
+        let language_name = snapshot
+            .language_at(location)
+            .map(|language| language.name());
+        if !settings.show_copilot_suggestions(language_name.as_deref(), path.map(|p| p.as_ref())) {
+            return false;
+        }
+
+        true
+    }
+
+    fn has_active_copilot_suggestion(&self, cx: &AppContext) -> bool {
+        self.display_map.read(cx).has_suggestion()
+    }
+
+    fn update_visible_copilot_suggestion(&mut self, cx: &mut ViewContext<Self>) {
+        let snapshot = self.buffer.read(cx).snapshot(cx);
+        let selection = self.selections.newest_anchor();
+        let cursor = selection.head();
+
+        if self.context_menu.is_some()
+            || !self.completion_tasks.is_empty()
+            || selection.start != selection.end
+        {
+            self.discard_copilot_suggestion(cx);
+        } else if let Some(text) = self
+            .copilot_state
+            .text_for_active_completion(cursor, &snapshot)
+        {
+            self.display_map.update(cx, move |map, cx| {
+                map.replace_suggestion(
+                    Some(Suggestion {
+                        position: cursor,
+                        text: text.trim_end().into(),
+                    }),
+                    cx,
+                )
+            });
+            cx.notify();
+        } else {
+            self.discard_copilot_suggestion(cx);
+        }
+    }
+
+    fn clear_copilot_suggestions(&mut self, cx: &mut ViewContext<Self>) {
+        self.copilot_state = Default::default();
+        self.discard_copilot_suggestion(cx);
     }
 
     pub fn render_code_actions_indicator(
         &self,
         style: &EditorStyle,
         active: bool,
-        cx: &mut RenderContext<Self>,
-    ) -> Option<ElementBox> {
+        cx: &mut ViewContext<Self>,
+    ) -> Option<AnyElement<Self>> {
         if self.available_code_actions.is_some() {
             enum CodeActions {}
             Some(
-                MouseEventHandler::<CodeActions>::new(0, cx, |state, _| {
+                MouseEventHandler::<CodeActions, _>::new(0, cx, |state, _| {
                     Svg::new("icons/bolt_8.svg")
                         .with_color(style.code_actions.indicator.style_for(state, active).color)
-                        .boxed()
                 })
                 .with_cursor_style(CursorStyle::PointingHand)
                 .with_padding(Padding::uniform(3.))
-                .on_down(MouseButton::Left, |_, cx| {
-                    cx.dispatch_action(ToggleCodeActions {
-                        deployed_from_indicator: true,
-                    });
+                .on_down(MouseButton::Left, |_, this, cx| {
+                    this.toggle_code_actions(
+                        &ToggleCodeActions {
+                            deployed_from_indicator: true,
+                        },
+                        cx,
+                    );
                 })
-                .boxed(),
+                .into_any(),
             )
         } else {
             None
@@ -3040,8 +3204,8 @@ impl Editor {
         gutter_hovered: bool,
         line_height: f32,
         gutter_margin: f32,
-        cx: &mut RenderContext<Self>,
-    ) -> Vec<Option<ElementBox>> {
+        cx: &mut ViewContext<Self>,
+    ) -> Vec<Option<AnyElement<Self>>> {
         enum FoldIndicators {}
 
         let style = style.folds.clone();
@@ -3053,10 +3217,10 @@ impl Editor {
                 fold_data
                     .map(|(fold_status, buffer_row, active)| {
                         (active || gutter_hovered || fold_status == FoldStatus::Folded).then(|| {
-                            MouseEventHandler::<FoldIndicators>::new(
+                            MouseEventHandler::<FoldIndicators, _>::new(
                                 ix as usize,
                                 cx,
-                                |mouse_state, _| -> ElementBox {
+                                |mouse_state, _| {
                                     Svg::new(match fold_status {
                                         FoldStatus::Folded => style.folded_icon.clone(),
                                         FoldStatus::Foldable => style.foldable_icon.clone(),
@@ -3077,20 +3241,21 @@ impl Editor {
                                     .with_height(line_height)
                                     .with_width(gutter_margin)
                                     .aligned()
-                                    .boxed()
                                 },
                             )
                             .with_cursor_style(CursorStyle::PointingHand)
                             .with_padding(Padding::uniform(3.))
                             .on_click(MouseButton::Left, {
-                                move |_, cx| {
-                                    cx.dispatch_any_action(match fold_status {
-                                        FoldStatus::Folded => Box::new(UnfoldAt { buffer_row }),
-                                        FoldStatus::Foldable => Box::new(FoldAt { buffer_row }),
-                                    });
+                                move |_, editor, cx| match fold_status {
+                                    FoldStatus::Folded => {
+                                        editor.unfold_at(&UnfoldAt { buffer_row }, cx);
+                                    }
+                                    FoldStatus::Foldable => {
+                                        editor.fold_at(&FoldAt { buffer_row }, cx);
+                                    }
                                 }
                             })
-                            .boxed()
+                            .into_any()
                         })
                     })
                     .flatten()
@@ -3108,8 +3273,8 @@ impl Editor {
         &self,
         cursor_position: DisplayPoint,
         style: EditorStyle,
-        cx: &mut RenderContext<Editor>,
-    ) -> Option<(DisplayPoint, ElementBox)> {
+        cx: &mut ViewContext<Editor>,
+    ) -> Option<(DisplayPoint, AnyElement<Editor>)> {
         self.context_menu
             .as_ref()
             .map(|menu| menu.render(cursor_position, style, cx))
@@ -3120,13 +3285,18 @@ impl Editor {
             self.completion_tasks.clear();
         }
         self.context_menu = Some(menu);
+        self.discard_copilot_suggestion(cx);
         cx.notify();
     }
 
     fn hide_context_menu(&mut self, cx: &mut ViewContext<Self>) -> Option<ContextMenu> {
         cx.notify();
         self.completion_tasks.clear();
-        self.context_menu.take()
+        let context_menu = self.context_menu.take();
+        if context_menu.is_some() {
+            self.update_visible_copilot_suggestion(cx);
+        }
+        context_menu
     }
 
     pub fn insert_snippet(
@@ -3285,6 +3455,7 @@ impl Editor {
 
             this.change_selections(Some(Autoscroll::fit()), cx, |s| s.select(selections));
             this.insert("", cx);
+            this.refresh_copilot_suggestions(true, cx);
         });
     }
 
@@ -3300,6 +3471,7 @@ impl Editor {
                 })
             });
             this.insert("", cx);
+            this.refresh_copilot_suggestions(true, cx);
         });
     }
 
@@ -3312,10 +3484,6 @@ impl Editor {
     }
 
     pub fn tab(&mut self, _: &Tab, cx: &mut ViewContext<Self>) {
-        if self.accept_copilot_suggestion(cx) {
-            return;
-        }
-
         if self.move_to_next_snippet_tabstop(cx) {
             return;
         }
@@ -3345,8 +3513,8 @@ impl Editor {
             // If the selection is empty and the cursor is in the leading whitespace before the
             // suggested indentation, then auto-indent the line.
             let cursor = selection.head();
+            let current_indent = snapshot.indent_size_for_line(cursor.row);
             if let Some(suggested_indent) = suggested_indents.get(&cursor.row).copied() {
-                let current_indent = snapshot.indent_size_for_line(cursor.row);
                 if cursor.column < suggested_indent.len
                     && cursor.column <= current_indent.len
                     && current_indent.len <= suggested_indent.len
@@ -3363,6 +3531,16 @@ impl Editor {
                     }
                     continue;
                 }
+            }
+
+            // Accept copilot suggestion if there is only one selection and the cursor is not
+            // in the leading whitespace.
+            if self.selections.count() == 1
+                && cursor.column >= current_indent.len
+                && self.has_active_copilot_suggestion(cx)
+            {
+                self.accept_copilot_suggestion(cx);
+                return;
             }
 
             // Otherwise, insert a hard or soft tab.
@@ -3388,7 +3566,8 @@ impl Editor {
 
         self.transact(cx, |this, cx| {
             this.buffer.update(cx, |b, cx| b.edit(edits, None, cx));
-            this.change_selections(Some(Autoscroll::fit()), cx, |s| s.select(selections))
+            this.change_selections(Some(Autoscroll::fit()), cx, |s| s.select(selections));
+            this.refresh_copilot_suggestions(true, cx);
         });
     }
 
@@ -3978,7 +4157,7 @@ impl Editor {
 
     pub fn paste(&mut self, _: &Paste, cx: &mut ViewContext<Self>) {
         self.transact(cx, |this, cx| {
-            if let Some(item) = cx.as_mut().read_from_clipboard() {
+            if let Some(item) = cx.read_from_clipboard() {
                 let mut clipboard_text = Cow::Borrowed(item.text());
                 if let Some(mut clipboard_selections) = item.metadata::<Vec<ClipboardSelection>>() {
                     let old_selections = this.selections.all::<usize>(cx);
@@ -4068,6 +4247,7 @@ impl Editor {
             }
             self.request_autoscroll(Autoscroll::fit(), cx);
             self.unmark_text(cx);
+            self.refresh_copilot_suggestions(true, cx);
             cx.emit(Event::Edited);
         }
     }
@@ -4082,6 +4262,7 @@ impl Editor {
             }
             self.request_autoscroll(Autoscroll::fit(), cx);
             self.unmark_text(cx);
+            self.refresh_copilot_suggestions(true, cx);
             cx.emit(Event::Edited);
         }
     }
@@ -5430,113 +5611,101 @@ impl Editor {
         }
     }
 
-    pub fn go_to_definition(
-        workspace: &mut Workspace,
-        _: &GoToDefinition,
-        cx: &mut ViewContext<Workspace>,
-    ) {
-        Self::go_to_definition_of_kind(GotoDefinitionKind::Symbol, workspace, cx);
+    pub fn go_to_definition(&mut self, _: &GoToDefinition, cx: &mut ViewContext<Self>) {
+        self.go_to_definition_of_kind(GotoDefinitionKind::Symbol, cx);
     }
 
-    pub fn go_to_type_definition(
-        workspace: &mut Workspace,
-        _: &GoToTypeDefinition,
-        cx: &mut ViewContext<Workspace>,
-    ) {
-        Self::go_to_definition_of_kind(GotoDefinitionKind::Type, workspace, cx);
+    pub fn go_to_type_definition(&mut self, _: &GoToTypeDefinition, cx: &mut ViewContext<Self>) {
+        self.go_to_definition_of_kind(GotoDefinitionKind::Type, cx);
     }
 
-    fn go_to_definition_of_kind(
-        kind: GotoDefinitionKind,
-        workspace: &mut Workspace,
-        cx: &mut ViewContext<Workspace>,
-    ) {
-        let active_item = workspace.active_item(cx);
-        let editor_handle = if let Some(editor) = active_item
-            .as_ref()
-            .and_then(|item| item.act_as::<Self>(cx))
-        {
-            editor
-        } else {
-            return;
-        };
-
-        let editor = editor_handle.read(cx);
-        let buffer = editor.buffer.read(cx);
-        let head = editor.selections.newest::<usize>(cx).head();
+    fn go_to_definition_of_kind(&mut self, kind: GotoDefinitionKind, cx: &mut ViewContext<Self>) {
+        let Some(workspace) = self.workspace(cx) else { return };
+        let buffer = self.buffer.read(cx);
+        let head = self.selections.newest::<usize>(cx).head();
         let (buffer, head) = if let Some(text_anchor) = buffer.text_anchor_for_position(head, cx) {
             text_anchor
         } else {
             return;
         };
 
-        let project = workspace.project().clone();
+        let project = workspace.read(cx).project().clone();
         let definitions = project.update(cx, |project, cx| match kind {
             GotoDefinitionKind::Symbol => project.definition(&buffer, head, cx),
             GotoDefinitionKind::Type => project.type_definition(&buffer, head, cx),
         });
 
-        cx.spawn_labeled("Fetching Definition...", |workspace, mut cx| async move {
+        cx.spawn_labeled("Fetching Definition...", |editor, mut cx| async move {
             let definitions = definitions.await?;
-            workspace.update(&mut cx, |workspace, cx| {
-                Editor::navigate_to_definitions(workspace, editor_handle, definitions, cx);
-            });
-
+            editor.update(&mut cx, |editor, cx| {
+                editor.navigate_to_definitions(definitions, cx);
+            })?;
             Ok::<(), anyhow::Error>(())
         })
         .detach_and_log_err(cx);
     }
 
     pub fn navigate_to_definitions(
-        workspace: &mut Workspace,
-        editor_handle: ViewHandle<Editor>,
-        definitions: Vec<LocationLink>,
-        cx: &mut ViewContext<Workspace>,
+        &mut self,
+        mut definitions: Vec<LocationLink>,
+        cx: &mut ViewContext<Editor>,
     ) {
-        let pane = workspace.active_pane().clone();
+        let Some(workspace) = self.workspace(cx) else { return };
+        let pane = workspace.read(cx).active_pane().clone();
         // If there is one definition, just open it directly
-        if let [definition] = definitions.as_slice() {
+        if definitions.len() == 1 {
+            let definition = definitions.pop().unwrap();
             let range = definition
                 .target
                 .range
                 .to_offset(definition.target.buffer.read(cx));
 
-            let target_editor_handle =
-                workspace.open_project_item(definition.target.buffer.clone(), cx);
-            target_editor_handle.update(cx, |target_editor, cx| {
-                // When selecting a definition in a different buffer, disable the nav history
-                // to avoid creating a history entry at the previous cursor location.
-                if editor_handle != target_editor_handle {
-                    pane.update(cx, |pane, _| pane.disable_history());
-                }
-                target_editor.change_selections(Some(Autoscroll::fit()), cx, |s| {
+            if Some(&definition.target.buffer) == self.buffer.read(cx).as_singleton().as_ref() {
+                self.change_selections(Some(Autoscroll::fit()), cx, |s| {
                     s.select_ranges([range]);
                 });
-
-                pane.update(cx, |pane, _| pane.enable_history());
-            });
+            } else {
+                cx.window_context().defer(move |cx| {
+                    let target_editor: ViewHandle<Self> = workspace.update(cx, |workspace, cx| {
+                        workspace.open_project_item(definition.target.buffer.clone(), cx)
+                    });
+                    target_editor.update(cx, |target_editor, cx| {
+                        // When selecting a definition in a different buffer, disable the nav history
+                        // to avoid creating a history entry at the previous cursor location.
+                        pane.update(cx, |pane, _| pane.disable_history());
+                        target_editor.change_selections(Some(Autoscroll::fit()), cx, |s| {
+                            s.select_ranges([range]);
+                        });
+                        pane.update(cx, |pane, _| pane.enable_history());
+                    });
+                });
+            }
         } else if !definitions.is_empty() {
-            let replica_id = editor_handle.read(cx).replica_id(cx);
-            let title = definitions
-                .iter()
-                .find(|definition| definition.origin.is_some())
-                .and_then(|definition| {
-                    definition.origin.as_ref().map(|origin| {
-                        let buffer = origin.buffer.read(cx);
-                        format!(
-                            "Definitions for {}",
-                            buffer
-                                .text_for_range(origin.range.clone())
-                                .collect::<String>()
-                        )
+            let replica_id = self.replica_id(cx);
+            cx.window_context().defer(move |cx| {
+                let title = definitions
+                    .iter()
+                    .find(|definition| definition.origin.is_some())
+                    .and_then(|definition| {
+                        definition.origin.as_ref().map(|origin| {
+                            let buffer = origin.buffer.read(cx);
+                            format!(
+                                "Definitions for {}",
+                                buffer
+                                    .text_for_range(origin.range.clone())
+                                    .collect::<String>()
+                            )
+                        })
                     })
-                })
-                .unwrap_or("Definitions".to_owned());
-            let locations = definitions
-                .into_iter()
-                .map(|definition| definition.target)
-                .collect();
-            Self::open_locations_in_multibuffer(workspace, locations, replica_id, title, cx)
+                    .unwrap_or("Definitions".to_owned());
+                let locations = definitions
+                    .into_iter()
+                    .map(|definition| definition.target)
+                    .collect();
+                workspace.update(cx, |workspace, cx| {
+                    Self::open_locations_in_multibuffer(workspace, locations, replica_id, title, cx)
+                });
+            });
         }
     }
 
@@ -5581,7 +5750,7 @@ impl Editor {
                     Self::open_locations_in_multibuffer(
                         workspace, locations, replica_id, title, cx,
                     );
-                });
+                })?;
 
                 Ok(())
             },
@@ -5597,7 +5766,7 @@ impl Editor {
         cx: &mut ViewContext<Workspace>,
     ) {
         // If there are multiple definitions, open them in a multibuffer
-        locations.sort_by_key(|location| location.buffer.id());
+        locations.sort_by_key(|location| location.buffer.read(cx).remote_id());
         let mut locations = locations.into_iter().peekable();
         let mut ranges_to_highlight = Vec::new();
 
@@ -5681,7 +5850,7 @@ impl Editor {
                     buffer_highlights
                         .next()
                         .map(|highlight| highlight.start.text_anchor..highlight.end.text_anchor)
-                })
+                })?
             };
             if let Some(rename_range) = rename_range {
                 let rename_buffer_range = rename_range.to_offset(&snapshot);
@@ -5753,10 +5922,10 @@ impl Editor {
                             render: Arc::new({
                                 let editor = rename_editor.clone();
                                 move |cx: &mut BlockContext| {
-                                    ChildView::new(editor.clone(), cx)
+                                    ChildView::new(&editor, cx)
                                         .contained()
                                         .with_padding_left(cx.anchor_x)
-                                        .boxed()
+                                        .into_any()
                                 }
                             }),
                             disposition: BlockDisposition::Below,
@@ -5769,7 +5938,7 @@ impl Editor {
                         editor: rename_editor,
                         block_id,
                     });
-                });
+                })?;
             }
 
             Ok(())
@@ -5802,10 +5971,11 @@ impl Editor {
             project.perform_rename(buffer.clone(), range.start, new_name.clone(), true, cx)
         });
 
+        let editor = editor.downgrade();
         Some(cx.spawn(|workspace, mut cx| async move {
             let project_transaction = rename.await?;
             Self::open_project_transaction(
-                editor.clone(),
+                &editor,
                 workspace,
                 project_transaction,
                 format!("Rename: {} → {}", old_name, new_name),
@@ -5815,7 +5985,7 @@ impl Editor {
 
             editor.update(&mut cx, |editor, cx| {
                 editor.refresh_document_highlights(cx);
-            });
+            })?;
             Ok(())
         }))
     }
@@ -5858,7 +6028,7 @@ impl Editor {
         self.pending_rename.as_ref()
     }
 
-    fn format(&mut self, _: &Format, cx: &mut ViewContext<'_, Self>) -> Option<Task<Result<()>>> {
+    fn format(&mut self, _: &Format, cx: &mut ViewContext<Self>) -> Option<Task<Result<()>>> {
         let project = match &self.project {
             Some(project) => project.clone(),
             None => return None,
@@ -5871,7 +6041,7 @@ impl Editor {
         &mut self,
         project: ModelHandle<Project>,
         trigger: FormatTrigger,
-        cx: &mut ViewContext<'_, Self>,
+        cx: &mut ViewContext<Self>,
     ) -> Task<Result<()>> {
         let buffer = self.buffer().clone();
         let buffers = buffer.read(cx).all_buffers();
@@ -5891,7 +6061,7 @@ impl Editor {
             buffer.update(&mut cx, |buffer, cx| {
                 if let Some(transaction) = transaction {
                     if !buffer.is_singleton() {
-                        buffer.push_transaction(&transaction.0);
+                        buffer.push_transaction(&transaction.0, cx);
                     }
                 }
 
@@ -6236,13 +6406,13 @@ impl Editor {
         });
     }
 
-    pub fn longest_row(&self, cx: &mut MutableAppContext) -> u32 {
+    pub fn longest_row(&self, cx: &mut AppContext) -> u32 {
         self.display_map
             .update(cx, |map, cx| map.snapshot(cx))
             .longest_row()
     }
 
-    pub fn max_point(&self, cx: &mut MutableAppContext) -> DisplayPoint {
+    pub fn max_point(&self, cx: &mut AppContext) -> DisplayPoint {
         self.display_map
             .update(cx, |map, cx| map.snapshot(cx))
             .max_point()
@@ -6262,7 +6432,7 @@ impl Editor {
         });
     }
 
-    pub fn display_text(&self, cx: &mut MutableAppContext) -> String {
+    pub fn display_text(&self, cx: &mut AppContext) -> String {
         self.display_map
             .update(cx, |map, cx| map.snapshot(cx))
             .text()
@@ -6294,7 +6464,7 @@ impl Editor {
         cx.notify();
     }
 
-    pub fn set_wrap_width(&self, width: Option<f32>, cx: &mut MutableAppContext) -> bool {
+    pub fn set_wrap_width(&self, width: Option<f32>, cx: &mut AppContext) -> bool {
         self.display_map
             .update(cx, |map, cx| map.set_wrap_width(width, cx))
     }
@@ -6316,6 +6486,26 @@ impl Editor {
         if let Some(buffer) = self.buffer().read(cx).as_singleton() {
             if let Some(file) = buffer.read(cx).file().and_then(|f| f.as_local()) {
                 cx.reveal_path(&file.abs_path(cx));
+            }
+        }
+    }
+
+    pub fn copy_path(&mut self, _: &CopyPath, cx: &mut ViewContext<Self>) {
+        if let Some(buffer) = self.buffer().read(cx).as_singleton() {
+            if let Some(file) = buffer.read(cx).file().and_then(|f| f.as_local()) {
+                if let Some(path) = file.abs_path(cx).to_str() {
+                    cx.write_to_clipboard(ClipboardItem::new(path.to_string()));
+                }
+            }
+        }
+    }
+
+    pub fn copy_relative_path(&mut self, _: &CopyRelativePath, cx: &mut ViewContext<Self>) {
+        if let Some(buffer) = self.buffer().read(cx).as_singleton() {
+            if let Some(file) = buffer.read(cx).file().and_then(|f| f.as_local()) {
+                if let Some(path) = file.path().to_str() {
+                    cx.write_to_clipboard(ClipboardItem::new(path.to_string()));
+                }
             }
         }
     }
@@ -6489,7 +6679,9 @@ impl Editor {
             multi_buffer::Event::Edited => {
                 self.refresh_active_diagnostics(cx);
                 self.refresh_code_actions(cx);
-                self.refresh_copilot_suggestions(cx);
+                if self.has_active_copilot_suggestion(cx) {
+                    self.update_visible_copilot_suggestion(cx);
+                }
                 cx.emit(Event::BufferEdited);
             }
             multi_buffer::Event::ExcerptsAdded {
@@ -6513,11 +6705,16 @@ impl Editor {
             multi_buffer::Event::DiagnosticsUpdated => {
                 self.refresh_active_diagnostics(cx);
             }
+            multi_buffer::Event::LanguageChanged => {}
         }
     }
 
     fn on_display_map_changed(&mut self, _: ModelHandle<DisplayMap>, cx: &mut ViewContext<Self>) {
         cx.notify();
+    }
+
+    fn settings_changed(&mut self, cx: &mut ViewContext<Self>) {
+        self.refresh_copilot_suggestions(true, cx);
     }
 
     pub fn set_searchable(&mut self, searchable: bool) {
@@ -6585,14 +6782,26 @@ impl Editor {
         });
     }
 
-    fn jump(workspace: &mut Workspace, action: &Jump, cx: &mut ViewContext<Workspace>) {
-        let editor = workspace.open_path(action.path.clone(), None, true, cx);
-        let position = action.position;
-        let anchor = action.anchor;
-        cx.spawn_weak(|_, mut cx| async move {
-            let editor = editor.await.log_err()?.downcast::<Editor>()?;
+    fn jump(
+        workspace: &mut Workspace,
+        path: ProjectPath,
+        position: Point,
+        anchor: language::Anchor,
+        cx: &mut ViewContext<Workspace>,
+    ) {
+        let editor = workspace.open_path(path, None, true, cx);
+        cx.spawn(|_, mut cx| async move {
+            let editor = editor
+                .await?
+                .downcast::<Editor>()
+                .ok_or_else(|| anyhow!("opened item was not an editor"))?
+                .downgrade();
             editor.update(&mut cx, |editor, cx| {
-                let buffer = editor.buffer().read(cx).as_singleton()?;
+                let buffer = editor
+                    .buffer()
+                    .read(cx)
+                    .as_singleton()
+                    .ok_or_else(|| anyhow!("cannot jump in a multi-buffer"))?;
                 let buffer = buffer.read(cx);
                 let cursor = if buffer.can_resolve(&anchor) {
                     language::ToPoint::to_point(&anchor, buffer)
@@ -6606,11 +6815,12 @@ impl Editor {
                 });
                 editor.nav_history = nav_history;
 
-                Some(())
-            })?;
-            Some(())
+                anyhow::Ok(())
+            })??;
+
+            anyhow::Ok(())
         })
-        .detach()
+        .detach_and_log_err(cx);
     }
 
     fn marked_text_ranges(&self, cx: &AppContext) -> Option<Vec<Range<OffsetUtf16>>> {
@@ -6651,21 +6861,43 @@ impl Editor {
             .collect()
     }
 
-    fn report_event(&self, name: &str, cx: &AppContext) {
+    fn report_editor_event(&self, name: &'static str, cx: &AppContext) {
         if let Some((project, file)) = self.project.as_ref().zip(
             self.buffer
                 .read(cx)
                 .as_singleton()
                 .and_then(|b| b.read(cx).file()),
         ) {
+            let settings = cx.global::<Settings>();
+
             let extension = Path::new(file.file_name(cx))
                 .extension()
                 .and_then(|e| e.to_str());
-            project.read(cx).client().report_event(
-                name,
-                json!({ "File Extension": extension }),
-                cx.global::<Settings>().telemetry(),
+            let telemetry = project.read(cx).client().telemetry().clone();
+            telemetry.report_mixpanel_event(
+                match name {
+                    "open" => "open editor",
+                    "save" => "save editor",
+                    _ => name,
+                },
+                json!({ "File Extension": extension, "Vim Mode": settings.vim_mode, "In Clickhouse": true  }),
+                settings.telemetry(),
             );
+            let event = ClickhouseEvent::Editor {
+                file_extension: extension.map(ToString::to_string),
+                vim_mode: settings.vim_mode,
+                operation: name,
+                copilot_enabled: settings.features.copilot,
+                copilot_enabled_for_language: settings.show_copilot_suggestions(
+                    self.language_at(0, cx)
+                        .map(|language| language.name())
+                        .as_deref(),
+                    self.file_at(0, cx)
+                        .map(|file| file.path().clone())
+                        .as_deref(),
+                ),
+            };
+            telemetry.report_clickhouse_event(event, settings.telemetry())
         }
     }
 
@@ -6828,13 +7060,13 @@ pub struct EditorReleased(pub WeakViewHandle<Editor>);
 impl Entity for Editor {
     type Event = Event;
 
-    fn release(&mut self, cx: &mut MutableAppContext) {
+    fn release(&mut self, cx: &mut AppContext) {
         cx.emit_global(EditorReleased(self.handle.clone()));
     }
 }
 
 impl View for Editor {
-    fn render(&mut self, cx: &mut RenderContext<Self>) -> ElementBox {
+    fn render(&mut self, cx: &mut ViewContext<Self>) -> AnyElement<Self> {
         let style = self.style(cx);
         let font_changed = self.display_map.update(cx, |map, cx| {
             map.set_fold_ellipses_color(style.folds.ellipses.text_color);
@@ -6842,21 +7074,16 @@ impl View for Editor {
         });
 
         if font_changed {
-            let handle = self.handle.clone();
-            cx.defer(move |cx| {
-                if let Some(editor) = handle.upgrade(cx) {
-                    editor.update(cx, |editor, cx| {
-                        hide_hover(editor, &HideHover, cx);
-                        hide_link_definition(editor, cx);
-                    })
-                }
+            cx.defer(move |editor, cx: &mut ViewContext<Editor>| {
+                hide_hover(editor, cx);
+                hide_link_definition(editor, cx);
             });
         }
 
         Stack::new()
-            .with_child(EditorElement::new(self.handle.clone(), style.clone()).boxed())
-            .with_child(ChildView::new(&self.mouse_context_menu, cx).boxed())
-            .boxed()
+            .with_child(EditorElement::new(style.clone()))
+            .with_child(ChildView::new(&self.mouse_context_menu, cx))
+            .into_any()
     }
 
     fn ui_name() -> &'static str {
@@ -6897,14 +7124,14 @@ impl View for Editor {
         self.buffer
             .update(cx, |buffer, cx| buffer.remove_active_selections(cx));
         self.hide_context_menu(cx);
-        hide_hover(self, &HideHover, cx);
+        hide_hover(self, cx);
         cx.emit(Event::Blurred);
         cx.notify();
     }
 
     fn modifiers_changed(
         &mut self,
-        event: &gpui::ModifiersChangedEvent,
+        event: &gpui::platform::ModifiersChangedEvent,
         cx: &mut ViewContext<Self>,
     ) -> bool {
         let pending_selection = self.has_pending_selection();
@@ -6940,28 +7167,26 @@ impl View for Editor {
         false
     }
 
-    fn keymap_context(&self, _: &AppContext) -> KeymapContext {
-        let mut context = Self::default_keymap_context();
+    fn update_keymap_context(&self, keymap: &mut KeymapContext, _: &AppContext) {
+        Self::reset_to_default_keymap_context(keymap);
         let mode = match self.mode {
             EditorMode::SingleLine => "single_line",
             EditorMode::AutoHeight { .. } => "auto_height",
             EditorMode::Full => "full",
         };
-        context.add_key("mode", mode);
+        keymap.add_key("mode", mode);
         if self.pending_rename.is_some() {
-            context.add_identifier("renaming");
+            keymap.add_identifier("renaming");
         }
         match self.context_menu.as_ref() {
-            Some(ContextMenu::Completions(_)) => context.add_identifier("showing_completions"),
-            Some(ContextMenu::CodeActions(_)) => context.add_identifier("showing_code_actions"),
+            Some(ContextMenu::Completions(_)) => keymap.add_identifier("showing_completions"),
+            Some(ContextMenu::CodeActions(_)) => keymap.add_identifier("showing_code_actions"),
             None => {}
         }
 
         for layer in self.keymap_context_layers.values() {
-            context.extend(layer);
+            keymap.extend(layer);
         }
-
-        context
     }
 
     fn text_for_range(&self, range_utf16: Range<usize>, cx: &AppContext) -> Option<String> {
@@ -7134,6 +7359,7 @@ fn build_style(
 ) -> EditorStyle {
     let font_cache = cx.font_cache();
 
+    let theme_id = settings.theme.meta.id;
     let mut theme = settings.theme.editor.clone();
     let mut style = if let Some(get_field_editor_theme) = get_field_editor_theme {
         let field_editor_theme = get_field_editor_theme(&settings.theme);
@@ -7147,6 +7373,7 @@ fn build_style(
             text: field_editor_theme.text,
             placeholder_text: field_editor_theme.placeholder_text,
             theme,
+            theme_id,
         }
     } else {
         let font_family_id = settings.buffer_font_family;
@@ -7168,6 +7395,7 @@ fn build_style(
             },
             placeholder_text: None,
             theme,
+            theme_id,
         }
     };
 
@@ -7311,8 +7539,16 @@ impl Deref for EditorStyle {
 
 pub fn diagnostic_block_renderer(diagnostic: Diagnostic, is_valid: bool) -> RenderBlock {
     let mut highlighted_lines = Vec::new();
-    for line in diagnostic.message.lines() {
-        highlighted_lines.push(highlight_diagnostic_message(line));
+    for (index, line) in diagnostic.message.lines().enumerate() {
+        let line = match &diagnostic.source {
+            Some(source) if index == 0 => {
+                let source_highlight = Vec::from_iter(0..source.len());
+                highlight_diagnostic_message(source_highlight, &format!("{source}: {line}"))
+            }
+
+            _ => highlight_diagnostic_message(Vec::new(), line),
+        };
+        highlighted_lines.push(line);
     }
 
     Arc::new(move |cx: &mut BlockContext| {
@@ -7329,19 +7565,21 @@ pub fn diagnostic_block_renderer(diagnostic: Diagnostic, is_valid: bool) -> Rend
                 .with_highlights(highlights.clone())
                 .contained()
                 .with_margin_left(cx.anchor_x)
-                .boxed()
             }))
             .aligned()
             .left()
-            .boxed()
+            .into_any()
     })
 }
 
-pub fn highlight_diagnostic_message(message: &str) -> (String, Vec<usize>) {
+pub fn highlight_diagnostic_message(
+    inital_highlights: Vec<usize>,
+    message: &str,
+) -> (String, Vec<usize>) {
     let mut message_without_backticks = String::new();
     let mut prev_offset = 0;
     let mut inside_block = false;
-    let mut highlights = Vec::new();
+    let mut highlights = inital_highlights;
     for (match_ix, (offset, _)) in message
         .match_indices('`')
         .chain([(message.len(), "")])

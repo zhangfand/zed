@@ -64,7 +64,7 @@ impl super::ForegroundPlatform for ForegroundPlatform {
     fn on_resign_active(&self, _: Box<dyn FnMut()>) {}
     fn on_quit(&self, _: Box<dyn FnMut()>) {}
     fn on_reopen(&self, _: Box<dyn FnMut()>) {}
-    fn on_event(&self, _: Box<dyn FnMut(crate::Event) -> bool>) {}
+    fn on_event(&self, _: Box<dyn FnMut(crate::platform::Event) -> bool>) {}
     fn on_open_urls(&self, _: Box<dyn FnMut(Vec<String>)>) {}
 
     fn run(&self, _on_finish_launching: Box<dyn FnOnce()>) {
@@ -102,6 +102,7 @@ pub struct Platform {
     fonts: Arc<dyn super::FontSystem>,
     current_clipboard_item: Mutex<Option<ClipboardItem>>,
     cursor: Mutex<CursorStyle>,
+    active_window_id: Arc<Mutex<Option<usize>>>,
 }
 
 impl Platform {
@@ -111,6 +112,7 @@ impl Platform {
             fonts: Arc::new(super::current::FontSystem::new()),
             current_clipboard_item: Default::default(),
             cursor: Mutex::new(CursorStyle::Arrow),
+            active_window_id: Default::default(),
         }
     }
 }
@@ -134,32 +136,41 @@ impl super::Platform for Platform {
 
     fn quit(&self) {}
 
-    fn screen_by_id(&self, _id: uuid::Uuid) -> Option<Rc<dyn crate::Screen>> {
+    fn screen_by_id(&self, _id: uuid::Uuid) -> Option<Rc<dyn crate::platform::Screen>> {
         None
     }
 
-    fn screens(&self) -> Vec<Rc<dyn crate::Screen>> {
+    fn screens(&self) -> Vec<Rc<dyn crate::platform::Screen>> {
         Default::default()
     }
 
     fn open_window(
         &self,
-        _: usize,
+        id: usize,
         options: super::WindowOptions,
         _executor: Rc<super::executor::Foreground>,
     ) -> Box<dyn super::Window> {
-        Box::new(Window::new(match options.bounds {
-            WindowBounds::Maximized | WindowBounds::Fullscreen => vec2f(1024., 768.),
-            WindowBounds::Fixed(rect) => rect.size(),
-        }))
+        *self.active_window_id.lock() = Some(id);
+        Box::new(Window::new(
+            id,
+            match options.bounds {
+                WindowBounds::Maximized | WindowBounds::Fullscreen => vec2f(1024., 768.),
+                WindowBounds::Fixed(rect) => rect.size(),
+            },
+            self.active_window_id.clone(),
+        ))
     }
 
     fn main_window_id(&self) -> Option<usize> {
-        None
+        self.active_window_id.lock().clone()
     }
 
-    fn add_status_item(&self) -> Box<dyn crate::Window> {
-        Box::new(Window::new(vec2f(24., 24.)))
+    fn add_status_item(&self, id: usize) -> Box<dyn crate::platform::Window> {
+        Box::new(Window::new(
+            id,
+            vec2f(24., 24.),
+            self.active_window_id.clone(),
+        ))
     }
 
     fn write_to_clipboard(&self, item: ClipboardItem) {
@@ -245,6 +256,7 @@ impl super::Screen for Screen {
 }
 
 pub struct Window {
+    id: usize,
     pub(crate) size: Vector2F,
     scale_factor: f32,
     current_scene: Option<crate::Scene>,
@@ -258,11 +270,13 @@ pub struct Window {
     pub(crate) title: Option<String>,
     pub(crate) edited: bool,
     pub(crate) pending_prompts: RefCell<VecDeque<oneshot::Sender<usize>>>,
+    active_window_id: Arc<Mutex<Option<usize>>>,
 }
 
 impl Window {
-    fn new(size: Vector2F) -> Self {
+    pub fn new(id: usize, size: Vector2F, active_window_id: Arc<Mutex<Option<usize>>>) -> Self {
         Self {
+            id,
             size,
             event_handlers: Default::default(),
             resize_handlers: Default::default(),
@@ -276,6 +290,7 @@ impl Window {
             title: None,
             edited: false,
             pending_prompts: Default::default(),
+            active_window_id,
         }
     }
 
@@ -301,11 +316,11 @@ impl super::Window for Window {
         24.
     }
 
-    fn appearance(&self) -> crate::Appearance {
-        crate::Appearance::Light
+    fn appearance(&self) -> crate::platform::Appearance {
+        crate::platform::Appearance::Light
     }
 
-    fn screen(&self) -> Rc<dyn crate::Screen> {
+    fn screen(&self) -> Rc<dyn crate::platform::Screen> {
         Rc::new(Screen)
     }
 
@@ -313,15 +328,22 @@ impl super::Window for Window {
         self
     }
 
-    fn set_input_handler(&mut self, _: Box<dyn crate::InputHandler>) {}
+    fn set_input_handler(&mut self, _: Box<dyn crate::platform::InputHandler>) {}
 
-    fn prompt(&self, _: crate::PromptLevel, _: &str, _: &[&str]) -> oneshot::Receiver<usize> {
+    fn prompt(
+        &self,
+        _: crate::platform::PromptLevel,
+        _: &str,
+        _: &[&str],
+    ) -> oneshot::Receiver<usize> {
         let (done_tx, done_rx) = oneshot::channel();
         self.pending_prompts.borrow_mut().push_back(done_tx);
         done_rx
     }
 
-    fn activate(&self) {}
+    fn activate(&self) {
+        *self.active_window_id.lock() = Some(self.id);
+    }
 
     fn set_title(&mut self, title: &str) {
         self.title = Some(title.to_string())
@@ -343,7 +365,7 @@ impl super::Window for Window {
 
     fn toggle_full_screen(&self) {}
 
-    fn on_event(&mut self, callback: Box<dyn FnMut(crate::Event) -> bool>) {
+    fn on_event(&mut self, callback: Box<dyn FnMut(crate::platform::Event) -> bool>) {
         self.event_handlers.push(callback);
     }
 

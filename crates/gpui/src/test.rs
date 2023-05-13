@@ -17,9 +17,10 @@ use crate::{
     elements::Empty,
     executor::{self, ExecutorEvent},
     platform,
+    platform::Platform,
     util::CwdBacktrace,
-    Element, ElementBox, Entity, FontCache, Handle, MutableAppContext, Platform, RenderContext,
-    Subscription, TestAppContext, View,
+    AnyElement, AppContext, Element, Entity, FontCache, Handle, Subscription, TestAppContext, View,
+    ViewContext,
 };
 
 #[cfg(test)]
@@ -40,11 +41,12 @@ pub fn run_test(
     detect_nondeterminism: bool,
     test_fn: &mut (dyn RefUnwindSafe
               + Fn(
-        &mut MutableAppContext,
+        &mut AppContext,
         Rc<platform::test::ForegroundPlatform>,
         Arc<executor::Deterministic>,
         u64,
     )),
+    on_fail_fn: Option<fn()>,
     fn_name: String,
 ) {
     // let _profiler = dhat::Profiler::new_heap();
@@ -74,7 +76,7 @@ pub fn run_test(
                 let seed = atomic_seed.load(SeqCst);
 
                 if is_randomized {
-                    dbg!(seed);
+                    eprintln!("seed = {seed}");
                 }
 
                 let deterministic = executor::Deterministic::new(seed);
@@ -98,7 +100,7 @@ pub fn run_test(
                     test_fn(cx, foreground_platform.clone(), deterministic.clone(), seed);
                 });
 
-                cx.update(|cx| cx.remove_all_windows());
+                cx.remove_all_windows();
                 deterministic.run_until_parked();
                 cx.update(|cx| cx.clear_globals());
 
@@ -177,6 +179,7 @@ pub fn run_test(
                     if is_randomized {
                         eprintln!("failing seed: {}", atomic_seed.load(SeqCst));
                     }
+                    on_fail_fn.map(|f| f());
                     panic::resume_unwind(error);
                 }
             }
@@ -239,7 +242,7 @@ impl View for EmptyView {
         "empty view"
     }
 
-    fn render(&mut self, _: &mut RenderContext<Self>) -> ElementBox {
-        Element::boxed(Empty::new())
+    fn render(&mut self, _: &mut ViewContext<Self>) -> AnyElement<Self> {
+        Empty::new().into_any()
     }
 }

@@ -11,13 +11,16 @@ use async_tungstenite::tungstenite::{
     http::{Request, StatusCode},
 };
 use futures::{
-    future::LocalBoxFuture, AsyncReadExt, FutureExt, SinkExt, Stream, StreamExt, TryStreamExt,
+    future::LocalBoxFuture, future::LocalBoxFuture, AsyncReadExt, AsyncReadExt, FutureExt,
+    FutureExt, SinkExt, SinkExt, Stream, StreamExt, StreamExt, TryFutureExt as _, TryStreamExt,
+    TryStreamExt,
 };
 use gpui::{
     actions,
-    serde_json::{self, Value},
-    AnyModelHandle, AnyViewHandle, AnyWeakModelHandle, AnyWeakViewHandle, AppContext, AppVersion,
-    AsyncAppContext, Entity, ModelHandle, MutableAppContext, Task, View, ViewContext, ViewHandle,
+    platform::AppVersion,
+    serde_json::{self},
+    AnyModelHandle, AnyWeakModelHandle, AnyWeakViewHandle, AppContext, AsyncAppContext, Entity,
+    ModelHandle, Task, View, ViewContext, WeakViewHandle,
 };
 use lazy_static::lazy_static;
 use parking_lot::RwLock;
@@ -25,7 +28,7 @@ use postage::watch;
 use rand::prelude::*;
 use rpc::proto::{AnyTypedEnvelope, EntityMessage, EnvelopedMessage, PeerId, RequestMessage};
 use serde::Deserialize;
-use settings::{Settings, TelemetrySettings};
+use settings::Settings;
 use std::{
     any::TypeId,
     collections::HashMap,
@@ -45,6 +48,7 @@ use util::http::HttpClient;
 use util::{ResultExt, TryFutureExt};
 
 pub use rpc::*;
+pub use telemetry::ClickhouseEvent;
 pub use user::*;
 
 lazy_static! {
@@ -69,7 +73,7 @@ pub const CONNECTION_TIMEOUT: Duration = Duration::from_secs(5);
 
 actions!(client, [SignIn, SignOut]);
 
-pub fn init(client: Arc<Client>, cx: &mut MutableAppContext) {
+pub fn init(client: Arc<Client>, cx: &mut AppContext) {
     cx.add_global_action({
         let client = client.clone();
         move |_: &SignIn, cx| {
@@ -219,7 +223,7 @@ enum WeakSubscriber {
 
 enum Subscriber {
     Model(AnyModelHandle),
-    View(AnyViewHandle),
+    View(AnyWeakViewHandle),
 }
 
 #[derive(Clone, Debug)]
@@ -295,7 +299,7 @@ impl<T: Entity> PendingEntitySubscription<T> {
 
         state
             .entities_by_type_and_remote_id
-            .insert(id, WeakSubscriber::Model(model.downgrade().into()));
+            .insert(id, WeakSubscriber::Model(model.downgrade().into_any()));
         drop(state);
         for message in messages {
             self.client.handle_message(message, cx);
@@ -462,7 +466,7 @@ impl Client {
         self.state
             .write()
             .entities_by_type_and_remote_id
-            .insert(id, WeakSubscriber::View(cx.weak_handle().into()));
+            .insert(id, WeakSubscriber::View(cx.weak_handle().into_any()));
         Subscription::Entity {
             client: Arc::downgrade(self),
             id,
@@ -472,18 +476,22 @@ impl Client {
     pub fn subscribe_to_entity<T: Entity>(
         self: &Arc<Self>,
         remote_id: u64,
-    ) -> PendingEntitySubscription<T> {
+    ) -> Result<PendingEntitySubscription<T>> {
         let id = (TypeId::of::<T>(), remote_id);
-        self.state
-            .write()
-            .entities_by_type_and_remote_id
-            .insert(id, WeakSubscriber::Pending(Default::default()));
 
-        PendingEntitySubscription {
-            client: self.clone(),
-            remote_id,
-            consumed: false,
-            _entity_type: PhantomData,
+        let mut state = self.state.write();
+        if state.entities_by_type_and_remote_id.contains_key(&id) {
+            return Err(anyhow!("already subscribed to entity"));
+        } else {
+            state
+                .entities_by_type_and_remote_id
+                .insert(id, WeakSubscriber::Pending(Default::default()));
+            Ok(PendingEntitySubscription {
+                client: self.clone(),
+                remote_id,
+                consumed: false,
+                _entity_type: PhantomData,
+            })
         }
     }
 
@@ -506,7 +514,7 @@ impl Client {
         let mut state = self.state.write();
         state
             .models_by_message_type
-            .insert(message_type_id, model.downgrade().into());
+            .insert(message_type_id, model.downgrade().into_any());
 
         let prev_handler = state.message_handlers.insert(
             message_type_id,
@@ -561,7 +569,7 @@ impl Client {
         H: 'static
             + Send
             + Sync
-            + Fn(ViewHandle<E>, TypedEnvelope<M>, Arc<Self>, AsyncAppContext) -> F,
+            + Fn(WeakViewHandle<E>, TypedEnvelope<M>, Arc<Self>, AsyncAppContext) -> F,
         F: 'static + Future<Output = Result<()>>,
     {
         self.add_entity_message_handler::<M, E, _, _>(move |handle, message, client, cx| {
@@ -660,7 +668,7 @@ impl Client {
         H: 'static
             + Send
             + Sync
-            + Fn(ViewHandle<E>, TypedEnvelope<M>, Arc<Self>, AsyncAppContext) -> F,
+            + Fn(WeakViewHandle<E>, TypedEnvelope<M>, Arc<Self>, AsyncAppContext) -> F,
         F: 'static + Future<Output = Result<M::Response>>,
     {
         self.add_view_message_handler(move |entity, envelope, client, cx| {
@@ -730,7 +738,7 @@ impl Client {
             read_from_keychain = credentials.is_some();
             if read_from_keychain {
                 cx.read(|cx| {
-                    self.report_event(
+                    self.telemetry().report_mixpanel_event(
                         "read credentials from keychain",
                         Default::default(),
                         cx.global::<Settings>().telemetry(),
@@ -1110,7 +1118,7 @@ impl Client {
                 .context("failed to decrypt access token")?;
             platform.activate(true);
 
-            telemetry.report_event(
+            telemetry.report_mixpanel_event(
                 "authenticate with browser",
                 Default::default(),
                 metrics_enabled,
@@ -1189,6 +1197,14 @@ impl Client {
         &self,
         request: T,
     ) -> impl Future<Output = Result<T::Response>> {
+        self.request_envelope(request)
+            .map_ok(|envelope| envelope.payload)
+    }
+
+    pub fn request_envelope<T: RequestMessage>(
+        &self,
+        request: T,
+    ) -> impl Future<Output = Result<TypedEnvelope<T::Response>>> {
         let client_id = self.id;
         log::debug!(
             "rpc request start. client_id:{}. name:{}",
@@ -1197,7 +1213,7 @@ impl Client {
         );
         let response = self
             .connection_id()
-            .map(|conn_id| self.peer.request(conn_id, request));
+            .map(|conn_id| self.peer.request_envelope(conn_id, request));
         async move {
             let response = response?.await;
             log::debug!(
@@ -1283,7 +1299,15 @@ impl Client {
                     pending.push(message);
                     return;
                 }
-                Some(weak_subscriber @ _) => subscriber = weak_subscriber.upgrade(cx),
+                Some(weak_subscriber @ _) => match weak_subscriber {
+                    WeakSubscriber::Model(handle) => {
+                        subscriber = handle.upgrade(cx).map(Subscriber::Model);
+                    }
+                    WeakSubscriber::View(handle) => {
+                        subscriber = Some(Subscriber::View(handle.clone()));
+                    }
+                    WeakSubscriber::Pending(_) => {}
+                },
                 _ => {}
             }
         }
@@ -1340,40 +1364,8 @@ impl Client {
         }
     }
 
-    pub fn start_telemetry(&self) {
-        self.telemetry.start();
-    }
-
-    pub fn report_event(
-        &self,
-        kind: &str,
-        properties: Value,
-        telemetry_settings: TelemetrySettings,
-    ) {
-        self.telemetry
-            .report_event(kind, properties.clone(), telemetry_settings);
-    }
-
-    pub fn telemetry_log_file_path(&self) -> Option<PathBuf> {
-        self.telemetry.log_file_path()
-    }
-
-    pub fn metrics_id(&self) -> Option<Arc<str>> {
-        self.telemetry.metrics_id()
-    }
-
-    pub fn is_staff(&self) -> Option<bool> {
-        self.telemetry.is_staff()
-    }
-}
-
-impl WeakSubscriber {
-    fn upgrade(&self, cx: &AsyncAppContext) -> Option<Subscriber> {
-        match self {
-            WeakSubscriber::Model(handle) => handle.upgrade(cx).map(Subscriber::Model),
-            WeakSubscriber::View(handle) => handle.upgrade(cx).map(Subscriber::View),
-            WeakSubscriber::Pending(_) => None,
-        }
+    pub fn telemetry(&self) -> &Arc<Telemetry> {
+        &self.telemetry
     }
 }
 
@@ -1620,14 +1612,17 @@ mod tests {
 
         let _subscription1 = client
             .subscribe_to_entity(1)
+            .unwrap()
             .set_model(&model1, &mut cx.to_async());
         let _subscription2 = client
             .subscribe_to_entity(2)
+            .unwrap()
             .set_model(&model2, &mut cx.to_async());
         // Ensure dropping a subscription for the same entity type still allows receiving of
         // messages for other entity IDs of the same type.
         let subscription3 = client
             .subscribe_to_entity(3)
+            .unwrap()
             .set_model(&model3, &mut cx.to_async());
         drop(subscription3);
 
@@ -1656,11 +1651,13 @@ mod tests {
             },
         );
         drop(subscription1);
-        let _subscription2 =
-            client.add_message_handler(model, move |_, _: TypedEnvelope<proto::Ping>, _, _| {
+        let _subscription2 = client.add_message_handler(
+            model.clone(),
+            move |_, _: TypedEnvelope<proto::Ping>, _, _| {
                 done_tx2.try_send(()).unwrap();
                 async { Ok(()) }
-            });
+            },
+        );
         server.send(proto::Ping {});
         done_rx2.next().await.unwrap();
     }

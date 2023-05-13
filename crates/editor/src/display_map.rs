@@ -7,7 +7,7 @@ mod wrap_map;
 use crate::{Anchor, AnchorRangeExt, MultiBuffer, MultiBufferSnapshot, ToOffset, ToPoint};
 pub use block_map::{BlockMap, BlockPoint};
 use collections::{HashMap, HashSet};
-use fold_map::FoldMap;
+use fold_map::{FoldMap, FoldOffset};
 use gpui::{
     color::Color,
     fonts::{FontId, HighlightStyle},
@@ -230,23 +230,30 @@ impl DisplayMap {
         self.text_highlights.remove(&Some(type_id))
     }
 
+    pub fn has_suggestion(&self) -> bool {
+        self.suggestion_map.has_suggestion()
+    }
+
     pub fn replace_suggestion<T>(
         &self,
         new_suggestion: Option<Suggestion<T>>,
         cx: &mut ModelContext<Self>,
-    ) where
+    ) -> Option<Suggestion<FoldOffset>>
+    where
         T: ToPoint,
     {
         let snapshot = self.buffer.read(cx).snapshot(cx);
         let edits = self.buffer_subscription.consume().into_inner();
         let tab_size = Self::tab_size(&self.buffer, cx);
         let (snapshot, edits) = self.fold_map.read(snapshot, edits);
-        let (snapshot, edits) = self.suggestion_map.replace(new_suggestion, snapshot, edits);
+        let (snapshot, edits, old_suggestion) =
+            self.suggestion_map.replace(new_suggestion, snapshot, edits);
         let (snapshot, edits) = self.tab_map.sync(snapshot, edits, tab_size);
         let (snapshot, edits) = self
             .wrap_map
             .update(cx, |map, cx| map.sync(snapshot, edits, cx));
         self.block_map.read(snapshot, edits);
+        old_suggestion
     }
 
     pub fn set_font(&self, font_id: FontId, font_size: f32, cx: &mut ModelContext<Self>) -> bool {
@@ -836,7 +843,7 @@ pub fn next_rows(display_row: u32, display_map: &DisplaySnapshot) -> impl Iterat
 pub mod tests {
     use super::*;
     use crate::{movement, test::marked_display_snapshot};
-    use gpui::{color::Color, elements::*, test::observe, MutableAppContext};
+    use gpui::{color::Color, elements::*, test::observe, AppContext};
     use language::{Buffer, Language, LanguageConfig, SelectionGoal};
     use rand::{prelude::*, Rng};
     use smol::stream::StreamExt;
@@ -966,7 +973,7 @@ pub mod tests {
                                         position,
                                         height,
                                         disposition,
-                                        render: Arc::new(|_| Empty::new().boxed()),
+                                        render: Arc::new(|_| Empty::new().into_any()),
                                     }
                                 })
                                 .collect::<Vec<_>>();
@@ -1110,7 +1117,7 @@ pub mod tests {
     }
 
     #[gpui::test(retries = 5)]
-    fn test_soft_wraps(cx: &mut MutableAppContext) {
+    fn test_soft_wraps(cx: &mut AppContext) {
         cx.foreground().set_block_on_ticks(usize::MAX..=usize::MAX);
         cx.foreground().forbid_parking();
 
@@ -1203,7 +1210,7 @@ pub mod tests {
     }
 
     #[gpui::test]
-    fn test_text_chunks(cx: &mut gpui::MutableAppContext) {
+    fn test_text_chunks(cx: &mut gpui::AppContext) {
         cx.set_global(Settings::test(cx));
         let text = sample_text(6, 6, 'a');
         let buffer = MultiBuffer::build_simple(&text, cx);
@@ -1502,9 +1509,9 @@ pub mod tests {
     }
 
     #[gpui::test]
-    fn test_clip_point(cx: &mut gpui::MutableAppContext) {
+    fn test_clip_point(cx: &mut gpui::AppContext) {
         cx.set_global(Settings::test(cx));
-        fn assert(text: &str, shift_right: bool, bias: Bias, cx: &mut gpui::MutableAppContext) {
+        fn assert(text: &str, shift_right: bool, bias: Bias, cx: &mut gpui::AppContext) {
             let (unmarked_snapshot, mut markers) = marked_display_snapshot(text, cx);
 
             match bias {
@@ -1551,10 +1558,10 @@ pub mod tests {
     }
 
     #[gpui::test]
-    fn test_clip_at_line_ends(cx: &mut gpui::MutableAppContext) {
+    fn test_clip_at_line_ends(cx: &mut gpui::AppContext) {
         cx.set_global(Settings::test(cx));
 
-        fn assert(text: &str, cx: &mut gpui::MutableAppContext) {
+        fn assert(text: &str, cx: &mut gpui::AppContext) {
             let (mut unmarked_snapshot, markers) = marked_display_snapshot(text, cx);
             unmarked_snapshot.clip_at_line_ends = true;
             assert_eq!(
@@ -1570,7 +1577,7 @@ pub mod tests {
     }
 
     #[gpui::test]
-    fn test_tabs_with_multibyte_chars(cx: &mut gpui::MutableAppContext) {
+    fn test_tabs_with_multibyte_chars(cx: &mut gpui::AppContext) {
         cx.set_global(Settings::test(cx));
         let text = "✅\t\tα\nβ\t\n🏀β\t\tγ";
         let buffer = MultiBuffer::build_simple(text, cx);
@@ -1631,7 +1638,7 @@ pub mod tests {
     }
 
     #[gpui::test]
-    fn test_max_point(cx: &mut gpui::MutableAppContext) {
+    fn test_max_point(cx: &mut gpui::AppContext) {
         cx.set_global(Settings::test(cx));
         let buffer = MultiBuffer::build_simple("aaa\n\t\tbbb", cx);
         let font_cache = cx.font_cache();
@@ -1680,7 +1687,7 @@ pub mod tests {
         rows: Range<u32>,
         map: &ModelHandle<DisplayMap>,
         theme: &'a SyntaxTheme,
-        cx: &mut MutableAppContext,
+        cx: &mut AppContext,
     ) -> Vec<(String, Option<Color>)> {
         chunks(rows, map, theme, cx)
             .into_iter()
@@ -1692,7 +1699,7 @@ pub mod tests {
         rows: Range<u32>,
         map: &ModelHandle<DisplayMap>,
         theme: &'a SyntaxTheme,
-        cx: &mut MutableAppContext,
+        cx: &mut AppContext,
     ) -> Vec<(String, Option<Color>, Option<Color>)> {
         let snapshot = map.update(cx, |map, cx| map.snapshot(cx));
         let mut chunks: Vec<(String, Option<Color>, Option<Color>)> = Vec::new();

@@ -7,9 +7,8 @@ use crate::{
         vector::{vec2f, Vector2F},
     },
     json::{ToJson, Value},
-    presenter::MeasurementContext,
     text_layout::{Line, RunStyle},
-    DebugContext, Element, LayoutContext, PaintContext, SizeConstraint,
+    Element, LayoutContext, SceneBuilder, SizeConstraint, View, ViewContext,
 };
 use serde::Deserialize;
 use serde_json::json;
@@ -128,19 +127,22 @@ impl Label {
     }
 }
 
-impl Element for Label {
+impl<V: View> Element<V> for Label {
     type LayoutState = Line;
     type PaintState = ();
 
     fn layout(
         &mut self,
         constraint: SizeConstraint,
-        cx: &mut LayoutContext,
+        _: &mut V,
+        cx: &mut LayoutContext<V>,
     ) -> (Vector2F, Self::LayoutState) {
         let runs = self.compute_runs();
-        let line =
-            cx.text_layout_cache
-                .layout_str(&self.text, self.style.text.font_size, runs.as_slice());
+        let line = cx.text_layout_cache().layout_str(
+            &self.text,
+            self.style.text.font_size,
+            runs.as_slice(),
+        );
 
         let size = vec2f(
             line.width()
@@ -155,12 +157,20 @@ impl Element for Label {
 
     fn paint(
         &mut self,
+        scene: &mut SceneBuilder,
         bounds: RectF,
         visible_bounds: RectF,
         line: &mut Self::LayoutState,
-        cx: &mut PaintContext,
+        _: &mut V,
+        cx: &mut ViewContext<V>,
     ) -> Self::PaintState {
-        line.paint(bounds.origin(), visible_bounds, bounds.size().y(), cx)
+        line.paint(
+            scene,
+            bounds.origin(),
+            visible_bounds,
+            bounds.size().y(),
+            cx,
+        )
     }
 
     fn rect_for_text_range(
@@ -170,7 +180,8 @@ impl Element for Label {
         _: RectF,
         _: &Self::LayoutState,
         _: &Self::PaintState,
-        _: &MeasurementContext,
+        _: &V,
+        _: &ViewContext<V>,
     ) -> Option<RectF> {
         None
     }
@@ -180,7 +191,8 @@ impl Element for Label {
         bounds: RectF,
         _: &Self::LayoutState,
         _: &Self::PaintState,
-        _: &DebugContext,
+        _: &V,
+        _: &ViewContext<V>,
     ) -> Value {
         json!({
             "type": "Label",
@@ -210,7 +222,7 @@ mod tests {
     use crate::fonts::{Properties as FontProperties, Weight};
 
     #[crate::test(self)]
-    fn test_layout_label_with_highlights(cx: &mut crate::MutableAppContext) {
+    fn test_layout_label_with_highlights(cx: &mut crate::AppContext) {
         let default_style = TextStyle::new(
             "Menlo",
             12.,

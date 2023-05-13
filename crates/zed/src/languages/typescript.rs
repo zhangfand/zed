@@ -1,27 +1,35 @@
 use anyhow::{anyhow, Result};
+use async_compression::futures::bufread::GzipDecoder;
+use async_tar::Archive;
 use async_trait::async_trait;
-use futures::StreamExt;
+use futures::{future::BoxFuture, FutureExt};
+use gpui::AppContext;
 use language::{LanguageServerBinary, LanguageServerName, LspAdapter};
 use lsp::CodeActionKind;
 use node_runtime::NodeRuntime;
-use serde_json::json;
-use smol::fs;
+use serde_json::{json, Value};
+use smol::{fs, io::BufReader, stream::StreamExt};
 use std::{
     any::Any,
     ffi::OsString,
+    future,
     path::{Path, PathBuf},
     sync::Arc,
 };
-use util::http::HttpClient;
-use util::ResultExt;
+use util::{fs::remove_matching, github::latest_github_release, http::HttpClient};
+use util::{github::GitHubLspBinaryVersion, ResultExt};
 
-fn server_binary_arguments(server_path: &Path) -> Vec<OsString> {
+fn typescript_server_binary_arguments(server_path: &Path) -> Vec<OsString> {
     vec![
         server_path.into(),
         "--stdio".into(),
         "--tsserver-path".into(),
         "node_modules/typescript/lib".into(),
     ]
+}
+
+fn eslint_server_binary_arguments(server_path: &Path) -> Vec<OsString> {
+    vec![server_path.into(), "--stdio".into()]
 }
 
 pub struct TypeScriptLspAdapter {
@@ -37,7 +45,7 @@ impl TypeScriptLspAdapter {
     }
 }
 
-struct Versions {
+struct TypeScriptVersions {
     typescript_version: String,
     server_version: String,
 }
@@ -52,7 +60,7 @@ impl LspAdapter for TypeScriptLspAdapter {
         &self,
         _: Arc<dyn HttpClient>,
     ) -> Result<Box<dyn 'static + Send + Any>> {
-        Ok(Box::new(Versions {
+        Ok(Box::new(TypeScriptVersions {
             typescript_version: self.node.npm_package_latest_version("typescript").await?,
             server_version: self
                 .node
@@ -63,61 +71,52 @@ impl LspAdapter for TypeScriptLspAdapter {
 
     async fn fetch_server_binary(
         &self,
-        versions: Box<dyn 'static + Send + Any>,
+        version: Box<dyn 'static + Send + Any>,
         _: Arc<dyn HttpClient>,
         container_dir: PathBuf,
     ) -> Result<LanguageServerBinary> {
-        let versions = versions.downcast::<Versions>().unwrap();
+        let version = version.downcast::<TypeScriptVersions>().unwrap();
         let server_path = container_dir.join(Self::NEW_SERVER_PATH);
 
         if fs::metadata(&server_path).await.is_err() {
             self.node
                 .npm_install_packages(
+                    &container_dir,
                     [
-                        ("typescript", versions.typescript_version.as_str()),
+                        ("typescript", version.typescript_version.as_str()),
                         (
                             "typescript-language-server",
-                            versions.server_version.as_str(),
+                            version.server_version.as_str(),
                         ),
                     ],
-                    &container_dir,
                 )
                 .await?;
         }
 
         Ok(LanguageServerBinary {
             path: self.node.binary_path().await?,
-            arguments: server_binary_arguments(&server_path),
+            arguments: typescript_server_binary_arguments(&server_path),
         })
     }
 
     async fn cached_server_binary(&self, container_dir: PathBuf) -> Option<LanguageServerBinary> {
         (|| async move {
-            let mut last_version_dir = None;
-            let mut entries = fs::read_dir(&container_dir).await?;
-            while let Some(entry) = entries.next().await {
-                let entry = entry?;
-                if entry.file_type().await?.is_dir() {
-                    last_version_dir = Some(entry.path());
-                }
-            }
-            let last_version_dir = last_version_dir.ok_or_else(|| anyhow!("no cached binary"))?;
-            let old_server_path = last_version_dir.join(Self::OLD_SERVER_PATH);
-            let new_server_path = last_version_dir.join(Self::NEW_SERVER_PATH);
+            let old_server_path = container_dir.join(Self::OLD_SERVER_PATH);
+            let new_server_path = container_dir.join(Self::NEW_SERVER_PATH);
             if new_server_path.exists() {
                 Ok(LanguageServerBinary {
                     path: self.node.binary_path().await?,
-                    arguments: server_binary_arguments(&new_server_path),
+                    arguments: typescript_server_binary_arguments(&new_server_path),
                 })
             } else if old_server_path.exists() {
                 Ok(LanguageServerBinary {
                     path: self.node.binary_path().await?,
-                    arguments: server_binary_arguments(&old_server_path),
+                    arguments: typescript_server_binary_arguments(&old_server_path),
                 })
             } else {
                 Err(anyhow!(
                     "missing executable in directory {:?}",
-                    last_version_dir
+                    container_dir
                 ))
             }
         })()
@@ -167,6 +166,125 @@ impl LspAdapter for TypeScriptLspAdapter {
         Some(json!({
             "provideFormatter": true
         }))
+    }
+}
+
+pub struct EsLintLspAdapter {
+    node: Arc<NodeRuntime>,
+}
+
+impl EsLintLspAdapter {
+    const SERVER_PATH: &'static str = "vscode-eslint/server/out/eslintServer.js";
+
+    #[allow(unused)]
+    pub fn new(node: Arc<NodeRuntime>) -> Self {
+        EsLintLspAdapter { node }
+    }
+}
+
+#[async_trait]
+impl LspAdapter for EsLintLspAdapter {
+    fn workspace_configuration(&self, _: &mut AppContext) -> Option<BoxFuture<'static, Value>> {
+        Some(
+            future::ready(json!({
+                "": {
+                    "validate": "on",
+                    "rulesCustomizations": [],
+                    "run": "onType",
+                    "nodePath": null,
+                }
+            }))
+            .boxed(),
+        )
+    }
+
+    async fn name(&self) -> LanguageServerName {
+        LanguageServerName("eslint".into())
+    }
+
+    async fn fetch_latest_server_version(
+        &self,
+        http: Arc<dyn HttpClient>,
+    ) -> Result<Box<dyn 'static + Send + Any>> {
+        // At the time of writing the latest vscode-eslint release was released in 2020 and requires
+        // special custom LSP protocol extensions be handled to fully initalize. Download the latest
+        // prerelease instead to sidestep this issue
+        let release = latest_github_release("microsoft/vscode-eslint", true, http).await?;
+        Ok(Box::new(GitHubLspBinaryVersion {
+            name: release.name,
+            url: release.tarball_url,
+        }))
+    }
+
+    async fn fetch_server_binary(
+        &self,
+        version: Box<dyn 'static + Send + Any>,
+        http: Arc<dyn HttpClient>,
+        container_dir: PathBuf,
+    ) -> Result<LanguageServerBinary> {
+        let version = version.downcast::<GitHubLspBinaryVersion>().unwrap();
+        let destination_path = container_dir.join(format!("vscode-eslint-{}", version.name));
+        let server_path = destination_path.join(Self::SERVER_PATH);
+
+        if fs::metadata(&server_path).await.is_err() {
+            remove_matching(&container_dir, |entry| entry != destination_path).await;
+
+            let mut response = http
+                .get(&version.url, Default::default(), true)
+                .await
+                .map_err(|err| anyhow!("error downloading release: {}", err))?;
+            let decompressed_bytes = GzipDecoder::new(BufReader::new(response.body_mut()));
+            let archive = Archive::new(decompressed_bytes);
+            archive.unpack(&destination_path).await?;
+
+            let mut dir = fs::read_dir(&destination_path).await?;
+            let first = dir.next().await.ok_or(anyhow!("missing first file"))??;
+            let repo_root = destination_path.join("vscode-eslint");
+            fs::rename(first.path(), &repo_root).await?;
+
+            self.node
+                .run_npm_subcommand(&repo_root, "install", &[])
+                .await?;
+
+            self.node
+                .run_npm_subcommand(&repo_root, "run-script", &["compile"])
+                .await?;
+        }
+
+        Ok(LanguageServerBinary {
+            path: self.node.binary_path().await?,
+            arguments: eslint_server_binary_arguments(&server_path),
+        })
+    }
+
+    async fn cached_server_binary(&self, container_dir: PathBuf) -> Option<LanguageServerBinary> {
+        (|| async move {
+            // This is unfortunate but we don't know what the version is to build a path directly
+            let mut dir = fs::read_dir(&container_dir).await?;
+            let first = dir.next().await.ok_or(anyhow!("missing first file"))??;
+            if !first.file_type().await?.is_dir() {
+                return Err(anyhow!("First entry is not a directory"));
+            }
+
+            Ok(LanguageServerBinary {
+                path: first.path().join(Self::SERVER_PATH),
+                arguments: Default::default(),
+            })
+        })()
+        .await
+        .log_err()
+    }
+
+    async fn label_for_completion(
+        &self,
+        _item: &lsp::CompletionItem,
+        _language: &Arc<language::Language>,
+    ) -> Option<language::CodeLabel> {
+        None
+    }
+
+    async fn initialization_options(&self) -> Option<serde_json::Value> {
+        None
     }
 }
 

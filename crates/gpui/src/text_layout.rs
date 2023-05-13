@@ -5,7 +5,11 @@ use crate::{
         rect::RectF,
         vector::{vec2f, Vector2F},
     },
-    platform, scene, FontSystem, PaintContext,
+    platform,
+    platform::FontSystem,
+    scene,
+    window::WindowContext,
+    SceneBuilder,
 };
 use ordered_float::OrderedFloat;
 use parking_lot::{Mutex, RwLock, RwLockUpgradableReadGuard};
@@ -173,7 +177,14 @@ impl<'a> Hash for CacheKeyRef<'a> {
 #[derive(Default, Debug, Clone)]
 pub struct Line {
     layout: Arc<LineLayout>,
-    style_runs: SmallVec<[(u32, Color, Underline); 32]>,
+    style_runs: SmallVec<[StyleRun; 32]>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct StyleRun {
+    len: u32,
+    color: Color,
+    underline: Underline,
 }
 
 #[derive(Default, Debug)]
@@ -204,7 +215,11 @@ impl Line {
     fn new(layout: Arc<LineLayout>, runs: &[(usize, RunStyle)]) -> Self {
         let mut style_runs = SmallVec::new();
         for (len, style) in runs {
-            style_runs.push((*len as u32, style.color, style.underline));
+            style_runs.push(StyleRun {
+                len: *len as u32,
+                color: style.color,
+                underline: style.underline,
+            });
         }
         Self { layout, style_runs }
     }
@@ -269,10 +284,11 @@ impl Line {
 
     pub fn paint(
         &self,
+        scene: &mut SceneBuilder,
         origin: Vector2F,
         visible_bounds: RectF,
         line_height: f32,
-        cx: &mut PaintContext,
+        cx: &mut WindowContext,
     ) {
         let padding_top = (line_height - self.layout.ascent - self.layout.descent) / 2.;
         let baseline_offset = vec2f(0., padding_top + self.layout.ascent);
@@ -296,28 +312,30 @@ impl Line {
 
                 let mut finished_underline = None;
                 if glyph.index >= run_end {
-                    if let Some((run_len, run_color, run_underline)) = style_runs.next() {
+                    if let Some(style_run) = style_runs.next() {
                         if let Some((_, underline_style)) = underline {
-                            if *run_underline != underline_style {
+                            if style_run.underline != underline_style {
                                 finished_underline = underline.take();
                             }
                         }
-                        if run_underline.thickness.into_inner() > 0. {
+                        if style_run.underline.thickness.into_inner() > 0. {
                             underline.get_or_insert((
                                 vec2f(
                                     glyph_origin.x(),
                                     origin.y() + baseline_offset.y() + 0.618 * self.layout.descent,
                                 ),
                                 Underline {
-                                    color: Some(run_underline.color.unwrap_or(*run_color)),
-                                    thickness: run_underline.thickness,
-                                    squiggly: run_underline.squiggly,
+                                    color: Some(
+                                        style_run.underline.color.unwrap_or(style_run.color),
+                                    ),
+                                    thickness: style_run.underline.thickness,
+                                    squiggly: style_run.underline.squiggly,
                                 },
                             ));
                         }
 
-                        run_end += *run_len as usize;
-                        color = *run_color;
+                        run_end += style_run.len as usize;
+                        color = style_run.color;
                     } else {
                         run_end = self.layout.len;
                         finished_underline = underline.take();
@@ -329,7 +347,7 @@ impl Line {
                 }
 
                 if let Some((underline_origin, underline_style)) = finished_underline {
-                    cx.scene.push_underline(scene::Underline {
+                    scene.push_underline(scene::Underline {
                         origin: underline_origin,
                         width: glyph_origin.x() - underline_origin.x(),
                         thickness: underline_style.thickness.into(),
@@ -339,14 +357,14 @@ impl Line {
                 }
 
                 if glyph.is_emoji {
-                    cx.scene.push_image_glyph(scene::ImageGlyph {
+                    scene.push_image_glyph(scene::ImageGlyph {
                         font_id: run.font_id,
                         font_size: self.layout.font_size,
                         id: glyph.id,
                         origin: glyph_origin,
                     });
                 } else {
-                    cx.scene.push_glyph(scene::Glyph {
+                    scene.push_glyph(scene::Glyph {
                         font_id: run.font_id,
                         font_size: self.layout.font_size,
                         id: glyph.id,
@@ -359,7 +377,7 @@ impl Line {
 
         if let Some((underline_start, underline_style)) = underline.take() {
             let line_end_x = origin.x() + self.layout.width;
-            cx.scene.push_underline(scene::Underline {
+            scene.push_underline(scene::Underline {
                 origin: underline_start,
                 width: line_end_x - underline_start.x(),
                 color: underline_style.color.unwrap(),
@@ -371,66 +389,122 @@ impl Line {
 
     pub fn paint_wrapped(
         &self,
+        scene: &mut SceneBuilder,
         origin: Vector2F,
         visible_bounds: RectF,
         line_height: f32,
-        boundaries: impl IntoIterator<Item = ShapedBoundary>,
-        cx: &mut PaintContext,
+        boundaries: &[ShapedBoundary],
+        cx: &mut WindowContext,
     ) {
         let padding_top = (line_height - self.layout.ascent - self.layout.descent) / 2.;
-        let baseline_origin = vec2f(0., padding_top + self.layout.ascent);
+        let baseline_offset = vec2f(0., padding_top + self.layout.ascent);
 
         let mut boundaries = boundaries.into_iter().peekable();
         let mut color_runs = self.style_runs.iter();
-        let mut color_end = 0;
+        let mut style_run_end = 0;
         let mut color = Color::black();
+        let mut underline: Option<(Vector2F, Underline)> = None;
 
-        let mut glyph_origin = vec2f(0., 0.);
+        let mut glyph_origin = origin;
         let mut prev_position = 0.;
-        for run in &self.layout.runs {
+        for (run_ix, run) in self.layout.runs.iter().enumerate() {
             for (glyph_ix, glyph) in run.glyphs.iter().enumerate() {
-                if boundaries.peek().map_or(false, |b| b.glyph_ix == glyph_ix) {
+                glyph_origin.set_x(glyph_origin.x() + glyph.position.x() - prev_position);
+
+                if boundaries
+                    .peek()
+                    .map_or(false, |b| b.run_ix == run_ix && b.glyph_ix == glyph_ix)
+                {
                     boundaries.next();
-                    glyph_origin = vec2f(0., glyph_origin.y() + line_height);
-                } else {
-                    glyph_origin.set_x(glyph_origin.x() + glyph.position.x() - prev_position);
+                    if let Some((underline_origin, underline_style)) = underline {
+                        scene.push_underline(scene::Underline {
+                            origin: underline_origin,
+                            width: glyph_origin.x() - underline_origin.x(),
+                            thickness: underline_style.thickness.into(),
+                            color: underline_style.color.unwrap(),
+                            squiggly: underline_style.squiggly,
+                        });
+                    }
+
+                    glyph_origin = vec2f(origin.x(), glyph_origin.y() + line_height);
                 }
                 prev_position = glyph.position.x();
 
-                if glyph.index >= color_end {
-                    if let Some(next_run) = color_runs.next() {
-                        color_end += next_run.0 as usize;
-                        color = next_run.1;
+                let mut finished_underline = None;
+                if glyph.index >= style_run_end {
+                    if let Some(style_run) = color_runs.next() {
+                        style_run_end += style_run.len as usize;
+                        color = style_run.color;
+                        if let Some((_, underline_style)) = underline {
+                            if style_run.underline != underline_style {
+                                finished_underline = underline.take();
+                            }
+                        }
+                        if style_run.underline.thickness.into_inner() > 0. {
+                            underline.get_or_insert((
+                                glyph_origin
+                                    + vec2f(0., baseline_offset.y() + 0.618 * self.layout.descent),
+                                Underline {
+                                    color: Some(
+                                        style_run.underline.color.unwrap_or(style_run.color),
+                                    ),
+                                    thickness: style_run.underline.thickness,
+                                    squiggly: style_run.underline.squiggly,
+                                },
+                            ));
+                        }
                     } else {
-                        color_end = self.layout.len;
+                        style_run_end = self.layout.len;
                         color = Color::black();
+                        finished_underline = underline.take();
                     }
                 }
 
+                if let Some((underline_origin, underline_style)) = finished_underline {
+                    scene.push_underline(scene::Underline {
+                        origin: underline_origin,
+                        width: glyph_origin.x() - underline_origin.x(),
+                        thickness: underline_style.thickness.into(),
+                        color: underline_style.color.unwrap(),
+                        squiggly: underline_style.squiggly,
+                    });
+                }
+
                 let glyph_bounds = RectF::new(
-                    origin + glyph_origin,
+                    glyph_origin,
                     cx.font_cache
                         .bounding_box(run.font_id, self.layout.font_size),
                 );
                 if glyph_bounds.intersects(visible_bounds) {
                     if glyph.is_emoji {
-                        cx.scene.push_image_glyph(scene::ImageGlyph {
+                        scene.push_image_glyph(scene::ImageGlyph {
                             font_id: run.font_id,
                             font_size: self.layout.font_size,
                             id: glyph.id,
-                            origin: glyph_bounds.origin() + baseline_origin,
+                            origin: glyph_bounds.origin() + baseline_offset,
                         });
                     } else {
-                        cx.scene.push_glyph(scene::Glyph {
+                        scene.push_glyph(scene::Glyph {
                             font_id: run.font_id,
                             font_size: self.layout.font_size,
                             id: glyph.id,
-                            origin: glyph_bounds.origin() + baseline_origin,
+                            origin: glyph_bounds.origin() + baseline_offset,
                             color,
                         });
                     }
                 }
             }
+        }
+
+        if let Some((underline_origin, underline_style)) = underline.take() {
+            let line_end_x = glyph_origin.x() + self.layout.width - prev_position;
+            scene.push_underline(scene::Underline {
+                origin: underline_origin,
+                width: line_end_x - underline_origin.x(),
+                thickness: underline_style.thickness.into(),
+                color: underline_style.color.unwrap(),
+                squiggly: underline_style.squiggly,
+            });
         }
     }
 }
@@ -660,7 +734,7 @@ mod tests {
     use crate::fonts::{Properties, Weight};
 
     #[crate::test(self)]
-    fn test_wrap_line(cx: &mut crate::MutableAppContext) {
+    fn test_wrap_line(cx: &mut crate::AppContext) {
         let font_cache = cx.font_cache().clone();
         let font_system = cx.platform().fonts();
         let family = font_cache
@@ -721,7 +795,7 @@ mod tests {
     }
 
     #[crate::test(self, retries = 5)]
-    fn test_wrap_shaped_line(cx: &mut crate::MutableAppContext) {
+    fn test_wrap_shaped_line(cx: &mut crate::AppContext) {
         // This is failing intermittently on CI and we don't have time to figure it out
         let font_cache = cx.font_cache().clone();
         let font_system = cx.platform().fonts();

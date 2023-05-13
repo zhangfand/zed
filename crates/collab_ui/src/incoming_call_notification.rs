@@ -1,21 +1,20 @@
+use std::sync::{Arc, Weak};
+
 use call::{ActiveCall, IncomingCall};
 use client::proto;
 use futures::StreamExt;
 use gpui::{
     elements::*,
     geometry::{rect::RectF, vector::vec2f},
-    impl_internal_actions, CursorStyle, Entity, MouseButton, MutableAppContext, RenderContext,
-    View, ViewContext, WindowBounds, WindowKind, WindowOptions,
+    platform::{CursorStyle, MouseButton, WindowBounds, WindowKind, WindowOptions},
+    AnyElement, AppContext, Entity, View, ViewContext,
 };
 use settings::Settings;
 use util::ResultExt;
-use workspace::JoinProject;
+use workspace::AppState;
 
-impl_internal_actions!(incoming_call_notification, [RespondToCall]);
-
-pub fn init(cx: &mut MutableAppContext) {
-    cx.add_action(IncomingCallNotification::respond_to_call);
-
+pub fn init(app_state: &Arc<AppState>, cx: &mut AppContext) {
+    let app_state = Arc::downgrade(app_state);
     let mut incoming_call = ActiveCall::global(cx).read(cx).incoming();
     cx.spawn(|mut cx| async move {
         let mut notification_windows = Vec::new();
@@ -47,7 +46,7 @@ pub fn init(cx: &mut MutableAppContext) {
                             is_movable: false,
                             screen: Some(screen),
                         },
-                        |_| IncomingCallNotification::new(incoming_call.clone()),
+                        |_| IncomingCallNotification::new(incoming_call.clone(), app_state.clone()),
                     );
 
                     notification_windows.push(window_id);
@@ -65,32 +64,40 @@ struct RespondToCall {
 
 pub struct IncomingCallNotification {
     call: IncomingCall,
+    app_state: Weak<AppState>,
 }
 
 impl IncomingCallNotification {
-    pub fn new(call: IncomingCall) -> Self {
-        Self { call }
+    pub fn new(call: IncomingCall, app_state: Weak<AppState>) -> Self {
+        Self { call, app_state }
     }
 
-    fn respond_to_call(&mut self, action: &RespondToCall, cx: &mut ViewContext<Self>) {
+    fn respond(&mut self, accept: bool, cx: &mut ViewContext<Self>) {
         let active_call = ActiveCall::global(cx);
-        if action.accept {
+        if accept {
             let join = active_call.update(cx, |active_call, cx| active_call.accept_incoming(cx));
             let caller_user_id = self.call.calling_user.id;
             let initial_project_id = self.call.initial_project.as_ref().map(|project| project.id);
-            cx.spawn_weak(|_, mut cx| async move {
-                join.await?;
-                if let Some(project_id) = initial_project_id {
-                    cx.update(|cx| {
-                        cx.dispatch_global_action(JoinProject {
-                            project_id,
-                            follow_user_id: caller_user_id,
-                        })
-                    });
-                }
-                anyhow::Ok(())
-            })
-            .detach_and_log_err(cx);
+            let app_state = self.app_state.clone();
+            cx.app_context()
+                .spawn(|mut cx| async move {
+                    join.await?;
+                    if let Some(project_id) = initial_project_id {
+                        cx.update(|cx| {
+                            if let Some(app_state) = app_state.upgrade() {
+                                workspace::join_remote_project(
+                                    project_id,
+                                    caller_user_id,
+                                    app_state,
+                                    cx,
+                                )
+                                .detach_and_log_err(cx);
+                            }
+                        });
+                    }
+                    anyhow::Ok(())
+                })
+                .detach_and_log_err(cx);
         } else {
             active_call.update(cx, |active_call, _| {
                 active_call.decline_incoming().log_err();
@@ -98,7 +105,7 @@ impl IncomingCallNotification {
         }
     }
 
-    fn render_caller(&self, cx: &mut RenderContext<Self>) -> ElementBox {
+    fn render_caller(&self, cx: &mut ViewContext<Self>) -> AnyElement<Self> {
         let theme = &cx.global::<Settings>().theme.incoming_call_notification;
         let default_project = proto::ParticipantProject::default();
         let initial_project = self
@@ -111,7 +118,6 @@ impl IncomingCallNotification {
                 Image::from_data(avatar)
                     .with_style(theme.caller_avatar)
                     .aligned()
-                    .boxed()
             }))
             .with_child(
                 Flex::column()
@@ -121,8 +127,7 @@ impl IncomingCallNotification {
                             theme.caller_username.text.clone(),
                         )
                         .contained()
-                        .with_style(theme.caller_username.container)
-                        .boxed(),
+                        .with_style(theme.caller_username.container),
                     )
                     .with_child(
                         Label::new(
@@ -137,8 +142,7 @@ impl IncomingCallNotification {
                             theme.caller_message.text.clone(),
                         )
                         .contained()
-                        .with_style(theme.caller_message.container)
-                        .boxed(),
+                        .with_style(theme.caller_message.container),
                     )
                     .with_children(if initial_project.worktree_root_names.is_empty() {
                         None
@@ -149,57 +153,51 @@ impl IncomingCallNotification {
                                 theme.worktree_roots.text.clone(),
                             )
                             .contained()
-                            .with_style(theme.worktree_roots.container)
-                            .boxed(),
+                            .with_style(theme.worktree_roots.container),
                         )
                     })
                     .contained()
                     .with_style(theme.caller_metadata)
-                    .aligned()
-                    .boxed(),
+                    .aligned(),
             )
             .contained()
             .with_style(theme.caller_container)
             .flex(1., true)
-            .boxed()
+            .into_any()
     }
 
-    fn render_buttons(&self, cx: &mut RenderContext<Self>) -> ElementBox {
+    fn render_buttons(&self, cx: &mut ViewContext<Self>) -> AnyElement<Self> {
         enum Accept {}
         enum Decline {}
 
         Flex::column()
             .with_child(
-                MouseEventHandler::<Accept>::new(0, cx, |_, cx| {
+                MouseEventHandler::<Accept, Self>::new(0, cx, |_, cx| {
                     let theme = &cx.global::<Settings>().theme.incoming_call_notification;
                     Label::new("Accept", theme.accept_button.text.clone())
                         .aligned()
                         .contained()
                         .with_style(theme.accept_button.container)
-                        .boxed()
                 })
                 .with_cursor_style(CursorStyle::PointingHand)
-                .on_click(MouseButton::Left, |_, cx| {
-                    cx.dispatch_action(RespondToCall { accept: true });
+                .on_click(MouseButton::Left, |_, this, cx| {
+                    this.respond(true, cx);
                 })
-                .flex(1., true)
-                .boxed(),
+                .flex(1., true),
             )
             .with_child(
-                MouseEventHandler::<Decline>::new(0, cx, |_, cx| {
+                MouseEventHandler::<Decline, Self>::new(0, cx, |_, cx| {
                     let theme = &cx.global::<Settings>().theme.incoming_call_notification;
                     Label::new("Decline", theme.decline_button.text.clone())
                         .aligned()
                         .contained()
                         .with_style(theme.decline_button.container)
-                        .boxed()
                 })
                 .with_cursor_style(CursorStyle::PointingHand)
-                .on_click(MouseButton::Left, |_, cx| {
-                    cx.dispatch_action(RespondToCall { accept: false });
+                .on_click(MouseButton::Left, |_, this, cx| {
+                    this.respond(false, cx);
                 })
-                .flex(1., true)
-                .boxed(),
+                .flex(1., true),
             )
             .constrained()
             .with_width(
@@ -208,7 +206,7 @@ impl IncomingCallNotification {
                     .incoming_call_notification
                     .button_width,
             )
-            .boxed()
+            .into_any()
     }
 }
 
@@ -221,7 +219,7 @@ impl View for IncomingCallNotification {
         "IncomingCallNotification"
     }
 
-    fn render(&mut self, cx: &mut RenderContext<Self>) -> gpui::ElementBox {
+    fn render(&mut self, cx: &mut ViewContext<Self>) -> AnyElement<Self> {
         let background = cx
             .global::<Settings>()
             .theme
@@ -234,6 +232,6 @@ impl View for IncomingCallNotification {
             .contained()
             .with_background_color(background)
             .expanded()
-            .boxed()
+            .into_any()
     }
 }

@@ -17,7 +17,7 @@ use std::{
 
 use crate::{
     platform::{self, Dispatcher},
-    util, MutableAppContext,
+    util, AppContext,
 };
 
 pub enum Foreground {
@@ -830,6 +830,16 @@ impl Background {
     }
 
     #[cfg(any(test, feature = "test-support"))]
+    pub fn rng<'a>(&'a self) -> impl 'a + std::ops::DerefMut<Target = rand::prelude::StdRng> {
+        match self {
+            Self::Deterministic { executor, .. } => {
+                parking_lot::lock_api::MutexGuard::map(executor.state.lock(), |s| &mut s.rng)
+            }
+            _ => panic!("this method can only be called on a deterministic executor"),
+        }
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
     pub async fn simulate_random_delay(&self) {
         match self {
             Self::Deterministic { executor, .. } => {
@@ -931,7 +941,7 @@ impl<T> Task<T> {
 }
 
 impl<T: 'static, E: 'static + Display> Task<Result<T, E>> {
-    pub fn detach_and_log_err(self, cx: &mut MutableAppContext) {
+    pub fn detach_and_log_err(self, cx: &mut AppContext) {
         cx.spawn(|_| async move {
             if let Err(err) = self.await {
                 log::error!("{}", err);

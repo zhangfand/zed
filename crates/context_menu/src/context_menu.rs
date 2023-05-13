@@ -1,51 +1,72 @@
 use gpui::{
-    elements::*, geometry::vector::Vector2F, impl_internal_actions, keymap_matcher::KeymapContext,
-    platform::CursorStyle, Action, AnyViewHandle, AppContext, Axis, Entity, MouseButton,
-    MouseState, MutableAppContext, RenderContext, SizeConstraint, Subscription, View, ViewContext,
+    anyhow,
+    elements::*,
+    geometry::vector::Vector2F,
+    keymap_matcher::KeymapContext,
+    platform::{CursorStyle, MouseButton},
+    Action, AnyViewHandle, AppContext, Axis, Entity, MouseState, SizeConstraint, Subscription,
+    View, ViewContext,
 };
 use menu::*;
 use settings::Settings;
-use std::{any::TypeId, borrow::Cow, time::Duration};
+use std::{any::TypeId, borrow::Cow, sync::Arc, time::Duration};
 
-pub type StaticItem = Box<dyn Fn(&mut MutableAppContext) -> ElementBox>;
-
-#[derive(Copy, Clone, PartialEq)]
-struct Clicked;
-
-impl_internal_actions!(context_menu, [Clicked]);
-
-pub fn init(cx: &mut MutableAppContext) {
+pub fn init(cx: &mut AppContext) {
     cx.add_action(ContextMenu::select_first);
     cx.add_action(ContextMenu::select_last);
     cx.add_action(ContextMenu::select_next);
     cx.add_action(ContextMenu::select_prev);
-    cx.add_action(ContextMenu::clicked);
     cx.add_action(ContextMenu::confirm);
     cx.add_action(ContextMenu::cancel);
 }
 
-type ContextMenuItemBuilder = Box<dyn Fn(&mut MouseState, &theme::ContextMenuItem) -> ElementBox>;
+pub type StaticItem = Box<dyn Fn(&mut AppContext) -> AnyElement<ContextMenu>>;
+
+type ContextMenuItemBuilder =
+    Box<dyn Fn(&mut MouseState, &theme::ContextMenuItem) -> AnyElement<ContextMenu>>;
 
 pub enum ContextMenuItemLabel {
     String(Cow<'static, str>),
     Element(ContextMenuItemBuilder),
 }
 
-pub enum ContextMenuAction {
-    ParentAction {
-        action: Box<dyn Action>,
-    },
-    ViewAction {
-        action: Box<dyn Action>,
-        for_view: usize,
-    },
+impl From<Cow<'static, str>> for ContextMenuItemLabel {
+    fn from(s: Cow<'static, str>) -> Self {
+        Self::String(s)
+    }
 }
 
-impl ContextMenuAction {
-    fn id(&self) -> TypeId {
+impl From<&'static str> for ContextMenuItemLabel {
+    fn from(s: &'static str) -> Self {
+        Self::String(s.into())
+    }
+}
+
+impl From<String> for ContextMenuItemLabel {
+    fn from(s: String) -> Self {
+        Self::String(s.into())
+    }
+}
+
+impl<T> From<T> for ContextMenuItemLabel
+where
+    T: 'static + Fn(&mut MouseState, &theme::ContextMenuItem) -> AnyElement<ContextMenu>,
+{
+    fn from(f: T) -> Self {
+        Self::Element(Box::new(f))
+    }
+}
+
+pub enum ContextMenuItemAction {
+    Action(Box<dyn Action>),
+    Handler(Arc<dyn Fn(&mut ViewContext<ContextMenu>)>),
+}
+
+impl Clone for ContextMenuItemAction {
+    fn clone(&self) -> Self {
         match self {
-            ContextMenuAction::ParentAction { action } => action.id(),
-            ContextMenuAction::ViewAction { action, .. } => action.id(),
+            Self::Action(action) => Self::Action(action.boxed_clone()),
+            Self::Handler(handler) => Self::Handler(handler.clone()),
         }
     }
 }
@@ -53,42 +74,27 @@ impl ContextMenuAction {
 pub enum ContextMenuItem {
     Item {
         label: ContextMenuItemLabel,
-        action: ContextMenuAction,
+        action: ContextMenuItemAction,
     },
     Static(StaticItem),
     Separator,
 }
 
 impl ContextMenuItem {
-    pub fn element_item(label: ContextMenuItemBuilder, action: impl 'static + Action) -> Self {
+    pub fn action(label: impl Into<ContextMenuItemLabel>, action: impl 'static + Action) -> Self {
         Self::Item {
-            label: ContextMenuItemLabel::Element(label),
-            action: ContextMenuAction::ParentAction {
-                action: Box::new(action),
-            },
+            label: label.into(),
+            action: ContextMenuItemAction::Action(Box::new(action)),
         }
     }
 
-    pub fn item(label: impl Into<Cow<'static, str>>, action: impl 'static + Action) -> Self {
-        Self::Item {
-            label: ContextMenuItemLabel::String(label.into()),
-            action: ContextMenuAction::ParentAction {
-                action: Box::new(action),
-            },
-        }
-    }
-
-    pub fn item_for_view(
-        label: impl Into<Cow<'static, str>>,
-        view_id: usize,
-        action: impl 'static + Action,
+    pub fn handler(
+        label: impl Into<ContextMenuItemLabel>,
+        handler: impl 'static + Fn(&mut ViewContext<ContextMenu>),
     ) -> Self {
         Self::Item {
-            label: ContextMenuItemLabel::String(label.into()),
-            action: ContextMenuAction::ViewAction {
-                action: Box::new(action),
-                for_view: view_id,
-            },
+            label: label.into(),
+            action: ContextMenuItemAction::Handler(Arc::new(handler)),
         }
     }
 
@@ -102,7 +108,10 @@ impl ContextMenuItem {
 
     fn action_id(&self) -> Option<TypeId> {
         match self {
-            ContextMenuItem::Item { action, .. } => Some(action.id()),
+            ContextMenuItem::Item { action, .. } => match action {
+                ContextMenuItemAction::Action(action) => Some(action.id()),
+                ContextMenuItemAction::Handler(_) => None,
+            },
             ContextMenuItem::Static(..) | ContextMenuItem::Separator => None,
         }
     }
@@ -117,7 +126,6 @@ pub struct ContextMenu {
     selected_index: Option<usize>,
     visible: bool,
     previously_focused_view_id: Option<usize>,
-    clicked: bool,
     parent_view_id: usize,
     _actions_observation: Subscription,
 }
@@ -131,29 +139,27 @@ impl View for ContextMenu {
         "ContextMenu"
     }
 
-    fn keymap_context(&self, _: &AppContext) -> KeymapContext {
-        let mut cx = Self::default_keymap_context();
-        cx.add_identifier("menu");
-        cx
+    fn update_keymap_context(&self, keymap: &mut KeymapContext, _: &AppContext) {
+        Self::reset_to_default_keymap_context(keymap);
+        keymap.add_identifier("menu");
     }
 
-    fn render(&mut self, cx: &mut RenderContext<Self>) -> ElementBox {
+    fn render(&mut self, cx: &mut ViewContext<Self>) -> AnyElement<Self> {
         if !self.visible {
-            return Empty::new().boxed();
+            return Empty::new().into_any();
         }
 
         // Render the menu once at minimum width.
-        let mut collapsed_menu = self.render_menu_for_measurement(cx).boxed();
-        let expanded_menu = self
-            .render_menu(cx)
-            .constrained()
-            .dynamically(move |constraint, cx| {
-                SizeConstraint::strict_along(
-                    Axis::Horizontal,
-                    collapsed_menu.layout(constraint, cx).x(),
-                )
-            })
-            .boxed();
+        let mut collapsed_menu = self.render_menu_for_measurement(cx);
+        let expanded_menu =
+            self.render_menu(cx)
+                .constrained()
+                .dynamically(move |constraint, view, cx| {
+                    SizeConstraint::strict_along(
+                        Axis::Horizontal,
+                        collapsed_menu.layout(constraint, view, cx).0.x(),
+                    )
+                });
 
         Overlay::new(expanded_menu)
             .with_hoverable(true)
@@ -161,7 +167,7 @@ impl View for ContextMenu {
             .with_anchor_position(self.anchor_position)
             .with_anchor_corner(self.anchor_corner)
             .with_position_mode(self.position_mode)
-            .boxed()
+            .into_any()
     }
 
     fn focus_out(&mut self, _: AnyViewHandle, cx: &mut ViewContext<Self>) {
@@ -170,9 +176,7 @@ impl View for ContextMenu {
 }
 
 impl ContextMenu {
-    pub fn new(cx: &mut ViewContext<Self>) -> Self {
-        let parent_view_id = cx.parent().unwrap();
-
+    pub fn new(parent_view_id: usize, cx: &mut ViewContext<Self>) -> Self {
         Self {
             show_count: 0,
             anchor_position: Default::default(),
@@ -182,7 +186,6 @@ impl ContextMenu {
             selected_index: Default::default(),
             visible: Default::default(),
             previously_focused_view_id: Default::default(),
-            clicked: false,
             parent_view_id,
             _actions_observation: cx.observe_actions(Self::action_dispatched),
         }
@@ -198,36 +201,33 @@ impl ContextMenu {
             .iter()
             .position(|item| item.action_id() == Some(action_id))
         {
-            if self.clicked {
-                self.cancel(&Default::default(), cx);
-            } else {
-                self.selected_index = Some(ix);
-                cx.notify();
-                cx.spawn(|this, mut cx| async move {
-                    cx.background().timer(Duration::from_millis(50)).await;
-                    this.update(&mut cx, |this, cx| this.cancel(&Default::default(), cx));
-                })
-                .detach();
-            }
+            self.selected_index = Some(ix);
+            cx.notify();
+            cx.spawn(|this, mut cx| async move {
+                cx.background().timer(Duration::from_millis(50)).await;
+                this.update(&mut cx, |this, cx| this.cancel(&Default::default(), cx))?;
+                anyhow::Ok(())
+            })
+            .detach_and_log_err(cx);
         }
-    }
-
-    fn clicked(&mut self, _: &Clicked, _: &mut ViewContext<Self>) {
-        self.clicked = true;
     }
 
     fn confirm(&mut self, _: &Confirm, cx: &mut ViewContext<Self>) {
         if let Some(ix) = self.selected_index {
             if let Some(ContextMenuItem::Item { action, .. }) = self.items.get(ix) {
                 match action {
-                    ContextMenuAction::ParentAction { action } => {
-                        cx.dispatch_any_action(action.boxed_clone())
-                    }
-                    ContextMenuAction::ViewAction { action, for_view } => {
+                    ContextMenuItemAction::Action(action) => {
                         let window_id = cx.window_id();
-                        cx.dispatch_any_action_at(window_id, *for_view, action.boxed_clone())
+                        let view_id = self.parent_view_id;
+                        let action = action.boxed_clone();
+                        cx.app_context()
+                            .spawn(|mut cx| async move {
+                                cx.dispatch_action(window_id, view_id, action.as_ref())
+                            })
+                            .detach_and_log_err(cx);
                     }
-                };
+                    ContextMenuItemAction::Handler(handler) => handler(cx),
+                }
                 self.reset(cx);
             }
         }
@@ -248,7 +248,6 @@ impl ContextMenu {
         self.items.clear();
         self.visible = false;
         self.selected_index.take();
-        self.clicked = false;
         cx.notify();
     }
 
@@ -310,7 +309,7 @@ impl ContextMenu {
             self.visible = true;
             self.show_count += 1;
             if !cx.is_self_focused() {
-                self.previously_focused_view_id = cx.focused_view_id(cx.window_id());
+                self.previously_focused_view_id = cx.focused_view_id();
             }
             cx.focus_self();
         } else {
@@ -323,45 +322,42 @@ impl ContextMenu {
         self.position_mode = mode;
     }
 
-    fn render_menu_for_measurement(&self, cx: &mut RenderContext<Self>) -> impl Element {
-        let window_id = cx.window_id();
+    fn render_menu_for_measurement(&self, cx: &mut ViewContext<Self>) -> impl Element<ContextMenu> {
         let style = cx.global::<Settings>().theme.context_menu.clone();
         Flex::row()
             .with_child(
-                Flex::column()
-                    .with_children(self.items.iter().enumerate().map(|(ix, item)| {
-                        match item {
-                            ContextMenuItem::Item { label, .. } => {
-                                let style = style.item.style_for(
-                                    &mut Default::default(),
-                                    Some(ix) == self.selected_index,
-                                );
+                Flex::column().with_children(self.items.iter().enumerate().map(|(ix, item)| {
+                    match item {
+                        ContextMenuItem::Item { label, .. } => {
+                            let style = style.item.style_for(
+                                &mut Default::default(),
+                                Some(ix) == self.selected_index,
+                            );
 
-                                match label {
-                                    ContextMenuItemLabel::String(label) => {
-                                        Label::new(label.to_string(), style.label.clone())
-                                            .contained()
-                                            .with_style(style.container)
-                                            .boxed()
-                                    }
-                                    ContextMenuItemLabel::Element(element) => {
-                                        element(&mut Default::default(), style)
-                                    }
+                            match label {
+                                ContextMenuItemLabel::String(label) => {
+                                    Label::new(label.to_string(), style.label.clone())
+                                        .contained()
+                                        .with_style(style.container)
+                                        .into_any()
+                                }
+                                ContextMenuItemLabel::Element(element) => {
+                                    element(&mut Default::default(), style)
                                 }
                             }
-
-                            ContextMenuItem::Static(f) => f(cx),
-
-                            ContextMenuItem::Separator => Empty::new()
-                                .collapsed()
-                                .contained()
-                                .with_style(style.separator)
-                                .constrained()
-                                .with_height(1.)
-                                .boxed(),
                         }
-                    }))
-                    .boxed(),
+
+                        ContextMenuItem::Static(f) => f(cx),
+
+                        ContextMenuItem::Separator => Empty::new()
+                            .collapsed()
+                            .contained()
+                            .with_style(style.separator)
+                            .constrained()
+                            .with_height(1.)
+                            .into_any(),
+                    }
+                })),
             )
             .with_child(
                 Flex::column()
@@ -372,26 +368,20 @@ impl ContextMenu {
                                     &mut Default::default(),
                                     Some(ix) == self.selected_index,
                                 );
-                                let (action, view_id) = match action {
-                                    ContextMenuAction::ParentAction { action } => {
-                                        (action.boxed_clone(), self.parent_view_id)
-                                    }
-                                    ContextMenuAction::ViewAction { action, for_view } => {
-                                        (action.boxed_clone(), *for_view)
-                                    }
-                                };
 
-                                KeystrokeLabel::new(
-                                    window_id,
-                                    view_id,
-                                    action.boxed_clone(),
-                                    style.keystroke.container,
-                                    style.keystroke.text.clone(),
-                                )
-                                .boxed()
+                                match action {
+                                    ContextMenuItemAction::Action(action) => KeystrokeLabel::new(
+                                        self.parent_view_id,
+                                        action.boxed_clone(),
+                                        style.keystroke.container,
+                                        style.keystroke.text.clone(),
+                                    )
+                                    .into_any(),
+                                    ContextMenuItemAction::Handler(_) => Empty::new().into_any(),
+                                }
                             }
 
-                            ContextMenuItem::Static(_) => Empty::new().boxed(),
+                            ContextMenuItem::Static(_) => Empty::new().into_any(),
 
                             ContextMenuItem::Separator => Empty::new()
                                 .collapsed()
@@ -399,78 +389,84 @@ impl ContextMenu {
                                 .with_height(1.)
                                 .contained()
                                 .with_style(style.separator)
-                                .boxed(),
+                                .into_any(),
                         }
                     }))
                     .contained()
-                    .with_margin_left(style.keystroke_margin)
-                    .boxed(),
+                    .with_margin_left(style.keystroke_margin),
             )
             .contained()
             .with_style(style.container)
     }
 
-    fn render_menu(&self, cx: &mut RenderContext<Self>) -> impl Element {
+    fn render_menu(&self, cx: &mut ViewContext<Self>) -> impl Element<ContextMenu> {
         enum Menu {}
         enum MenuItem {}
 
         let style = cx.global::<Settings>().theme.context_menu.clone();
 
-        let window_id = cx.window_id();
-        MouseEventHandler::<Menu>::new(0, cx, |_, cx| {
+        MouseEventHandler::<Menu, ContextMenu>::new(0, cx, |_, cx| {
             Flex::column()
                 .with_children(self.items.iter().enumerate().map(|(ix, item)| {
                     match item {
                         ContextMenuItem::Item { label, action } => {
-                            let (action, view_id) = match action {
-                                ContextMenuAction::ParentAction { action } => {
-                                    (action.boxed_clone(), self.parent_view_id)
-                                }
-                                ContextMenuAction::ViewAction { action, for_view } => {
-                                    (action.boxed_clone(), *for_view)
-                                }
-                            };
-
-                            MouseEventHandler::<MenuItem>::new(ix, cx, |state, _| {
+                            let action = action.clone();
+                            let view_id = self.parent_view_id;
+                            MouseEventHandler::<MenuItem, ContextMenu>::new(ix, cx, |state, _| {
                                 let style =
                                     style.item.style_for(state, Some(ix) == self.selected_index);
+                                let keystroke = match &action {
+                                    ContextMenuItemAction::Action(action) => Some(
+                                        KeystrokeLabel::new(
+                                            view_id,
+                                            action.boxed_clone(),
+                                            style.keystroke.container,
+                                            style.keystroke.text.clone(),
+                                        )
+                                        .flex_float(),
+                                    ),
+                                    ContextMenuItemAction::Handler(_) => None,
+                                };
 
                                 Flex::row()
                                     .with_child(match label {
                                         ContextMenuItemLabel::String(label) => {
                                             Label::new(label.clone(), style.label.clone())
                                                 .contained()
-                                                .boxed()
+                                                .into_any()
                                         }
                                         ContextMenuItemLabel::Element(element) => {
                                             element(state, style)
                                         }
                                     })
-                                    .with_child({
-                                        KeystrokeLabel::new(
-                                            window_id,
-                                            view_id,
-                                            action.boxed_clone(),
-                                            style.keystroke.container,
-                                            style.keystroke.text.clone(),
-                                        )
-                                        .flex_float()
-                                        .boxed()
-                                    })
+                                    .with_children(keystroke)
                                     .contained()
                                     .with_style(style.container)
-                                    .boxed()
                             })
                             .with_cursor_style(CursorStyle::PointingHand)
-                            .on_up(MouseButton::Left, |_, _| {}) // Capture these events
-                            .on_down(MouseButton::Left, |_, _| {}) // Capture these events
-                            .on_click(MouseButton::Left, move |_, cx| {
-                                cx.dispatch_action(Clicked);
+                            .on_up(MouseButton::Left, |_, _, _| {}) // Capture these events
+                            .on_down(MouseButton::Left, |_, _, _| {}) // Capture these events
+                            .on_click(MouseButton::Left, move |_, menu, cx| {
+                                menu.cancel(&Default::default(), cx);
                                 let window_id = cx.window_id();
-                                cx.dispatch_any_action_at(window_id, view_id, action.boxed_clone());
+                                match &action {
+                                    ContextMenuItemAction::Action(action) => {
+                                        let action = action.boxed_clone();
+                                        cx.app_context()
+                                            .spawn(|mut cx| async move {
+                                                cx.dispatch_action(
+                                                    window_id,
+                                                    view_id,
+                                                    action.as_ref(),
+                                                )
+                                            })
+                                            .detach_and_log_err(cx);
+                                    }
+                                    ContextMenuItemAction::Handler(handler) => handler(cx),
+                                }
                             })
-                            .on_drag(MouseButton::Left, |_, _| {})
-                            .boxed()
+                            .on_drag(MouseButton::Left, |_, _, _| {})
+                            .into_any()
                         }
 
                         ContextMenuItem::Static(f) => f(cx),
@@ -480,14 +476,17 @@ impl ContextMenu {
                             .with_height(1.)
                             .contained()
                             .with_style(style.separator)
-                            .boxed(),
+                            .into_any(),
                     }
                 }))
                 .contained()
                 .with_style(style.container)
-                .boxed()
         })
-        .on_down_out(MouseButton::Left, |_, cx| cx.dispatch_action(Cancel))
-        .on_down_out(MouseButton::Right, |_, cx| cx.dispatch_action(Cancel))
+        .on_down_out(MouseButton::Left, |_, this, cx| {
+            this.cancel(&Default::default(), cx);
+        })
+        .on_down_out(MouseButton::Right, |_, this, cx| {
+            this.cancel(&Default::default(), cx);
+        })
     }
 }

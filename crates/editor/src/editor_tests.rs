@@ -9,27 +9,27 @@ use gpui::{
     executor::Deterministic,
     geometry::{rect::RectF, vector::vec2f},
     platform::{WindowBounds, WindowOptions},
-    serde_json,
+    serde_json, TestAppContext,
 };
 use indoc::indoc;
 use language::{BracketPairConfig, FakeLspAdapter, LanguageConfig, LanguageRegistry, Point};
 use parking_lot::Mutex;
 use project::FakeFs;
 use settings::EditorSettings;
-use std::{cell::RefCell, rc::Rc, time::Instant};
+use std::{cell::RefCell, future::Future, rc::Rc, time::Instant};
 use unindent::Unindent;
 use util::{
     assert_set_eq,
     test::{marked_text_ranges, marked_text_ranges_by, sample_text, TextRangeMarker},
 };
 use workspace::{
-    item::{FollowableItem, ItemHandle},
-    NavigationEntry, Pane, ViewId,
+    item::{FollowableItem, Item, ItemHandle},
+    NavigationEntry, ViewId,
 };
 
 #[gpui::test]
-fn test_edit_events(cx: &mut MutableAppContext) {
-    cx.set_global(Settings::test(cx));
+fn test_edit_events(cx: &mut TestAppContext) {
+    cx.update(|cx| cx.set_global(Settings::test(cx)));
     let buffer = cx.add_model(|cx| {
         let mut buffer = language::Buffer::new(0, "123456", cx);
         buffer.set_group_interval(Duration::from_secs(1));
@@ -37,7 +37,7 @@ fn test_edit_events(cx: &mut MutableAppContext) {
     });
 
     let events = Rc::new(RefCell::new(Vec::new()));
-    let (_, editor1) = cx.add_window(Default::default(), {
+    let (_, editor1) = cx.add_window({
         let events = events.clone();
         |cx| {
             cx.subscribe(&cx.handle(), move |_, _, event, _| {
@@ -52,7 +52,7 @@ fn test_edit_events(cx: &mut MutableAppContext) {
             Editor::for_buffer(buffer.clone(), None, cx)
         }
     });
-    let (_, editor2) = cx.add_window(Default::default(), {
+    let (_, editor2) = cx.add_window({
         let events = events.clone();
         |cx| {
             cx.subscribe(&cx.handle(), move |_, _, event, _| {
@@ -155,13 +155,13 @@ fn test_edit_events(cx: &mut MutableAppContext) {
 }
 
 #[gpui::test]
-fn test_undo_redo_with_selection_restoration(cx: &mut MutableAppContext) {
-    cx.set_global(Settings::test(cx));
+fn test_undo_redo_with_selection_restoration(cx: &mut TestAppContext) {
+    cx.update(|cx| cx.set_global(Settings::test(cx)));
     let mut now = Instant::now();
     let buffer = cx.add_model(|cx| language::Buffer::new(0, "123456", cx));
-    let group_interval = buffer.read(cx).transaction_group_interval();
+    let group_interval = buffer.read_with(cx, |buffer, _| buffer.transaction_group_interval());
     let buffer = cx.add_model(|cx| MultiBuffer::singleton(buffer, cx));
-    let (_, editor) = cx.add_window(Default::default(), |cx| build_editor(buffer.clone(), cx));
+    let (_, editor) = cx.add_window(|cx| build_editor(buffer.clone(), cx));
 
     editor.update(cx, |editor, cx| {
         editor.start_transaction_at(now, cx);
@@ -225,8 +225,8 @@ fn test_undo_redo_with_selection_restoration(cx: &mut MutableAppContext) {
 }
 
 #[gpui::test]
-fn test_ime_composition(cx: &mut MutableAppContext) {
-    cx.set_global(Settings::test(cx));
+fn test_ime_composition(cx: &mut TestAppContext) {
+    cx.update(|cx| cx.set_global(Settings::test(cx)));
     let buffer = cx.add_model(|cx| {
         let mut buffer = language::Buffer::new(0, "abcde", cx);
         // Ensure automatic grouping doesn't occur.
@@ -235,7 +235,7 @@ fn test_ime_composition(cx: &mut MutableAppContext) {
     });
 
     let buffer = cx.add_model(|cx| MultiBuffer::singleton(buffer, cx));
-    cx.add_window(Default::default(), |cx| {
+    cx.add_window(|cx| {
         let mut editor = build_editor(buffer.clone(), cx);
 
         // Start a new IME composition.
@@ -327,11 +327,13 @@ fn test_ime_composition(cx: &mut MutableAppContext) {
 }
 
 #[gpui::test]
-fn test_selection_with_mouse(cx: &mut gpui::MutableAppContext) {
-    cx.set_global(Settings::test(cx));
+fn test_selection_with_mouse(cx: &mut TestAppContext) {
+    cx.update(|cx| cx.set_global(Settings::test(cx)));
 
-    let buffer = MultiBuffer::build_simple("aaaaaa\nbbbbbb\ncccccc\nddddddd\n", cx);
-    let (_, editor) = cx.add_window(Default::default(), |cx| build_editor(buffer, cx));
+    let (_, editor) = cx.add_window(|cx| {
+        let buffer = MultiBuffer::build_simple("aaaaaa\nbbbbbb\ncccccc\nddddddd\n", cx);
+        build_editor(buffer, cx)
+    });
     editor.update(cx, |view, cx| {
         view.begin_selection(DisplayPoint::new(2, 2), false, 1, cx);
     });
@@ -392,10 +394,12 @@ fn test_selection_with_mouse(cx: &mut gpui::MutableAppContext) {
 }
 
 #[gpui::test]
-fn test_canceling_pending_selection(cx: &mut gpui::MutableAppContext) {
-    cx.set_global(Settings::test(cx));
-    let buffer = MultiBuffer::build_simple("aaaaaa\nbbbbbb\ncccccc\ndddddd\n", cx);
-    let (_, view) = cx.add_window(Default::default(), |cx| build_editor(buffer, cx));
+fn test_canceling_pending_selection(cx: &mut TestAppContext) {
+    cx.update(|cx| cx.set_global(Settings::test(cx)));
+    let (_, view) = cx.add_window(|cx| {
+        let buffer = MultiBuffer::build_simple("aaaaaa\nbbbbbb\ncccccc\ndddddd\n", cx);
+        build_editor(buffer, cx)
+    });
 
     view.update(cx, |view, cx| {
         view.begin_selection(DisplayPoint::new(2, 2), false, 1, cx);
@@ -424,7 +428,7 @@ fn test_canceling_pending_selection(cx: &mut gpui::MutableAppContext) {
 }
 
 #[gpui::test]
-fn test_clone(cx: &mut gpui::MutableAppContext) {
+fn test_clone(cx: &mut TestAppContext) {
     let (text, selection_ranges) = marked_text_ranges(
         indoc! {"
             one
@@ -435,10 +439,12 @@ fn test_clone(cx: &mut gpui::MutableAppContext) {
         "},
         true,
     );
-    cx.set_global(Settings::test(cx));
-    let buffer = MultiBuffer::build_simple(&text, cx);
+    cx.update(|cx| cx.set_global(Settings::test(cx)));
 
-    let (_, editor) = cx.add_window(Default::default(), |cx| build_editor(buffer, cx));
+    let (_, editor) = cx.add_window(|cx| {
+        let buffer = MultiBuffer::build_simple(&text, cx);
+        build_editor(buffer, cx)
+    });
 
     editor.update(cx, |editor, cx| {
         editor.change_selections(None, cx, |s| s.select_ranges(selection_ranges.clone()));
@@ -470,8 +476,8 @@ fn test_clone(cx: &mut gpui::MutableAppContext) {
         snapshot.folds_in_range(0..text.len()).collect::<Vec<_>>(),
     );
     assert_set_eq!(
-        cloned_editor.read(cx).selections.ranges::<Point>(cx),
-        editor.read(cx).selections.ranges(cx)
+        cloned_editor.read_with(cx, |editor, cx| editor.selections.ranges::<Point>(cx)),
+        editor.read_with(cx, |editor, cx| editor.selections.ranges(cx))
     );
     assert_set_eq!(
         cloned_editor.update(cx, |e, cx| e.selections.display_ranges(cx)),
@@ -480,19 +486,22 @@ fn test_clone(cx: &mut gpui::MutableAppContext) {
 }
 
 #[gpui::test]
-fn test_navigation_history(cx: &mut gpui::MutableAppContext) {
-    cx.set_global(Settings::test(cx));
+async fn test_navigation_history(cx: &mut TestAppContext) {
+    cx.update(|cx| cx.set_global(Settings::test(cx)));
     cx.set_global(DragAndDrop::<Workspace>::default());
     use workspace::item::Item;
-    let (_, pane) = cx.add_window(Default::default(), |cx| Pane::new(0, None, || &[], cx));
-    let buffer = MultiBuffer::build_simple(&sample_text(300, 5, 'a'), cx);
 
-    cx.add_view(&pane, |cx| {
+    let fs = FakeFs::new(cx.background());
+    let project = Project::test(fs, [], cx).await;
+    let (window_id, workspace) = cx.add_window(|cx| Workspace::test_new(project, cx));
+    let pane = workspace.read_with(cx, |workspace, _| workspace.active_pane().clone());
+    cx.add_view(window_id, |cx| {
+        let buffer = MultiBuffer::build_simple(&sample_text(300, 5, 'a'), cx);
         let mut editor = build_editor(buffer.clone(), cx);
         let handle = cx.handle();
         editor.set_nav_history(Some(pane.read(cx).nav_history_for_item(&handle)));
 
-        fn pop_history(editor: &mut Editor, cx: &mut MutableAppContext) -> Option<NavigationEntry> {
+        fn pop_history(editor: &mut Editor, cx: &mut WindowContext) -> Option<NavigationEntry> {
             editor.nav_history.as_mut().unwrap().pop_backward(cx)
         }
 
@@ -590,10 +599,12 @@ fn test_navigation_history(cx: &mut gpui::MutableAppContext) {
 }
 
 #[gpui::test]
-fn test_cancel(cx: &mut gpui::MutableAppContext) {
-    cx.set_global(Settings::test(cx));
-    let buffer = MultiBuffer::build_simple("aaaaaa\nbbbbbb\ncccccc\ndddddd\n", cx);
-    let (_, view) = cx.add_window(Default::default(), |cx| build_editor(buffer, cx));
+fn test_cancel(cx: &mut TestAppContext) {
+    cx.update(|cx| cx.set_global(Settings::test(cx)));
+    let (_, view) = cx.add_window(|cx| {
+        let buffer = MultiBuffer::build_simple("aaaaaa\nbbbbbb\ncccccc\ndddddd\n", cx);
+        build_editor(buffer, cx)
+    });
 
     view.update(cx, |view, cx| {
         view.begin_selection(DisplayPoint::new(3, 4), false, 1, cx);
@@ -630,30 +641,32 @@ fn test_cancel(cx: &mut gpui::MutableAppContext) {
 }
 
 #[gpui::test]
-fn test_fold_action(cx: &mut gpui::MutableAppContext) {
-    cx.set_global(Settings::test(cx));
-    let buffer = MultiBuffer::build_simple(
-        &"
-            impl Foo {
-                // Hello!
+fn test_fold_action(cx: &mut TestAppContext) {
+    cx.update(|cx| cx.set_global(Settings::test(cx)));
+    let (_, view) = cx.add_window(|cx| {
+        let buffer = MultiBuffer::build_simple(
+            &"
+                impl Foo {
+                    // Hello!
 
-                fn a() {
-                    1
-                }
+                    fn a() {
+                        1
+                    }
 
-                fn b() {
-                    2
-                }
+                    fn b() {
+                        2
+                    }
 
-                fn c() {
-                    3
+                    fn c() {
+                        3
+                    }
                 }
-            }
-        "
-        .unindent(),
-        cx,
-    );
-    let (_, view) = cx.add_window(Default::default(), |cx| build_editor(buffer.clone(), cx));
+            "
+            .unindent(),
+            cx,
+        );
+        build_editor(buffer.clone(), cx)
+    });
 
     view.update(cx, |view, cx| {
         view.change_selections(None, cx, |s| {
@@ -712,15 +725,15 @@ fn test_fold_action(cx: &mut gpui::MutableAppContext) {
         );
 
         view.unfold_lines(&UnfoldLines, cx);
-        assert_eq!(view.display_text(cx), buffer.read(cx).read(cx).text());
+        assert_eq!(view.display_text(cx), view.buffer.read(cx).read(cx).text());
     });
 }
 
 #[gpui::test]
-fn test_move_cursor(cx: &mut gpui::MutableAppContext) {
-    cx.set_global(Settings::test(cx));
-    let buffer = MultiBuffer::build_simple(&sample_text(6, 6, 'a'), cx);
-    let (_, view) = cx.add_window(Default::default(), |cx| build_editor(buffer.clone(), cx));
+fn test_move_cursor(cx: &mut TestAppContext) {
+    cx.update(|cx| cx.set_global(Settings::test(cx)));
+    let buffer = cx.update(|cx| MultiBuffer::build_simple(&sample_text(6, 6, 'a'), cx));
+    let (_, view) = cx.add_window(|cx| build_editor(buffer.clone(), cx));
 
     buffer.update(cx, |buffer, cx| {
         buffer.edit(
@@ -732,7 +745,6 @@ fn test_move_cursor(cx: &mut gpui::MutableAppContext) {
             cx,
         );
     });
-
     view.update(cx, |view, cx| {
         assert_eq!(
             view.selections.display_ranges(cx),
@@ -793,10 +805,12 @@ fn test_move_cursor(cx: &mut gpui::MutableAppContext) {
 }
 
 #[gpui::test]
-fn test_move_cursor_multibyte(cx: &mut gpui::MutableAppContext) {
-    cx.set_global(Settings::test(cx));
-    let buffer = MultiBuffer::build_simple("ⓐⓑⓒⓓⓔ\nabcde\nαβγδε\n", cx);
-    let (_, view) = cx.add_window(Default::default(), |cx| build_editor(buffer.clone(), cx));
+fn test_move_cursor_multibyte(cx: &mut TestAppContext) {
+    cx.update(|cx| cx.set_global(Settings::test(cx)));
+    let (_, view) = cx.add_window(|cx| {
+        let buffer = MultiBuffer::build_simple("ⓐⓑⓒⓓⓔ\nabcde\nαβγδε\n", cx);
+        build_editor(buffer.clone(), cx)
+    });
 
     assert_eq!('ⓐ'.len_utf8(), 3);
     assert_eq!('α'.len_utf8(), 2);
@@ -895,10 +909,12 @@ fn test_move_cursor_multibyte(cx: &mut gpui::MutableAppContext) {
 }
 
 #[gpui::test]
-fn test_move_cursor_different_line_lengths(cx: &mut gpui::MutableAppContext) {
-    cx.set_global(Settings::test(cx));
-    let buffer = MultiBuffer::build_simple("ⓐⓑⓒⓓⓔ\nabcd\nαβγ\nabcd\nⓐⓑⓒⓓⓔ\n", cx);
-    let (_, view) = cx.add_window(Default::default(), |cx| build_editor(buffer.clone(), cx));
+fn test_move_cursor_different_line_lengths(cx: &mut TestAppContext) {
+    cx.update(|cx| cx.set_global(Settings::test(cx)));
+    let (_, view) = cx.add_window(|cx| {
+        let buffer = MultiBuffer::build_simple("ⓐⓑⓒⓓⓔ\nabcd\nαβγ\nabcd\nⓐⓑⓒⓓⓔ\n", cx);
+        build_editor(buffer.clone(), cx)
+    });
     view.update(cx, |view, cx| {
         view.change_selections(None, cx, |s| {
             s.select_display_ranges([empty_range(0, "ⓐⓑⓒⓓⓔ".len())]);
@@ -942,10 +958,12 @@ fn test_move_cursor_different_line_lengths(cx: &mut gpui::MutableAppContext) {
 }
 
 #[gpui::test]
-fn test_beginning_end_of_line(cx: &mut gpui::MutableAppContext) {
-    cx.set_global(Settings::test(cx));
-    let buffer = MultiBuffer::build_simple("abc\n  def", cx);
-    let (_, view) = cx.add_window(Default::default(), |cx| build_editor(buffer, cx));
+fn test_beginning_end_of_line(cx: &mut TestAppContext) {
+    cx.update(|cx| cx.set_global(Settings::test(cx)));
+    let (_, view) = cx.add_window(|cx| {
+        let buffer = MultiBuffer::build_simple("abc\n  def", cx);
+        build_editor(buffer, cx)
+    });
     view.update(cx, |view, cx| {
         view.change_selections(None, cx, |s| {
             s.select_display_ranges([
@@ -1102,10 +1120,12 @@ fn test_beginning_end_of_line(cx: &mut gpui::MutableAppContext) {
 }
 
 #[gpui::test]
-fn test_prev_next_word_boundary(cx: &mut gpui::MutableAppContext) {
-    cx.set_global(Settings::test(cx));
-    let buffer = MultiBuffer::build_simple("use std::str::{foo, bar}\n\n  {baz.qux()}", cx);
-    let (_, view) = cx.add_window(Default::default(), |cx| build_editor(buffer, cx));
+fn test_prev_next_word_boundary(cx: &mut TestAppContext) {
+    cx.update(|cx| cx.set_global(Settings::test(cx)));
+    let (_, view) = cx.add_window(|cx| {
+        let buffer = MultiBuffer::build_simple("use std::str::{foo, bar}\n\n  {baz.qux()}", cx);
+        build_editor(buffer, cx)
+    });
     view.update(cx, |view, cx| {
         view.change_selections(None, cx, |s| {
             s.select_display_ranges([
@@ -1151,10 +1171,12 @@ fn test_prev_next_word_boundary(cx: &mut gpui::MutableAppContext) {
 }
 
 #[gpui::test]
-fn test_prev_next_word_bounds_with_soft_wrap(cx: &mut gpui::MutableAppContext) {
-    cx.set_global(Settings::test(cx));
-    let buffer = MultiBuffer::build_simple("use one::{\n    two::three::four::five\n};", cx);
-    let (_, view) = cx.add_window(Default::default(), |cx| build_editor(buffer, cx));
+fn test_prev_next_word_bounds_with_soft_wrap(cx: &mut TestAppContext) {
+    cx.update(|cx| cx.set_global(Settings::test(cx)));
+    let (_, view) = cx.add_window(|cx| {
+        let buffer = MultiBuffer::build_simple("use one::{\n    two::three::four::five\n};", cx);
+        build_editor(buffer, cx)
+    });
 
     view.update(cx, |view, cx| {
         view.set_wrap_width(Some(140.), cx);
@@ -1330,10 +1352,12 @@ async fn test_delete_to_beginning_of_line(cx: &mut gpui::TestAppContext) {
 }
 
 #[gpui::test]
-fn test_delete_to_word_boundary(cx: &mut gpui::MutableAppContext) {
-    cx.set_global(Settings::test(cx));
-    let buffer = MultiBuffer::build_simple("one two three four", cx);
-    let (_, view) = cx.add_window(Default::default(), |cx| build_editor(buffer.clone(), cx));
+fn test_delete_to_word_boundary(cx: &mut TestAppContext) {
+    cx.update(|cx| cx.set_global(Settings::test(cx)));
+    let (_, view) = cx.add_window(|cx| {
+        let buffer = MultiBuffer::build_simple("one two three four", cx);
+        build_editor(buffer.clone(), cx)
+    });
 
     view.update(cx, |view, cx| {
         view.change_selections(None, cx, |s| {
@@ -1345,9 +1369,8 @@ fn test_delete_to_word_boundary(cx: &mut gpui::MutableAppContext) {
             ])
         });
         view.delete_to_previous_word_start(&DeleteToPreviousWordStart, cx);
+        assert_eq!(view.buffer.read(cx).read(cx).text(), "e two te four");
     });
-
-    assert_eq!(buffer.read(cx).read(cx).text(), "e two te four");
 
     view.update(cx, |view, cx| {
         view.change_selections(None, cx, |s| {
@@ -1359,16 +1382,17 @@ fn test_delete_to_word_boundary(cx: &mut gpui::MutableAppContext) {
             ])
         });
         view.delete_to_next_word_end(&DeleteToNextWordEnd, cx);
+        assert_eq!(view.buffer.read(cx).read(cx).text(), "e t te our");
     });
-
-    assert_eq!(buffer.read(cx).read(cx).text(), "e t te our");
 }
 
 #[gpui::test]
-fn test_newline(cx: &mut gpui::MutableAppContext) {
-    cx.set_global(Settings::test(cx));
-    let buffer = MultiBuffer::build_simple("aaaa\n    bbbb\n", cx);
-    let (_, view) = cx.add_window(Default::default(), |cx| build_editor(buffer.clone(), cx));
+fn test_newline(cx: &mut TestAppContext) {
+    cx.update(|cx| cx.set_global(Settings::test(cx)));
+    let (_, view) = cx.add_window(|cx| {
+        let buffer = MultiBuffer::build_simple("aaaa\n    bbbb\n", cx);
+        build_editor(buffer.clone(), cx)
+    });
 
     view.update(cx, |view, cx| {
         view.change_selections(None, cx, |s| {
@@ -1385,24 +1409,23 @@ fn test_newline(cx: &mut gpui::MutableAppContext) {
 }
 
 #[gpui::test]
-fn test_newline_with_old_selections(cx: &mut gpui::MutableAppContext) {
-    cx.set_global(Settings::test(cx));
-    let buffer = MultiBuffer::build_simple(
-        "
-            a
-            b(
-                X
-            )
-            c(
-                X
-            )
-        "
-        .unindent()
-        .as_str(),
-        cx,
-    );
-
-    let (_, editor) = cx.add_window(Default::default(), |cx| {
+fn test_newline_with_old_selections(cx: &mut TestAppContext) {
+    cx.update(|cx| cx.set_global(Settings::test(cx)));
+    let (_, editor) = cx.add_window(|cx| {
+        let buffer = MultiBuffer::build_simple(
+            "
+                a
+                b(
+                    X
+                )
+                c(
+                    X
+                )
+            "
+            .unindent()
+            .as_str(),
+            cx,
+        );
         let mut editor = build_editor(buffer.clone(), cx);
         editor.change_selections(None, cx, |s| {
             s.select_ranges([
@@ -1413,28 +1436,27 @@ fn test_newline_with_old_selections(cx: &mut gpui::MutableAppContext) {
         editor
     });
 
-    // Edit the buffer directly, deleting ranges surrounding the editor's selections
-    buffer.update(cx, |buffer, cx| {
-        buffer.edit(
-            [
-                (Point::new(1, 2)..Point::new(3, 0), ""),
-                (Point::new(4, 2)..Point::new(6, 0), ""),
-            ],
-            None,
-            cx,
-        );
-        assert_eq!(
-            buffer.read(cx).text(),
-            "
-                a
-                b()
-                c()
-            "
-            .unindent()
-        );
-    });
-
     editor.update(cx, |editor, cx| {
+        // Edit the buffer directly, deleting ranges surrounding the editor's selections
+        editor.buffer.update(cx, |buffer, cx| {
+            buffer.edit(
+                [
+                    (Point::new(1, 2)..Point::new(3, 0), ""),
+                    (Point::new(4, 2)..Point::new(6, 0), ""),
+                ],
+                None,
+                cx,
+            );
+            assert_eq!(
+                buffer.read(cx).text(),
+                "
+                    a
+                    b()
+                    c()
+                "
+                .unindent()
+            );
+        });
         assert_eq!(
             editor.selections.ranges(cx),
             &[
@@ -1465,6 +1487,55 @@ fn test_newline_with_old_selections(cx: &mut gpui::MutableAppContext) {
             ],
         );
     });
+}
+
+#[gpui::test]
+async fn test_newline_above(cx: &mut gpui::TestAppContext) {
+    let mut cx = EditorTestContext::new(cx);
+    cx.update(|cx| {
+        cx.update_global::<Settings, _, _>(|settings, _| {
+            settings.editor_overrides.tab_size = Some(NonZeroU32::new(4).unwrap());
+        });
+    });
+
+    let language = Arc::new(
+        Language::new(
+            LanguageConfig::default(),
+            Some(tree_sitter_rust::language()),
+        )
+        .with_indents_query(r#"(_ "(" ")" @end) @indent"#)
+        .unwrap(),
+    );
+    cx.update_buffer(|buffer, cx| buffer.set_language(Some(language), cx));
+
+    cx.set_state(indoc! {"
+        const a: ˇA = (
+            (ˇ
+                «const_functionˇ»(ˇ),
+                so«mˇ»et«hˇ»ing_ˇelse,ˇ
+            )ˇ
+        ˇ);ˇ
+    "});
+    cx.update_editor(|e, cx| e.newline_above(&NewlineAbove, cx));
+    cx.assert_editor_state(indoc! {"
+        ˇ
+        const a: A = (
+            ˇ
+            (
+                ˇ
+                ˇ
+                const_function(),
+                ˇ
+                ˇ
+                ˇ
+                ˇ
+                something_else,
+                ˇ
+            )
+            ˇ
+            ˇ
+        );
+    "});
 }
 
 #[gpui::test]
@@ -1517,22 +1588,21 @@ async fn test_newline_below(cx: &mut gpui::TestAppContext) {
 }
 
 #[gpui::test]
-fn test_insert_with_old_selections(cx: &mut gpui::MutableAppContext) {
-    cx.set_global(Settings::test(cx));
-    let buffer = MultiBuffer::build_simple("a( X ), b( Y ), c( Z )", cx);
-    let (_, editor) = cx.add_window(Default::default(), |cx| {
+fn test_insert_with_old_selections(cx: &mut TestAppContext) {
+    cx.update(|cx| cx.set_global(Settings::test(cx)));
+    let (_, editor) = cx.add_window(|cx| {
+        let buffer = MultiBuffer::build_simple("a( X ), b( Y ), c( Z )", cx);
         let mut editor = build_editor(buffer.clone(), cx);
         editor.change_selections(None, cx, |s| s.select_ranges([3..4, 11..12, 19..20]));
         editor
     });
 
-    // Edit the buffer directly, deleting ranges surrounding the editor's selections
-    buffer.update(cx, |buffer, cx| {
-        buffer.edit([(2..5, ""), (10..13, ""), (18..21, "")], None, cx);
-        assert_eq!(buffer.read(cx).text(), "a(), b(), c()".unindent());
-    });
-
     editor.update(cx, |editor, cx| {
+        // Edit the buffer directly, deleting ranges surrounding the editor's selections
+        editor.buffer.update(cx, |buffer, cx| {
+            buffer.edit([(2..5, ""), (10..13, ""), (18..21, "")], None, cx);
+            assert_eq!(buffer.read(cx).text(), "a(), b(), c()".unindent());
+        });
         assert_eq!(editor.selections.ranges(cx), &[2..2, 7..7, 12..12],);
 
         editor.insert("Z", cx);
@@ -1836,24 +1906,26 @@ async fn test_indent_outdent_with_hard_tabs(cx: &mut gpui::TestAppContext) {
 }
 
 #[gpui::test]
-fn test_indent_outdent_with_excerpts(cx: &mut gpui::MutableAppContext) {
-    cx.set_global(
-        Settings::test(cx)
-            .with_language_defaults(
-                "TOML",
-                EditorSettings {
-                    tab_size: Some(2.try_into().unwrap()),
-                    ..Default::default()
-                },
-            )
-            .with_language_defaults(
-                "Rust",
-                EditorSettings {
-                    tab_size: Some(4.try_into().unwrap()),
-                    ..Default::default()
-                },
-            ),
-    );
+fn test_indent_outdent_with_excerpts(cx: &mut TestAppContext) {
+    cx.update(|cx| {
+        cx.set_global(
+            Settings::test(cx)
+                .with_language_defaults(
+                    "TOML",
+                    EditorSettings {
+                        tab_size: Some(2.try_into().unwrap()),
+                        ..Default::default()
+                    },
+                )
+                .with_language_defaults(
+                    "Rust",
+                    EditorSettings {
+                        tab_size: Some(4.try_into().unwrap()),
+                        ..Default::default()
+                    },
+                ),
+        );
+    });
     let toml_language = Arc::new(Language::new(
         LanguageConfig {
             name: "TOML".into(),
@@ -1895,7 +1967,7 @@ fn test_indent_outdent_with_excerpts(cx: &mut gpui::MutableAppContext) {
         multibuffer
     });
 
-    cx.add_window(Default::default(), |cx| {
+    cx.add_window(|cx| {
         let mut editor = build_editor(multibuffer, cx);
 
         assert_eq!(
@@ -2022,10 +2094,12 @@ async fn test_delete(cx: &mut gpui::TestAppContext) {
 }
 
 #[gpui::test]
-fn test_delete_line(cx: &mut gpui::MutableAppContext) {
-    cx.set_global(Settings::test(cx));
-    let buffer = MultiBuffer::build_simple("abc\ndef\nghi\n", cx);
-    let (_, view) = cx.add_window(Default::default(), |cx| build_editor(buffer, cx));
+fn test_delete_line(cx: &mut TestAppContext) {
+    cx.update(|cx| cx.set_global(Settings::test(cx)));
+    let (_, view) = cx.add_window(|cx| {
+        let buffer = MultiBuffer::build_simple("abc\ndef\nghi\n", cx);
+        build_editor(buffer, cx)
+    });
     view.update(cx, |view, cx| {
         view.change_selections(None, cx, |s| {
             s.select_display_ranges([
@@ -2045,9 +2119,11 @@ fn test_delete_line(cx: &mut gpui::MutableAppContext) {
         );
     });
 
-    cx.set_global(Settings::test(cx));
-    let buffer = MultiBuffer::build_simple("abc\ndef\nghi\n", cx);
-    let (_, view) = cx.add_window(Default::default(), |cx| build_editor(buffer, cx));
+    cx.update(|cx| cx.set_global(Settings::test(cx)));
+    let (_, view) = cx.add_window(|cx| {
+        let buffer = MultiBuffer::build_simple("abc\ndef\nghi\n", cx);
+        build_editor(buffer, cx)
+    });
     view.update(cx, |view, cx| {
         view.change_selections(None, cx, |s| {
             s.select_display_ranges([DisplayPoint::new(2, 0)..DisplayPoint::new(0, 1)])
@@ -2062,10 +2138,12 @@ fn test_delete_line(cx: &mut gpui::MutableAppContext) {
 }
 
 #[gpui::test]
-fn test_duplicate_line(cx: &mut gpui::MutableAppContext) {
-    cx.set_global(Settings::test(cx));
-    let buffer = MultiBuffer::build_simple("abc\ndef\nghi\n", cx);
-    let (_, view) = cx.add_window(Default::default(), |cx| build_editor(buffer, cx));
+fn test_duplicate_line(cx: &mut TestAppContext) {
+    cx.update(|cx| cx.set_global(Settings::test(cx)));
+    let (_, view) = cx.add_window(|cx| {
+        let buffer = MultiBuffer::build_simple("abc\ndef\nghi\n", cx);
+        build_editor(buffer, cx)
+    });
     view.update(cx, |view, cx| {
         view.change_selections(None, cx, |s| {
             s.select_display_ranges([
@@ -2088,8 +2166,10 @@ fn test_duplicate_line(cx: &mut gpui::MutableAppContext) {
         );
     });
 
-    let buffer = MultiBuffer::build_simple("abc\ndef\nghi\n", cx);
-    let (_, view) = cx.add_window(Default::default(), |cx| build_editor(buffer, cx));
+    let (_, view) = cx.add_window(|cx| {
+        let buffer = MultiBuffer::build_simple("abc\ndef\nghi\n", cx);
+        build_editor(buffer, cx)
+    });
     view.update(cx, |view, cx| {
         view.change_selections(None, cx, |s| {
             s.select_display_ranges([
@@ -2110,10 +2190,12 @@ fn test_duplicate_line(cx: &mut gpui::MutableAppContext) {
 }
 
 #[gpui::test]
-fn test_move_line_up_down(cx: &mut gpui::MutableAppContext) {
-    cx.set_global(Settings::test(cx));
-    let buffer = MultiBuffer::build_simple(&sample_text(10, 5, 'a'), cx);
-    let (_, view) = cx.add_window(Default::default(), |cx| build_editor(buffer, cx));
+fn test_move_line_up_down(cx: &mut TestAppContext) {
+    cx.update(|cx| cx.set_global(Settings::test(cx)));
+    let (_, view) = cx.add_window(|cx| {
+        let buffer = MultiBuffer::build_simple(&sample_text(10, 5, 'a'), cx);
+        build_editor(buffer, cx)
+    });
     view.update(cx, |view, cx| {
         view.fold_ranges(
             vec![
@@ -2206,19 +2288,21 @@ fn test_move_line_up_down(cx: &mut gpui::MutableAppContext) {
 }
 
 #[gpui::test]
-fn test_move_line_up_down_with_blocks(cx: &mut gpui::MutableAppContext) {
-    cx.set_global(Settings::test(cx));
-    let buffer = MultiBuffer::build_simple(&sample_text(10, 5, 'a'), cx);
-    let snapshot = buffer.read(cx).snapshot(cx);
-    let (_, editor) = cx.add_window(Default::default(), |cx| build_editor(buffer, cx));
+fn test_move_line_up_down_with_blocks(cx: &mut TestAppContext) {
+    cx.update(|cx| cx.set_global(Settings::test(cx)));
+    let (_, editor) = cx.add_window(|cx| {
+        let buffer = MultiBuffer::build_simple(&sample_text(10, 5, 'a'), cx);
+        build_editor(buffer, cx)
+    });
     editor.update(cx, |editor, cx| {
+        let snapshot = editor.buffer.read(cx).snapshot(cx);
         editor.insert_blocks(
             [BlockProperties {
                 style: BlockStyle::Fixed,
                 position: snapshot.anchor_after(Point::new(2, 0)),
                 disposition: BlockDisposition::Below,
                 height: 1,
-                render: Arc::new(|_| Empty::new().boxed()),
+                render: Arc::new(|_| Empty::new().into_any()),
             }],
             cx,
         );
@@ -2230,11 +2314,11 @@ fn test_move_line_up_down_with_blocks(cx: &mut gpui::MutableAppContext) {
 }
 
 #[gpui::test]
-fn test_transpose(cx: &mut gpui::MutableAppContext) {
-    cx.set_global(Settings::test(cx));
+fn test_transpose(cx: &mut TestAppContext) {
+    cx.update(|cx| cx.set_global(Settings::test(cx)));
 
     _ = cx
-        .add_window(Default::default(), |cx| {
+        .add_window(|cx| {
             let mut editor = build_editor(MultiBuffer::build_simple("abc", cx), cx);
 
             editor.change_selections(None, cx, |s| s.select_ranges([1..1]));
@@ -2255,7 +2339,7 @@ fn test_transpose(cx: &mut gpui::MutableAppContext) {
         .1;
 
     _ = cx
-        .add_window(Default::default(), |cx| {
+        .add_window(|cx| {
             let mut editor = build_editor(MultiBuffer::build_simple("abc\nde", cx), cx);
 
             editor.change_selections(None, cx, |s| s.select_ranges([3..3]));
@@ -2281,7 +2365,7 @@ fn test_transpose(cx: &mut gpui::MutableAppContext) {
         .1;
 
     _ = cx
-        .add_window(Default::default(), |cx| {
+        .add_window(|cx| {
             let mut editor = build_editor(MultiBuffer::build_simple("abc\nde", cx), cx);
 
             editor.change_selections(None, cx, |s| s.select_ranges([1..1, 2..2, 4..4]));
@@ -2310,7 +2394,7 @@ fn test_transpose(cx: &mut gpui::MutableAppContext) {
         .1;
 
     _ = cx
-        .add_window(Default::default(), |cx| {
+        .add_window(|cx| {
             let mut editor = build_editor(MultiBuffer::build_simple("🍐🏀✋", cx), cx);
 
             editor.change_selections(None, cx, |s| s.select_ranges([4..4]));
@@ -2524,10 +2608,12 @@ async fn test_paste_multiline(cx: &mut gpui::TestAppContext) {
 }
 
 #[gpui::test]
-fn test_select_all(cx: &mut gpui::MutableAppContext) {
-    cx.set_global(Settings::test(cx));
-    let buffer = MultiBuffer::build_simple("abc\nde\nfgh", cx);
-    let (_, view) = cx.add_window(Default::default(), |cx| build_editor(buffer, cx));
+fn test_select_all(cx: &mut TestAppContext) {
+    cx.update(|cx| cx.set_global(Settings::test(cx)));
+    let (_, view) = cx.add_window(|cx| {
+        let buffer = MultiBuffer::build_simple("abc\nde\nfgh", cx);
+        build_editor(buffer, cx)
+    });
     view.update(cx, |view, cx| {
         view.select_all(&SelectAll, cx);
         assert_eq!(
@@ -2538,10 +2624,12 @@ fn test_select_all(cx: &mut gpui::MutableAppContext) {
 }
 
 #[gpui::test]
-fn test_select_line(cx: &mut gpui::MutableAppContext) {
-    cx.set_global(Settings::test(cx));
-    let buffer = MultiBuffer::build_simple(&sample_text(6, 5, 'a'), cx);
-    let (_, view) = cx.add_window(Default::default(), |cx| build_editor(buffer, cx));
+fn test_select_line(cx: &mut TestAppContext) {
+    cx.update(|cx| cx.set_global(Settings::test(cx)));
+    let (_, view) = cx.add_window(|cx| {
+        let buffer = MultiBuffer::build_simple(&sample_text(6, 5, 'a'), cx);
+        build_editor(buffer, cx)
+    });
     view.update(cx, |view, cx| {
         view.change_selections(None, cx, |s| {
             s.select_display_ranges([
@@ -2582,10 +2670,12 @@ fn test_select_line(cx: &mut gpui::MutableAppContext) {
 }
 
 #[gpui::test]
-fn test_split_selection_into_lines(cx: &mut gpui::MutableAppContext) {
-    cx.set_global(Settings::test(cx));
-    let buffer = MultiBuffer::build_simple(&sample_text(9, 5, 'a'), cx);
-    let (_, view) = cx.add_window(Default::default(), |cx| build_editor(buffer, cx));
+fn test_split_selection_into_lines(cx: &mut TestAppContext) {
+    cx.update(|cx| cx.set_global(Settings::test(cx)));
+    let (_, view) = cx.add_window(|cx| {
+        let buffer = MultiBuffer::build_simple(&sample_text(9, 5, 'a'), cx);
+        build_editor(buffer, cx)
+    });
     view.update(cx, |view, cx| {
         view.fold_ranges(
             vec![
@@ -2650,10 +2740,12 @@ fn test_split_selection_into_lines(cx: &mut gpui::MutableAppContext) {
 }
 
 #[gpui::test]
-fn test_add_selection_above_below(cx: &mut gpui::MutableAppContext) {
-    cx.set_global(Settings::test(cx));
-    let buffer = MultiBuffer::build_simple("abc\ndefghi\n\njk\nlmno\n", cx);
-    let (_, view) = cx.add_window(Default::default(), |cx| build_editor(buffer, cx));
+fn test_add_selection_above_below(cx: &mut TestAppContext) {
+    cx.update(|cx| cx.set_global(Settings::test(cx)));
+    let (_, view) = cx.add_window(|cx| {
+        let buffer = MultiBuffer::build_simple("abc\ndefghi\n\njk\nlmno\n", cx);
+        build_editor(buffer, cx)
+    });
 
     view.update(cx, |view, cx| {
         view.change_selections(None, cx, |s| {
@@ -3973,7 +4065,7 @@ async fn test_document_format_during_save(cx: &mut gpui::TestAppContext) {
     editor.update(cx, |editor, cx| editor.set_text("one\ntwo\nthree\n", cx));
     assert!(cx.read(|cx| editor.is_dirty(cx)));
 
-    let save = cx.update(|cx| editor.save(project.clone(), cx));
+    let save = editor.update(cx, |editor, cx| editor.save(project.clone(), cx));
     fake_server
         .handle_request::<lsp::request::Formatting, _, _>(move |params, _| async move {
             assert_eq!(
@@ -4008,7 +4100,7 @@ async fn test_document_format_during_save(cx: &mut gpui::TestAppContext) {
         futures::future::pending::<()>().await;
         unreachable!()
     });
-    let save = cx.update(|cx| editor.save(project.clone(), cx));
+    let save = editor.update(cx, |editor, cx| editor.save(project.clone(), cx));
     cx.foreground().advance_clock(super::FORMAT_TIMEOUT);
     cx.foreground().start_waiting();
     save.await.unwrap();
@@ -4031,7 +4123,7 @@ async fn test_document_format_during_save(cx: &mut gpui::TestAppContext) {
         })
     });
 
-    let save = cx.update(|cx| editor.save(project.clone(), cx));
+    let save = editor.update(cx, |editor, cx| editor.save(project.clone(), cx));
     fake_server
         .handle_request::<lsp::request::Formatting, _, _>(move |params, _| async move {
             assert_eq!(
@@ -4087,7 +4179,7 @@ async fn test_range_format_during_save(cx: &mut gpui::TestAppContext) {
     editor.update(cx, |editor, cx| editor.set_text("one\ntwo\nthree\n", cx));
     assert!(cx.read(|cx| editor.is_dirty(cx)));
 
-    let save = cx.update(|cx| editor.save(project.clone(), cx));
+    let save = editor.update(cx, |editor, cx| editor.save(project.clone(), cx));
     fake_server
         .handle_request::<lsp::request::RangeFormatting, _, _>(move |params, _| async move {
             assert_eq!(
@@ -4124,7 +4216,7 @@ async fn test_range_format_during_save(cx: &mut gpui::TestAppContext) {
             unreachable!()
         },
     );
-    let save = cx.update(|cx| editor.save(project.clone(), cx));
+    let save = editor.update(cx, |editor, cx| editor.save(project.clone(), cx));
     cx.foreground().advance_clock(super::FORMAT_TIMEOUT);
     cx.foreground().start_waiting();
     save.await.unwrap();
@@ -4147,7 +4239,7 @@ async fn test_range_format_during_save(cx: &mut gpui::TestAppContext) {
         })
     });
 
-    let save = cx.update(|cx| editor.save(project.clone(), cx));
+    let save = editor.update(cx, |editor, cx| editor.save(project.clone(), cx));
     fake_server
         .handle_request::<lsp::request::RangeFormatting, _, _>(move |params, _| async move {
             assert_eq!(
@@ -4322,7 +4414,7 @@ async fn test_strip_whitespace_and_format_via_lsp(cx: &mut gpui::TestAppContext)
     cx.set_state(
         &[
             "one ",   //
-            "twoˇ",  //
+            "twoˇ",   //
             "three ", //
             "four",   //
         ]
@@ -4397,7 +4489,7 @@ async fn test_strip_whitespace_and_format_via_lsp(cx: &mut gpui::TestAppContext)
         &[
             "one",   //
             "",      //
-            "twoˇ", //
+            "twoˇ",  //
             "",      //
             "three", //
             "four",  //
@@ -4412,7 +4504,7 @@ async fn test_strip_whitespace_and_format_via_lsp(cx: &mut gpui::TestAppContext)
     cx.assert_editor_state(
         &[
             "one ",   //
-            "twoˇ",  //
+            "twoˇ",   //
             "three ", //
             "four",   //
         ]
@@ -4585,81 +4677,6 @@ async fn test_completion(cx: &mut gpui::TestAppContext) {
     cx.assert_editor_state("editor.closeˇ");
     handle_resolve_completion_request(&mut cx, None).await;
     apply_additional_edits.await.unwrap();
-
-    // Handle completion request passing a marked string specifying where the completion
-    // should be triggered from using '|' character, what range should be replaced, and what completions
-    // should be returned using '<' and '>' to delimit the range
-    async fn handle_completion_request<'a>(
-        cx: &mut EditorLspTestContext<'a>,
-        marked_string: &str,
-        completions: Vec<&'static str>,
-    ) {
-        let complete_from_marker: TextRangeMarker = '|'.into();
-        let replace_range_marker: TextRangeMarker = ('<', '>').into();
-        let (_, mut marked_ranges) = marked_text_ranges_by(
-            marked_string,
-            vec![complete_from_marker.clone(), replace_range_marker.clone()],
-        );
-
-        let complete_from_position =
-            cx.to_lsp(marked_ranges.remove(&complete_from_marker).unwrap()[0].start);
-        let replace_range =
-            cx.to_lsp_range(marked_ranges.remove(&replace_range_marker).unwrap()[0].clone());
-
-        cx.handle_request::<lsp::request::Completion, _, _>(move |url, params, _| {
-            let completions = completions.clone();
-            async move {
-                assert_eq!(params.text_document_position.text_document.uri, url.clone());
-                assert_eq!(
-                    params.text_document_position.position,
-                    complete_from_position
-                );
-                Ok(Some(lsp::CompletionResponse::Array(
-                    completions
-                        .iter()
-                        .map(|completion_text| lsp::CompletionItem {
-                            label: completion_text.to_string(),
-                            text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
-                                range: replace_range,
-                                new_text: completion_text.to_string(),
-                            })),
-                            ..Default::default()
-                        })
-                        .collect(),
-                )))
-            }
-        })
-        .next()
-        .await;
-    }
-
-    async fn handle_resolve_completion_request<'a>(
-        cx: &mut EditorLspTestContext<'a>,
-        edits: Option<Vec<(&'static str, &'static str)>>,
-    ) {
-        let edits = edits.map(|edits| {
-            edits
-                .iter()
-                .map(|(marked_string, new_text)| {
-                    let (_, marked_ranges) = marked_text_ranges(marked_string, false);
-                    let replace_range = cx.to_lsp_range(marked_ranges[0].clone());
-                    lsp::TextEdit::new(replace_range, new_text.to_string())
-                })
-                .collect::<Vec<_>>()
-        });
-
-        cx.handle_request::<lsp::request::ResolveCompletionItem, _, _>(move |_, _, _| {
-            let edits = edits.clone();
-            async move {
-                Ok(lsp::CompletionItem {
-                    additional_text_edits: edits,
-                    ..Default::default()
-                })
-            }
-        })
-        .next()
-        .await;
-    }
 }
 
 #[gpui::test]
@@ -5003,8 +5020,8 @@ async fn test_toggle_block_comment(cx: &mut gpui::TestAppContext) {
 }
 
 #[gpui::test]
-fn test_editing_disjoint_excerpts(cx: &mut gpui::MutableAppContext) {
-    cx.set_global(Settings::test(cx));
+fn test_editing_disjoint_excerpts(cx: &mut TestAppContext) {
+    cx.update(|cx| cx.set_global(Settings::test(cx)));
     let buffer = cx.add_model(|cx| Buffer::new(0, sample_text(3, 4, 'a'), cx));
     let multibuffer = cx.add_model(|cx| {
         let mut multibuffer = MultiBuffer::new(0);
@@ -5022,12 +5039,11 @@ fn test_editing_disjoint_excerpts(cx: &mut gpui::MutableAppContext) {
             ],
             cx,
         );
+        assert_eq!(multibuffer.read(cx).text(), "aaaa\nbbbb");
         multibuffer
     });
 
-    assert_eq!(multibuffer.read(cx).read(cx).text(), "aaaa\nbbbb");
-
-    let (_, view) = cx.add_window(Default::default(), |cx| build_editor(multibuffer, cx));
+    let (_, view) = cx.add_window(|cx| build_editor(multibuffer, cx));
     view.update(cx, |view, cx| {
         assert_eq!(view.text(cx), "aaaa\nbbbb");
         view.change_selections(None, cx, |s| {
@@ -5050,8 +5066,8 @@ fn test_editing_disjoint_excerpts(cx: &mut gpui::MutableAppContext) {
 }
 
 #[gpui::test]
-fn test_editing_overlapping_excerpts(cx: &mut gpui::MutableAppContext) {
-    cx.set_global(Settings::test(cx));
+fn test_editing_overlapping_excerpts(cx: &mut TestAppContext) {
+    cx.update(|cx| cx.set_global(Settings::test(cx)));
     let markers = vec![('[', ']').into(), ('(', ')').into()];
     let (initial_text, mut excerpt_ranges) = marked_text_ranges_by(
         indoc! {"
@@ -5075,7 +5091,7 @@ fn test_editing_overlapping_excerpts(cx: &mut gpui::MutableAppContext) {
         multibuffer
     });
 
-    let (_, view) = cx.add_window(Default::default(), |cx| build_editor(multibuffer, cx));
+    let (_, view) = cx.add_window(|cx| build_editor(multibuffer, cx));
     view.update(cx, |view, cx| {
         let (expected_text, selection_ranges) = marked_text_ranges(
             indoc! {"
@@ -5123,8 +5139,8 @@ fn test_editing_overlapping_excerpts(cx: &mut gpui::MutableAppContext) {
 }
 
 #[gpui::test]
-fn test_refresh_selections(cx: &mut gpui::MutableAppContext) {
-    cx.set_global(Settings::test(cx));
+fn test_refresh_selections(cx: &mut TestAppContext) {
+    cx.update(|cx| cx.set_global(Settings::test(cx)));
     let buffer = cx.add_model(|cx| Buffer::new(0, sample_text(3, 4, 'a'), cx));
     let mut excerpt1_id = None;
     let multibuffer = cx.add_model(|cx| {
@@ -5146,13 +5162,11 @@ fn test_refresh_selections(cx: &mut gpui::MutableAppContext) {
             )
             .into_iter()
             .next();
+        assert_eq!(multibuffer.read(cx).text(), "aaaa\nbbbb\nbbbb\ncccc");
         multibuffer
     });
-    assert_eq!(
-        multibuffer.read(cx).read(cx).text(),
-        "aaaa\nbbbb\nbbbb\ncccc"
-    );
-    let (_, editor) = cx.add_window(Default::default(), |cx| {
+
+    let (_, editor) = cx.add_window(|cx| {
         let mut editor = build_editor(multibuffer.clone(), cx);
         let snapshot = editor.snapshot(cx);
         editor.change_selections(None, cx, |s| {
@@ -5209,8 +5223,8 @@ fn test_refresh_selections(cx: &mut gpui::MutableAppContext) {
 }
 
 #[gpui::test]
-fn test_refresh_selections_while_selecting_with_mouse(cx: &mut gpui::MutableAppContext) {
-    cx.set_global(Settings::test(cx));
+fn test_refresh_selections_while_selecting_with_mouse(cx: &mut TestAppContext) {
+    cx.update(|cx| cx.set_global(Settings::test(cx)));
     let buffer = cx.add_model(|cx| Buffer::new(0, sample_text(3, 4, 'a'), cx));
     let mut excerpt1_id = None;
     let multibuffer = cx.add_model(|cx| {
@@ -5232,13 +5246,11 @@ fn test_refresh_selections_while_selecting_with_mouse(cx: &mut gpui::MutableAppC
             )
             .into_iter()
             .next();
+        assert_eq!(multibuffer.read(cx).text(), "aaaa\nbbbb\nbbbb\ncccc");
         multibuffer
     });
-    assert_eq!(
-        multibuffer.read(cx).read(cx).text(),
-        "aaaa\nbbbb\nbbbb\ncccc"
-    );
-    let (_, editor) = cx.add_window(Default::default(), |cx| {
+
+    let (_, editor) = cx.add_window(|cx| {
         let mut editor = build_editor(multibuffer.clone(), cx);
         let snapshot = editor.snapshot(cx);
         editor.begin_selection(Point::new(1, 3).to_display_point(&snapshot), false, 1, cx);
@@ -5342,17 +5354,18 @@ async fn test_extra_newline_insertion(cx: &mut gpui::TestAppContext) {
 }
 
 #[gpui::test]
-fn test_highlighted_ranges(cx: &mut gpui::MutableAppContext) {
-    let buffer = MultiBuffer::build_simple(&sample_text(16, 8, 'a'), cx);
-
-    cx.set_global(Settings::test(cx));
-    let (_, editor) = cx.add_window(Default::default(), |cx| build_editor(buffer.clone(), cx));
+fn test_highlighted_ranges(cx: &mut TestAppContext) {
+    cx.update(|cx| cx.set_global(Settings::test(cx)));
+    let (_, editor) = cx.add_window(|cx| {
+        let buffer = MultiBuffer::build_simple(&sample_text(16, 8, 'a'), cx);
+        build_editor(buffer.clone(), cx)
+    });
 
     editor.update(cx, |editor, cx| {
         struct Type1;
         struct Type2;
 
-        let buffer = buffer.read(cx).snapshot(cx);
+        let buffer = editor.buffer.read(cx).snapshot(cx);
 
         let anchor_range =
             |range: Range<Point>| buffer.anchor_after(range.start)..buffer.anchor_after(range.end);
@@ -5566,7 +5579,8 @@ async fn test_following_with_multiple_excerpts(cx: &mut gpui::TestAppContext) {
     Settings::test_async(cx);
     let fs = FakeFs::new(cx.background());
     let project = Project::test(fs, ["/file.rs".as_ref()], cx).await;
-    let (_, pane) = cx.add_window(|cx| Pane::new(0, None, || &[], cx));
+    let (_, workspace) = cx.add_window(|cx| Workspace::test_new(project.clone(), cx));
+    let pane = workspace.read_with(cx, |workspace, _| workspace.active_pane().clone());
 
     let leader = pane.update(cx, |_, cx| {
         let multibuffer = cx.add_model(|_| MultiBuffer::new(0));
@@ -5663,8 +5677,8 @@ async fn test_following_with_multiple_excerpts(cx: &mut gpui::TestAppContext) {
         .await
         .unwrap();
     assert_eq!(
-        follower_1.read_with(cx, Editor::text),
-        leader.read_with(cx, Editor::text)
+        follower_1.read_with(cx, |editor, cx| editor.text(cx)),
+        leader.read_with(cx, |editor, cx| editor.text(cx))
     );
     update_message.borrow_mut().take();
 
@@ -5687,8 +5701,8 @@ async fn test_following_with_multiple_excerpts(cx: &mut gpui::TestAppContext) {
         .await
         .unwrap();
     assert_eq!(
-        follower_2.read_with(cx, Editor::text),
-        leader.read_with(cx, Editor::text)
+        follower_2.read_with(cx, |editor, cx| editor.text(cx)),
+        leader.read_with(cx, |editor, cx| editor.text(cx))
     );
 
     // Remove some excerpts.
@@ -5715,8 +5729,8 @@ async fn test_following_with_multiple_excerpts(cx: &mut gpui::TestAppContext) {
         .unwrap();
     update_message.borrow_mut().take();
     assert_eq!(
-        follower_1.read_with(cx, Editor::text),
-        leader.read_with(cx, Editor::text)
+        follower_1.read_with(cx, |editor, cx| editor.text(cx)),
+        leader.read_with(cx, |editor, cx| editor.text(cx))
     );
 }
 
@@ -5956,6 +5970,514 @@ async fn test_move_to_enclosing_bracket(cx: &mut gpui::TestAppContext) {
     );
 }
 
+#[gpui::test(iterations = 10)]
+async fn test_copilot(deterministic: Arc<Deterministic>, cx: &mut gpui::TestAppContext) {
+    let (copilot, copilot_lsp) = Copilot::fake(cx);
+    cx.update(|cx| cx.set_global(copilot));
+    let mut cx = EditorLspTestContext::new_rust(
+        lsp::ServerCapabilities {
+            completion_provider: Some(lsp::CompletionOptions {
+                trigger_characters: Some(vec![".".to_string(), ":".to_string()]),
+                ..Default::default()
+            }),
+            ..Default::default()
+        },
+        cx,
+    )
+    .await;
+
+    // When inserting, ensure autocompletion is favored over Copilot suggestions.
+    cx.set_state(indoc! {"
+        oneˇ
+        two
+        three
+    "});
+    cx.simulate_keystroke(".");
+    let _ = handle_completion_request(
+        &mut cx,
+        indoc! {"
+            one.|<>
+            two
+            three
+        "},
+        vec!["completion_a", "completion_b"],
+    );
+    handle_copilot_completion_request(
+        &copilot_lsp,
+        vec![copilot::request::Completion {
+            text: "one.copilot1".into(),
+            range: lsp::Range::new(lsp::Position::new(0, 0), lsp::Position::new(0, 4)),
+            ..Default::default()
+        }],
+        vec![],
+    );
+    deterministic.advance_clock(COPILOT_DEBOUNCE_TIMEOUT);
+    cx.update_editor(|editor, cx| {
+        assert!(editor.context_menu_visible());
+        assert!(!editor.has_active_copilot_suggestion(cx));
+
+        // Confirming a completion inserts it and hides the context menu, without showing
+        // the copilot suggestion afterwards.
+        editor
+            .confirm_completion(&Default::default(), cx)
+            .unwrap()
+            .detach();
+        assert!(!editor.context_menu_visible());
+        assert!(!editor.has_active_copilot_suggestion(cx));
+        assert_eq!(editor.text(cx), "one.completion_a\ntwo\nthree\n");
+        assert_eq!(editor.display_text(cx), "one.completion_a\ntwo\nthree\n");
+    });
+
+    // Ensure Copilot suggestions are shown right away if no autocompletion is available.
+    cx.set_state(indoc! {"
+        oneˇ
+        two
+        three
+    "});
+    cx.simulate_keystroke(".");
+    let _ = handle_completion_request(
+        &mut cx,
+        indoc! {"
+            one.|<>
+            two
+            three
+        "},
+        vec![],
+    );
+    handle_copilot_completion_request(
+        &copilot_lsp,
+        vec![copilot::request::Completion {
+            text: "one.copilot1".into(),
+            range: lsp::Range::new(lsp::Position::new(0, 0), lsp::Position::new(0, 4)),
+            ..Default::default()
+        }],
+        vec![],
+    );
+    deterministic.advance_clock(COPILOT_DEBOUNCE_TIMEOUT);
+    cx.update_editor(|editor, cx| {
+        assert!(!editor.context_menu_visible());
+        assert!(editor.has_active_copilot_suggestion(cx));
+        assert_eq!(editor.display_text(cx), "one.copilot1\ntwo\nthree\n");
+        assert_eq!(editor.text(cx), "one.\ntwo\nthree\n");
+    });
+
+    // Reset editor, and ensure autocompletion is still favored over Copilot suggestions.
+    cx.set_state(indoc! {"
+        oneˇ
+        two
+        three
+    "});
+    cx.simulate_keystroke(".");
+    let _ = handle_completion_request(
+        &mut cx,
+        indoc! {"
+            one.|<>
+            two
+            three
+        "},
+        vec!["completion_a", "completion_b"],
+    );
+    handle_copilot_completion_request(
+        &copilot_lsp,
+        vec![copilot::request::Completion {
+            text: "one.copilot1".into(),
+            range: lsp::Range::new(lsp::Position::new(0, 0), lsp::Position::new(0, 4)),
+            ..Default::default()
+        }],
+        vec![],
+    );
+    deterministic.advance_clock(COPILOT_DEBOUNCE_TIMEOUT);
+    cx.update_editor(|editor, cx| {
+        assert!(editor.context_menu_visible());
+        assert!(!editor.has_active_copilot_suggestion(cx));
+
+        // When hiding the context menu, the Copilot suggestion becomes visible.
+        editor.hide_context_menu(cx);
+        assert!(!editor.context_menu_visible());
+        assert!(editor.has_active_copilot_suggestion(cx));
+        assert_eq!(editor.display_text(cx), "one.copilot1\ntwo\nthree\n");
+        assert_eq!(editor.text(cx), "one.\ntwo\nthree\n");
+    });
+
+    // Ensure existing completion is interpolated when inserting again.
+    cx.simulate_keystroke("c");
+    deterministic.run_until_parked();
+    cx.update_editor(|editor, cx| {
+        assert!(!editor.context_menu_visible());
+        assert!(editor.has_active_copilot_suggestion(cx));
+        assert_eq!(editor.display_text(cx), "one.copilot1\ntwo\nthree\n");
+        assert_eq!(editor.text(cx), "one.c\ntwo\nthree\n");
+    });
+
+    // After debouncing, new Copilot completions should be requested.
+    handle_copilot_completion_request(
+        &copilot_lsp,
+        vec![copilot::request::Completion {
+            text: "one.copilot2".into(),
+            range: lsp::Range::new(lsp::Position::new(0, 0), lsp::Position::new(0, 5)),
+            ..Default::default()
+        }],
+        vec![],
+    );
+    deterministic.advance_clock(COPILOT_DEBOUNCE_TIMEOUT);
+    cx.update_editor(|editor, cx| {
+        assert!(!editor.context_menu_visible());
+        assert!(editor.has_active_copilot_suggestion(cx));
+        assert_eq!(editor.display_text(cx), "one.copilot2\ntwo\nthree\n");
+        assert_eq!(editor.text(cx), "one.c\ntwo\nthree\n");
+
+        // Canceling should remove the active Copilot suggestion.
+        editor.cancel(&Default::default(), cx);
+        assert!(!editor.has_active_copilot_suggestion(cx));
+        assert_eq!(editor.display_text(cx), "one.c\ntwo\nthree\n");
+        assert_eq!(editor.text(cx), "one.c\ntwo\nthree\n");
+
+        // After canceling, tabbing shouldn't insert the previously shown suggestion.
+        editor.tab(&Default::default(), cx);
+        assert!(!editor.has_active_copilot_suggestion(cx));
+        assert_eq!(editor.display_text(cx), "one.c   \ntwo\nthree\n");
+        assert_eq!(editor.text(cx), "one.c   \ntwo\nthree\n");
+
+        // When undoing the previously active suggestion is shown again.
+        editor.undo(&Default::default(), cx);
+        assert!(editor.has_active_copilot_suggestion(cx));
+        assert_eq!(editor.display_text(cx), "one.copilot2\ntwo\nthree\n");
+        assert_eq!(editor.text(cx), "one.c\ntwo\nthree\n");
+    });
+
+    // If an edit occurs outside of this editor, the suggestion is still correctly interpolated.
+    cx.update_buffer(|buffer, cx| buffer.edit([(5..5, "o")], None, cx));
+    cx.update_editor(|editor, cx| {
+        assert!(editor.has_active_copilot_suggestion(cx));
+        assert_eq!(editor.display_text(cx), "one.copilot2\ntwo\nthree\n");
+        assert_eq!(editor.text(cx), "one.co\ntwo\nthree\n");
+
+        // Tabbing when there is an active suggestion inserts it.
+        editor.tab(&Default::default(), cx);
+        assert!(!editor.has_active_copilot_suggestion(cx));
+        assert_eq!(editor.display_text(cx), "one.copilot2\ntwo\nthree\n");
+        assert_eq!(editor.text(cx), "one.copilot2\ntwo\nthree\n");
+
+        // When undoing the previously active suggestion is shown again.
+        editor.undo(&Default::default(), cx);
+        assert!(editor.has_active_copilot_suggestion(cx));
+        assert_eq!(editor.display_text(cx), "one.copilot2\ntwo\nthree\n");
+        assert_eq!(editor.text(cx), "one.co\ntwo\nthree\n");
+
+        // Hide suggestion.
+        editor.cancel(&Default::default(), cx);
+        assert!(!editor.has_active_copilot_suggestion(cx));
+        assert_eq!(editor.display_text(cx), "one.co\ntwo\nthree\n");
+        assert_eq!(editor.text(cx), "one.co\ntwo\nthree\n");
+    });
+
+    // If an edit occurs outside of this editor but no suggestion is being shown,
+    // we won't make it visible.
+    cx.update_buffer(|buffer, cx| buffer.edit([(6..6, "p")], None, cx));
+    cx.update_editor(|editor, cx| {
+        assert!(!editor.has_active_copilot_suggestion(cx));
+        assert_eq!(editor.display_text(cx), "one.cop\ntwo\nthree\n");
+        assert_eq!(editor.text(cx), "one.cop\ntwo\nthree\n");
+    });
+
+    // Reset the editor to verify how suggestions behave when tabbing on leading indentation.
+    cx.update_editor(|editor, cx| {
+        editor.set_text("fn foo() {\n  \n}", cx);
+        editor.change_selections(None, cx, |s| {
+            s.select_ranges([Point::new(1, 2)..Point::new(1, 2)])
+        });
+    });
+    handle_copilot_completion_request(
+        &copilot_lsp,
+        vec![copilot::request::Completion {
+            text: "    let x = 4;".into(),
+            range: lsp::Range::new(lsp::Position::new(1, 0), lsp::Position::new(1, 2)),
+            ..Default::default()
+        }],
+        vec![],
+    );
+
+    cx.update_editor(|editor, cx| editor.next_copilot_suggestion(&Default::default(), cx));
+    deterministic.advance_clock(COPILOT_DEBOUNCE_TIMEOUT);
+    cx.update_editor(|editor, cx| {
+        assert!(editor.has_active_copilot_suggestion(cx));
+        assert_eq!(editor.display_text(cx), "fn foo() {\n    let x = 4;\n}");
+        assert_eq!(editor.text(cx), "fn foo() {\n  \n}");
+
+        // Tabbing inside of leading whitespace inserts indentation without accepting the suggestion.
+        editor.tab(&Default::default(), cx);
+        assert!(editor.has_active_copilot_suggestion(cx));
+        assert_eq!(editor.text(cx), "fn foo() {\n    \n}");
+        assert_eq!(editor.display_text(cx), "fn foo() {\n    let x = 4;\n}");
+
+        // Tabbing again accepts the suggestion.
+        editor.tab(&Default::default(), cx);
+        assert!(!editor.has_active_copilot_suggestion(cx));
+        assert_eq!(editor.text(cx), "fn foo() {\n    let x = 4;\n}");
+        assert_eq!(editor.display_text(cx), "fn foo() {\n    let x = 4;\n}");
+    });
+}
+
+#[gpui::test]
+async fn test_copilot_completion_invalidation(
+    deterministic: Arc<Deterministic>,
+    cx: &mut gpui::TestAppContext,
+) {
+    let (copilot, copilot_lsp) = Copilot::fake(cx);
+    cx.update(|cx| cx.set_global(copilot));
+    let mut cx = EditorLspTestContext::new_rust(
+        lsp::ServerCapabilities {
+            completion_provider: Some(lsp::CompletionOptions {
+                trigger_characters: Some(vec![".".to_string(), ":".to_string()]),
+                ..Default::default()
+            }),
+            ..Default::default()
+        },
+        cx,
+    )
+    .await;
+
+    cx.set_state(indoc! {"
+        one
+        twˇ
+        three
+    "});
+
+    handle_copilot_completion_request(
+        &copilot_lsp,
+        vec![copilot::request::Completion {
+            text: "two.foo()".into(),
+            range: lsp::Range::new(lsp::Position::new(1, 0), lsp::Position::new(1, 2)),
+            ..Default::default()
+        }],
+        vec![],
+    );
+    cx.update_editor(|editor, cx| editor.next_copilot_suggestion(&Default::default(), cx));
+    deterministic.advance_clock(COPILOT_DEBOUNCE_TIMEOUT);
+    cx.update_editor(|editor, cx| {
+        assert!(editor.has_active_copilot_suggestion(cx));
+        assert_eq!(editor.display_text(cx), "one\ntwo.foo()\nthree\n");
+        assert_eq!(editor.text(cx), "one\ntw\nthree\n");
+
+        editor.backspace(&Default::default(), cx);
+        assert!(editor.has_active_copilot_suggestion(cx));
+        assert_eq!(editor.display_text(cx), "one\ntwo.foo()\nthree\n");
+        assert_eq!(editor.text(cx), "one\nt\nthree\n");
+
+        editor.backspace(&Default::default(), cx);
+        assert!(editor.has_active_copilot_suggestion(cx));
+        assert_eq!(editor.display_text(cx), "one\ntwo.foo()\nthree\n");
+        assert_eq!(editor.text(cx), "one\n\nthree\n");
+
+        // Deleting across the original suggestion range invalidates it.
+        editor.backspace(&Default::default(), cx);
+        assert!(!editor.has_active_copilot_suggestion(cx));
+        assert_eq!(editor.display_text(cx), "one\nthree\n");
+        assert_eq!(editor.text(cx), "one\nthree\n");
+
+        // Undoing the deletion restores the suggestion.
+        editor.undo(&Default::default(), cx);
+        assert!(editor.has_active_copilot_suggestion(cx));
+        assert_eq!(editor.display_text(cx), "one\ntwo.foo()\nthree\n");
+        assert_eq!(editor.text(cx), "one\n\nthree\n");
+    });
+}
+
+#[gpui::test]
+async fn test_copilot_multibuffer(
+    deterministic: Arc<Deterministic>,
+    cx: &mut gpui::TestAppContext,
+) {
+    let (copilot, copilot_lsp) = Copilot::fake(cx);
+    cx.update(|cx| {
+        cx.set_global(Settings::test(cx));
+        cx.set_global(copilot)
+    });
+
+    let buffer_1 = cx.add_model(|cx| Buffer::new(0, "a = 1\nb = 2\n", cx));
+    let buffer_2 = cx.add_model(|cx| Buffer::new(0, "c = 3\nd = 4\n", cx));
+    let multibuffer = cx.add_model(|cx| {
+        let mut multibuffer = MultiBuffer::new(0);
+        multibuffer.push_excerpts(
+            buffer_1.clone(),
+            [ExcerptRange {
+                context: Point::new(0, 0)..Point::new(2, 0),
+                primary: None,
+            }],
+            cx,
+        );
+        multibuffer.push_excerpts(
+            buffer_2.clone(),
+            [ExcerptRange {
+                context: Point::new(0, 0)..Point::new(2, 0),
+                primary: None,
+            }],
+            cx,
+        );
+        multibuffer
+    });
+    let (_, editor) = cx.add_window(|cx| build_editor(multibuffer, cx));
+
+    handle_copilot_completion_request(
+        &copilot_lsp,
+        vec![copilot::request::Completion {
+            text: "b = 2 + a".into(),
+            range: lsp::Range::new(lsp::Position::new(1, 0), lsp::Position::new(1, 5)),
+            ..Default::default()
+        }],
+        vec![],
+    );
+    editor.update(cx, |editor, cx| {
+        // Ensure copilot suggestions are shown for the first excerpt.
+        editor.change_selections(None, cx, |s| {
+            s.select_ranges([Point::new(1, 5)..Point::new(1, 5)])
+        });
+        editor.next_copilot_suggestion(&Default::default(), cx);
+    });
+    deterministic.advance_clock(COPILOT_DEBOUNCE_TIMEOUT);
+    editor.update(cx, |editor, cx| {
+        assert!(editor.has_active_copilot_suggestion(cx));
+        assert_eq!(
+            editor.display_text(cx),
+            "\n\na = 1\nb = 2 + a\n\n\n\nc = 3\nd = 4\n"
+        );
+        assert_eq!(editor.text(cx), "a = 1\nb = 2\n\nc = 3\nd = 4\n");
+    });
+
+    handle_copilot_completion_request(
+        &copilot_lsp,
+        vec![copilot::request::Completion {
+            text: "d = 4 + c".into(),
+            range: lsp::Range::new(lsp::Position::new(1, 0), lsp::Position::new(1, 6)),
+            ..Default::default()
+        }],
+        vec![],
+    );
+    editor.update(cx, |editor, cx| {
+        // Move to another excerpt, ensuring the suggestion gets cleared.
+        editor.change_selections(None, cx, |s| {
+            s.select_ranges([Point::new(4, 5)..Point::new(4, 5)])
+        });
+        assert!(!editor.has_active_copilot_suggestion(cx));
+        assert_eq!(
+            editor.display_text(cx),
+            "\n\na = 1\nb = 2\n\n\n\nc = 3\nd = 4\n"
+        );
+        assert_eq!(editor.text(cx), "a = 1\nb = 2\n\nc = 3\nd = 4\n");
+
+        // Type a character, ensuring we don't even try to interpolate the previous suggestion.
+        editor.handle_input(" ", cx);
+        assert!(!editor.has_active_copilot_suggestion(cx));
+        assert_eq!(
+            editor.display_text(cx),
+            "\n\na = 1\nb = 2\n\n\n\nc = 3\nd = 4 \n"
+        );
+        assert_eq!(editor.text(cx), "a = 1\nb = 2\n\nc = 3\nd = 4 \n");
+    });
+
+    // Ensure the new suggestion is displayed when the debounce timeout expires.
+    deterministic.advance_clock(COPILOT_DEBOUNCE_TIMEOUT);
+    editor.update(cx, |editor, cx| {
+        assert!(editor.has_active_copilot_suggestion(cx));
+        assert_eq!(
+            editor.display_text(cx),
+            "\n\na = 1\nb = 2\n\n\n\nc = 3\nd = 4 + c\n"
+        );
+        assert_eq!(editor.text(cx), "a = 1\nb = 2\n\nc = 3\nd = 4 \n");
+    });
+}
+
+#[gpui::test]
+async fn test_copilot_disabled_globs(
+    deterministic: Arc<Deterministic>,
+    cx: &mut gpui::TestAppContext,
+) {
+    let (copilot, copilot_lsp) = Copilot::fake(cx);
+    cx.update(|cx| {
+        let mut settings = Settings::test(cx);
+        settings.copilot.disabled_globs = vec![glob::Pattern::new(".env*").unwrap()];
+        cx.set_global(settings);
+        cx.set_global(copilot)
+    });
+
+    let fs = FakeFs::new(cx.background());
+    fs.insert_tree(
+        "/test",
+        json!({
+            ".env": "SECRET=something\n",
+            "README.md": "hello\n"
+        }),
+    )
+    .await;
+    let project = Project::test(fs, ["/test".as_ref()], cx).await;
+
+    let private_buffer = project
+        .update(cx, |project, cx| {
+            project.open_local_buffer("/test/.env", cx)
+        })
+        .await
+        .unwrap();
+    let public_buffer = project
+        .update(cx, |project, cx| {
+            project.open_local_buffer("/test/README.md", cx)
+        })
+        .await
+        .unwrap();
+
+    let multibuffer = cx.add_model(|cx| {
+        let mut multibuffer = MultiBuffer::new(0);
+        multibuffer.push_excerpts(
+            private_buffer.clone(),
+            [ExcerptRange {
+                context: Point::new(0, 0)..Point::new(1, 0),
+                primary: None,
+            }],
+            cx,
+        );
+        multibuffer.push_excerpts(
+            public_buffer.clone(),
+            [ExcerptRange {
+                context: Point::new(0, 0)..Point::new(1, 0),
+                primary: None,
+            }],
+            cx,
+        );
+        multibuffer
+    });
+    let (_, editor) = cx.add_window(|cx| build_editor(multibuffer, cx));
+
+    let mut copilot_requests = copilot_lsp
+        .handle_request::<copilot::request::GetCompletions, _, _>(move |_params, _cx| async move {
+            Ok(copilot::request::GetCompletionsResult {
+                completions: vec![copilot::request::Completion {
+                    text: "next line".into(),
+                    range: lsp::Range::new(lsp::Position::new(1, 0), lsp::Position::new(1, 0)),
+                    ..Default::default()
+                }],
+            })
+        });
+
+    editor.update(cx, |editor, cx| {
+        editor.change_selections(None, cx, |selections| {
+            selections.select_ranges([Point::new(0, 0)..Point::new(0, 0)])
+        });
+        editor.next_copilot_suggestion(&Default::default(), cx);
+    });
+
+    deterministic.advance_clock(COPILOT_DEBOUNCE_TIMEOUT);
+    assert!(copilot_requests.try_next().is_err());
+
+    editor.update(cx, |editor, cx| {
+        editor.change_selections(None, cx, |s| {
+            s.select_ranges([Point::new(2, 0)..Point::new(2, 0)])
+        });
+        editor.next_copilot_suggestion(&Default::default(), cx);
+    });
+
+    deterministic.advance_clock(COPILOT_DEBOUNCE_TIMEOUT);
+    assert!(copilot_requests.try_next().is_ok());
+}
+
 fn empty_range(row: usize, column: usize) -> Range<DisplayPoint> {
     let point = DisplayPoint::new(row as u32, column as u32);
     point..point
@@ -5970,4 +6492,107 @@ fn assert_selection_ranges(marked_text: &str, view: &mut Editor, cx: &mut ViewCo
         "Assert selections are {}",
         marked_text
     );
+}
+
+/// Handle completion request passing a marked string specifying where the completion
+/// should be triggered from using '|' character, what range should be replaced, and what completions
+/// should be returned using '<' and '>' to delimit the range
+fn handle_completion_request<'a>(
+    cx: &mut EditorLspTestContext<'a>,
+    marked_string: &str,
+    completions: Vec<&'static str>,
+) -> impl Future<Output = ()> {
+    let complete_from_marker: TextRangeMarker = '|'.into();
+    let replace_range_marker: TextRangeMarker = ('<', '>').into();
+    let (_, mut marked_ranges) = marked_text_ranges_by(
+        marked_string,
+        vec![complete_from_marker.clone(), replace_range_marker.clone()],
+    );
+
+    let complete_from_position =
+        cx.to_lsp(marked_ranges.remove(&complete_from_marker).unwrap()[0].start);
+    let replace_range =
+        cx.to_lsp_range(marked_ranges.remove(&replace_range_marker).unwrap()[0].clone());
+
+    let mut request = cx.handle_request::<lsp::request::Completion, _, _>(move |url, params, _| {
+        let completions = completions.clone();
+        async move {
+            assert_eq!(params.text_document_position.text_document.uri, url.clone());
+            assert_eq!(
+                params.text_document_position.position,
+                complete_from_position
+            );
+            Ok(Some(lsp::CompletionResponse::Array(
+                completions
+                    .iter()
+                    .map(|completion_text| lsp::CompletionItem {
+                        label: completion_text.to_string(),
+                        text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+                            range: replace_range,
+                            new_text: completion_text.to_string(),
+                        })),
+                        ..Default::default()
+                    })
+                    .collect(),
+            )))
+        }
+    });
+
+    async move {
+        request.next().await;
+    }
+}
+
+fn handle_resolve_completion_request<'a>(
+    cx: &mut EditorLspTestContext<'a>,
+    edits: Option<Vec<(&'static str, &'static str)>>,
+) -> impl Future<Output = ()> {
+    let edits = edits.map(|edits| {
+        edits
+            .iter()
+            .map(|(marked_string, new_text)| {
+                let (_, marked_ranges) = marked_text_ranges(marked_string, false);
+                let replace_range = cx.to_lsp_range(marked_ranges[0].clone());
+                lsp::TextEdit::new(replace_range, new_text.to_string())
+            })
+            .collect::<Vec<_>>()
+    });
+
+    let mut request =
+        cx.handle_request::<lsp::request::ResolveCompletionItem, _, _>(move |_, _, _| {
+            let edits = edits.clone();
+            async move {
+                Ok(lsp::CompletionItem {
+                    additional_text_edits: edits,
+                    ..Default::default()
+                })
+            }
+        });
+
+    async move {
+        request.next().await;
+    }
+}
+
+fn handle_copilot_completion_request(
+    lsp: &lsp::FakeLanguageServer,
+    completions: Vec<copilot::request::Completion>,
+    completions_cycling: Vec<copilot::request::Completion>,
+) {
+    lsp.handle_request::<copilot::request::GetCompletions, _, _>(move |_params, _cx| {
+        let completions = completions.clone();
+        async move {
+            Ok(copilot::request::GetCompletionsResult {
+                completions: completions.clone(),
+            })
+        }
+    });
+    lsp.handle_request::<copilot::request::GetCompletionsCycling, _, _>(move |_params, _cx| {
+        let completions_cycling = completions_cycling.clone();
+        async move {
+            Ok(copilot::request::GetCompletionsResult {
+                completions: completions_cycling.clone(),
+            })
+        }
+    });
 }

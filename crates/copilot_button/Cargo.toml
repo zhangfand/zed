@@ -9,6 +9,7 @@ path = "src/copilot_button.rs"
 doctest = false
 
 [dependencies]
+assets = { path = "../assets" }
 copilot = { path = "../copilot" }
 editor = { path = "../editor" }
 context_menu = { path = "../context_menu" }
@@ -17,6 +18,6 @@ settings = { path = "../settings" }
 theme = { path = "../theme" }
 util = { path = "../util" }
 workspace = { path = "../workspace" }
-anyhow = "1.0"
-smol = "1.2.5"
-futures = "0.3"
+anyhow.workspace = true
+smol.workspace = true
+futures.workspace = true

@@ -8,8 +8,10 @@ use gpui::{
     },
     fonts::TextStyle,
     geometry::vector::{vec2f, Vector2F},
+    platform,
+    platform::MouseButton,
     scene::MouseClick,
-    Action, Element, ElementBox, EventContext, MouseButton, MouseState, RenderContext, View,
+    Action, Element, EventContext, MouseState, View, ViewContext,
 };
 use serde::Deserialize;
 
@@ -25,29 +27,40 @@ pub struct CheckboxStyle {
     pub hovered_and_checked: ContainerStyle,
 }
 
-pub fn checkbox<T: 'static, V: View>(
+pub fn checkbox<Tag, V, F>(
     label: &'static str,
     style: &CheckboxStyle,
     checked: bool,
-    cx: &mut RenderContext<V>,
-    change: fn(checked: bool, cx: &mut EventContext) -> (),
-) -> MouseEventHandler<T> {
+    id: usize,
+    cx: &mut ViewContext<V>,
+    change: F,
+) -> MouseEventHandler<Tag, V>
+where
+    Tag: 'static,
+    V: View,
+    F: 'static + Fn(&mut V, bool, &mut EventContext<V>),
+{
     let label = Label::new(label, style.label.text.clone())
         .contained()
-        .with_style(style.label.container)
-        .boxed();
-
-    checkbox_with_label(label, style, checked, cx, change)
+        .with_style(style.label.container);
+    checkbox_with_label(label, style, checked, id, cx, change)
 }
 
-pub fn checkbox_with_label<T: 'static, V: View>(
-    label: ElementBox,
+pub fn checkbox_with_label<Tag, D, V, F>(
+    label: D,
     style: &CheckboxStyle,
     checked: bool,
-    cx: &mut RenderContext<V>,
-    change: fn(checked: bool, cx: &mut EventContext) -> (),
-) -> MouseEventHandler<T> {
-    MouseEventHandler::<T>::new(0, cx, |state, _| {
+    id: usize,
+    cx: &mut ViewContext<V>,
+    change: F,
+) -> MouseEventHandler<Tag, V>
+where
+    Tag: 'static,
+    D: Element<V>,
+    V: View,
+    F: 'static + Fn(&mut V, bool, &mut EventContext<V>),
+{
+    MouseEventHandler::new(id, cx, |state, _| {
         let indicator = if checked {
             svg(&style.icon)
         } else {
@@ -58,30 +71,26 @@ pub fn checkbox_with_label<T: 'static, V: View>(
         };
 
         Flex::row()
-            .with_children([
-                indicator
-                    .contained()
-                    .with_style(if checked {
-                        if state.hovered() {
-                            style.hovered_and_checked
-                        } else {
-                            style.checked
-                        }
-                    } else {
-                        if state.hovered() {
-                            style.hovered
-                        } else {
-                            style.default
-                        }
-                    })
-                    .boxed(),
-                label,
-            ])
+            .with_child(indicator.contained().with_style(if checked {
+                if state.hovered() {
+                    style.hovered_and_checked
+                } else {
+                    style.checked
+                }
+            } else {
+                if state.hovered() {
+                    style.hovered
+                } else {
+                    style.default
+                }
+            }))
+            .with_child(label)
             .align_children_center()
-            .boxed()
     })
-    .on_click(gpui::MouseButton::Left, move |_, cx| change(!checked, cx))
-    .with_cursor_style(gpui::CursorStyle::PointingHand)
+    .on_click(platform::MouseButton::Left, move |_, view, cx| {
+        change(view, !checked, cx)
+    })
+    .with_cursor_style(platform::CursorStyle::PointingHand)
 }
 
 #[derive(Clone, Deserialize, Default)]
@@ -103,7 +112,7 @@ impl Dimensions {
     }
 }
 
-pub fn svg(style: &SvgStyle) -> ConstrainedBox {
+pub fn svg<V: View>(style: &SvgStyle) -> ConstrainedBox<V> {
     Svg::new(style.asset.clone())
         .with_color(style.color)
         .constrained()
@@ -117,7 +126,7 @@ pub struct IconStyle {
     container: ContainerStyle,
 }
 
-pub fn icon(style: &IconStyle) -> Container {
+pub fn icon<V: View>(style: &IconStyle) -> Container<V> {
     svg(&style.icon).contained().with_style(style.container)
 }
 
@@ -126,82 +135,41 @@ pub fn keystroke_label<V: View>(
     label_style: &ContainedText,
     keystroke_style: &ContainedText,
     action: Box<dyn Action>,
-    cx: &mut RenderContext<V>,
-) -> Container {
+    cx: &mut ViewContext<V>,
+) -> Container<V> {
     // FIXME: Put the theme in it's own global so we can
     // query the keystroke style on our own
-    keystroke_label_for(
-        cx.window_id(),
-        cx.handle().id(),
-        label_text,
-        label_style,
-        keystroke_style,
-        action,
-    )
-}
-
-pub fn keystroke_label_for(
-    window_id: usize,
-    view_id: usize,
-    label_text: &'static str,
-    label_style: &ContainedText,
-    keystroke_style: &ContainedText,
-    action: Box<dyn Action>,
-) -> Container {
     Flex::row()
+        .with_child(Label::new(label_text, label_style.text.clone()).contained())
         .with_child(
-            Label::new(label_text, label_style.text.clone())
-                .contained()
-                .boxed(),
-        )
-        .with_child({
             KeystrokeLabel::new(
-                window_id,
-                view_id,
+                cx.view_id(),
                 action,
                 keystroke_style.container,
                 keystroke_style.text.clone(),
             )
-            .flex_float()
-            .boxed()
-        })
+            .flex_float(),
+        )
         .contained()
         .with_style(label_style.container)
 }
 
 pub type ButtonStyle = Interactive<ContainedText>;
 
-pub fn cta_button<L, A, V>(
-    label: L,
-    action: A,
-    max_width: f32,
-    style: &ButtonStyle,
-    cx: &mut RenderContext<V>,
-) -> ElementBox
-where
-    L: Into<Cow<'static, str>>,
-    A: 'static + Action + Clone,
-    V: View,
-{
-    cta_button_with_click(label, max_width, style, cx, move |_, cx| {
-        cx.dispatch_action(action.clone())
-    })
-    .boxed()
-}
-
-pub fn cta_button_with_click<L, V, F>(
+pub fn cta_button<Tag, L, V, F>(
     label: L,
     max_width: f32,
     style: &ButtonStyle,
-    cx: &mut RenderContext<V>,
+    cx: &mut ViewContext<V>,
     f: F,
-) -> MouseEventHandler<F>
+) -> MouseEventHandler<Tag, V>
 where
+    Tag: 'static,
     L: Into<Cow<'static, str>>,
     V: View,
-    F: Fn(MouseClick, &mut EventContext) + 'static,
+    F: Fn(MouseClick, &mut V, &mut EventContext<V>) + 'static,
 {
-    MouseEventHandler::<F>::new(0, cx, |state, _| {
+    MouseEventHandler::<Tag, V>::new(0, cx, |state, _| {
         let style = style.style_for(state, false);
         Label::new(label, style.text.to_owned())
             .aligned()
@@ -209,10 +177,9 @@ where
             .with_style(style.container)
             .constrained()
             .with_max_width(max_width)
-            .boxed()
     })
     .on_click(MouseButton::Left, f)
-    .with_cursor_style(gpui::CursorStyle::PointingHand)
+    .with_cursor_style(platform::CursorStyle::PointingHand)
 }
 
 #[derive(Clone, Deserialize, Default)]
@@ -230,16 +197,18 @@ impl ModalStyle {
     }
 }
 
-pub fn modal<V, I, F>(
+pub fn modal<Tag, V, I, D, F>(
     title: I,
     style: &ModalStyle,
-    cx: &mut RenderContext<V>,
+    cx: &mut ViewContext<V>,
     build_modal: F,
-) -> ElementBox
+) -> impl Element<V>
 where
+    Tag: 'static,
     V: View,
     I: Into<Cow<'static, str>>,
-    F: FnOnce(&mut gpui::RenderContext<V>) -> ElementBox,
+    D: Element<V>,
+    F: FnOnce(&mut gpui::ViewContext<V>) -> D,
 {
     const TITLEBAR_HEIGHT: f32 = 28.;
     // let active = cx.window_is_active(cx.window_id());
@@ -247,44 +216,39 @@ where
     Flex::column()
         .with_child(
             Stack::new()
-                .with_children([
-                    Label::new(
-                        title,
-                        style
-                            .title_text
-                            .style_for(&mut MouseState::default(), false)
-                            .clone(),
-                    )
-                    .boxed(),
+                .with_child(Label::new(
+                    title,
+                    style
+                        .title_text
+                        .style_for(&mut MouseState::default(), false)
+                        .clone(),
+                ))
+                .with_child(
                     // FIXME: Get a better tag type
-                    MouseEventHandler::<V>::new(999999, cx, |state, _cx| {
+                    MouseEventHandler::<Tag, V>::new(999999, cx, |state, _cx| {
                         let style = style.close_icon.style_for(state, false);
-                        icon(style).boxed()
+                        icon(style)
                     })
-                    .on_click(gpui::MouseButton::Left, move |_, cx| {
-                        let window_id = cx.window_id();
-                        cx.remove_window(window_id);
+                    .on_click(platform::MouseButton::Left, move |_, _, cx| {
+                        cx.remove_window();
                     })
-                    .with_cursor_style(gpui::CursorStyle::PointingHand)
+                    .with_cursor_style(platform::CursorStyle::PointingHand)
                     .aligned()
-                    .right()
-                    .boxed(),
-                ])
+                    .right(),
+                )
                 .contained()
                 .with_style(style.titlebar)
                 .constrained()
-                .with_height(TITLEBAR_HEIGHT)
-                .boxed(),
+                .with_height(TITLEBAR_HEIGHT),
         )
         .with_child(
-            Container::new(build_modal(cx))
+            build_modal(cx)
+                .contained()
                 .with_style(style.container)
                 .constrained()
                 .with_width(style.dimensions().x())
-                .with_height(style.dimensions().y() - TITLEBAR_HEIGHT)
-                .boxed(),
+                .with_height(style.dimensions().y() - TITLEBAR_HEIGHT),
         )
         .constrained()
         .with_height(style.dimensions().y())
-        .boxed()
 }

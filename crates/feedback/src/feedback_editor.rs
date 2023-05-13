@@ -1,9 +1,4 @@
-use std::{
-    any::TypeId,
-    ops::{Range, RangeInclusive},
-    sync::Arc,
-};
-
+use crate::system_specs::SystemSpecs;
 use anyhow::bail;
 use client::{Client, ZED_SECRET_CLIENT_TOKEN, ZED_SERVER_URL};
 use editor::{Anchor, Editor};
@@ -11,23 +6,28 @@ use futures::AsyncReadExt;
 use gpui::{
     actions,
     elements::{ChildView, Flex, Label, ParentElement, Svg},
-    serde_json, AnyViewHandle, AppContext, Element, ElementBox, Entity, ModelHandle,
-    MutableAppContext, PromptLevel, RenderContext, Task, View, ViewContext, ViewHandle,
+    platform::PromptLevel,
+    serde_json, AnyElement, AnyViewHandle, AppContext, Element, Entity, ModelHandle, Task, View,
+    ViewContext, ViewHandle,
 };
 use isahc::Request;
 use language::Buffer;
 use postage::prelude::Stream;
-
 use project::Project;
 use serde::Serialize;
+use smallvec::SmallVec;
+use std::{
+    any::TypeId,
+    borrow::Cow,
+    ops::{Range, RangeInclusive},
+    sync::Arc,
+};
 use util::ResultExt;
 use workspace::{
-    item::{Item, ItemHandle},
+    item::{Item, ItemEvent, ItemHandle},
     searchable::{SearchableItem, SearchableItemHandle},
-    AppState, Workspace,
+    Workspace,
 };
-
-use crate::{submit_feedback_button::SubmitFeedbackButton, system_specs::SystemSpecs};
 
 const FEEDBACK_CHAR_LIMIT: RangeInclusive<usize> = 10..=5000;
 const FEEDBACK_SUBMISSION_ERROR_TEXT: &str =
@@ -35,28 +35,19 @@ const FEEDBACK_SUBMISSION_ERROR_TEXT: &str =
 
 actions!(feedback, [GiveFeedback, SubmitFeedback]);
 
-pub fn init(system_specs: SystemSpecs, app_state: Arc<AppState>, cx: &mut MutableAppContext) {
+pub fn init(cx: &mut AppContext) {
     cx.add_action({
         move |workspace: &mut Workspace, _: &GiveFeedback, cx: &mut ViewContext<Workspace>| {
-            FeedbackEditor::deploy(system_specs.clone(), workspace, app_state.clone(), cx);
+            FeedbackEditor::deploy(workspace, cx);
         }
     });
-
-    cx.add_async_action(
-        |submit_feedback_button: &mut SubmitFeedbackButton, _: &SubmitFeedback, cx| {
-            if let Some(active_item) = submit_feedback_button.active_item.as_ref() {
-                Some(active_item.update(cx, |feedback_editor, cx| feedback_editor.handle_save(cx)))
-            } else {
-                None
-            }
-        },
-    );
 }
 
 #[derive(Serialize)]
 struct FeedbackRequestBody<'a> {
     feedback_text: &'a str,
     metrics_id: Option<Arc<str>>,
+    installation_id: Option<Arc<str>>,
     system_specs: SystemSpecs,
     is_staff: bool,
     token: &'a str,
@@ -92,7 +83,7 @@ impl FeedbackEditor {
         }
     }
 
-    fn handle_save(&mut self, cx: &mut ViewContext<Self>) -> Task<anyhow::Result<()>> {
+    pub fn submit(&mut self, cx: &mut ViewContext<Self>) -> Task<anyhow::Result<()>> {
         let feedback_text = self.editor.read(cx).text(cx);
         let feedback_char_count = feedback_text.chars().count();
         let feedback_text = feedback_text.trim().to_string();
@@ -122,34 +113,28 @@ impl FeedbackEditor {
             &["Yes, Submit!", "No"],
         );
 
-        let this = cx.handle();
         let client = cx.global::<Arc<Client>>().clone();
         let specs = self.system_specs.clone();
 
-        cx.spawn(|_, mut cx| async move {
+        cx.spawn(|this, mut cx| async move {
             let answer = answer.recv().await;
 
             if answer == Some(0) {
                 match FeedbackEditor::submit_feedback(&feedback_text, client, specs).await {
                     Ok(_) => {
-                        cx.update(|cx| {
-                            this.update(cx, |_, cx| {
-                                cx.dispatch_action(workspace::CloseActiveItem);
-                            })
-                        });
+                        this.update(&mut cx, |_, cx| cx.emit(editor::Event::Closed))
+                            .log_err();
                     }
                     Err(error) => {
                         log::error!("{}", error);
-
-                        cx.update(|cx| {
-                            this.update(cx, |_, cx| {
-                                cx.prompt(
-                                    PromptLevel::Critical,
-                                    FEEDBACK_SUBMISSION_ERROR_TEXT,
-                                    &["OK"],
-                                );
-                            })
-                        });
+                        this.update(&mut cx, |_, cx| {
+                            cx.prompt(
+                                PromptLevel::Critical,
+                                FEEDBACK_SUBMISSION_ERROR_TEXT,
+                                &["OK"],
+                            );
+                        })
+                        .log_err();
                     }
                 }
             }
@@ -166,13 +151,16 @@ impl FeedbackEditor {
     ) -> anyhow::Result<()> {
         let feedback_endpoint = format!("{}/api/feedback", *ZED_SERVER_URL);
 
-        let metrics_id = zed_client.metrics_id();
-        let is_staff = zed_client.is_staff();
+        let telemetry = zed_client.telemetry();
+        let metrics_id = telemetry.metrics_id();
+        let installation_id = telemetry.installation_id();
+        let is_staff = telemetry.is_staff();
         let http_client = zed_client.http_client();
 
         let request = FeedbackRequestBody {
             feedback_text: &feedback_text,
             metrics_id,
+            installation_id,
             system_specs,
             is_staff: is_staff.unwrap_or(false),
             token: ZED_SECRET_CLIENT_TOKEN,
@@ -199,30 +187,29 @@ impl FeedbackEditor {
 }
 
 impl FeedbackEditor {
-    pub fn deploy(
-        system_specs: SystemSpecs,
-        _: &mut Workspace,
-        app_state: Arc<AppState>,
-        cx: &mut ViewContext<Workspace>,
-    ) {
-        let markdown = app_state.languages.language_for_name("Markdown");
+    pub fn deploy(workspace: &mut Workspace, cx: &mut ViewContext<Workspace>) {
+        let markdown = workspace
+            .app_state()
+            .languages
+            .language_for_name("Markdown");
         cx.spawn(|workspace, mut cx| async move {
             let markdown = markdown.await.log_err();
             workspace
                 .update(&mut cx, |workspace, cx| {
-                    workspace.with_local_workspace(&app_state, cx, |workspace, cx| {
+                    workspace.with_local_workspace(cx, |workspace, cx| {
                         let project = workspace.project().clone();
                         let buffer = project
                             .update(cx, |project, cx| project.create_buffer("", markdown, cx))
                             .expect("creating buffers on a local workspace always succeeds");
+                        let system_specs = SystemSpecs::new(cx);
                         let feedback_editor = cx
                             .add_view(|cx| FeedbackEditor::new(system_specs, project, buffer, cx));
                         workspace.add_item(Box::new(feedback_editor), cx);
                     })
-                })
-                .await;
+                })?
+                .await
         })
-        .detach();
+        .detach_and_log_err(cx);
     }
 }
 
@@ -231,8 +218,8 @@ impl View for FeedbackEditor {
         "FeedbackEditor"
     }
 
-    fn render(&mut self, cx: &mut RenderContext<Self>) -> ElementBox {
-        ChildView::new(&self.editor, cx).boxed()
+    fn render(&mut self, cx: &mut ViewContext<Self>) -> AnyElement<Self> {
+        ChildView::new(&self.editor, cx).into_any()
     }
 
     fn focus_in(&mut self, _: AnyViewHandle, cx: &mut ViewContext<Self>) {
@@ -247,7 +234,16 @@ impl Entity for FeedbackEditor {
 }
 
 impl Item for FeedbackEditor {
-    fn tab_content(&self, _: Option<usize>, style: &theme::Tab, _: &AppContext) -> ElementBox {
+    fn tab_tooltip_text(&self, _: &AppContext) -> Option<Cow<str>> {
+        Some("Send Feedback".into())
+    }
+
+    fn tab_content<T: View>(
+        &self,
+        _: Option<usize>,
+        style: &theme::Tab,
+        _: &AppContext,
+    ) -> AnyElement<T> {
         Flex::row()
             .with_child(
                 Svg::new("icons/feedback_16.svg")
@@ -256,16 +252,14 @@ impl Item for FeedbackEditor {
                     .with_width(style.type_icon_width)
                     .aligned()
                     .contained()
-                    .with_margin_right(style.spacing)
-                    .boxed(),
+                    .with_margin_right(style.spacing),
             )
             .with_child(
                 Label::new("Send Feedback", style.label.clone())
                     .aligned()
-                    .contained()
-                    .boxed(),
+                    .contained(),
             )
-            .boxed()
+            .into_any()
     }
 
     fn for_each_project_item(&self, cx: &AppContext, f: &mut dyn FnMut(usize, &dyn project::Item)) {
@@ -285,7 +279,7 @@ impl Item for FeedbackEditor {
         _: ModelHandle<Project>,
         cx: &mut ViewContext<Self>,
     ) -> Task<anyhow::Result<()>> {
-        self.handle_save(cx)
+        self.submit(cx)
     }
 
     fn save_as(
@@ -294,7 +288,7 @@ impl Item for FeedbackEditor {
         _: std::path::PathBuf,
         cx: &mut ViewContext<Self>,
     ) -> Task<anyhow::Result<()>> {
-        self.handle_save(cx)
+        self.submit(cx)
     }
 
     fn reload(
@@ -333,19 +327,23 @@ impl Item for FeedbackEditor {
         Some(Box::new(handle.clone()))
     }
 
-    fn act_as_type(
-        &self,
+    fn act_as_type<'a>(
+        &'a self,
         type_id: TypeId,
-        self_handle: &ViewHandle<Self>,
-        _: &AppContext,
-    ) -> Option<AnyViewHandle> {
+        self_handle: &'a ViewHandle<Self>,
+        _: &'a AppContext,
+    ) -> Option<&'a AnyViewHandle> {
         if type_id == TypeId::of::<Self>() {
-            Some(self_handle.into())
+            Some(self_handle)
         } else if type_id == TypeId::of::<Editor>() {
-            Some((&self.editor).into())
+            Some(&self.editor)
         } else {
             None
         }
+    }
+
+    fn to_item_events(event: &Self::Event) -> SmallVec<[ItemEvent; 2]> {
+        Editor::to_item_events(event)
     }
 }
 

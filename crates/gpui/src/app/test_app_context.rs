@@ -1,6 +1,22 @@
+use crate::{
+    executor,
+    geometry::vector::Vector2F,
+    keymap_matcher::{Binding, Keystroke},
+    platform,
+    platform::{Event, InputHandler, KeyDownEvent, Platform},
+    Action, AppContext, BorrowAppContext, BorrowWindowContext, Entity, FontCache, Handle,
+    ModelContext, ModelHandle, Subscription, Task, View, ViewContext, ViewHandle, WeakHandle,
+    WindowContext,
+};
+use collections::BTreeMap;
+use futures::Future;
+use itertools::Itertools;
+use parking_lot::{Mutex, RwLock};
+use smallvec::SmallVec;
+use smol::stream::StreamExt;
 use std::{
+    any::Any,
     cell::RefCell,
-    marker::PhantomData,
     mem,
     path::PathBuf,
     rc::Rc,
@@ -11,26 +27,13 @@ use std::{
     time::Duration,
 };
 
-use futures::Future;
-use itertools::Itertools;
-use parking_lot::{Mutex, RwLock};
-use smol::stream::StreamExt;
-
-use crate::{
-    executor, geometry::vector::Vector2F, keymap_matcher::Keystroke, platform, Action,
-    AnyViewHandle, AppContext, Appearance, Entity, Event, FontCache, Handle, InputHandler,
-    KeyDownEvent, ModelContext, ModelHandle, MutableAppContext, Platform, ReadModelWith,
-    ReadViewWith, RenderContext, Task, UpdateModel, UpdateView, View, ViewContext, ViewHandle,
-    WeakHandle,
-};
-use collections::BTreeMap;
-
 use super::{
     ref_counts::LeakDetector, window_input_handler::WindowInputHandler, AsyncAppContext, RefCounts,
 };
 
+#[derive(Clone)]
 pub struct TestAppContext {
-    cx: Rc<RefCell<MutableAppContext>>,
+    cx: Rc<RefCell<AppContext>>,
     foreground_platform: Rc<platform::test::ForegroundPlatform>,
     condition_duration: Option<Duration>,
     pub function_name: String,
@@ -48,7 +51,7 @@ impl TestAppContext {
         first_entity_id: usize,
         function_name: String,
     ) -> Self {
-        let mut cx = MutableAppContext::new(
+        let mut cx = AppContext::new(
             foreground,
             background,
             platform,
@@ -69,43 +72,48 @@ impl TestAppContext {
         cx
     }
 
-    pub fn dispatch_action<A: Action>(&self, window_id: usize, action: A) {
-        let mut cx = self.cx.borrow_mut();
-        if let Some(view_id) = cx.focused_view_id(window_id) {
-            cx.handle_dispatch_action_from_effect(window_id, Some(view_id), &action);
-        }
+    pub fn dispatch_action<A: Action>(&mut self, window_id: usize, action: A) {
+        self.update_window(window_id, |window| {
+            window.dispatch_action(window.focused_view_id(), &action);
+        })
+        .expect("window not found");
     }
 
-    pub fn dispatch_global_action<A: Action>(&self, action: A) {
-        self.cx.borrow_mut().dispatch_global_action(action);
+    pub fn available_actions(
+        &self,
+        window_id: usize,
+        view_id: usize,
+    ) -> Vec<(&'static str, Box<dyn Action>, SmallVec<[Binding; 1]>)> {
+        self.read_window(window_id, |cx| cx.available_actions(view_id))
+            .unwrap_or_default()
+    }
+
+    pub fn dispatch_global_action<A: Action>(&mut self, action: A) {
+        self.update(|cx| cx.dispatch_global_action_any(&action));
     }
 
     pub fn dispatch_keystroke(&mut self, window_id: usize, keystroke: Keystroke, is_held: bool) {
-        let handled = self.cx.borrow_mut().update(|cx| {
-            let presenter = cx
-                .presenters_and_platform_windows
-                .get(&window_id)
-                .unwrap()
-                .0
-                .clone();
+        let handled = self
+            .cx
+            .borrow_mut()
+            .update_window(window_id, |cx| {
+                if cx.dispatch_keystroke(&keystroke) {
+                    return true;
+                }
 
-            if cx.dispatch_keystroke(window_id, &keystroke) {
-                return true;
-            }
+                if cx.dispatch_event(
+                    Event::KeyDown(KeyDownEvent {
+                        keystroke: keystroke.clone(),
+                        is_held,
+                    }),
+                    false,
+                ) {
+                    return true;
+                }
 
-            if presenter.borrow_mut().dispatch_event(
-                Event::KeyDown(KeyDownEvent {
-                    keystroke: keystroke.clone(),
-                    is_held,
-                }),
-                false,
-                cx,
-            ) {
-                return true;
-            }
-
-            false
-        });
+                false
+            })
+            .unwrap_or(false);
 
         if !handled && !keystroke.cmd && !keystroke.ctrl {
             WindowInputHandler {
@@ -114,6 +122,22 @@ impl TestAppContext {
             }
             .replace_text_in_range(None, &keystroke.key)
         }
+    }
+
+    pub fn read_window<T, F: FnOnce(&WindowContext) -> T>(
+        &self,
+        window_id: usize,
+        callback: F,
+    ) -> Option<T> {
+        self.cx.borrow().read_window(window_id, callback)
+    }
+
+    pub fn update_window<T, F: FnOnce(&mut WindowContext) -> T>(
+        &mut self,
+        window_id: usize,
+        callback: F,
+    ) -> Option<T> {
+        self.cx.borrow_mut().update_window(window_id, callback)
     }
 
     pub fn add_model<T, F>(&mut self, build_model: F) -> ModelHandle<T>
@@ -137,31 +161,48 @@ impl TestAppContext {
         (window_id, view)
     }
 
-    pub fn add_view<T, F>(
-        &mut self,
-        parent_handle: impl Into<AnyViewHandle>,
-        build_view: F,
-    ) -> ViewHandle<T>
+    pub fn add_view<T, F>(&mut self, window_id: usize, build_view: F) -> ViewHandle<T>
     where
         T: View,
         F: FnOnce(&mut ViewContext<T>) -> T,
     {
-        self.cx.borrow_mut().add_view(parent_handle, build_view)
+        self.update_window(window_id, |cx| cx.add_view(build_view))
+            .expect("window not found")
+    }
+
+    pub fn observe_global<E, F>(&mut self, callback: F) -> Subscription
+    where
+        E: Any,
+        F: 'static + FnMut(&mut AppContext),
+    {
+        self.cx.borrow_mut().observe_global::<E, F>(callback)
+    }
+
+    pub fn set_global<T: 'static>(&mut self, state: T) {
+        self.cx.borrow_mut().set_global(state);
+    }
+
+    pub fn subscribe_global<E, F>(&mut self, callback: F) -> Subscription
+    where
+        E: Any,
+        F: 'static + FnMut(&E, &mut AppContext),
+    {
+        self.cx.borrow_mut().subscribe_global(callback)
     }
 
     pub fn window_ids(&self) -> Vec<usize> {
-        self.cx.borrow().window_ids().collect()
+        self.cx.borrow().windows.keys().copied().collect()
     }
 
-    pub fn root_view<T: View>(&self, window_id: usize) -> Option<ViewHandle<T>> {
-        self.cx.borrow().root_view(window_id)
+    pub fn remove_all_windows(&mut self) {
+        self.update(|cx| cx.windows.clear());
     }
 
     pub fn read<T, F: FnOnce(&AppContext) -> T>(&self, callback: F) -> T {
-        callback(self.cx.borrow().as_ref())
+        callback(&*self.cx.borrow())
     }
 
-    pub fn update<T, F: FnOnce(&mut MutableAppContext) -> T>(&mut self, callback: F) -> T {
+    pub fn update<T, F: FnOnce(&mut AppContext) -> T>(&mut self, callback: F) -> T {
         let mut state = self.cx.borrow_mut();
         // Don't increment pending flushes in order for effects to be flushed before the callback
         // completes, which is helpful in tests.
@@ -172,33 +213,12 @@ impl TestAppContext {
         result
     }
 
-    pub fn render<F, V, T>(&mut self, handle: &ViewHandle<V>, f: F) -> T
-    where
-        F: FnOnce(&mut V, &mut RenderContext<V>) -> T,
-        V: View,
-    {
-        handle.update(&mut *self.cx.borrow_mut(), |view, cx| {
-            let mut render_cx = RenderContext {
-                app: cx,
-                window_id: handle.window_id(),
-                view_id: handle.id(),
-                view_type: PhantomData,
-                titlebar_height: 0.,
-                hovered_region_ids: Default::default(),
-                clicked_region_ids: None,
-                refreshing: false,
-                appearance: Appearance::Light,
-            };
-            f(view, &mut render_cx)
-        })
-    }
-
     pub fn to_async(&self) -> AsyncAppContext {
         AsyncAppContext(self.cx.clone())
     }
 
     pub fn font_cache(&self) -> Arc<FontCache> {
-        self.cx.borrow().cx.font_cache.clone()
+        self.cx.borrow().font_cache.clone()
     }
 
     pub fn foreground_platform(&self) -> Rc<platform::test::ForegroundPlatform> {
@@ -206,7 +226,7 @@ impl TestAppContext {
     }
 
     pub fn platform(&self) -> Arc<dyn platform::Platform> {
-        self.cx.borrow().cx.platform.clone()
+        self.cx.borrow().platform.clone()
     }
 
     pub fn foreground(&self) -> Rc<executor::Foreground> {
@@ -245,7 +265,7 @@ impl TestAppContext {
         use postage::prelude::Sink as _;
 
         let mut done_tx = self
-            .window_mut(window_id)
+            .platform_window_mut(window_id)
             .pending_prompts
             .borrow_mut()
             .pop_front()
@@ -254,20 +274,23 @@ impl TestAppContext {
     }
 
     pub fn has_pending_prompt(&self, window_id: usize) -> bool {
-        let window = self.window_mut(window_id);
+        let window = self.platform_window_mut(window_id);
         let prompts = window.pending_prompts.borrow_mut();
         !prompts.is_empty()
     }
 
     pub fn current_window_title(&self, window_id: usize) -> Option<String> {
-        self.window_mut(window_id).title.clone()
+        self.platform_window_mut(window_id).title.clone()
     }
 
     pub fn simulate_window_close(&self, window_id: usize) -> bool {
-        let handler = self.window_mut(window_id).should_close_handler.take();
+        let handler = self
+            .platform_window_mut(window_id)
+            .should_close_handler
+            .take();
         if let Some(mut handler) = handler {
             let should_close = handler();
-            self.window_mut(window_id).should_close_handler = Some(handler);
+            self.platform_window_mut(window_id).should_close_handler = Some(handler);
             should_close
         } else {
             false
@@ -275,47 +298,37 @@ impl TestAppContext {
     }
 
     pub fn simulate_window_resize(&self, window_id: usize, size: Vector2F) {
-        let mut window = self.window_mut(window_id);
+        let mut window = self.platform_window_mut(window_id);
         window.size = size;
         let mut handlers = mem::take(&mut window.resize_handlers);
         drop(window);
         for handler in &mut handlers {
             handler();
         }
-        self.window_mut(window_id).resize_handlers = handlers;
+        self.platform_window_mut(window_id).resize_handlers = handlers;
     }
 
     pub fn simulate_window_activation(&self, to_activate: Option<usize>) {
-        let mut handlers = BTreeMap::new();
-        {
-            let mut cx = self.cx.borrow_mut();
-            for (window_id, (_, window)) in &mut cx.presenters_and_platform_windows {
-                let window = window
-                    .as_any_mut()
-                    .downcast_mut::<platform::test::Window>()
-                    .unwrap();
-                handlers.insert(
-                    *window_id,
-                    mem::take(&mut window.active_status_change_handlers),
-                );
-            }
-        };
-        let mut handlers = handlers.into_iter().collect::<Vec<_>>();
-        handlers.sort_unstable_by_key(|(window_id, _)| Some(*window_id) == to_activate);
+        self.cx.borrow_mut().update(|cx| {
+            let other_window_ids = cx
+                .windows
+                .keys()
+                .filter(|window_id| Some(**window_id) != to_activate)
+                .copied()
+                .collect::<Vec<_>>();
 
-        for (window_id, mut window_handlers) in handlers {
-            for window_handler in &mut window_handlers {
-                window_handler(Some(window_id) == to_activate);
+            for window_id in other_window_ids {
+                cx.window_changed_active_status(window_id, false)
             }
 
-            self.window_mut(window_id)
-                .active_status_change_handlers
-                .extend(window_handlers);
-        }
+            if let Some(to_activate) = to_activate {
+                cx.window_changed_active_status(to_activate, true)
+            }
+        });
     }
 
     pub fn is_window_edited(&self, window_id: usize) -> bool {
-        self.window_mut(window_id).edited
+        self.platform_window_mut(window_id).edited
     }
 
     pub fn leak_detector(&self) -> Arc<Mutex<LeakDetector>> {
@@ -338,13 +351,11 @@ impl TestAppContext {
         self.assert_dropped(weak);
     }
 
-    fn window_mut(&self, window_id: usize) -> std::cell::RefMut<platform::test::Window> {
+    fn platform_window_mut(&self, window_id: usize) -> std::cell::RefMut<platform::test::Window> {
         std::cell::RefMut::map(self.cx.borrow_mut(), |state| {
-            let (_, window) = state
-                .presenters_and_platform_windows
-                .get_mut(&window_id)
-                .unwrap();
+            let window = state.windows.get_mut(&window_id).unwrap();
             let test_window = window
+                .platform_window
                 .as_any_mut()
                 .downcast_mut::<platform::test::Window>()
                 .unwrap();
@@ -383,53 +394,29 @@ impl TestAppContext {
     }
 }
 
-impl UpdateModel for TestAppContext {
-    fn update_model<T: Entity, O>(
-        &mut self,
-        handle: &ModelHandle<T>,
-        update: &mut dyn FnMut(&mut T, &mut ModelContext<T>) -> O,
-    ) -> O {
-        self.cx.borrow_mut().update_model(handle, update)
+impl BorrowAppContext for TestAppContext {
+    fn read_with<T, F: FnOnce(&AppContext) -> T>(&self, f: F) -> T {
+        self.cx.borrow().read_with(f)
+    }
+
+    fn update<T, F: FnOnce(&mut AppContext) -> T>(&mut self, f: F) -> T {
+        self.cx.borrow_mut().update(f)
     }
 }
 
-impl ReadModelWith for TestAppContext {
-    fn read_model_with<E: Entity, T>(
-        &self,
-        handle: &ModelHandle<E>,
-        read: &mut dyn FnMut(&E, &AppContext) -> T,
-    ) -> T {
-        let cx = self.cx.borrow();
-        let cx = cx.as_ref();
-        read(handle.read(cx), cx)
+impl BorrowWindowContext for TestAppContext {
+    fn read_with<T, F: FnOnce(&WindowContext) -> T>(&self, window_id: usize, f: F) -> T {
+        self.cx
+            .borrow()
+            .read_window(window_id, f)
+            .expect("window was closed")
     }
-}
 
-impl UpdateView for TestAppContext {
-    fn update_view<T, S>(
-        &mut self,
-        handle: &ViewHandle<T>,
-        update: &mut dyn FnMut(&mut T, &mut ViewContext<T>) -> S,
-    ) -> S
-    where
-        T: View,
-    {
-        self.cx.borrow_mut().update_view(handle, update)
-    }
-}
-
-impl ReadViewWith for TestAppContext {
-    fn read_view_with<V, T>(
-        &self,
-        handle: &ViewHandle<V>,
-        read: &mut dyn FnMut(&V, &AppContext) -> T,
-    ) -> T
-    where
-        V: View,
-    {
-        let cx = self.cx.borrow();
-        let cx = cx.as_ref();
-        read(handle.read(cx), cx)
+    fn update<T, F: FnOnce(&mut WindowContext) -> T>(&mut self, window_id: usize, f: F) -> T {
+        self.cx
+            .borrow_mut()
+            .update_window(window_id, f)
+            .expect("window was closed")
     }
 }
 
@@ -517,7 +504,7 @@ impl<T: Entity> ModelHandle<T> {
                 loop {
                     {
                         let cx = cx.borrow();
-                        let cx = cx.as_ref();
+                        let cx = &*cx;
                         if predicate(
                             handle
                                 .upgrade(cx)
@@ -579,22 +566,20 @@ impl<T: View> ViewHandle<T> {
         let timeout_duration = cx.condition_duration();
 
         let mut cx = cx.cx.borrow_mut();
-        let subscriptions = self.update(&mut *cx, |_, cx| {
-            (
-                cx.observe(self, {
-                    let mut tx = tx.clone();
-                    move |_, _, _| {
-                        tx.blocking_send(()).ok();
-                    }
-                }),
-                cx.subscribe(self, {
-                    let mut tx = tx.clone();
-                    move |_, _, _, _| {
-                        tx.blocking_send(()).ok();
-                    }
-                }),
-            )
-        });
+        let subscriptions = (
+            cx.observe(self, {
+                let mut tx = tx.clone();
+                move |_, _| {
+                    tx.blocking_send(()).ok();
+                }
+            }),
+            cx.subscribe(self, {
+                let mut tx = tx.clone();
+                move |_, _, _| {
+                    tx.blocking_send(()).ok();
+                }
+            }),
+        );
 
         let cx = cx.weak_self.as_ref().unwrap().upgrade().unwrap();
         let handle = self.downgrade();
@@ -604,7 +589,7 @@ impl<T: View> ViewHandle<T> {
                 loop {
                     {
                         let cx = cx.borrow();
-                        let cx = cx.as_ref();
+                        let cx = &*cx;
                         if predicate(
                             handle
                                 .upgrade(cx)

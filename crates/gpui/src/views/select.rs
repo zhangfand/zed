@@ -1,18 +1,18 @@
 use serde::Deserialize;
 
 use crate::{
-    actions, elements::*, impl_actions, AppContext, Entity, MouseButton, MutableAppContext,
-    RenderContext, View, ViewContext, WeakViewHandle,
+    actions, elements::*, impl_actions, platform::MouseButton, AppContext, Entity, View,
+    ViewContext, WeakViewHandle,
 };
 
 pub struct Select {
     handle: WeakViewHandle<Self>,
-    render_item: Box<dyn Fn(usize, ItemType, bool, &AppContext) -> ElementBox>,
+    render_item: Box<dyn Fn(usize, ItemType, bool, &AppContext) -> AnyElement<Self>>,
     selected_item_ix: usize,
     item_count: usize,
     is_open: bool,
     list_state: UniformListState,
-    build_style: Option<Box<dyn FnMut(&mut MutableAppContext) -> SelectStyle>>,
+    build_style: Option<Box<dyn FnMut(&mut AppContext) -> SelectStyle>>,
 }
 
 #[derive(Clone, Default)]
@@ -35,13 +35,13 @@ impl_actions!(select, [SelectItem]);
 
 pub enum Event {}
 
-pub fn init(cx: &mut MutableAppContext) {
+pub fn init(cx: &mut AppContext) {
     cx.add_action(Select::toggle);
     cx.add_action(Select::select_item);
 }
 
 impl Select {
-    pub fn new<F: 'static + Fn(usize, ItemType, bool, &AppContext) -> ElementBox>(
+    pub fn new<F: 'static + Fn(usize, ItemType, bool, &AppContext) -> AnyElement<Self>>(
         item_count: usize,
         cx: &mut ViewContext<Self>,
         render_item: F,
@@ -57,10 +57,7 @@ impl Select {
         }
     }
 
-    pub fn with_style(
-        mut self,
-        f: impl 'static + FnMut(&mut MutableAppContext) -> SelectStyle,
-    ) -> Self {
+    pub fn with_style(mut self, f: impl 'static + FnMut(&mut AppContext) -> SelectStyle) -> Self {
         self.build_style = Some(Box::new(f));
         self
     }
@@ -95,9 +92,9 @@ impl View for Select {
         "Select"
     }
 
-    fn render(&mut self, cx: &mut RenderContext<Self>) -> ElementBox {
+    fn render(&mut self, cx: &mut ViewContext<Self>) -> AnyElement<Self> {
         if self.item_count == 0 {
-            return Empty::new().boxed();
+            return Empty::new().into_any();
         }
 
         enum Header {}
@@ -109,64 +106,55 @@ impl View for Select {
             Default::default()
         };
         let mut result = Flex::column().with_child(
-            MouseEventHandler::<Header>::new(self.handle.id(), cx, |mouse_state, cx| {
-                Container::new((self.render_item)(
+            MouseEventHandler::<Header, _>::new(self.handle.id(), cx, |mouse_state, cx| {
+                (self.render_item)(
                     self.selected_item_ix,
                     ItemType::Header,
                     mouse_state.hovered(),
                     cx,
-                ))
+                )
+                .contained()
                 .with_style(style.header)
-                .boxed()
             })
-            .on_click(MouseButton::Left, move |_, cx| {
-                cx.dispatch_action(ToggleSelect)
-            })
-            .boxed(),
+            .on_click(MouseButton::Left, move |_, this, cx| {
+                this.toggle(&Default::default(), cx);
+            }),
         );
         if self.is_open {
-            result.add_child(
-                Overlay::new(
-                    Container::new(
-                        ConstrainedBox::new(
-                            UniformList::new(
-                                self.list_state.clone(),
-                                self.item_count,
-                                cx,
-                                move |this, mut range, items, cx| {
-                                    let selected_item_ix = this.selected_item_ix;
-                                    range.end = range.end.min(this.item_count);
-                                    items.extend(range.map(|ix| {
-                                        MouseEventHandler::<Item>::new(ix, cx, |mouse_state, cx| {
-                                            (this.render_item)(
-                                                ix,
-                                                if ix == selected_item_ix {
-                                                    ItemType::Selected
-                                                } else {
-                                                    ItemType::Unselected
-                                                },
-                                                mouse_state.hovered(),
-                                                cx,
-                                            )
-                                        })
-                                        .on_click(MouseButton::Left, move |_, cx| {
-                                            cx.dispatch_action(SelectItem(ix))
-                                        })
-                                        .boxed()
-                                    }))
-                                },
-                            )
-                            .boxed(),
-                        )
-                        .with_max_height(200.)
-                        .boxed(),
-                    )
-                    .with_style(style.menu)
-                    .boxed(),
+            result.add_child(Overlay::new(
+                UniformList::new(
+                    self.list_state.clone(),
+                    self.item_count,
+                    cx,
+                    move |this, mut range, items, cx| {
+                        let selected_item_ix = this.selected_item_ix;
+                        range.end = range.end.min(this.item_count);
+                        items.extend(range.map(|ix| {
+                            MouseEventHandler::<Item, _>::new(ix, cx, |mouse_state, cx| {
+                                (this.render_item)(
+                                    ix,
+                                    if ix == selected_item_ix {
+                                        ItemType::Selected
+                                    } else {
+                                        ItemType::Unselected
+                                    },
+                                    mouse_state.hovered(),
+                                    cx,
+                                )
+                            })
+                            .on_click(MouseButton::Left, move |_, this, cx| {
+                                this.select_item(&SelectItem(ix), cx);
+                            })
+                            .into_any()
+                        }))
+                    },
                 )
-                .boxed(),
-            )
+                .constrained()
+                .with_max_height(200.)
+                .contained()
+                .with_style(style.menu),
+            ));
         }
-        result.boxed()
+        result.into_any()
     }
 }

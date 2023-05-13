@@ -79,7 +79,11 @@ impl SuggestionMap {
         new_suggestion: Option<Suggestion<T>>,
         fold_snapshot: FoldSnapshot,
         fold_edits: Vec<FoldEdit>,
-    ) -> (SuggestionSnapshot, Vec<SuggestionEdit>)
+    ) -> (
+        SuggestionSnapshot,
+        Vec<SuggestionEdit>,
+        Option<Suggestion<FoldOffset>>,
+    )
     where
         T: ToPoint,
     {
@@ -99,7 +103,8 @@ impl SuggestionMap {
         let mut snapshot = self.0.lock();
 
         let mut patch = Patch::new(edits);
-        if let Some(suggestion) = snapshot.suggestion.take() {
+        let old_suggestion = snapshot.suggestion.take();
+        if let Some(suggestion) = &old_suggestion {
             patch = patch.compose([SuggestionEdit {
                 old: SuggestionOffset(suggestion.position.0)
                     ..SuggestionOffset(suggestion.position.0 + suggestion.text.len()),
@@ -119,7 +124,7 @@ impl SuggestionMap {
 
         snapshot.suggestion = new_suggestion;
         snapshot.version += 1;
-        (snapshot.clone(), patch.into_inner())
+        (snapshot.clone(), patch.into_inner(), old_suggestion)
     }
 
     pub fn sync(
@@ -170,6 +175,11 @@ impl SuggestionMap {
         snapshot.fold_snapshot = fold_snapshot;
 
         (snapshot.clone(), suggestion_edits)
+    }
+
+    pub fn has_suggestion(&self) -> bool {
+        let snapshot = self.0.lock();
+        snapshot.suggestion.is_some()
     }
 }
 
@@ -521,10 +531,8 @@ impl<'a> Iterator for SuggestionChunks<'a> {
             if let Some(chunk) = chunks.next() {
                 return Some(Chunk {
                     text: chunk,
-                    syntax_highlight_id: None,
                     highlight_style: self.highlight_style,
-                    diagnostic_severity: None,
-                    is_unnecessary: false,
+                    ..Default::default()
                 });
             } else {
                 self.suggestion_chunks = None;
@@ -568,7 +576,7 @@ impl<'a> Iterator for SuggestionBufferRows<'a> {
 mod tests {
     use super::*;
     use crate::{display_map::fold_map::FoldMap, MultiBuffer};
-    use gpui::MutableAppContext;
+    use gpui::AppContext;
     use rand::{prelude::StdRng, Rng};
     use settings::Settings;
     use std::{
@@ -577,14 +585,14 @@ mod tests {
     };
 
     #[gpui::test]
-    fn test_basic(cx: &mut MutableAppContext) {
+    fn test_basic(cx: &mut AppContext) {
         let buffer = MultiBuffer::build_simple("abcdefghi", cx);
         let buffer_edits = buffer.update(cx, |buffer, _| buffer.subscribe());
         let (mut fold_map, fold_snapshot) = FoldMap::new(buffer.read(cx).snapshot(cx));
         let (suggestion_map, suggestion_snapshot) = SuggestionMap::new(fold_snapshot.clone());
         assert_eq!(suggestion_snapshot.text(), "abcdefghi");
 
-        let (suggestion_snapshot, _) = suggestion_map.replace(
+        let (suggestion_snapshot, _, _) = suggestion_map.replace(
             Some(Suggestion {
                 position: 3,
                 text: "123\n456".into(),
@@ -622,7 +630,7 @@ mod tests {
     }
 
     #[gpui::test(iterations = 100)]
-    fn test_random_suggestions(cx: &mut MutableAppContext, mut rng: StdRng) {
+    fn test_random_suggestions(cx: &mut AppContext, mut rng: StdRng) {
         cx.set_global(Settings::test(cx));
         let operations = env::var("OPERATIONS")
             .map(|i| i.parse().expect("invalid `OPERATIONS` variable"))
@@ -849,7 +857,9 @@ mod tests {
             };
 
             log::info!("replacing suggestion with {:?}", new_suggestion);
-            self.replace(new_suggestion, fold_snapshot, Default::default())
+            let (snapshot, edits, _) =
+                self.replace(new_suggestion, fold_snapshot, Default::default());
+            (snapshot, edits)
         }
     }
 }

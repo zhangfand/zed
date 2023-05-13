@@ -10,9 +10,7 @@ use client::{
 use collections::{BTreeMap, HashMap, HashSet};
 use fs::Fs;
 use futures::{FutureExt, StreamExt};
-use gpui::{
-    AsyncAppContext, Entity, ModelContext, ModelHandle, MutableAppContext, Task, WeakModelHandle,
-};
+use gpui::{AppContext, AsyncAppContext, Entity, ModelContext, ModelHandle, Task, WeakModelHandle};
 use language::LanguageRegistry;
 use live_kit_client::{LocalTrackPublication, LocalVideoTrack, RemoteVideoTrackUpdate};
 use postage::stream::Stream;
@@ -64,16 +62,13 @@ pub struct Room {
 impl Entity for Room {
     type Event = Event;
 
-    fn release(&mut self, cx: &mut MutableAppContext) {
+    fn release(&mut self, cx: &mut AppContext) {
         if self.status.is_online() {
             self.leave_internal(cx).detach_and_log_err(cx);
         }
     }
 
-    fn app_will_quit(
-        &mut self,
-        cx: &mut MutableAppContext,
-    ) -> Option<Pin<Box<dyn Future<Output = ()>>>> {
+    fn app_will_quit(&mut self, cx: &mut AppContext) -> Option<Pin<Box<dyn Future<Output = ()>>>> {
         if self.status.is_online() {
             let leave = self.leave_internal(cx);
             Some(
@@ -176,7 +171,7 @@ impl Room {
         initial_project: Option<ModelHandle<Project>>,
         client: Arc<Client>,
         user_store: ModelHandle<UserStore>,
-        cx: &mut MutableAppContext,
+        cx: &mut AppContext,
     ) -> Task<Result<ModelHandle<Self>>> {
         cx.spawn(|mut cx| async move {
             let response = client.request(proto::CreateRoom {}).await?;
@@ -219,7 +214,7 @@ impl Room {
         call: &IncomingCall,
         client: Arc<Client>,
         user_store: ModelHandle<UserStore>,
-        cx: &mut MutableAppContext,
+        cx: &mut AppContext,
     ) -> Task<Result<ModelHandle<Self>>> {
         let room_id = call.room_id;
         cx.spawn(|mut cx| async move {
@@ -257,7 +252,7 @@ impl Room {
         self.leave_internal(cx)
     }
 
-    fn leave_internal(&mut self, cx: &mut MutableAppContext) -> Task<Result<()>> {
+    fn leave_internal(&mut self, cx: &mut AppContext) -> Task<Result<()>> {
         if self.status.is_offline() {
             return Task::ready(Err(anyhow!("room is offline")));
         }
@@ -424,7 +419,7 @@ impl Room {
             false
         });
 
-        let response = self.client.request(proto::RejoinRoom {
+        let response = self.client.request_envelope(proto::RejoinRoom {
             id: self.id,
             reshared_projects,
             rejoined_projects,
@@ -432,6 +427,8 @@ impl Room {
 
         cx.spawn(|this, mut cx| async move {
             let response = response.await?;
+            let message_id = response.message_id;
+            let response = response.payload;
             let room_proto = response.room.ok_or_else(|| anyhow!("invalid room"))?;
             this.update(&mut cx, |this, cx| {
                 this.status = RoomStatus::Online;
@@ -448,7 +445,7 @@ impl Room {
                 for rejoined_project in response.rejoined_projects {
                     if let Some(project) = projects.get(&rejoined_project.id) {
                         project.update(cx, |project, cx| {
-                            project.rejoined(rejoined_project, cx).log_err();
+                            project.rejoined(rejoined_project, message_id, cx).log_err();
                         });
                     }
                 }

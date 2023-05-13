@@ -17,6 +17,11 @@ impl KeymapContext {
         }
     }
 
+    pub fn clear(&mut self) {
+        self.set.clear();
+        self.map.clear();
+    }
+
     pub fn extend(&mut self, other: &Self) {
         for v in &other.set {
             self.set.insert(v.clone());
@@ -39,7 +44,7 @@ impl KeymapContext {
     }
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum KeymapContextPredicate {
     Identifier(String),
     Equal(String, String),

@@ -1,22 +1,21 @@
 use chrono::{Datelike, Local, NaiveTime, Timelike};
 use editor::{scroll::autoscroll::Autoscroll, Editor};
-use gpui::{actions, MutableAppContext};
+use gpui::{actions, AppContext};
 use settings::{HourFormat, Settings};
 use std::{
     fs::OpenOptions,
     path::{Path, PathBuf},
     sync::Arc,
 };
-use util::TryFutureExt as _;
 use workspace::AppState;
 
 actions!(journal, [NewJournalEntry]);
 
-pub fn init(app_state: Arc<AppState>, cx: &mut MutableAppContext) {
+pub fn init(app_state: Arc<AppState>, cx: &mut AppContext) {
     cx.add_global_action(move |_: &NewJournalEntry, cx| new_journal_entry(app_state.clone(), cx));
 }
 
-pub fn new_journal_entry(app_state: Arc<AppState>, cx: &mut MutableAppContext) {
+pub fn new_journal_entry(app_state: Arc<AppState>, cx: &mut AppContext) {
     let settings = cx.global::<Settings>();
     let journal_dir = match journal_dir(&settings) {
         Some(journal_dir) => journal_dir,
@@ -44,40 +43,37 @@ pub fn new_journal_entry(app_state: Arc<AppState>, cx: &mut MutableAppContext) {
         Ok::<_, std::io::Error>((journal_dir, entry_path))
     });
 
-    cx.spawn(|mut cx| {
-        async move {
-            let (journal_dir, entry_path) = create_entry.await?;
-            let (workspace, _) = cx
-                .update(|cx| workspace::open_paths(&[journal_dir], &app_state, None, cx))
-                .await;
+    cx.spawn(|mut cx| async move {
+        let (journal_dir, entry_path) = create_entry.await?;
+        let (workspace, _) = cx
+            .update(|cx| workspace::open_paths(&[journal_dir], &app_state, None, cx))
+            .await?;
 
-            let opened = workspace
-                .update(&mut cx, |workspace, cx| {
-                    workspace.open_paths(vec![entry_path], true, cx)
-                })
-                .await;
+        let opened = workspace
+            .update(&mut cx, |workspace, cx| {
+                workspace.open_paths(vec![entry_path], true, cx)
+            })?
+            .await;
 
-            if let Some(Some(Ok(item))) = opened.first() {
-                if let Some(editor) = item.downcast::<Editor>() {
-                    editor.update(&mut cx, |editor, cx| {
-                        let len = editor.buffer().read(cx).len(cx);
-                        editor.change_selections(Some(Autoscroll::center()), cx, |s| {
-                            s.select_ranges([len..len])
-                        });
-                        if len > 0 {
-                            editor.insert("\n\n", cx);
-                        }
-                        editor.insert(&entry_heading, cx);
-                        editor.insert("\n\n", cx);
+        if let Some(Some(Ok(item))) = opened.first() {
+            if let Some(editor) = item.downcast::<Editor>().map(|editor| editor.downgrade()) {
+                editor.update(&mut cx, |editor, cx| {
+                    let len = editor.buffer().read(cx).len(cx);
+                    editor.change_selections(Some(Autoscroll::center()), cx, |s| {
+                        s.select_ranges([len..len])
                     });
-                }
+                    if len > 0 {
+                        editor.insert("\n\n", cx);
+                    }
+                    editor.insert(&entry_heading, cx);
+                    editor.insert("\n\n", cx);
+                })?;
             }
-
-            anyhow::Ok(())
         }
-        .log_err()
+
+        anyhow::Ok(())
     })
-    .detach();
+    .detach_and_log_err(cx);
 }
 
 fn journal_dir(settings: &Settings) -> Option<PathBuf> {

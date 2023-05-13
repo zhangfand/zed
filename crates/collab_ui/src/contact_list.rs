@@ -1,5 +1,3 @@
-use super::collab_titlebar_item::LeaveCall;
-use crate::contacts_popover;
 use call::ActiveCall;
 use client::{proto::PeerId, Contact, User, UserStore};
 use editor::{Cancel, Editor};
@@ -8,10 +6,10 @@ use fuzzy::{match_strings, StringMatchCandidate};
 use gpui::{
     elements::*,
     geometry::{rect::RectF, vector::vec2f},
-    impl_actions, impl_internal_actions,
+    impl_actions,
     keymap_matcher::KeymapContext,
-    AppContext, CursorStyle, Entity, ModelHandle, MouseButton, MutableAppContext, PromptLevel,
-    RenderContext, Subscription, View, ViewContext, ViewHandle,
+    platform::{CursorStyle, MouseButton, PromptLevel},
+    AppContext, Entity, ModelHandle, Subscription, View, ViewContext, ViewHandle, WeakViewHandle,
 };
 use menu::{Confirm, SelectNext, SelectPrev};
 use project::Project;
@@ -19,29 +17,17 @@ use serde::Deserialize;
 use settings::Settings;
 use std::{mem, sync::Arc};
 use theme::IconButton;
-use workspace::{JoinProject, OpenSharedScreen};
+use workspace::Workspace;
 
 impl_actions!(contact_list, [RemoveContact, RespondToContactRequest]);
-impl_internal_actions!(contact_list, [ToggleExpanded, Call]);
 
-pub fn init(cx: &mut MutableAppContext) {
+pub fn init(cx: &mut AppContext) {
     cx.add_action(ContactList::remove_contact);
     cx.add_action(ContactList::respond_to_contact_request);
     cx.add_action(ContactList::cancel);
     cx.add_action(ContactList::select_next);
     cx.add_action(ContactList::select_prev);
     cx.add_action(ContactList::confirm);
-    cx.add_action(ContactList::toggle_expanded);
-    cx.add_action(ContactList::call);
-}
-
-#[derive(Clone, PartialEq)]
-struct ToggleExpanded(Section);
-
-#[derive(Clone, PartialEq)]
-struct Call {
-    recipient_user_id: u64,
-    initial_project: Option<ModelHandle<Project>>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, PartialOrd, Ord)]
@@ -153,14 +139,16 @@ pub struct RespondToContactRequest {
 }
 
 pub enum Event {
+    ToggleContactFinder,
     Dismissed,
 }
 
 pub struct ContactList {
     entries: Vec<ContactEntry>,
     match_candidates: Vec<StringMatchCandidate>,
-    list_state: ListState,
+    list_state: ListState<Self>,
     project: ModelHandle<Project>,
+    workspace: WeakViewHandle<Workspace>,
     user_store: ModelHandle<UserStore>,
     filter_editor: ViewHandle<Editor>,
     collapsed_sections: Vec<Section>,
@@ -172,6 +160,7 @@ impl ContactList {
     pub fn new(
         project: ModelHandle<Project>,
         user_store: ModelHandle<UserStore>,
+        workspace: WeakViewHandle<Workspace>,
         cx: &mut ViewContext<Self>,
     ) -> Self {
         let filter_editor = cx.add_view(|cx| {
@@ -202,7 +191,7 @@ impl ContactList {
         })
         .detach();
 
-        let list_state = ListState::new(0, Orientation::Top, 1000., cx, move |this, ix, cx| {
+        let list_state = ListState::<Self>::new(0, Orientation::Top, 1000., move |this, ix, cx| {
             let theme = cx.global::<Settings>().theme.clone();
             let is_selected = this.selection == Some(ix);
             let current_project_id = this.project.read(cx).remote_id();
@@ -291,6 +280,7 @@ impl ContactList {
             filter_editor,
             _subscriptions: subscriptions,
             project,
+            workspace,
             user_store,
         };
         this.update_entries(cx);
@@ -403,18 +393,11 @@ impl ContactList {
             if let Some(entry) = self.entries.get(selection) {
                 match entry {
                     ContactEntry::Header(section) => {
-                        let section = *section;
-                        self.toggle_expanded(&ToggleExpanded(section), cx);
+                        self.toggle_expanded(*section, cx);
                     }
                     ContactEntry::Contact { contact, calling } => {
                         if contact.online && !contact.busy && !calling {
-                            self.call(
-                                &Call {
-                                    recipient_user_id: contact.user.id,
-                                    initial_project: Some(self.project.clone()),
-                                },
-                                cx,
-                            );
+                            self.call(contact.user.id, Some(self.project.clone()), cx);
                         }
                     }
                     ContactEntry::ParticipantProject {
@@ -422,13 +405,23 @@ impl ContactList {
                         host_user_id,
                         ..
                     } => {
-                        cx.dispatch_global_action(JoinProject {
-                            project_id: *project_id,
-                            follow_user_id: *host_user_id,
-                        });
+                        if let Some(workspace) = self.workspace.upgrade(cx) {
+                            let app_state = workspace.read(cx).app_state().clone();
+                            workspace::join_remote_project(
+                                *project_id,
+                                *host_user_id,
+                                app_state,
+                                cx,
+                            )
+                            .detach_and_log_err(cx);
+                        }
                     }
                     ContactEntry::ParticipantScreen { peer_id, .. } => {
-                        cx.dispatch_action(OpenSharedScreen { peer_id: *peer_id });
+                        if let Some(workspace) = self.workspace.upgrade(cx) {
+                            workspace.update(cx, |workspace, cx| {
+                                workspace.open_shared_screen(*peer_id, cx)
+                            });
+                        }
                     }
                     _ => {}
                 }
@@ -436,8 +429,7 @@ impl ContactList {
         }
     }
 
-    fn toggle_expanded(&mut self, action: &ToggleExpanded, cx: &mut ViewContext<Self>) {
-        let section = action.0;
+    fn toggle_expanded(&mut self, section: Section, cx: &mut ViewContext<Self>) {
         if let Some(ix) = self.collapsed_sections.iter().position(|s| *s == section) {
             self.collapsed_sections.remove(ix);
         } else {
@@ -748,14 +740,13 @@ impl ContactList {
         is_pending: bool,
         is_selected: bool,
         theme: &theme::ContactList,
-    ) -> ElementBox {
+    ) -> AnyElement<Self> {
         Flex::row()
             .with_children(user.avatar.clone().map(|avatar| {
                 Image::from_data(avatar)
                     .with_style(theme.contact_avatar)
                     .aligned()
                     .left()
-                    .boxed()
             }))
             .with_child(
                 Label::new(
@@ -766,16 +757,14 @@ impl ContactList {
                 .with_style(theme.contact_username.container)
                 .aligned()
                 .left()
-                .flex(1., true)
-                .boxed(),
+                .flex(1., true),
             )
             .with_children(if is_pending {
                 Some(
                     Label::new("Calling", theme.calling_indicator.text.clone())
                         .contained()
                         .with_style(theme.calling_indicator.container)
-                        .aligned()
-                        .boxed(),
+                        .aligned(),
                 )
             } else {
                 None
@@ -788,7 +777,7 @@ impl ContactList {
                     .contact_row
                     .style_for(&mut Default::default(), is_selected),
             )
-            .boxed()
+            .into_any()
     }
 
     fn render_participant_project(
@@ -799,8 +788,10 @@ impl ContactList {
         is_last: bool,
         is_selected: bool,
         theme: &theme::ContactList,
-        cx: &mut RenderContext<Self>,
-    ) -> ElementBox {
+        cx: &mut ViewContext<Self>,
+    ) -> AnyElement<Self> {
+        enum JoinProject {}
+
         let font_cache = cx.font_cache();
         let host_avatar_height = theme
             .contact_avatar
@@ -819,48 +810,44 @@ impl ContactList {
             worktree_root_names.join(", ")
         };
 
-        MouseEventHandler::<JoinProject>::new(project_id as usize, cx, |mouse_state, _| {
+        MouseEventHandler::<JoinProject, Self>::new(project_id as usize, cx, |mouse_state, _| {
             let tree_branch = *tree_branch.style_for(mouse_state, is_selected);
             let row = theme.project_row.style_for(mouse_state, is_selected);
 
             Flex::row()
                 .with_child(
                     Stack::new()
-                        .with_child(
-                            Canvas::new(move |bounds, _, cx| {
-                                let start_x = bounds.min_x() + (bounds.width() / 2.)
-                                    - (tree_branch.width / 2.);
-                                let end_x = bounds.max_x();
-                                let start_y = bounds.min_y();
-                                let end_y = bounds.min_y() + baseline_offset - (cap_height / 2.);
+                        .with_child(Canvas::new(move |scene, bounds, _, _, _| {
+                            let start_x =
+                                bounds.min_x() + (bounds.width() / 2.) - (tree_branch.width / 2.);
+                            let end_x = bounds.max_x();
+                            let start_y = bounds.min_y();
+                            let end_y = bounds.min_y() + baseline_offset - (cap_height / 2.);
 
-                                cx.scene.push_quad(gpui::Quad {
-                                    bounds: RectF::from_points(
-                                        vec2f(start_x, start_y),
-                                        vec2f(
-                                            start_x + tree_branch.width,
-                                            if is_last { end_y } else { bounds.max_y() },
-                                        ),
+                            scene.push_quad(gpui::Quad {
+                                bounds: RectF::from_points(
+                                    vec2f(start_x, start_y),
+                                    vec2f(
+                                        start_x + tree_branch.width,
+                                        if is_last { end_y } else { bounds.max_y() },
                                     ),
-                                    background: Some(tree_branch.color),
-                                    border: gpui::Border::default(),
-                                    corner_radius: 0.,
-                                });
-                                cx.scene.push_quad(gpui::Quad {
-                                    bounds: RectF::from_points(
-                                        vec2f(start_x, end_y),
-                                        vec2f(end_x, end_y + tree_branch.width),
-                                    ),
-                                    background: Some(tree_branch.color),
-                                    border: gpui::Border::default(),
-                                    corner_radius: 0.,
-                                });
-                            })
-                            .boxed(),
-                        )
+                                ),
+                                background: Some(tree_branch.color),
+                                border: gpui::Border::default(),
+                                corner_radius: 0.,
+                            });
+                            scene.push_quad(gpui::Quad {
+                                bounds: RectF::from_points(
+                                    vec2f(start_x, end_y),
+                                    vec2f(end_x, end_y + tree_branch.width),
+                                ),
+                                background: Some(tree_branch.color),
+                                border: gpui::Border::default(),
+                                corner_radius: 0.,
+                            });
+                        }))
                         .constrained()
-                        .with_width(host_avatar_height)
-                        .boxed(),
+                        .with_width(host_avatar_height),
                 )
                 .with_child(
                     Label::new(project_name, row.name.text.clone())
@@ -868,29 +855,28 @@ impl ContactList {
                         .left()
                         .contained()
                         .with_style(row.name.container)
-                        .flex(1., false)
-                        .boxed(),
+                        .flex(1., false),
                 )
                 .constrained()
                 .with_height(theme.row_height)
                 .contained()
                 .with_style(row.container)
-                .boxed()
         })
         .with_cursor_style(if !is_current {
             CursorStyle::PointingHand
         } else {
             CursorStyle::Arrow
         })
-        .on_click(MouseButton::Left, move |_, cx| {
+        .on_click(MouseButton::Left, move |_, this, cx| {
             if !is_current {
-                cx.dispatch_global_action(JoinProject {
-                    project_id,
-                    follow_user_id: host_user_id,
-                });
+                if let Some(workspace) = this.workspace.upgrade(cx) {
+                    let app_state = workspace.read(cx).app_state().clone();
+                    workspace::join_remote_project(project_id, host_user_id, app_state, cx)
+                        .detach_and_log_err(cx);
+                }
             }
         })
-        .boxed()
+        .into_any()
     }
 
     fn render_participant_screen(
@@ -898,8 +884,10 @@ impl ContactList {
         is_last: bool,
         is_selected: bool,
         theme: &theme::ContactList,
-        cx: &mut RenderContext<Self>,
-    ) -> ElementBox {
+        cx: &mut ViewContext<Self>,
+    ) -> AnyElement<Self> {
+        enum OpenSharedScreen {}
+
         let font_cache = cx.font_cache();
         let host_avatar_height = theme
             .contact_avatar
@@ -913,7 +901,7 @@ impl ContactList {
         let baseline_offset =
             row.name.text.baseline_offset(font_cache) + (theme.row_height - line_height) / 2.;
 
-        MouseEventHandler::<OpenSharedScreen>::new(
+        MouseEventHandler::<OpenSharedScreen, Self>::new(
             peer_id.as_u64() as usize,
             cx,
             |mouse_state, _| {
@@ -923,42 +911,37 @@ impl ContactList {
                 Flex::row()
                     .with_child(
                         Stack::new()
-                            .with_child(
-                                Canvas::new(move |bounds, _, cx| {
-                                    let start_x = bounds.min_x() + (bounds.width() / 2.)
-                                        - (tree_branch.width / 2.);
-                                    let end_x = bounds.max_x();
-                                    let start_y = bounds.min_y();
-                                    let end_y =
-                                        bounds.min_y() + baseline_offset - (cap_height / 2.);
+                            .with_child(Canvas::new(move |scene, bounds, _, _, _| {
+                                let start_x = bounds.min_x() + (bounds.width() / 2.)
+                                    - (tree_branch.width / 2.);
+                                let end_x = bounds.max_x();
+                                let start_y = bounds.min_y();
+                                let end_y = bounds.min_y() + baseline_offset - (cap_height / 2.);
 
-                                    cx.scene.push_quad(gpui::Quad {
-                                        bounds: RectF::from_points(
-                                            vec2f(start_x, start_y),
-                                            vec2f(
-                                                start_x + tree_branch.width,
-                                                if is_last { end_y } else { bounds.max_y() },
-                                            ),
+                                scene.push_quad(gpui::Quad {
+                                    bounds: RectF::from_points(
+                                        vec2f(start_x, start_y),
+                                        vec2f(
+                                            start_x + tree_branch.width,
+                                            if is_last { end_y } else { bounds.max_y() },
                                         ),
-                                        background: Some(tree_branch.color),
-                                        border: gpui::Border::default(),
-                                        corner_radius: 0.,
-                                    });
-                                    cx.scene.push_quad(gpui::Quad {
-                                        bounds: RectF::from_points(
-                                            vec2f(start_x, end_y),
-                                            vec2f(end_x, end_y + tree_branch.width),
-                                        ),
-                                        background: Some(tree_branch.color),
-                                        border: gpui::Border::default(),
-                                        corner_radius: 0.,
-                                    });
-                                })
-                                .boxed(),
-                            )
+                                    ),
+                                    background: Some(tree_branch.color),
+                                    border: gpui::Border::default(),
+                                    corner_radius: 0.,
+                                });
+                                scene.push_quad(gpui::Quad {
+                                    bounds: RectF::from_points(
+                                        vec2f(start_x, end_y),
+                                        vec2f(end_x, end_y + tree_branch.width),
+                                    ),
+                                    background: Some(tree_branch.color),
+                                    border: gpui::Border::default(),
+                                    corner_radius: 0.,
+                                });
+                            }))
                             .constrained()
-                            .with_width(host_avatar_height)
-                            .boxed(),
+                            .with_width(host_avatar_height),
                     )
                     .with_child(
                         Svg::new("icons/disable_screen_sharing_12.svg")
@@ -968,8 +951,7 @@ impl ContactList {
                             .aligned()
                             .left()
                             .contained()
-                            .with_style(row.icon.container)
-                            .boxed(),
+                            .with_style(row.icon.container),
                     )
                     .with_child(
                         Label::new("Screen", row.name.text.clone())
@@ -977,21 +959,23 @@ impl ContactList {
                             .left()
                             .contained()
                             .with_style(row.name.container)
-                            .flex(1., false)
-                            .boxed(),
+                            .flex(1., false),
                     )
                     .constrained()
                     .with_height(theme.row_height)
                     .contained()
                     .with_style(row.container)
-                    .boxed()
             },
         )
         .with_cursor_style(CursorStyle::PointingHand)
-        .on_click(MouseButton::Left, move |_, cx| {
-            cx.dispatch_action(OpenSharedScreen { peer_id });
+        .on_click(MouseButton::Left, move |_, this, cx| {
+            if let Some(workspace) = this.workspace.upgrade(cx) {
+                workspace.update(cx, |workspace, cx| {
+                    workspace.open_shared_screen(peer_id, cx)
+                });
+            }
         })
-        .boxed()
+        .into_any()
     }
 
     fn render_header(
@@ -999,8 +983,8 @@ impl ContactList {
         theme: &theme::ContactList,
         is_selected: bool,
         is_collapsed: bool,
-        cx: &mut RenderContext<Self>,
-    ) -> ElementBox {
+        cx: &mut ViewContext<Self>,
+    ) -> AnyElement<Self> {
         enum Header {}
         enum LeaveCallContactList {}
 
@@ -1015,23 +999,25 @@ impl ContactList {
         };
         let leave_call = if section == Section::ActiveCall {
             Some(
-                MouseEventHandler::<LeaveCallContactList>::new(0, cx, |state, _| {
+                MouseEventHandler::<LeaveCallContactList, Self>::new(0, cx, |state, _| {
                     let style = theme.leave_call.style_for(state, false);
                     Label::new("Leave Call", style.text.clone())
                         .contained()
                         .with_style(style.container)
-                        .boxed()
                 })
-                .on_click(MouseButton::Left, |_, cx| cx.dispatch_action(LeaveCall))
-                .aligned()
-                .boxed(),
+                .on_click(MouseButton::Left, |_, _, cx| {
+                    ActiveCall::global(cx)
+                        .update(cx, |call, cx| call.hang_up(cx))
+                        .detach_and_log_err(cx);
+                })
+                .aligned(),
             )
         } else {
             None
         };
 
         let icon_size = theme.section_icon_size;
-        MouseEventHandler::<Header>::new(section as usize, cx, |_, _| {
+        MouseEventHandler::<Header, Self>::new(section as usize, cx, |_, _| {
             Flex::row()
                 .with_child(
                     Svg::new(if is_collapsed {
@@ -1045,8 +1031,7 @@ impl ContactList {
                     .with_max_height(icon_size)
                     .aligned()
                     .constrained()
-                    .with_width(icon_size)
-                    .boxed(),
+                    .with_width(icon_size),
                 )
                 .with_child(
                     Label::new(text, header_style.text.clone())
@@ -1054,21 +1039,19 @@ impl ContactList {
                         .left()
                         .contained()
                         .with_margin_left(theme.contact_username.container.margin.left)
-                        .flex(1., true)
-                        .boxed(),
+                        .flex(1., true),
                 )
                 .with_children(leave_call)
                 .constrained()
                 .with_height(theme.row_height)
                 .contained()
                 .with_style(header_style.container)
-                .boxed()
         })
         .with_cursor_style(CursorStyle::PointingHand)
-        .on_click(MouseButton::Left, move |_, cx| {
-            cx.dispatch_action(ToggleExpanded(section))
+        .on_click(MouseButton::Left, move |_, this, cx| {
+            this.toggle_expanded(section, cx);
         })
-        .boxed()
+        .into_any()
     }
 
     fn render_contact(
@@ -1077,15 +1060,15 @@ impl ContactList {
         project: &ModelHandle<Project>,
         theme: &theme::ContactList,
         is_selected: bool,
-        cx: &mut RenderContext<Self>,
-    ) -> ElementBox {
+        cx: &mut ViewContext<Self>,
+    ) -> AnyElement<Self> {
         let online = contact.online;
         let busy = contact.busy || calling;
         let user_id = contact.user.id;
         let github_login = contact.user.github_login.clone();
         let initial_project = project.clone();
-        let mut element =
-            MouseEventHandler::<Contact>::new(contact.user.id as usize, cx, |_, cx| {
+        let mut event_handler =
+            MouseEventHandler::<Contact, Self>::new(contact.user.id as usize, cx, |_, cx| {
                 Flex::row()
                     .with_children(contact.user.avatar.clone().map(|avatar| {
                         let status_badge = if contact.online {
@@ -1098,8 +1081,7 @@ impl ContactList {
                                     } else {
                                         theme.contact_status_free
                                     })
-                                    .aligned()
-                                    .boxed(),
+                                    .aligned(),
                             )
                         } else {
                             None
@@ -1109,11 +1091,9 @@ impl ContactList {
                                 Image::from_data(avatar)
                                     .with_style(theme.contact_avatar)
                                     .aligned()
-                                    .left()
-                                    .boxed(),
+                                    .left(),
                             )
                             .with_children(status_badge)
-                            .boxed()
                     }))
                     .with_child(
                         Label::new(
@@ -1124,11 +1104,10 @@ impl ContactList {
                         .with_style(theme.contact_username.container)
                         .aligned()
                         .left()
-                        .flex(1., true)
-                        .boxed(),
+                        .flex(1., true),
                     )
                     .with_child(
-                        MouseEventHandler::<Cancel>::new(
+                        MouseEventHandler::<Cancel, Self>::new(
                             contact.user.id as usize,
                             cx,
                             |mouse_state, _| {
@@ -1137,27 +1116,27 @@ impl ContactList {
                                 render_icon_button(button_style, "icons/x_mark_8.svg")
                                     .aligned()
                                     .flex_float()
-                                    .boxed()
                             },
                         )
                         .with_padding(Padding::uniform(2.))
                         .with_cursor_style(CursorStyle::PointingHand)
-                        .on_click(MouseButton::Left, move |_, cx| {
-                            cx.dispatch_action(RemoveContact {
-                                user_id,
-                                github_login: github_login.clone(),
-                            })
+                        .on_click(MouseButton::Left, move |_, this, cx| {
+                            this.remove_contact(
+                                &RemoveContact {
+                                    user_id,
+                                    github_login: github_login.clone(),
+                                },
+                                cx,
+                            );
                         })
-                        .flex_float()
-                        .boxed(),
+                        .flex_float(),
                     )
                     .with_children(if calling {
                         Some(
                             Label::new("Calling", theme.calling_indicator.text.clone())
                                 .contained()
                                 .with_style(theme.calling_indicator.container)
-                                .aligned()
-                                .boxed(),
+                                .aligned(),
                         )
                     } else {
                         None
@@ -1170,22 +1149,18 @@ impl ContactList {
                             .contact_row
                             .style_for(&mut Default::default(), is_selected),
                     )
-                    .boxed()
             })
-            .on_click(MouseButton::Left, move |_, cx| {
+            .on_click(MouseButton::Left, move |_, this, cx| {
                 if online && !busy {
-                    cx.dispatch_action(Call {
-                        recipient_user_id: user_id,
-                        initial_project: Some(initial_project.clone()),
-                    });
+                    this.call(user_id, Some(initial_project.clone()), cx);
                 }
             });
 
         if online {
-            element = element.with_cursor_style(CursorStyle::PointingHand);
+            event_handler = event_handler.with_cursor_style(CursorStyle::PointingHand);
         }
 
-        element.boxed()
+        event_handler.into_any()
     }
 
     fn render_contact_request(
@@ -1194,8 +1169,8 @@ impl ContactList {
         theme: &theme::ContactList,
         is_incoming: bool,
         is_selected: bool,
-        cx: &mut RenderContext<Self>,
-    ) -> ElementBox {
+        cx: &mut ViewContext<Self>,
+    ) -> AnyElement<Self> {
         enum Decline {}
         enum Accept {}
         enum Cancel {}
@@ -1206,7 +1181,6 @@ impl ContactList {
                     .with_style(theme.contact_avatar)
                     .aligned()
                     .left()
-                    .boxed()
             }))
             .with_child(
                 Label::new(
@@ -1217,8 +1191,7 @@ impl ContactList {
                 .with_style(theme.contact_username.container)
                 .aligned()
                 .left()
-                .flex(1., true)
-                .boxed(),
+                .flex(1., true),
             );
 
         let user_id = user.id;
@@ -1227,28 +1200,31 @@ impl ContactList {
         let button_spacing = theme.contact_button_spacing;
 
         if is_incoming {
-            row.add_children([
-                MouseEventHandler::<Decline>::new(user.id as usize, cx, |mouse_state, _| {
+            row.add_child(
+                MouseEventHandler::<Decline, Self>::new(user.id as usize, cx, |mouse_state, _| {
                     let button_style = if is_contact_request_pending {
                         &theme.disabled_button
                     } else {
                         theme.contact_button.style_for(mouse_state, false)
                     };
-                    render_icon_button(button_style, "icons/x_mark_8.svg")
-                        .aligned()
-                        .boxed()
+                    render_icon_button(button_style, "icons/x_mark_8.svg").aligned()
                 })
                 .with_cursor_style(CursorStyle::PointingHand)
-                .on_click(MouseButton::Left, move |_, cx| {
-                    cx.dispatch_action(RespondToContactRequest {
-                        user_id,
-                        accept: false,
-                    })
+                .on_click(MouseButton::Left, move |_, this, cx| {
+                    this.respond_to_contact_request(
+                        &RespondToContactRequest {
+                            user_id,
+                            accept: false,
+                        },
+                        cx,
+                    );
                 })
                 .contained()
-                .with_margin_right(button_spacing)
-                .boxed(),
-                MouseEventHandler::<Accept>::new(user.id as usize, cx, |mouse_state, _| {
+                .with_margin_right(button_spacing),
+            );
+
+            row.add_child(
+                MouseEventHandler::<Accept, Self>::new(user.id as usize, cx, |mouse_state, _| {
                     let button_style = if is_contact_request_pending {
                         &theme.disabled_button
                     } else {
@@ -1257,20 +1233,21 @@ impl ContactList {
                     render_icon_button(button_style, "icons/check_8.svg")
                         .aligned()
                         .flex_float()
-                        .boxed()
                 })
                 .with_cursor_style(CursorStyle::PointingHand)
-                .on_click(MouseButton::Left, move |_, cx| {
-                    cx.dispatch_action(RespondToContactRequest {
-                        user_id,
-                        accept: true,
-                    })
-                })
-                .boxed(),
-            ]);
+                .on_click(MouseButton::Left, move |_, this, cx| {
+                    this.respond_to_contact_request(
+                        &RespondToContactRequest {
+                            user_id,
+                            accept: true,
+                        },
+                        cx,
+                    );
+                }),
+            );
         } else {
             row.add_child(
-                MouseEventHandler::<Cancel>::new(user.id as usize, cx, |mouse_state, _| {
+                MouseEventHandler::<Cancel, Self>::new(user.id as usize, cx, |mouse_state, _| {
                     let button_style = if is_contact_request_pending {
                         &theme.disabled_button
                     } else {
@@ -1279,18 +1256,19 @@ impl ContactList {
                     render_icon_button(button_style, "icons/x_mark_8.svg")
                         .aligned()
                         .flex_float()
-                        .boxed()
                 })
                 .with_padding(Padding::uniform(2.))
                 .with_cursor_style(CursorStyle::PointingHand)
-                .on_click(MouseButton::Left, move |_, cx| {
-                    cx.dispatch_action(RemoveContact {
-                        user_id,
-                        github_login: github_login.clone(),
-                    })
+                .on_click(MouseButton::Left, move |_, this, cx| {
+                    this.remove_contact(
+                        &RemoveContact {
+                            user_id,
+                            github_login: github_login.clone(),
+                        },
+                        cx,
+                    );
                 })
-                .flex_float()
-                .boxed(),
+                .flex_float(),
             );
         }
 
@@ -1302,12 +1280,15 @@ impl ContactList {
                     .contact_row
                     .style_for(&mut Default::default(), is_selected),
             )
-            .boxed()
+            .into_any()
     }
 
-    fn call(&mut self, action: &Call, cx: &mut ViewContext<Self>) {
-        let recipient_user_id = action.recipient_user_id;
-        let initial_project = action.initial_project.clone();
+    fn call(
+        &mut self,
+        recipient_user_id: u64,
+        initial_project: Option<ModelHandle<Project>>,
+        cx: &mut ViewContext<Self>,
+    ) {
         ActiveCall::global(cx)
             .update(cx, |call, cx| {
                 call.invite(recipient_user_id, initial_project, cx)
@@ -1325,13 +1306,12 @@ impl View for ContactList {
         "ContactList"
     }
 
-    fn keymap_context(&self, _: &AppContext) -> KeymapContext {
-        let mut cx = Self::default_keymap_context();
-        cx.add_identifier("menu");
-        cx
+    fn update_keymap_context(&self, keymap: &mut KeymapContext, _: &AppContext) {
+        Self::reset_to_default_keymap_context(keymap);
+        keymap.add_identifier("menu");
     }
 
-    fn render(&mut self, cx: &mut RenderContext<Self>) -> ElementBox {
+    fn render(&mut self, cx: &mut ViewContext<Self>) -> AnyElement<Self> {
         enum AddContact {}
         let theme = cx.global::<Settings>().theme.clone();
 
@@ -1339,39 +1319,35 @@ impl View for ContactList {
             .with_child(
                 Flex::row()
                     .with_child(
-                        ChildView::new(self.filter_editor.clone(), cx)
+                        ChildView::new(&self.filter_editor, cx)
                             .contained()
                             .with_style(theme.contact_list.user_query_editor.container)
-                            .flex(1., true)
-                            .boxed(),
+                            .flex(1., true),
                     )
                     .with_child(
-                        MouseEventHandler::<AddContact>::new(0, cx, |_, _| {
+                        MouseEventHandler::<AddContact, Self>::new(0, cx, |_, _| {
                             render_icon_button(
                                 &theme.contact_list.add_contact_button,
                                 "icons/user_plus_16.svg",
                             )
-                            .boxed()
                         })
                         .with_cursor_style(CursorStyle::PointingHand)
-                        .on_click(MouseButton::Left, |_, cx| {
-                            cx.dispatch_action(contacts_popover::ToggleContactFinder)
+                        .on_click(MouseButton::Left, |_, _, cx| {
+                            cx.emit(Event::ToggleContactFinder)
                         })
-                        .with_tooltip::<AddContact, _>(
+                        .with_tooltip::<AddContact>(
                             0,
                             "Search for new contact".into(),
                             None,
                             theme.tooltip.clone(),
                             cx,
-                        )
-                        .boxed(),
+                        ),
                     )
                     .constrained()
-                    .with_height(theme.contact_list.user_query_editor_height)
-                    .boxed(),
+                    .with_height(theme.contact_list.user_query_editor_height),
             )
-            .with_child(List::new(self.list_state.clone()).flex(1., false).boxed())
-            .boxed()
+            .with_child(List::new(self.list_state.clone()).flex(1., false))
+            .into_any()
     }
 
     fn focus_in(&mut self, _: gpui::AnyViewHandle, cx: &mut ViewContext<Self>) {
@@ -1387,7 +1363,7 @@ impl View for ContactList {
     }
 }
 
-fn render_icon_button(style: &IconButton, svg_path: &'static str) -> impl Element {
+fn render_icon_button(style: &IconButton, svg_path: &'static str) -> impl Element<ContactList> {
     Svg::new(svg_path)
         .with_color(style.color)
         .constrained()

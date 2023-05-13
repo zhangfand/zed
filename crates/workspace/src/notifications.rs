@@ -1,11 +1,9 @@
+use crate::{Toast, Workspace};
+use collections::HashSet;
+use gpui::{AnyViewHandle, AppContext, Entity, View, ViewContext, ViewHandle};
 use std::{any::TypeId, ops::DerefMut};
 
-use collections::HashSet;
-use gpui::{AnyViewHandle, Entity, MutableAppContext, View, ViewContext, ViewHandle};
-
-use crate::Workspace;
-
-pub fn init(cx: &mut MutableAppContext) {
+pub fn init(cx: &mut AppContext) {
     cx.set_global(NotificationTracker::new());
     simple_message_notification::init(cx);
 }
@@ -16,7 +14,7 @@ pub trait Notification: View {
 
 pub trait NotificationHandle {
     fn id(&self) -> usize;
-    fn to_any(&self) -> AnyViewHandle;
+    fn as_any(&self) -> &AnyViewHandle;
 }
 
 impl<T: Notification> NotificationHandle for ViewHandle<T> {
@@ -24,14 +22,14 @@ impl<T: Notification> NotificationHandle for ViewHandle<T> {
         self.id()
     }
 
-    fn to_any(&self) -> AnyViewHandle {
-        self.into()
+    fn as_any(&self) -> &AnyViewHandle {
+        self
     }
 }
 
 impl From<&dyn NotificationHandle> for AnyViewHandle {
     fn from(val: &dyn NotificationHandle) -> Self {
-        val.to_any()
+        val.as_any().clone()
     }
 }
 
@@ -113,6 +111,25 @@ impl Workspace {
         self.dismiss_notification_internal(type_id, id, cx)
     }
 
+    pub fn show_toast(&mut self, toast: Toast, cx: &mut ViewContext<Self>) {
+        self.dismiss_notification::<simple_message_notification::MessageNotification>(toast.id, cx);
+        self.show_notification(toast.id, cx, |cx| {
+            cx.add_view(|_cx| match toast.on_click.as_ref() {
+                Some((click_msg, on_click)) => {
+                    let on_click = on_click.clone();
+                    simple_message_notification::MessageNotification::new(toast.msg.clone())
+                        .with_click_message(click_msg.clone())
+                        .on_click(move |cx| on_click(cx))
+                }
+                None => simple_message_notification::MessageNotification::new(toast.msg.clone()),
+            })
+        })
+    }
+
+    pub fn dismiss_toast(&mut self, id: usize, cx: &mut ViewContext<Self>) {
+        self.dismiss_notification::<simple_message_notification::MessageNotification>(id, cx);
+    }
+
     fn dismiss_notification_internal(
         &mut self,
         type_id: TypeId,
@@ -132,18 +149,17 @@ impl Workspace {
 }
 
 pub mod simple_message_notification {
-
-    use std::borrow::Cow;
-
     use gpui::{
         actions,
         elements::{Flex, MouseEventHandler, Padding, ParentElement, Svg, Text},
-        impl_actions, Action, CursorStyle, Element, Entity, MouseButton, MutableAppContext, View,
-        ViewContext,
+        impl_actions,
+        platform::{CursorStyle, MouseButton},
+        AppContext, Element, Entity, View, ViewContext,
     };
     use menu::Cancel;
     use serde::Deserialize;
     use settings::Settings;
+    use std::{borrow::Cow, sync::Arc};
 
     use crate::Workspace;
 
@@ -162,7 +178,7 @@ pub mod simple_message_notification {
 
     impl_actions!(message_notifications, [OsOpen]);
 
-    pub fn init(cx: &mut MutableAppContext) {
+    pub fn init(cx: &mut AppContext) {
         cx.add_action(MessageNotification::dismiss);
         cx.add_action(
             |_workspace: &mut Workspace, open_action: &OsOpen, cx: &mut ViewContext<Workspace>| {
@@ -173,7 +189,7 @@ pub mod simple_message_notification {
 
     pub struct MessageNotification {
         message: Cow<'static, str>,
-        click_action: Option<Box<dyn Action>>,
+        on_click: Option<Arc<dyn Fn(&mut ViewContext<Self>)>>,
         click_message: Option<Cow<'static, str>>,
     }
 
@@ -186,36 +202,31 @@ pub mod simple_message_notification {
     }
 
     impl MessageNotification {
-        pub fn new_message<S: Into<Cow<'static, str>>>(message: S) -> MessageNotification {
+        pub fn new<S>(message: S) -> MessageNotification
+        where
+            S: Into<Cow<'static, str>>,
+        {
             Self {
                 message: message.into(),
-                click_action: None,
+                on_click: None,
                 click_message: None,
             }
         }
 
-        pub fn new_boxed_action<S1: Into<Cow<'static, str>>, S2: Into<Cow<'static, str>>>(
-            message: S1,
-            click_action: Box<dyn Action>,
-            click_message: S2,
-        ) -> Self {
-            Self {
-                message: message.into(),
-                click_action: Some(click_action),
-                click_message: Some(click_message.into()),
-            }
+        pub fn with_click_message<S>(mut self, message: S) -> Self
+        where
+            S: Into<Cow<'static, str>>,
+        {
+            self.click_message = Some(message.into());
+            self
         }
 
-        pub fn new<S1: Into<Cow<'static, str>>, A: Action, S2: Into<Cow<'static, str>>>(
-            message: S1,
-            click_action: A,
-            click_message: S2,
-        ) -> Self {
-            Self {
-                message: message.into(),
-                click_action: Some(Box::new(click_action) as Box<dyn Action>),
-                click_message: Some(click_message.into()),
-            }
+        pub fn on_click<F>(mut self, on_click: F) -> Self
+        where
+            F: 'static + Fn(&mut ViewContext<Self>),
+        {
+            self.on_click = Some(Arc::new(on_click));
+            self
         }
 
         pub fn dismiss(&mut self, _: &CancelMessageNotification, cx: &mut ViewContext<Self>) {
@@ -228,22 +239,18 @@ pub mod simple_message_notification {
             "MessageNotification"
         }
 
-        fn render(&mut self, cx: &mut gpui::RenderContext<'_, Self>) -> gpui::ElementBox {
+        fn render(&mut self, cx: &mut gpui::ViewContext<Self>) -> gpui::AnyElement<Self> {
             let theme = cx.global::<Settings>().theme.clone();
             let theme = &theme.simple_message_notification;
 
             enum MessageNotificationTag {}
 
-            let click_action = self
-                .click_action
-                .as_ref()
-                .map(|action| action.boxed_clone());
-            let click_message = self.click_message.as_ref().map(|message| message.clone());
+            let click_message = self.click_message.clone();
             let message = self.message.clone();
+            let on_click = self.on_click.clone();
+            let has_click_action = on_click.is_some();
 
-            let has_click_action = click_action.is_some();
-
-            MouseEventHandler::<MessageNotificationTag>::new(0, cx, |state, cx| {
+            MouseEventHandler::<MessageNotificationTag, _>::new(0, cx, |state, cx| {
                 Flex::column()
                     .with_child(
                         Flex::row()
@@ -254,11 +261,10 @@ pub mod simple_message_notification {
                                     .aligned()
                                     .top()
                                     .left()
-                                    .flex(1., true)
-                                    .boxed(),
+                                    .flex(1., true),
                             )
                             .with_child(
-                                MouseEventHandler::<Cancel>::new(0, cx, |state, _| {
+                                MouseEventHandler::<Cancel, _>::new(0, cx, |state, _| {
                                     let style = theme.dismiss_button.style_for(state, false);
                                     Svg::new("icons/x_mark_8.svg")
                                         .with_color(style.color)
@@ -270,11 +276,10 @@ pub mod simple_message_notification {
                                         .constrained()
                                         .with_width(style.button_width)
                                         .with_height(style.button_width)
-                                        .boxed()
                                 })
                                 .with_padding(Padding::uniform(5.))
-                                .on_click(MouseButton::Left, move |_, cx| {
-                                    cx.dispatch_action(CancelMessageNotification)
+                                .on_click(MouseButton::Left, move |_, this, cx| {
+                                    this.dismiss(&Default::default(), cx);
                                 })
                                 .with_cursor_style(CursorStyle::PointingHand)
                                 .aligned()
@@ -284,23 +289,18 @@ pub mod simple_message_notification {
                                 )
                                 .aligned()
                                 .top()
-                                .flex_float()
-                                .boxed(),
-                            )
-                            .boxed(),
+                                .flex_float(),
+                            ),
                     )
                     .with_children({
                         let style = theme.action_message.style_for(state, false);
                         if let Some(click_message) = click_message {
                             Some(
-                                Flex::row()
-                                    .with_child(
-                                        Text::new(click_message, style.text.clone())
-                                            .contained()
-                                            .with_style(style.container)
-                                            .boxed(),
-                                    )
-                                    .boxed(),
+                                Flex::row().with_child(
+                                    Text::new(click_message, style.text.clone())
+                                        .contained()
+                                        .with_style(style.container),
+                                ),
                             )
                         } else {
                             None
@@ -308,15 +308,14 @@ pub mod simple_message_notification {
                         .into_iter()
                     })
                     .contained()
-                    .boxed()
             })
             // Since we're not using a proper overlay, we have to capture these extra events
-            .on_down(MouseButton::Left, |_, _| {})
-            .on_up(MouseButton::Left, |_, _| {})
-            .on_click(MouseButton::Left, move |_, cx| {
-                if let Some(click_action) = click_action.as_ref() {
-                    cx.dispatch_any_action(click_action.boxed_clone());
-                    cx.dispatch_action(CancelMessageNotification)
+            .on_down(MouseButton::Left, |_, _, _| {})
+            .on_up(MouseButton::Left, |_, _, _| {})
+            .on_click(MouseButton::Left, move |_, this, cx| {
+                if let Some(on_click) = on_click.as_ref() {
+                    on_click(cx);
+                    this.dismiss(&Default::default(), cx);
                 }
             })
             .with_cursor_style(if has_click_action {
@@ -324,7 +323,7 @@ pub mod simple_message_notification {
             } else {
                 CursorStyle::Arrow
             })
-            .boxed()
+            .into_any()
         }
     }
 
@@ -359,7 +358,7 @@ where
             Err(err) => {
                 workspace.show_notification(0, cx, |cx| {
                     cx.add_view(|_cx| {
-                        simple_message_notification::MessageNotification::new_message(format!(
+                        simple_message_notification::MessageNotification::new(format!(
                             "Error: {:?}",
                             err,
                         ))

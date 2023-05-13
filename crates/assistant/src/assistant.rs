@@ -54,7 +54,7 @@ pub struct AssistantButton {
     active: bool,
 }
 
-pub fn init(cx: &mut MutableAppContext) {
+pub fn init(cx: &mut AppContext) {
     cx.add_action(AssistantButton::deploy_assistant);
     cx.add_action(Assistant::send_message);
 }
@@ -83,7 +83,6 @@ impl Assistant {
             message_list_items.len(),
             Orientation::Bottom,
             512.,
-            cx,
             |this, ix, cx| this.render_message_list_item(ix, cx),
         );
 

@@ -3,7 +3,7 @@ use std::ops::{Deref, DerefMut};
 use editor::test::{
     editor_lsp_test_context::EditorLspTestContext, editor_test_context::EditorTestContext,
 };
-use gpui::{AppContext, ContextHandle};
+use gpui::ContextHandle;
 use search::{BufferSearchBar, ProjectSearchBar};
 
 use crate::{state::Operator, *};
@@ -16,26 +16,20 @@ pub struct VimTestContext<'a> {
 
 impl<'a> VimTestContext<'a> {
     pub async fn new(cx: &'a mut gpui::TestAppContext, enabled: bool) -> VimTestContext<'a> {
+        let mut cx = EditorLspTestContext::new_rust(Default::default(), cx).await;
         cx.update(|cx| {
+            cx.update_global(|settings: &mut Settings, _| {
+                settings.vim_mode = enabled;
+            });
             search::init(cx);
             crate::init(cx);
 
             settings::KeymapFileContent::load("keymaps/vim.json", cx).unwrap();
         });
 
-        let mut cx = EditorLspTestContext::new_rust(Default::default(), cx).await;
-
-        cx.update(|cx| {
-            cx.update_global(|settings: &mut Settings, _| {
-                settings.vim_mode = enabled;
-            });
-        });
-
-        let window_id = cx.window_id;
-
         // Setup search toolbars and keypress hook
         cx.update_workspace(|workspace, cx| {
-            observe_keystrokes(window_id, cx);
+            observe_keystrokes(cx);
             workspace.active_pane().update(cx, |pane, cx| {
                 pane.toolbar().update(cx, |toolbar, cx| {
                     let buffer_search_bar = cx.add_view(BufferSearchBar::new);
@@ -51,7 +45,7 @@ impl<'a> VimTestContext<'a> {
 
     pub fn workspace<F, T>(&mut self, read: F) -> T
     where
-        F: FnOnce(&Workspace, &AppContext) -> T,
+        F: FnOnce(&Workspace, &ViewContext<Workspace>) -> T,
     {
         self.cx.workspace.read_with(self.cx.cx.cx, read)
     }
@@ -82,7 +76,8 @@ impl<'a> VimTestContext<'a> {
     }
 
     pub fn set_state(&mut self, text: &str, mode: Mode) -> ContextHandle {
-        self.cx.update(|cx| {
+        let window_id = self.window_id;
+        self.update_window(window_id, |cx| {
             Vim::update(cx, |vim, cx| {
                 vim.switch_mode(mode, false, cx);
             })

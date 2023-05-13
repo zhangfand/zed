@@ -1,11 +1,16 @@
-use gpui::{elements::*, CursorStyle, Entity, MouseButton, RenderContext, View, ViewContext};
+use gpui::{
+    elements::*,
+    platform::{CursorStyle, MouseButton},
+    Entity, View, ViewContext, WeakViewHandle,
+};
 use settings::Settings;
-use workspace::{item::ItemHandle, StatusItemView};
+use workspace::{item::ItemHandle, StatusItemView, Workspace};
 
 use crate::feedback_editor::{FeedbackEditor, GiveFeedback};
 
 pub struct DeployFeedbackButton {
     active: bool,
+    workspace: WeakViewHandle<Workspace>,
 }
 
 impl Entity for DeployFeedbackButton {
@@ -13,8 +18,11 @@ impl Entity for DeployFeedbackButton {
 }
 
 impl DeployFeedbackButton {
-    pub fn new() -> Self {
-        DeployFeedbackButton { active: false }
+    pub fn new(workspace: &Workspace) -> Self {
+        DeployFeedbackButton {
+            active: false,
+            workspace: workspace.weak_handle(),
+        }
     }
 }
 
@@ -23,17 +31,17 @@ impl View for DeployFeedbackButton {
         "DeployFeedbackButton"
     }
 
-    fn render(&mut self, cx: &mut RenderContext<'_, Self>) -> ElementBox {
+    fn render(&mut self, cx: &mut ViewContext<Self>) -> AnyElement<Self> {
         let active = self.active;
         let theme = cx.global::<Settings>().theme.clone();
         Stack::new()
             .with_child(
-                MouseEventHandler::<Self>::new(0, cx, |state, _| {
+                MouseEventHandler::<Self, Self>::new(0, cx, |state, _| {
                     let style = &theme
                         .workspace
                         .status_bar
-                        .sidebar_buttons
-                        .item
+                        .panel_buttons
+                        .button
                         .style_for(state, active);
 
                     Svg::new("icons/feedback_16.svg")
@@ -46,24 +54,25 @@ impl View for DeployFeedbackButton {
                         .with_height(style.icon_size)
                         .contained()
                         .with_style(style.container)
-                        .boxed()
                 })
                 .with_cursor_style(CursorStyle::PointingHand)
-                .on_click(MouseButton::Left, move |_, cx| {
+                .on_click(MouseButton::Left, move |_, this, cx| {
                     if !active {
-                        cx.dispatch_action(GiveFeedback)
+                        if let Some(workspace) = this.workspace.upgrade(cx) {
+                            workspace
+                                .update(cx, |workspace, cx| FeedbackEditor::deploy(workspace, cx))
+                        }
                     }
                 })
-                .with_tooltip::<Self, _>(
+                .with_tooltip::<Self>(
                     0,
                     "Send Feedback".into(),
                     Some(Box::new(GiveFeedback)),
                     theme.tooltip.clone(),
                     cx,
-                )
-                .boxed(),
+                ),
             )
-            .boxed()
+            .into_any()
     }
 }
 

@@ -1,12 +1,16 @@
+use crate::feedback_editor::{FeedbackEditor, SubmitFeedback};
+use anyhow::Result;
 use gpui::{
     elements::{Label, MouseEventHandler},
-    CursorStyle, Element, ElementBox, Entity, MouseButton, RenderContext, View, ViewContext,
-    ViewHandle,
+    platform::{CursorStyle, MouseButton},
+    AnyElement, AppContext, Element, Entity, Task, View, ViewContext, ViewHandle,
 };
 use settings::Settings;
 use workspace::{item::ItemHandle, ToolbarItemLocation, ToolbarItemView};
 
-use crate::feedback_editor::{FeedbackEditor, SubmitFeedback};
+pub fn init(cx: &mut AppContext) {
+    cx.add_async_action(SubmitFeedbackButton::submit);
+}
 
 pub struct SubmitFeedbackButton {
     pub(crate) active_item: Option<ViewHandle<FeedbackEditor>>,
@@ -16,6 +20,18 @@ impl SubmitFeedbackButton {
     pub fn new() -> Self {
         Self {
             active_item: Default::default(),
+        }
+    }
+
+    pub fn submit(
+        &mut self,
+        _: &SubmitFeedback,
+        cx: &mut ViewContext<Self>,
+    ) -> Option<Task<Result<()>>> {
+        if let Some(active_item) = self.active_item.as_ref() {
+            Some(active_item.update(cx, |feedback_editor, cx| feedback_editor.submit(cx)))
+        } else {
+            None
         }
     }
 }
@@ -29,31 +45,30 @@ impl View for SubmitFeedbackButton {
         "SubmitFeedbackButton"
     }
 
-    fn render(&mut self, cx: &mut RenderContext<Self>) -> ElementBox {
+    fn render(&mut self, cx: &mut ViewContext<Self>) -> AnyElement<Self> {
         let theme = cx.global::<Settings>().theme.clone();
         enum SubmitFeedbackButton {}
-        MouseEventHandler::<SubmitFeedbackButton>::new(0, cx, |state, _| {
+        MouseEventHandler::<SubmitFeedbackButton, Self>::new(0, cx, |state, _| {
             let style = theme.feedback.submit_button.style_for(state, false);
             Label::new("Submit as Markdown", style.text.clone())
                 .contained()
                 .with_style(style.container)
-                .boxed()
         })
         .with_cursor_style(CursorStyle::PointingHand)
-        .on_click(MouseButton::Left, |_, cx| {
-            cx.dispatch_action(SubmitFeedback)
+        .on_click(MouseButton::Left, |_, this, cx| {
+            this.submit(&Default::default(), cx);
         })
         .aligned()
         .contained()
         .with_margin_left(theme.feedback.button_margin)
-        .with_tooltip::<Self, _>(
+        .with_tooltip::<Self>(
             0,
             "cmd-s".into(),
             Some(Box::new(SubmitFeedback)),
             theme.tooltip.clone(),
             cx,
         )
-        .boxed()
+        .into_any()
     }
 }
 

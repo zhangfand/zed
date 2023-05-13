@@ -1,29 +1,30 @@
 mod persistence;
-pub mod terminal_button;
 pub mod terminal_element;
-
-use std::{
-    ops::RangeInclusive,
-    path::{Path, PathBuf},
-    time::Duration,
-};
+pub mod terminal_panel;
 
 use context_menu::{ContextMenu, ContextMenuItem};
 use dirs::home_dir;
 use gpui::{
     actions,
-    elements::{AnchorCorner, ChildView, Flex, Label, ParentElement, Stack, Text},
+    elements::{AnchorCorner, ChildView, Flex, Label, ParentElement, Stack},
     geometry::vector::Vector2F,
-    impl_actions, impl_internal_actions,
+    impl_actions,
     keymap_matcher::{KeymapContext, Keystroke},
-    AnyViewHandle, AppContext, Element, ElementBox, Entity, ModelHandle, MutableAppContext, Task,
-    View, ViewContext, ViewHandle, WeakViewHandle,
+    platform::KeyDownEvent,
+    AnyElement, AnyViewHandle, AppContext, Element, Entity, ModelHandle, Task, View, ViewContext,
+    ViewHandle, WeakViewHandle,
 };
 use project::{LocalWorktree, Project};
 use serde::Deserialize;
 use settings::{Settings, TerminalBlink, WorkingDirectory};
 use smallvec::{smallvec, SmallVec};
 use smol::Timer;
+use std::{
+    borrow::Cow,
+    ops::RangeInclusive,
+    path::{Path, PathBuf},
+    time::Duration,
+};
 use terminal::{
     alacritty_terminal::{
         index::Point,
@@ -33,7 +34,7 @@ use terminal::{
 };
 use util::ResultExt;
 use workspace::{
-    item::{Item, ItemEvent},
+    item::{BreadcrumbText, Item, ItemEvent},
     notifications::NotifyResultExt,
     pane, register_deserializable_item,
     searchable::{SearchEvent, SearchOptions, SearchableItem, SearchableItemHandle},
@@ -48,11 +49,6 @@ const CURSOR_BLINK_INTERVAL: Duration = Duration::from_millis(500);
 #[derive(Clone, Debug, PartialEq)]
 pub struct ScrollTerminal(pub i32);
 
-#[derive(Clone, PartialEq)]
-pub struct DeployContextMenu {
-    pub position: Vector2F,
-}
-
 #[derive(Clone, Default, Deserialize, PartialEq)]
 pub struct SendText(String);
 
@@ -66,9 +62,8 @@ actions!(
 
 impl_actions!(terminal, [SendText, SendKeystroke]);
 
-impl_internal_actions!(project_panel, [DeployContextMenu]);
-
-pub fn init(cx: &mut MutableAppContext) {
+pub fn init(cx: &mut AppContext) {
+    terminal_panel::init(cx);
     cx.add_action(TerminalView::deploy);
 
     register_deserializable_item::<TerminalView>(cx);
@@ -76,7 +71,6 @@ pub fn init(cx: &mut MutableAppContext) {
     //Useful terminal views
     cx.add_action(TerminalView::send_text);
     cx.add_action(TerminalView::send_keystroke);
-    cx.add_action(TerminalView::deploy_context_menu);
     cx.add_action(TerminalView::copy);
     cx.add_action(TerminalView::paste);
     cx.add_action(TerminalView::clear);
@@ -131,6 +125,7 @@ impl TerminalView {
         workspace_id: WorkspaceId,
         cx: &mut ViewContext<Self>,
     ) -> Self {
+        let view_id = cx.view_id();
         cx.observe(&terminal, |_, _, cx| cx.notify()).detach();
         cx.subscribe(&terminal, |this, _, event, cx| match event {
             Event::Wakeup => {
@@ -169,7 +164,7 @@ impl TerminalView {
             terminal,
             has_new_content: true,
             has_bell: false,
-            context_menu: cx.add_view(ContextMenu::new),
+            context_menu: cx.add_view(|cx| ContextMenu::new(view_id, cx)),
             blink_state: true,
             blinking_on: false,
             blinking_paused: false,
@@ -195,14 +190,14 @@ impl TerminalView {
         cx.emit(Event::Wakeup);
     }
 
-    pub fn deploy_context_menu(&mut self, action: &DeployContextMenu, cx: &mut ViewContext<Self>) {
+    pub fn deploy_context_menu(&mut self, position: Vector2F, cx: &mut ViewContext<Self>) {
         let menu_entries = vec![
-            ContextMenuItem::item("Clear", Clear),
-            ContextMenuItem::item("Close", pane::CloseActiveItem),
+            ContextMenuItem::action("Clear", Clear),
+            ContextMenuItem::action("Close", pane::CloseActiveItem),
         ];
 
         self.context_menu.update(cx, |menu, cx| {
-            menu.show(action.position, AnchorCorner::TopLeft, menu_entries, cx)
+            menu.show(position, AnchorCorner::TopLeft, menu_entries, cx)
         });
 
         cx.notify();
@@ -235,11 +230,7 @@ impl TerminalView {
         cx.notify();
     }
 
-    pub fn should_show_cursor(
-        &self,
-        focused: bool,
-        cx: &mut gpui::RenderContext<'_, Self>,
-    ) -> bool {
+    pub fn should_show_cursor(&self, focused: bool, cx: &mut gpui::ViewContext<Self>) -> bool {
         //Don't blink the cursor when not focused, blinking is disabled, or paused
         if !focused
             || !self.blinking_on
@@ -277,14 +268,10 @@ impl TerminalView {
             cx.notify();
 
             let epoch = self.next_blink_epoch();
-            cx.spawn(|this, mut cx| {
-                let this = this.downgrade();
-                async move {
-                    Timer::after(CURSOR_BLINK_INTERVAL).await;
-                    if let Some(this) = this.upgrade(&cx) {
-                        this.update(&mut cx, |this, cx| this.blink_cursors(epoch, cx));
-                    }
-                }
+            cx.spawn(|this, mut cx| async move {
+                Timer::after(CURSOR_BLINK_INTERVAL).await;
+                this.update(&mut cx, |this, cx| this.blink_cursors(epoch, cx))
+                    .log_err();
             })
             .detach();
         }
@@ -295,14 +282,10 @@ impl TerminalView {
         cx.notify();
 
         let epoch = self.next_blink_epoch();
-        cx.spawn(|this, mut cx| {
-            let this = this.downgrade();
-            async move {
-                Timer::after(CURSOR_BLINK_INTERVAL).await;
-                if let Some(this) = this.upgrade(&cx) {
-                    this.update(&mut cx, |this, cx| this.resume_cursor_blinking(epoch, cx))
-                }
-            }
+        cx.spawn(|this, mut cx| async move {
+            Timer::after(CURSOR_BLINK_INTERVAL).await;
+            this.update(&mut cx, |this, cx| this.resume_cursor_blinking(epoch, cx))
+                .log_err();
         })
         .detach();
     }
@@ -387,28 +370,26 @@ impl View for TerminalView {
         "Terminal"
     }
 
-    fn render(&mut self, cx: &mut gpui::RenderContext<'_, Self>) -> ElementBox {
+    fn render(&mut self, cx: &mut gpui::ViewContext<Self>) -> AnyElement<Self> {
         let terminal_handle = self.terminal.clone().downgrade();
 
         let self_id = cx.view_id();
         let focused = cx
-            .focused_view_id(cx.window_id())
+            .focused_view_id()
             .filter(|view_id| *view_id == self_id)
             .is_some();
 
         Stack::new()
             .with_child(
                 TerminalElement::new(
-                    cx.handle(),
                     terminal_handle,
                     focused,
                     self.should_show_cursor(focused, cx),
                 )
-                .contained()
-                .boxed(),
+                .contained(),
             )
-            .with_child(ChildView::new(&self.context_menu, cx).boxed())
-            .boxed()
+            .with_child(ChildView::new(&self.context_menu, cx))
+            .into_any()
     }
 
     fn focus_in(&mut self, _: AnyViewHandle, cx: &mut ViewContext<Self>) {
@@ -425,7 +406,7 @@ impl View for TerminalView {
         cx.notify();
     }
 
-    fn key_down(&mut self, event: &gpui::KeyDownEvent, cx: &mut ViewContext<Self>) -> bool {
+    fn key_down(&mut self, event: &KeyDownEvent, cx: &mut ViewContext<Self>) -> bool {
         self.clear_bel(cx);
         self.pause_cursor_blinking(cx);
 
@@ -466,11 +447,11 @@ impl View for TerminalView {
         });
     }
 
-    fn keymap_context(&self, cx: &gpui::AppContext) -> KeymapContext {
-        let mut context = Self::default_keymap_context();
+    fn update_keymap_context(&self, keymap: &mut KeymapContext, cx: &gpui::AppContext) {
+        Self::reset_to_default_keymap_context(keymap);
 
         let mode = self.terminal.read(cx).last_content.mode;
-        context.add_key(
+        keymap.add_key(
             "screen",
             if mode.contains(TermMode::ALT_SCREEN) {
                 "alt"
@@ -480,40 +461,40 @@ impl View for TerminalView {
         );
 
         if mode.contains(TermMode::APP_CURSOR) {
-            context.add_identifier("DECCKM");
+            keymap.add_identifier("DECCKM");
         }
         if mode.contains(TermMode::APP_KEYPAD) {
-            context.add_identifier("DECPAM");
+            keymap.add_identifier("DECPAM");
         } else {
-            context.add_identifier("DECPNM");
+            keymap.add_identifier("DECPNM");
         }
         if mode.contains(TermMode::SHOW_CURSOR) {
-            context.add_identifier("DECTCEM");
+            keymap.add_identifier("DECTCEM");
         }
         if mode.contains(TermMode::LINE_WRAP) {
-            context.add_identifier("DECAWM");
+            keymap.add_identifier("DECAWM");
         }
         if mode.contains(TermMode::ORIGIN) {
-            context.add_identifier("DECOM");
+            keymap.add_identifier("DECOM");
         }
         if mode.contains(TermMode::INSERT) {
-            context.add_identifier("IRM");
+            keymap.add_identifier("IRM");
         }
         //LNM is apparently the name for this. https://vt100.net/docs/vt510-rm/LNM.html
         if mode.contains(TermMode::LINE_FEED_NEW_LINE) {
-            context.add_identifier("LNM");
+            keymap.add_identifier("LNM");
         }
         if mode.contains(TermMode::FOCUS_IN_OUT) {
-            context.add_identifier("report_focus");
+            keymap.add_identifier("report_focus");
         }
         if mode.contains(TermMode::ALTERNATE_SCROLL) {
-            context.add_identifier("alternate_scroll");
+            keymap.add_identifier("alternate_scroll");
         }
         if mode.contains(TermMode::BRACKETED_PASTE) {
-            context.add_identifier("bracketed_paste");
+            keymap.add_identifier("bracketed_paste");
         }
         if mode.intersects(TermMode::MOUSE_MODE) {
-            context.add_identifier("any_mouse_reporting");
+            keymap.add_identifier("any_mouse_reporting");
         }
         {
             let mouse_reporting = if mode.contains(TermMode::MOUSE_REPORT_CLICK) {
@@ -525,7 +506,7 @@ impl View for TerminalView {
             } else {
                 "off"
             };
-            context.add_key("mouse_reporting", mouse_reporting);
+            keymap.add_key("mouse_reporting", mouse_reporting);
         }
         {
             let format = if mode.contains(TermMode::SGR_MOUSE) {
@@ -535,19 +516,22 @@ impl View for TerminalView {
             } else {
                 "normal"
             };
-            context.add_key("mouse_format", format);
+            keymap.add_key("mouse_format", format);
         }
-        context
     }
 }
 
 impl Item for TerminalView {
-    fn tab_content(
+    fn tab_tooltip_text(&self, cx: &AppContext) -> Option<Cow<str>> {
+        Some(self.terminal().read(cx).title().into())
+    }
+
+    fn tab_content<T: View>(
         &self,
         _detail: Option<usize>,
         tab_theme: &theme::Tab,
         cx: &gpui::AppContext,
-    ) -> ElementBox {
+    ) -> AnyElement<T> {
         let title = self.terminal().read(cx).title();
 
         Flex::row()
@@ -558,11 +542,10 @@ impl Item for TerminalView {
                     .with_width(tab_theme.type_icon_width)
                     .aligned()
                     .contained()
-                    .with_margin_right(tab_theme.spacing)
-                    .boxed(),
+                    .with_margin_right(tab_theme.spacing),
             )
-            .with_child(Label::new(title, tab_theme.label.clone()).aligned().boxed())
-            .boxed()
+            .with_child(Label::new(title, tab_theme.label.clone()).aligned())
+            .into_any()
     }
 
     fn clone_on_split(
@@ -609,12 +592,11 @@ impl Item for TerminalView {
         ToolbarItemLocation::PrimaryLeft { flex: None }
     }
 
-    fn breadcrumbs(&self, theme: &theme::Theme, cx: &AppContext) -> Option<Vec<ElementBox>> {
-        Some(vec![Text::new(
-            self.terminal().read(cx).breadcrumb_text.clone(),
-            theme.workspace.breadcrumbs.default.text.clone(),
-        )
-        .boxed()])
+    fn breadcrumbs(&self, _: &theme::Theme, cx: &AppContext) -> Option<Vec<BreadcrumbText>> {
+        Some(vec![BreadcrumbText {
+            text: self.terminal().read(cx).breadcrumb_text.clone(),
+            highlights: None,
+        }])
     }
 
     fn serialized_item_kind() -> Option<&'static str> {
@@ -646,13 +628,12 @@ impl Item for TerminalView {
                     })
                 });
 
-            cx.update(|cx| {
-                let terminal = project.update(cx, |project, cx| {
-                    project.create_terminal(cwd, window_id, cx)
-                })?;
-
-                Ok(cx.add_view(pane, |cx| TerminalView::new(terminal, workspace_id, cx)))
-            })
+            let terminal = project.update(&mut cx, |project, cx| {
+                project.create_terminal(cwd, window_id, cx)
+            })?;
+            Ok(pane.update(&mut cx, |_, cx| {
+                cx.add_view(|cx| TerminalView::new(terminal, workspace_id, cx))
+            })?)
         })
     }
 

@@ -1,26 +1,25 @@
 use collections::CommandPaletteFilter;
 use fuzzy::{StringMatch, StringMatchCandidate};
 use gpui::{
-    actions,
-    elements::{ChildView, Flex, Label, ParentElement},
-    keymap_matcher::Keystroke,
-    Action, AnyViewHandle, Element, Entity, MouseState, MutableAppContext, RenderContext, View,
-    ViewContext, ViewHandle,
+    actions, elements::*, keymap_matcher::Keystroke, Action, AppContext, Element, MouseState,
+    ViewContext,
 };
-use picker::{Picker, PickerDelegate};
+use picker::{Picker, PickerDelegate, PickerEvent};
 use settings::Settings;
 use std::cmp;
+use util::ResultExt;
 use workspace::Workspace;
 
-pub fn init(cx: &mut MutableAppContext) {
-    cx.add_action(CommandPalette::toggle);
-    Picker::<CommandPalette>::init(cx);
+pub fn init(cx: &mut AppContext) {
+    cx.add_action(toggle_command_palette);
+    CommandPalette::init(cx);
 }
 
 actions!(command_palette, [Toggle]);
 
-pub struct CommandPalette {
-    picker: ViewHandle<Picker<Self>>,
+pub type CommandPalette = Picker<CommandPaletteDelegate>;
+
+pub struct CommandPaletteDelegate {
     actions: Vec<Command>,
     matches: Vec<StringMatch>,
     selected_ix: usize,
@@ -42,104 +41,29 @@ struct Command {
     keystrokes: Vec<Keystroke>,
 }
 
-impl CommandPalette {
-    pub fn new(focused_view_id: usize, cx: &mut ViewContext<Self>) -> Self {
-        let this = cx.weak_handle();
-        let actions = cx
-            .available_actions(cx.window_id(), focused_view_id)
-            .filter_map(|(name, action, bindings)| {
-                if cx.has_global::<CommandPaletteFilter>() {
-                    let filter = cx.global::<CommandPaletteFilter>();
-                    if filter.filtered_namespaces.contains(action.namespace()) {
-                        return None;
-                    }
-                }
+fn toggle_command_palette(workspace: &mut Workspace, _: &Toggle, cx: &mut ViewContext<Workspace>) {
+    let focused_view_id = cx.focused_view_id().unwrap_or_else(|| cx.view_id());
+    workspace.toggle_modal(cx, |_, cx| {
+        cx.add_view(|cx| Picker::new(CommandPaletteDelegate::new(focused_view_id), cx))
+    });
+}
 
-                Some(Command {
-                    name: humanize_action_name(name),
-                    action,
-                    keystrokes: bindings
-                        .iter()
-                        .map(|binding| binding.keystrokes())
-                        .last()
-                        .map_or(Vec::new(), |keystrokes| keystrokes.to_vec()),
-                })
-            })
-            .collect();
-
-        let picker = cx.add_view(|cx| Picker::new("Execute a command...", this, cx));
+impl CommandPaletteDelegate {
+    pub fn new(focused_view_id: usize) -> Self {
         Self {
-            picker,
-            actions,
+            actions: Default::default(),
             matches: vec![],
             selected_ix: 0,
             focused_view_id,
         }
     }
-
-    fn toggle(_: &mut Workspace, _: &Toggle, cx: &mut ViewContext<Workspace>) {
-        let workspace = cx.handle();
-        let window_id = cx.window_id();
-        let focused_view_id = cx
-            .focused_view_id(window_id)
-            .unwrap_or_else(|| workspace.id());
-
-        cx.as_mut().defer(move |cx| {
-            let this = cx.add_view(workspace.clone(), |cx| Self::new(focused_view_id, cx));
-            workspace.update(cx, |workspace, cx| {
-                workspace.toggle_modal(cx, |_, cx| {
-                    cx.subscribe(&this, Self::on_event).detach();
-                    this
-                });
-            });
-        });
-    }
-
-    fn on_event(
-        workspace: &mut Workspace,
-        _: ViewHandle<Self>,
-        event: &Event,
-        cx: &mut ViewContext<Workspace>,
-    ) {
-        match event {
-            Event::Dismissed => workspace.dismiss_modal(cx),
-            Event::Confirmed {
-                window_id,
-                focused_view_id,
-                action,
-            } => {
-                let window_id = *window_id;
-                let focused_view_id = *focused_view_id;
-                let action = action.boxed_clone();
-                workspace.dismiss_modal(cx);
-                cx.as_mut()
-                    .defer(move |cx| cx.dispatch_any_action_at(window_id, focused_view_id, action))
-            }
-        }
-    }
 }
 
-impl Entity for CommandPalette {
-    type Event = Event;
-}
-
-impl View for CommandPalette {
-    fn ui_name() -> &'static str {
-        "CommandPalette"
+impl PickerDelegate for CommandPaletteDelegate {
+    fn placeholder_text(&self) -> std::sync::Arc<str> {
+        "Execute a command...".into()
     }
 
-    fn render(&mut self, cx: &mut RenderContext<Self>) -> gpui::ElementBox {
-        ChildView::new(self.picker.clone(), cx).boxed()
-    }
-
-    fn focus_in(&mut self, _: AnyViewHandle, cx: &mut ViewContext<Self>) {
-        if cx.is_self_focused() {
-            cx.focus(&self.picker);
-        }
-    }
-}
-
-impl PickerDelegate for CommandPalette {
     fn match_count(&self) -> usize {
         self.matches.len()
     }
@@ -148,26 +72,55 @@ impl PickerDelegate for CommandPalette {
         self.selected_ix
     }
 
-    fn set_selected_index(&mut self, ix: usize, _: &mut ViewContext<Self>) {
+    fn set_selected_index(&mut self, ix: usize, _: &mut ViewContext<Picker<Self>>) {
         self.selected_ix = ix;
     }
 
     fn update_matches(
         &mut self,
         query: String,
-        cx: &mut gpui::ViewContext<Self>,
+        cx: &mut ViewContext<Picker<Self>>,
     ) -> gpui::Task<()> {
-        let candidates = self
-            .actions
-            .iter()
-            .enumerate()
-            .map(|(ix, command)| StringMatchCandidate {
-                id: ix,
-                string: command.name.to_string(),
-                char_bag: command.name.chars().collect(),
-            })
-            .collect::<Vec<_>>();
-        cx.spawn(move |this, mut cx| async move {
+        let window_id = cx.window_id();
+        let view_id = self.focused_view_id;
+        cx.spawn(move |picker, mut cx| async move {
+            let actions = cx
+                .available_actions(window_id, view_id)
+                .into_iter()
+                .filter_map(|(name, action, bindings)| {
+                    let filtered = cx.read(|cx| {
+                        if cx.has_global::<CommandPaletteFilter>() {
+                            let filter = cx.global::<CommandPaletteFilter>();
+                            filter.filtered_namespaces.contains(action.namespace())
+                        } else {
+                            false
+                        }
+                    });
+
+                    if filtered {
+                        None
+                    } else {
+                        Some(Command {
+                            name: humanize_action_name(name),
+                            action,
+                            keystrokes: bindings
+                                .iter()
+                                .map(|binding| binding.keystrokes())
+                                .last()
+                                .map_or(Vec::new(), |keystrokes| keystrokes.to_vec()),
+                        })
+                    }
+                })
+                .collect::<Vec<_>>();
+            let candidates = actions
+                .iter()
+                .enumerate()
+                .map(|(ix, command)| StringMatchCandidate {
+                    id: ix,
+                    string: command.name.to_string(),
+                    char_bag: command.name.chars().collect(),
+                })
+                .collect::<Vec<_>>();
             let matches = if query.is_empty() {
                 candidates
                     .into_iter()
@@ -190,32 +143,37 @@ impl PickerDelegate for CommandPalette {
                 )
                 .await
             };
-            this.update(&mut cx, |this, _| {
-                this.matches = matches;
-                if this.matches.is_empty() {
-                    this.selected_ix = 0;
-                } else {
-                    this.selected_ix = cmp::min(this.selected_ix, this.matches.len() - 1);
-                }
-            });
+            picker
+                .update(&mut cx, |picker, _| {
+                    let delegate = picker.delegate_mut();
+                    delegate.actions = actions;
+                    delegate.matches = matches;
+                    if delegate.matches.is_empty() {
+                        delegate.selected_ix = 0;
+                    } else {
+                        delegate.selected_ix =
+                            cmp::min(delegate.selected_ix, delegate.matches.len() - 1);
+                    }
+                })
+                .log_err();
         })
     }
 
-    fn dismiss(&mut self, cx: &mut ViewContext<Self>) {
-        cx.emit(Event::Dismissed);
-    }
+    fn dismissed(&mut self, _cx: &mut ViewContext<Picker<Self>>) {}
 
-    fn confirm(&mut self, cx: &mut ViewContext<Self>) {
+    fn confirm(&mut self, cx: &mut ViewContext<Picker<Self>>) {
         if !self.matches.is_empty() {
+            let window_id = cx.window_id();
+            let focused_view_id = self.focused_view_id;
             let action_ix = self.matches[self.selected_ix].candidate_id;
-            cx.emit(Event::Confirmed {
-                window_id: cx.window_id(),
-                focused_view_id: self.focused_view_id,
-                action: self.actions.remove(action_ix).action,
-            });
-        } else {
-            cx.emit(Event::Dismissed);
+            let action = self.actions.remove(action_ix).action;
+            cx.app_context()
+                .spawn(move |mut cx| async move {
+                    cx.dispatch_action(window_id, focused_view_id, action.as_ref())
+                })
+                .detach_and_log_err(cx);
         }
+        cx.emit(PickerEvent::Dismiss);
     }
 
     fn render_match(
@@ -224,7 +182,7 @@ impl PickerDelegate for CommandPalette {
         mouse_state: &mut MouseState,
         selected: bool,
         cx: &gpui::AppContext,
-    ) -> gpui::ElementBox {
+    ) -> AnyElement<Picker<Self>> {
         let mat = &self.matches[ix];
         let command = &self.actions[mat.candidate_id];
         let settings = cx.global::<Settings>();
@@ -236,8 +194,7 @@ impl PickerDelegate for CommandPalette {
         Flex::row()
             .with_child(
                 Label::new(mat.string.clone(), style.label.clone())
-                    .with_highlights(mat.positions.clone())
-                    .boxed(),
+                    .with_highlights(mat.positions.clone()),
             )
             .with_children(command.keystrokes.iter().map(|keystroke| {
                 Flex::row()
@@ -254,8 +211,7 @@ impl PickerDelegate for CommandPalette {
                                 Some(
                                     Label::new(label, key_style.label.clone())
                                         .contained()
-                                        .with_style(key_style.container)
-                                        .boxed(),
+                                        .with_style(key_style.container),
                                 )
                             } else {
                                 None
@@ -265,17 +221,15 @@ impl PickerDelegate for CommandPalette {
                     .with_child(
                         Label::new(keystroke.key.clone(), key_style.label.clone())
                             .contained()
-                            .with_style(key_style.container)
-                            .boxed(),
+                            .with_style(key_style.container),
                     )
                     .contained()
                     .with_margin_left(keystroke_spacing)
                     .flex_float()
-                    .boxed()
             }))
             .contained()
             .with_style(style.container)
-            .boxed()
+            .into_any()
     }
 }
 
@@ -314,9 +268,11 @@ impl std::fmt::Debug for Command {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use super::*;
     use editor::Editor;
-    use gpui::TestAppContext;
+    use gpui::{executor::Deterministic, TestAppContext};
     use project::Project;
     use workspace::{AppState, Workspace};
 
@@ -337,7 +293,8 @@ mod tests {
     }
 
     #[gpui::test]
-    async fn test_command_palette(cx: &mut TestAppContext) {
+    async fn test_command_palette(deterministic: Arc<Deterministic>, cx: &mut TestAppContext) {
+        deterministic.forbid_parking();
         let app_state = cx.update(AppState::test);
 
         cx.update(|cx| {
@@ -347,20 +304,20 @@ mod tests {
         });
 
         let project = Project::test(app_state.fs.clone(), [], cx).await;
-        let (_, workspace) = cx.add_window(|cx| Workspace::test_new(project.clone(), cx));
-        let editor = cx.add_view(&workspace, |cx| {
+        let (window_id, workspace) = cx.add_window(|cx| Workspace::test_new(project.clone(), cx));
+        let editor = cx.add_view(window_id, |cx| {
             let mut editor = Editor::single_line(None, cx);
             editor.set_text("abc", cx);
             editor
         });
 
         workspace.update(cx, |workspace, cx| {
-            cx.focus(editor.clone());
+            cx.focus(&editor);
             workspace.add_item(Box::new(editor.clone()), cx)
         });
 
         workspace.update(cx, |workspace, cx| {
-            CommandPalette::toggle(workspace, &Toggle, cx)
+            toggle_command_palette(workspace, &Toggle, cx);
         });
 
         let palette = workspace.read_with(cx, |workspace, _| {
@@ -369,15 +326,17 @@ mod tests {
 
         palette
             .update(cx, |palette, cx| {
-                palette.update_matches("bcksp".to_string(), cx)
+                palette
+                    .delegate_mut()
+                    .update_matches("bcksp".to_string(), cx)
             })
             .await;
 
         palette.update(cx, |palette, cx| {
-            assert_eq!(palette.matches[0].string, "editor: backspace");
-            palette.confirm(cx);
+            assert_eq!(palette.delegate().matches[0].string, "editor: backspace");
+            palette.confirm(&Default::default(), cx);
         });
-
+        deterministic.run_until_parked();
         editor.read_with(cx, |editor, cx| {
             assert_eq!(editor.text(cx), "ab");
         });
@@ -390,7 +349,7 @@ mod tests {
         });
 
         workspace.update(cx, |workspace, cx| {
-            CommandPalette::toggle(workspace, &Toggle, cx);
+            toggle_command_palette(workspace, &Toggle, cx);
         });
 
         // Assert editor command not present
@@ -400,10 +359,14 @@ mod tests {
 
         palette
             .update(cx, |palette, cx| {
-                palette.update_matches("bcksp".to_string(), cx)
+                palette
+                    .delegate_mut()
+                    .update_matches("bcksp".to_string(), cx)
             })
             .await;
 
-        palette.update(cx, |palette, _| assert!(palette.matches.is_empty()));
+        palette.update(cx, |palette, _| {
+            assert!(palette.delegate().matches.is_empty())
+        });
     }
 }

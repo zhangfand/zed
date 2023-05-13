@@ -4,7 +4,7 @@ use crate::{
 };
 use anyhow::{anyhow, Result};
 use clock::ReplicaId;
-use lsp::DiagnosticSeverity;
+use lsp::{DiagnosticSeverity, LanguageServerId};
 use rpc::proto;
 use std::{ops::Range, sync::Arc};
 use text::*;
@@ -40,6 +40,7 @@ pub fn serialize_operation(operation: &crate::Operation) -> proto::Operation {
             crate::Operation::Buffer(text::Operation::Edit(edit)) => {
                 proto::operation::Variant::Edit(serialize_edit_operation(edit))
             }
+
             crate::Operation::Buffer(text::Operation::Undo {
                 undo,
                 lamport_timestamp,
@@ -58,6 +59,7 @@ pub fn serialize_operation(operation: &crate::Operation) -> proto::Operation {
                     })
                     .collect(),
             }),
+
             crate::Operation::UpdateSelections {
                 selections,
                 line_mode,
@@ -70,14 +72,18 @@ pub fn serialize_operation(operation: &crate::Operation) -> proto::Operation {
                 line_mode: *line_mode,
                 cursor_shape: serialize_cursor_shape(cursor_shape) as i32,
             }),
+
             crate::Operation::UpdateDiagnostics {
-                diagnostics,
                 lamport_timestamp,
+                server_id,
+                diagnostics,
             } => proto::operation::Variant::UpdateDiagnostics(proto::UpdateDiagnostics {
                 replica_id: lamport_timestamp.replica_id as u32,
                 lamport_timestamp: lamport_timestamp.value,
+                server_id: server_id.0 as u64,
                 diagnostics: serialize_diagnostics(diagnostics.iter()),
             }),
+
             crate::Operation::UpdateCompletionTriggers {
                 triggers,
                 lamport_timestamp,
@@ -167,6 +173,7 @@ pub fn serialize_diagnostics<'a>(
     diagnostics
         .into_iter()
         .map(|entry| proto::Diagnostic {
+            source: entry.diagnostic.source.clone(),
             start: Some(serialize_anchor(&entry.range.start)),
             end: Some(serialize_anchor(&entry.range.end)),
             message: entry.diagnostic.message.clone(),
@@ -220,7 +227,7 @@ pub fn deserialize_operation(message: proto::Operation) -> Result<crate::Operati
                             replica_id: undo.replica_id as ReplicaId,
                             value: undo.local_timestamp,
                         },
-                        version: deserialize_version(undo.version),
+                        version: deserialize_version(&undo.version),
                         counts: undo
                             .counts
                             .into_iter()
@@ -267,11 +274,12 @@ pub fn deserialize_operation(message: proto::Operation) -> Result<crate::Operati
             }
             proto::operation::Variant::UpdateDiagnostics(message) => {
                 crate::Operation::UpdateDiagnostics {
-                    diagnostics: deserialize_diagnostics(message.diagnostics),
                     lamport_timestamp: clock::Lamport {
                         replica_id: message.replica_id as ReplicaId,
                         value: message.lamport_timestamp,
                     },
+                    server_id: LanguageServerId(message.server_id as usize),
+                    diagnostics: deserialize_diagnostics(message.diagnostics),
                 }
             }
             proto::operation::Variant::UpdateCompletionTriggers(message) => {
@@ -294,7 +302,7 @@ pub fn deserialize_edit_operation(edit: proto::operation::Edit) -> EditOperation
             local: edit.local_timestamp,
             lamport: edit.lamport_timestamp,
         },
-        version: deserialize_version(edit.version),
+        version: deserialize_version(&edit.version),
         ranges: edit.ranges.into_iter().map(deserialize_range).collect(),
         new_text: edit.new_text.into_iter().map(Arc::from).collect(),
     }
@@ -352,6 +360,7 @@ pub fn deserialize_diagnostics(
             Some(DiagnosticEntry {
                 range: deserialize_anchor(diagnostic.start?)?..deserialize_anchor(diagnostic.end?)?,
                 diagnostic: Diagnostic {
+                    source: diagnostic.source,
                     severity: match proto::diagnostic::Severity::from_i32(diagnostic.severity)? {
                         proto::diagnostic::Severity::Error => DiagnosticSeverity::ERROR,
                         proto::diagnostic::Severity::Warning => DiagnosticSeverity::WARNING,
@@ -462,6 +471,7 @@ pub async fn deserialize_completion(
 
 pub fn serialize_code_action(action: &CodeAction) -> proto::CodeAction {
     proto::CodeAction {
+        server_id: action.server_id.0 as u64,
         start: Some(serialize_anchor(&action.range.start)),
         end: Some(serialize_anchor(&action.range.end)),
         lsp_action: serde_json::to_vec(&action.lsp_action).unwrap(),
@@ -479,6 +489,7 @@ pub fn deserialize_code_action(action: proto::CodeAction) -> Result<CodeAction> 
         .ok_or_else(|| anyhow!("invalid end"))?;
     let lsp_action = serde_json::from_slice(&action.lsp_action)?;
     Ok(CodeAction {
+        server_id: LanguageServerId(action.server_id as usize),
         range: start..end,
         lsp_action,
     })
@@ -509,7 +520,7 @@ pub fn deserialize_transaction(transaction: proto::Transaction) -> Result<Transa
             .into_iter()
             .map(deserialize_local_timestamp)
             .collect(),
-        start: deserialize_version(transaction.start),
+        start: deserialize_version(&transaction.start),
     })
 }
 
@@ -538,7 +549,7 @@ pub fn deserialize_range(range: proto::Range) -> Range<FullOffset> {
     FullOffset(range.start as usize)..FullOffset(range.end as usize)
 }
 
-pub fn deserialize_version(message: Vec<proto::VectorClockEntry>) -> clock::Global {
+pub fn deserialize_version(message: &[proto::VectorClockEntry]) -> clock::Global {
     let mut version = clock::Global::new();
     for entry in message {
         version.observe(clock::Local {

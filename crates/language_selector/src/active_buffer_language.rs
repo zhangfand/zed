@@ -1,27 +1,24 @@
 use editor::Editor;
 use gpui::{
-    elements::*, CursorStyle, Entity, MouseButton, RenderContext, Subscription, View, ViewContext,
-    ViewHandle,
+    elements::*,
+    platform::{CursorStyle, MouseButton},
+    Entity, Subscription, View, ViewContext, ViewHandle, WeakViewHandle,
 };
 use settings::Settings;
 use std::sync::Arc;
-use workspace::{item::ItemHandle, StatusItemView};
+use workspace::{item::ItemHandle, StatusItemView, Workspace};
 
 pub struct ActiveBufferLanguage {
     active_language: Option<Option<Arc<str>>>,
+    workspace: WeakViewHandle<Workspace>,
     _observe_active_editor: Option<Subscription>,
 }
 
-impl Default for ActiveBufferLanguage {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl ActiveBufferLanguage {
-    pub fn new() -> Self {
+    pub fn new(workspace: &Workspace) -> Self {
         Self {
             active_language: None,
+            workspace: workspace.weak_handle(),
             _observe_active_editor: None,
         }
     }
@@ -49,7 +46,7 @@ impl View for ActiveBufferLanguage {
         "ActiveBufferLanguage"
     }
 
-    fn render(&mut self, cx: &mut RenderContext<Self>) -> ElementBox {
+    fn render(&mut self, cx: &mut ViewContext<Self>) -> AnyElement<Self> {
         if let Some(active_language) = self.active_language.as_ref() {
             let active_language_text = if let Some(active_language_text) = active_language {
                 active_language_text.to_string()
@@ -57,19 +54,24 @@ impl View for ActiveBufferLanguage {
                 "Unknown".to_string()
             };
 
-            MouseEventHandler::<Self>::new(0, cx, |state, cx| {
+            MouseEventHandler::<Self, Self>::new(0, cx, |state, cx| {
                 let theme = &cx.global::<Settings>().theme.workspace.status_bar;
                 let style = theme.active_language.style_for(state, false);
                 Label::new(active_language_text, style.text.clone())
                     .contained()
                     .with_style(style.container)
-                    .boxed()
             })
             .with_cursor_style(CursorStyle::PointingHand)
-            .on_click(MouseButton::Left, |_, cx| cx.dispatch_action(crate::Toggle))
-            .boxed()
+            .on_click(MouseButton::Left, |_, this, cx| {
+                if let Some(workspace) = this.workspace.upgrade(cx) {
+                    workspace.update(cx, |workspace, cx| {
+                        crate::toggle(workspace, &Default::default(), cx)
+                    });
+                }
+            })
+            .into_any()
         } else {
-            Empty::new().boxed()
+            Empty::new().into_any()
         }
     }
 }

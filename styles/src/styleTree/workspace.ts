@@ -1,7 +1,14 @@
 import { ColorScheme } from "../themes/common/colorScheme"
 import { withOpacity } from "../utils/color"
 import { assistant } from "./assistant"
-import { background, border, borderColor, foreground, svg, text } from "./components"
+import {
+    background,
+    border,
+    borderColor,
+    foreground,
+    svg,
+    text,
+} from "./components"
 import statusBar from "./statusBar"
 import tabBar from "./tabBar"
 
@@ -47,14 +54,24 @@ export default function workspace(colorScheme: ColorScheme) {
                 width: 256,
                 height: 256,
             },
-            logo: svg(withOpacity("#000000", colorScheme.isLight ? 0.6 : 0.8), "icons/logo_96.svg", 256, 256),
+            logo: svg(
+                withOpacity("#000000", colorScheme.isLight ? 0.6 : 0.8),
+                "icons/logo_96.svg",
+                256,
+                256
+            ),
 
-            logoShadow: svg(withOpacity(
-                colorScheme.isLight
-                    ? "#FFFFFF"
-                    : colorScheme.lowest.base.default.background,
-                colorScheme.isLight ? 1 : 0.6
-            ), "icons/logo_96.svg", 256, 256),
+            logoShadow: svg(
+                withOpacity(
+                    colorScheme.isLight
+                        ? "#FFFFFF"
+                        : colorScheme.lowest.base.default.background,
+                    colorScheme.isLight ? 1 : 0.6
+                ),
+                "icons/logo_96.svg",
+                256,
+                256
+            ),
             keyboardHints: {
                 margin: {
                     top: 96,
@@ -102,7 +119,16 @@ export default function workspace(colorScheme: ColorScheme) {
             },
             cursor: "Arrow",
         },
-        sidebar: {
+        zoomedBackground: {
+            padding: 10,
+            cursor: "Arrow",
+            background: withOpacity(background(colorScheme.lowest), 0.5)
+        },
+        zoomedForeground: {
+            shadow: colorScheme.modalShadow,
+            border: border(colorScheme.highest, { overlay: true }),
+        },
+        dock: {
             initialSize: 240,
             border: border(layer, { left: true, right: true }),
         },
@@ -124,6 +150,7 @@ export default function workspace(colorScheme: ColorScheme) {
 
             // Project
             title: text(layer, "sans", "variant"),
+            highlight_color: text(layer, "sans", "active").color,
 
             // Collaborators
             leaderAvatar: {
@@ -292,19 +319,6 @@ export default function workspace(colorScheme: ColorScheme) {
         notifications: {
             width: 400,
             margin: { right: 10, bottom: 10 },
-        },
-        dock: {
-            initialSizeRight: 640,
-            initialSizeBottom: 304,
-            wash_color: withOpacity(background(colorScheme.highest), 0.5),
-            panel: {
-                border: border(colorScheme.middle),
-            },
-            maximized: {
-                margin: 32,
-                border: border(colorScheme.highest, { overlay: true }),
-                shadow: colorScheme.modalShadow,
-            },
         },
         dropTargetOverlayColor: withOpacity(foreground(layer, "variant"), 0.5),
     }

@@ -12,6 +12,7 @@
       "ctrl-shift-d": "editor::DuplicateLine",
       "cmd-b": "editor::GoToDefinition",
       "cmd-j": "editor::ScrollCursorCenter",
+      "cmd-alt-enter": "editor::NewlineAbove",
       "cmd-enter": "editor::NewlineBelow",
       "cmd-shift-l": "editor::SelectLine",
       "cmd-shift-t": "outline::Toggle",
@@ -67,7 +68,7 @@
   {
     "context": "Workspace",
     "bindings": {
-      "cmd-alt-ctrl-d": "workspace::ToggleLeftSidebar",
+      "cmd-alt-ctrl-d": "workspace::ToggleLeftDock",
       "cmd-t": "file_finder::Toggle",
       "cmd-shift-t": "project_symbols::Toggle"
     }
@@ -81,10 +82,6 @@
   },
   {
     "context": "ProjectPanel",
-    "bindings": {}
-  },
-  {
-    "context": "Dock",
     "bindings": {}
   }
 ]
