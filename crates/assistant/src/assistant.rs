@@ -2,11 +2,13 @@ mod sample_messages;
 
 use client::{
     proto::{assistant_response, AssistantRequestMessage},
-    Client,
+    Client, UserStore,
 };
 use editor::Editor;
 use futures::{FutureExt, StreamExt};
-use gpui::{actions, anyhow, elements::*, AppContext, Entity, View, ViewContext, ViewHandle};
+use gpui::{
+    actions, anyhow, elements::*, AppContext, Entity, ModelHandle, View, ViewContext, ViewHandle,
+};
 use language::LanguageRegistry;
 use settings::Settings;
 use std::sync::Arc;
@@ -22,6 +24,7 @@ pub struct Assistant {
     message_list_items: Vec<ListItem>,
     languages: Arc<LanguageRegistry>,
     client: Arc<Client>,
+    user_store: ModelHandle<UserStore>,
     position: DockPosition,
 }
 
@@ -53,6 +56,7 @@ impl Assistant {
     pub fn new(
         languages: Arc<LanguageRegistry>,
         client: Arc<Client>,
+        user_store: ModelHandle<UserStore>,
         cx: &mut ViewContext<Self>,
     ) -> Self {
         let composer = cx.add_view(|cx| {
@@ -82,6 +86,7 @@ impl Assistant {
             message_list_items,
             languages,
             client,
+            user_store,
             position: DockPosition::Right,
         }
     }

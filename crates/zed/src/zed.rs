@@ -320,8 +320,14 @@ pub fn initialize_workspace(
     let terminal_panel = cx.add_view(|cx| TerminalPanel::new(workspace, cx));
     workspace.add_panel(terminal_panel, cx);
 
-    let assistant =
-        cx.add_view(|cx| Assistant::new(app_state.languages.clone(), app_state.client.clone(), cx));
+    let assistant = cx.add_view(|cx| {
+        Assistant::new(
+            app_state.languages.clone(),
+            app_state.client.clone(),
+            app_state.user_store.clone(),
+            cx,
+        )
+    });
     workspace.add_panel(assistant, cx);
 
     let copilot = cx.add_view(|cx| copilot_button::CopilotButton::new(cx));

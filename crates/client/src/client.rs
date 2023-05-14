@@ -2,7 +2,7 @@
 pub mod test;
 
 pub mod telemetry;
-pub mod user;
+pub mod user_store;
 
 use anyhow::{anyhow, Context, Result};
 use async_recursion::async_recursion;
@@ -46,7 +46,7 @@ use util::{ResultExt, TryFutureExt};
 
 pub use rpc::*;
 pub use telemetry::ClickhouseEvent;
-pub use user::*;
+pub use user_store::*;
 
 lazy_static! {
     pub static ref ZED_SERVER_URL: String =
