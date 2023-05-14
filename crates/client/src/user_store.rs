@@ -3,7 +3,6 @@ use anyhow::{anyhow, Context, Result};
 use collections::{hash_map::Entry, HashMap, HashSet};
 use futures::{channel::mpsc, future, AsyncReadExt, Future, StreamExt};
 use gpui::{AsyncAppContext, Entity, ImageData, ModelContext, ModelHandle, Task};
-use postage::{sink::Sink, watch};
 use rpc::proto::{RequestMessage, UsersResponse};
 use settings::Settings;
 use staff_mode::StaffMode;
@@ -56,7 +55,7 @@ pub enum ContactRequestStatus {
 pub struct UserStore {
     users: HashMap<u64, Arc<User>>,
     update_contacts_tx: mpsc::UnboundedSender<UpdateContacts>,
-    current_user: watch::Receiver<Option<Arc<User>>>,
+    current_user: Option<Arc<User>>,
     contacts: Vec<Arc<Contact>>,
     incoming_contact_requests: Vec<Arc<User>>,
     outgoing_contact_requests: Vec<Arc<User>>,
@@ -74,15 +73,18 @@ pub struct InviteInfo {
     pub url: Arc<str>,
 }
 
-pub enum Event {
+#[derive(Debug)]
+pub enum UserStoreEvent {
     Contact {
         user: Arc<User>,
         kind: ContactEventKind,
     },
     ShowContacts,
+    CurrentUserChanged,
+    ConnectionStatusChanged,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum ContactEventKind {
     Requested,
     Accepted,
@@ -90,7 +92,7 @@ pub enum ContactEventKind {
 }
 
 impl Entity for UserStore {
-    type Event = Event;
+    type Event = UserStoreEvent;
 }
 
 enum UpdateContacts {
@@ -105,7 +107,6 @@ impl UserStore {
         http: Arc<dyn HttpClient>,
         cx: &mut ModelContext<Self>,
     ) -> Self {
-        let (mut current_user_tx, current_user_rx) = watch::channel();
         let (update_contacts_tx, mut update_contacts_rx) = mpsc::unbounded();
         let rpc_subscriptions = vec![
             client.add_message_handler(cx.handle(), Self::handle_update_contacts),
@@ -114,7 +115,7 @@ impl UserStore {
         ];
         Self {
             users: Default::default(),
-            current_user: current_user_rx,
+            current_user: None,
             contacts: Default::default(),
             incoming_contact_requests: Default::default(),
             outgoing_contact_requests: Default::default(),
@@ -150,31 +151,41 @@ impl UserStore {
                                     cx.read(|cx| cx.global::<Settings>().telemetry()),
                                 );
 
-                                cx.update(|cx| {
+                                this.update(&mut cx, |this, cx| {
+                                    this.current_user = user;
+                                    cx.emit(UserStoreEvent::CurrentUserChanged);
+                                    cx.emit(UserStoreEvent::ConnectionStatusChanged);
+
                                     cx.update_default_global(|staff_mode: &mut StaffMode, _| {
                                         if !staff_mode.0 {
                                             *staff_mode = StaffMode(
                                                 info.as_ref()
                                                     .map(|info| info.staff)
                                                     .unwrap_or_default(),
-                                            )
+                                            );
                                         }
-                                        ()
                                     });
                                 });
-
-                                current_user_tx.send(user).await.ok();
                             }
                         }
                         Status::SignedOut => {
-                            current_user_tx.send(None).await.ok();
                             if let Some(this) = this.upgrade(&cx) {
-                                this.update(&mut cx, |this, _| this.clear_contacts()).await;
+                                this.update(&mut cx, |this, cx| {
+                                    this.current_user = None;
+                                    cx.emit(UserStoreEvent::CurrentUserChanged);
+                                    cx.emit(UserStoreEvent::ConnectionStatusChanged);
+                                    this.clear_contacts()
+                                })
+                                .await;
                             }
                         }
                         Status::ConnectionLost => {
                             if let Some(this) = this.upgrade(&cx) {
-                                this.update(&mut cx, |this, _| this.clear_contacts()).await;
+                                this.update(&mut cx, |this, cx| {
+                                    cx.emit(UserStoreEvent::ConnectionStatusChanged);
+                                    this.clear_contacts()
+                                })
+                                .await;
                             }
                         }
                         _ => {}
@@ -212,7 +223,7 @@ impl UserStore {
         _: Arc<Client>,
         mut cx: AsyncAppContext,
     ) -> Result<()> {
-        this.update(&mut cx, |_, cx| cx.emit(Event::ShowContacts));
+        this.update(&mut cx, |_, cx| cx.emit(UserStoreEvent::ShowContacts));
         Ok(())
     }
 
@@ -306,7 +317,7 @@ impl UserStore {
                         // Update existing contacts and insert new ones
                         for (updated_contact, should_notify) in updated_contacts {
                             if should_notify {
-                                cx.emit(Event::Contact {
+                                cx.emit(UserStoreEvent::Contact {
                                     user: updated_contact.user.clone(),
                                     kind: ContactEventKind::Accepted,
                                 });
@@ -323,7 +334,7 @@ impl UserStore {
                         // Remove incoming contact requests
                         this.incoming_contact_requests.retain(|user| {
                             if removed_incoming_requests.contains(&user.id) {
-                                cx.emit(Event::Contact {
+                                cx.emit(UserStoreEvent::Contact {
                                     user: user.clone(),
                                     kind: ContactEventKind::Cancelled,
                                 });
@@ -335,7 +346,7 @@ impl UserStore {
                         // Update existing incoming requests and insert new ones
                         for (user, should_notify) in incoming_requests {
                             if should_notify {
-                                cx.emit(Event::Contact {
+                                cx.emit(UserStoreEvent::Contact {
                                     user: user.clone(),
                                     kind: ContactEventKind::Requested,
                                 });
@@ -591,10 +602,6 @@ impl UserStore {
     }
 
     pub fn current_user(&self) -> Option<Arc<User>> {
-        self.current_user.borrow().clone()
-    }
-
-    pub fn watch_current_user(&self) -> watch::Receiver<Option<Arc<User>>> {
         self.current_user.clone()
     }
 

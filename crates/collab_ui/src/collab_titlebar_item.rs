@@ -145,7 +145,7 @@ impl CollabTitlebarItem {
             cx.subscribe(&user_store, move |this, user_store, event, cx| {
                 if let Some(workspace) = this.workspace.upgrade(cx) {
                     workspace.update(cx, |workspace, cx| {
-                        if let client::Event::Contact { user, kind } = event {
+                        if let client::UserStoreEvent::Contact { user, kind } = event {
                             if let ContactEventKind::Requested | ContactEventKind::Accepted = kind {
                                 workspace.show_notification(user.id as usize, cx, |cx| {
                                     cx.add_view(|cx| {

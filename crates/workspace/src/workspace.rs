@@ -18,6 +18,7 @@ use assets::Assets;
 use call::ActiveCall;
 use client::{
     proto::{self, PeerId},
+    user_store::UserStoreEvent,
     Client, TypedEnvelope, UserStore,
 };
 use collections::{hash_map, HashMap, HashSet};
@@ -464,7 +465,6 @@ pub struct Workspace {
     app_state: Arc<AppState>,
     _subscriptions: Vec<Subscription>,
     _apply_leader_updates: Task<Result<()>>,
-    _observe_current_user: Task<Result<()>>,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -534,19 +534,13 @@ impl Workspace {
         cx.focus(&center_pane);
         cx.emit(Event::PaneAdded(center_pane.clone()));
 
-        let mut current_user = app_state.user_store.read(cx).watch_current_user();
-        let mut connection_status = app_state.client.status();
-        let _observe_current_user = cx.spawn(|this, mut cx| async move {
-            current_user.recv().await;
-            connection_status.recv().await;
-            let mut stream =
-                Stream::map(current_user, drop).merge(Stream::map(connection_status, drop));
-
-            while stream.recv().await.is_some() {
-                this.update(&mut cx, |_, cx| cx.notify())?;
+        cx.subscribe(&app_state.user_store, |_, _, event, cx| match event {
+            UserStoreEvent::CurrentUserChanged | UserStoreEvent::ConnectionStatusChanged => {
+                cx.notify();
             }
-            anyhow::Ok(())
-        });
+            _ => {}
+        })
+        .detach();
 
         // All leader updates are enqueued and then processed in a single task, so
         // that each asynchronous operation can be run in order.
@@ -651,7 +645,6 @@ impl Workspace {
             active_call,
             database_id: workspace_id,
             app_state,
-            _observe_current_user,
             _apply_leader_updates,
             leader_updates_tx,
             _subscriptions: subscriptions,

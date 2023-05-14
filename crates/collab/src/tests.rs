@@ -8,10 +8,11 @@ use anyhow::anyhow;
 use call::ActiveCall;
 use client::{
     self, proto::PeerId, Client, Connection, Credentials, EstablishConnectionError, UserStore,
+    UserStoreEvent,
 };
 use collections::{HashMap, HashSet};
 use fs::FakeFs;
-use futures::{channel::oneshot, StreamExt as _};
+use futures::channel::oneshot;
 use gpui::{
     elements::*, executor::Deterministic, AnyElement, Entity, ModelHandle, TestAppContext, View,
     ViewContext, ViewHandle, WeakViewHandle,
@@ -349,11 +350,36 @@ impl TestClient {
         )
     }
 
-    async fn wait_for_current_user(&self, cx: &TestAppContext) {
-        let mut authed_user = self
+    async fn wait_for_current_user(&self, cx: &mut TestAppContext) {
+        dbg!("waiting for current user");
+        let current_user = self
             .user_store
-            .read_with(cx, |user_store, _| user_store.watch_current_user());
-        while authed_user.next().await.unwrap().is_none() {}
+            .read_with(cx, |store, _| store.current_user());
+        if current_user.is_some() {
+            return;
+        } else {
+            dbg!("create channel");
+            let (tx, rx) = oneshot::channel();
+            let mut tx = Some(tx);
+            let _subscription = cx.update(|cx| {
+                dbg!("subscribe");
+                cx.subscribe(&self.user_store, move |store, event, cx| {
+                    dbg!("event", event);
+                    if let UserStoreEvent::CurrentUserChanged { .. } = event {
+                        dbg!(store.read(cx).current_user());
+                        if store.read(cx).current_user().is_some() {
+                            dbg!("send");
+                            tx.take().unwrap().send(()).unwrap();
+                            dbg!("done sending");
+                        }
+                    }
+                })
+            });
+
+            dbg!("await");
+            let _ = rx.await;
+            dbg!("done waiting");
+        }
     }
 
     async fn clear_contacts(&self, cx: &mut TestAppContext) {

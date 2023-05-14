@@ -83,7 +83,7 @@ impl ContactNotification {
         cx: &mut ViewContext<Self>,
     ) -> Self {
         cx.subscribe(&user_store, move |this, _, event, cx| {
-            if let client::Event::Contact {
+            if let client::UserStoreEvent::Contact {
                 kind: ContactEventKind::Cancelled,
                 user,
             } = event

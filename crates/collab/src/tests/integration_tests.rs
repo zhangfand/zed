@@ -5203,6 +5203,7 @@ async fn test_collaborating_with_renames(
 ) {
     deterministic.forbid_parking();
     cx_b.update(editor::init);
+    dbg!("a");
     let mut server = TestServer::start(&deterministic).await;
     let client_a = server.create_client(cx_a, "user_a").await;
     let client_b = server.create_client(cx_b, "user_b").await;
@@ -5210,6 +5211,7 @@ async fn test_collaborating_with_renames(
         .create_room(&mut [(&client_a, cx_a), (&client_b, cx_b)])
         .await;
     let active_call_a = cx_a.read(ActiveCall::global);
+    dbg!("a");
 
     // Set up a fake language server.
     let mut language = Language::new(
@@ -5234,6 +5236,7 @@ async fn test_collaborating_with_renames(
         .await;
     client_a.language_registry.add(Arc::new(language));
 
+    dbg!("c");
     client_a
         .fs
         .insert_tree(
@@ -5250,6 +5253,7 @@ async fn test_collaborating_with_renames(
         .await
         .unwrap();
     let project_b = client_b.build_remote_project(project_id, cx_b).await;
+    dbg!("d");
 
     let (_window_b, workspace_b) = cx_b.add_window(|cx| Workspace::test_new(project_b.clone(), cx));
     let editor_b = workspace_b
@@ -5268,6 +5272,8 @@ async fn test_collaborating_with_renames(
         editor.rename(&Rename, cx).unwrap()
     });
 
+    dbg!("da");
+
     fake_language_server
         .handle_request::<lsp::request::PrepareRenameRequest, _, _>(|params, _| async move {
             assert_eq!(params.text_document.uri.as_str(), "file:///dir/one.rs");
@@ -5280,6 +5286,9 @@ async fn test_collaborating_with_renames(
         .next()
         .await
         .unwrap();
+
+    dbg!("db");
+
     prepare_rename.await.unwrap();
     editor_b.update(cx_b, |editor, cx| {
         let rename = editor.pending_rename().unwrap();
@@ -5294,6 +5303,8 @@ async fn test_collaborating_with_renames(
             });
         });
     });
+
+    dbg!("dc");
 
     let confirm_rename = workspace_b.update(cx_b, |workspace, cx| {
         Editor::confirm_rename(workspace, &ConfirmRename, cx).unwrap()
@@ -5348,6 +5359,8 @@ async fn test_collaborating_with_renames(
         .next()
         .await
         .unwrap();
+    dbg!("e");
+
     confirm_rename.await.unwrap();
 
     let rename_editor = workspace_b.read_with(cx_b, |workspace, cx| {
@@ -5374,6 +5387,7 @@ async fn test_collaborating_with_renames(
         );
     });
 
+    dbg!("f");
     // Ensure temporary rename edits cannot be undone/redone.
     editor_b.update(cx_b, |editor, cx| {
         editor.undo(&Undo, cx);
