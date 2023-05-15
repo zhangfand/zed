@@ -1828,37 +1828,153 @@
     }
   },
   "default": {
-    "terminal": {
-      "black": "#282c34",
-      "red": "#d07277",
-      "green": "#a1c181",
-      "yellow": "#dec184",
-      "blue": "#74ade8",
-      "magenta": "#be5046",
-      "cyan": "#6fb4c0",
-      "white": "#c8ccd4",
-      "bright_black": "#525661",
-      "bright_red": "#673a3c",
-      "bright_green": "#4d6140",
-      "bright_yellow": "#786441",
-      "bright_blue": "#385378",
-      "bright_magenta": "#5e2b26",
-      "bright_cyan": "#3a565b",
-      "bright_white": "#c8ccd4",
-      "foreground": "#c8ccd4",
-      "background": "#282c34",
-      "modal_background": "#2f343e",
-      "cursor": "#74ade8",
-      "dim_black": "#c8ccd4",
-      "dim_red": "#ebb8b9",
-      "dim_green": "#d1e0bf",
-      "dim_yellow": "#f1dfc1",
-      "dim_blue": "#bed5f4",
-      "dim_magenta": "#e6a79e",
-      "dim_cyan": "#b9d9df",
-      "dim_white": "#575d65",
-      "bright_foreground": "#c8ccd4",
-      "dim_foreground": "#282c34"
+    "search": {
+      "match_background": "#74ade866",
+      "option_button": {
+        "family": "Zed Mono",
+        "color": "#c8ccd4",
+        "size": 14,
+        "background": "#2f343e",
+        "corner_radius": 6,
+        "border": {
+          "color": "#363c46",
+          "width": 1
+        },
+        "margin": {
+          "right": 4
+        },
+        "padding": {
+          "bottom": 2,
+          "left": 10,
+          "right": 10,
+          "top": 2
+        },
+        "active": {
+          "family": "Zed Mono",
+          "color": "#434955",
+          "size": 14,
+          "background": "#c8ccd4",
+          "border": {
+            "color": "#282c34",
+            "width": 1
+          }
+        },
+        "clicked": {
+          "family": "Zed Mono",
+          "color": "#c8ccd4",
+          "size": 14,
+          "background": "#3f4552",
+          "border": {
+            "color": "#363c46",
+            "width": 1
+          }
+        },
+        "hover": {
+          "family": "Zed Mono",
+          "color": "#c8ccd4",
+          "size": 14,
+          "background": "#363c46",
+          "border": {
+            "color": "#363c46",
+            "width": 1
+          }
+        }
+      },
+      "editor": {
+        "background": "#282c34",
+        "corner_radius": 8,
+        "min_width": 200,
+        "max_width": 500,
+        "placeholder_text": {
+          "family": "Zed Mono",
+          "color": "#4a4f5a",
+          "size": 14
+        },
+        "selection": {
+          "selection": "#74ade83d",
+          "cursor": "#74ade8"
+        },
+        "text": {
+          "family": "Zed Mono",
+          "color": "#c8ccd4",
+          "size": 14
+        },
+        "border": {
+          "color": "#2e333c",
+          "width": 1
+        },
+        "margin": {
+          "right": 12
+        },
+        "padding": {
+          "top": 3,
+          "bottom": 3,
+          "left": 12,
+          "right": 8
+        }
+      },
+      "invalid_editor": {
+        "background": "#282c34",
+        "corner_radius": 8,
+        "min_width": 200,
+        "max_width": 500,
+        "placeholder_text": {
+          "family": "Zed Mono",
+          "color": "#4a4f5a",
+          "size": 14
+        },
+        "selection": {
+          "selection": "#74ade83d",
+          "cursor": "#74ade8"
+        },
+        "text": {
+          "family": "Zed Mono",
+          "color": "#c8ccd4",
+          "size": 14
+        },
+        "border": {
+          "color": "#4c2b2c",
+          "width": 1
+        },
+        "margin": {
+          "right": 12
+        },
+        "padding": {
+          "top": 3,
+          "bottom": 3,
+          "left": 12,
+          "right": 8
+        }
+      },
+      "match_index": {
+        "family": "Zed Mono",
+        "color": "#838994",
+        "size": 14,
+        "padding": 6
+      },
+      "option_button_group": {
+        "padding": {
+          "left": 12,
+          "right": 12
+        }
+      },
+      "results_status": {
+        "family": "Zed Mono",
+        "color": "#c8ccd4",
+        "size": 18
+      },
+      "dismiss_button": {
+        "color": "#838994",
+        "icon_width": 12,
+        "button_width": 14,
+        "padding": {
+          "left": 10,
+          "right": 10
+        },
+        "hover": {
+          "color": "#c8ccd4"
+        }
+      }
     }
   },
   "welcome": {
@@ -3956,36 +4072,36 @@
     }
   },
   "terminal": {
-    "black": "#282c34",
-    "red": "#d07277",
-    "green": "#a1c181",
-    "yellow": "#dec184",
-    "blue": "#74ade8",
-    "magenta": "#be5046",
-    "cyan": "#6fb4c0",
-    "white": "#c8ccd4",
-    "bright_black": "#525661",
-    "bright_red": "#673a3c",
-    "bright_green": "#4d6140",
-    "bright_yellow": "#786441",
-    "bright_blue": "#385378",
-    "bright_magenta": "#5e2b26",
-    "bright_cyan": "#3a565b",
-    "bright_white": "#c8ccd4",
-    "foreground": "#c8ccd4",
-    "background": "#282c34",
-    "modal_background": "#2f343e",
-    "cursor": "#74ade8",
-    "dim_black": "#c8ccd4",
-    "dim_red": "#ebb8b9",
-    "dim_green": "#d1e0bf",
-    "dim_yellow": "#f1dfc1",
-    "dim_blue": "#bed5f4",
-    "dim_magenta": "#e6a79e",
-    "dim_cyan": "#b9d9df",
-    "dim_white": "#575d65",
-    "bright_foreground": "#c8ccd4",
-    "dim_foreground": "#282c34"
+    "black": "#0f172a",
+    "red": "#b91c1c",
+    "green": "#15803d",
+    "yellow": "#ca8a04",
+    "blue": "#1e40af",
+    "magenta": "#5b21b6",
+    "cyan": "#0891b2",
+    "white": "#e2e8f0",
+    "bright_black": "#020617",
+    "bright_red": "#ef4444",
+    "bright_green": "#22c55e",
+    "bright_yellow": "#facc15",
+    "bright_blue": "#2563eb",
+    "bright_magenta": "#7c3aed",
+    "bright_cyan": "#22d3ee",
+    "bright_white": "#f8fafc",
+    "foreground": "#0f172a",
+    "background": "#f2f5f9",
+    "modal_background": "#f2f5f9",
+    "cursor": "#2563eb",
+    "dim_black": "#020617",
+    "dim_red": "#450a0a",
+    "dim_green": "#166534",
+    "dim_yellow": "#854d0e",
+    "dim_blue": "#1e40af",
+    "dim_magenta": "#5b21b6",
+    "dim_cyan": "#155e75",
+    "dim_white": "#cbd5e1",
+    "bright_foreground": "#e2e8f0",
+    "dim_foreground": "#334155"
   },
   "feedback": {
     "button_margin": 8,

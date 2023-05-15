@@ -24,11 +24,11 @@ import * as context_menu from "./static_json/context_menu.json"
 import * as copilot from "./static_json/copilot.json"
 import * as project_diagnostics from "./static_json/project_diagnostics.json"
 import * as search from "./static_json/search.json"
-import * as terminal from "./static_json/terminal.json"
 import * as welcome from "./static_json/welcome.json"
 import projectPanel from "./projectPanel"
 import workspace from "./workspace"
 import editor from "./editor"
+import terminal from "./terminal"
 
 export default function app(theme: Theme) {
     const legacy_properties = {
@@ -79,7 +79,7 @@ export default function app(theme: Theme) {
         updateNotification: updateNotification(theme),
         simpleMessageNotification: simpleMessageNotification(theme),
         tooltip: tooltip(theme),
-        ...terminal,
+        terminal: terminal(theme),
         feedback: feedback(theme),
 
         ...legacy_properties,
