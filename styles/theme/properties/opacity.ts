@@ -4,27 +4,27 @@ import { resolveThemeColorIntensity } from "@theme/intensity/intensity"
 import chroma from "chroma-js"
 
 interface TransparentColorProps {
-    theme: Theme
-    themeColor?: ThemeColor
-    intensity: Intensity
-    opacity: number
+  theme: Theme
+  themeColor?: ThemeColor
+  intensity: Intensity
+  opacity: number
 }
 
 export function transparentColor({
-    theme,
-    themeColor,
-    intensity,
-    opacity,
+  theme,
+  themeColor,
+  intensity,
+  opacity,
 }: TransparentColorProps): string {
-    const color = useColors(theme)
+  const color = useColors(theme)
 
-    const resolvedColorIntensity = resolveThemeColorIntensity(theme, intensity)
+  const resolvedColorIntensity = resolveThemeColorIntensity(theme, intensity)
 
-    const c = chroma(
-        color[themeColor ? themeColor : "neutral"](resolvedColorIntensity)
-    )
-        .alpha(opacity)
-        .hex()
+  const c = chroma(
+    color[themeColor ? themeColor : "neutral"](resolvedColorIntensity)
+  )
+    .alpha(opacity)
+    .hex()
 
-    return c
+  return c
 }

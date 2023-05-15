@@ -9,17 +9,17 @@ import { resolveThemeColorIntensity } from "@theme/intensity/intensity"
  * If no color is specified, neutral is used
  */
 export function background(
-    theme: Theme,
-    intensity: Intensity,
-    color?: ThemeColor
+  theme: Theme,
+  intensity: Intensity,
+  color?: ThemeColor
 ): string {
-    const themeColor = useColors(theme)
+  const themeColor = useColors(theme)
 
-    const resolvedColorIntensity = resolveThemeColorIntensity(theme, intensity)
+  const resolvedColorIntensity = resolveThemeColorIntensity(theme, intensity)
 
-    if (!color) {
-        return themeColor.neutral(resolvedColorIntensity)
-    }
+  if (!color) {
+    return themeColor.neutral(resolvedColorIntensity)
+  }
 
-    return themeColor[color](resolvedColorIntensity)
+  return themeColor[color](resolvedColorIntensity)
 }

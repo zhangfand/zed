@@ -6,29 +6,29 @@ import legacy_ui from "@ui/_legacy"
 import snakeCaseTree from "@lib/snakeCase"
 
 export function buildThemes(): void {
-    // Make an array of themes
-    const themes = []
-    for (const themeConfig of Object.values(themeConfigs)) {
-        // ThemeConfig => Theme
-        const theme = buildTheme(themeConfig)
+  // Make an array of themes
+  const themes = []
+  for (const themeConfig of Object.values(themeConfigs)) {
+    // ThemeConfig => Theme
+    const theme = buildTheme(themeConfig)
 
-        const ui = buildUI(theme)
+    const ui = buildUI(theme)
 
-        const styles = {
-            ...legacy_ui(theme),
-            ui: ui,
-        }
-
-        // Format the styles the way Zed will consume them
-        const formattedStyles = snakeCaseTree(styles)
-
-        themes.push({
-            name: theme.name,
-            json: formattedStyles,
-            path: EXPORT_PATH,
-        })
+    const styles = {
+      ...legacy_ui(theme),
+      ui: ui,
     }
-    // Pass the array of themes to the export function
-    // Which will clear the target directory and write the themes
-    exportData(themes)
+
+    // Format the styles the way Zed will consume them
+    const formattedStyles = snakeCaseTree(styles)
+
+    themes.push({
+      name: theme.name,
+      json: formattedStyles,
+      path: EXPORT_PATH,
+    })
+  }
+  // Pass the array of themes to the export function
+  // Which will clear the target directory and write the themes
+  exportData(themes)
 }

@@ -1,185 +1,185 @@
 {
-    "welcome": {
-        "page_width": 320,
-        "logo": {
-            "color": "#c8ccd4",
-            "asset": "icons/logo_96.svg",
-            "dimensions": {
-                "width": 64,
-                "height": 64
-            }
-        },
-        "logo_subheading": {
-            "family": "Zed Sans",
-            "size": 16,
-            "color": "#838994",
-            "margin": {
-                "top": 10,
-                "bottom": 7
-            }
-        },
-        "button_group": {
-            "margin": {
-                "top": 8,
-                "bottom": 16
-            }
-        },
-        "heading_group": {
-            "margin": {
-                "top": 8,
-                "bottom": 12
-            }
-        },
-        "checkbox_group": {
-            "border": {
-                "color": "#2e333c",
-                "width": 1
-            },
-            "background": "#2e333c40",
-            "corner_radius": 4,
-            "padding": {
-                "left": 12,
-                "top": 2,
-                "bottom": 2
-            }
-        },
-        "button": {
-            "background": "#282c34",
-            "border": {
-                "color": "#414754",
-                "width": 1
-            },
-            "corner_radius": 4,
-            "margin": {
-                "top": 4,
-                "bottom": 4
-            },
-            "padding": {
-                "top": 3,
-                "bottom": 3,
-                "left": 7,
-                "right": 7
-            },
-            "family": "Zed Sans",
-            "size": 14,
-            "color": "#c8ccd4",
-            "hover": {
-                "family": "Zed Sans",
-                "size": 14,
-                "color": "#c8ccd4",
-                "background": "#2e333c",
-                "border": {
-                    "color": "#414754",
-                    "width": 1
-                }
-            }
-        },
-        "usage_note": {
-            "family": "Zed Sans",
-            "size": 10,
-            "color": "#838994",
-            "padding": {
-                "top": -4
-            }
-        },
-        "checkbox_container": {
-            "margin": {
-                "top": 4
-            },
-            "padding": {
-                "bottom": 8
-            }
-        },
-        "checkbox": {
-            "label": {
-                "family": "Zed Sans",
-                "size": 14,
-                "color": "#c8ccd4"
-            },
-            "icon": {
-                "color": "#c8ccd4",
-                "asset": "icons/check_12.svg",
-                "dimensions": {
-                    "width": 12,
-                    "height": 12
-                }
-            },
-            "default": {
-                "corner_radius": 4,
-                "padding": {
-                    "left": 3,
-                    "right": 3,
-                    "top": 3,
-                    "bottom": 3
-                },
-                "border": {
-                    "color": "#414754",
-                    "width": 1
-                },
-                "margin": {
-                    "right": 8,
-                    "top": 5,
-                    "bottom": 5
-                },
-                "background": "#282c34"
-            },
-            "checked": {
-                "corner_radius": 4,
-                "padding": {
-                    "left": 3,
-                    "right": 3,
-                    "top": 3,
-                    "bottom": 3
-                },
-                "border": {
-                    "color": "#414754",
-                    "width": 1
-                },
-                "margin": {
-                    "right": 8,
-                    "top": 5,
-                    "bottom": 5
-                },
-                "background": "#2e333c"
-            },
-            "hovered": {
-                "corner_radius": 4,
-                "padding": {
-                    "left": 3,
-                    "right": 3,
-                    "top": 3,
-                    "bottom": 3
-                },
-                "border": {
-                    "color": "#414754",
-                    "width": 1
-                },
-                "margin": {
-                    "right": 8,
-                    "top": 5,
-                    "bottom": 5
-                },
-                "background": "#2e333c"
-            },
-            "hovered_and_checked": {
-                "corner_radius": 4,
-                "padding": {
-                    "left": 3,
-                    "right": 3,
-                    "top": 3,
-                    "bottom": 3
-                },
-                "border": {
-                    "color": "#414754",
-                    "width": 1
-                },
-                "margin": {
-                    "right": 8,
-                    "top": 5,
-                    "bottom": 5
-                },
-                "background": "#2e333c"
-            }
+  "welcome": {
+    "page_width": 320,
+    "logo": {
+      "color": "#c8ccd4",
+      "asset": "icons/logo_96.svg",
+      "dimensions": {
+        "width": 64,
+        "height": 64
+      }
+    },
+    "logo_subheading": {
+      "family": "Zed Sans",
+      "size": 16,
+      "color": "#838994",
+      "margin": {
+        "top": 10,
+        "bottom": 7
+      }
+    },
+    "button_group": {
+      "margin": {
+        "top": 8,
+        "bottom": 16
+      }
+    },
+    "heading_group": {
+      "margin": {
+        "top": 8,
+        "bottom": 12
+      }
+    },
+    "checkbox_group": {
+      "border": {
+        "color": "#2e333c",
+        "width": 1
+      },
+      "background": "#2e333c40",
+      "corner_radius": 4,
+      "padding": {
+        "left": 12,
+        "top": 2,
+        "bottom": 2
+      }
+    },
+    "button": {
+      "background": "#282c34",
+      "border": {
+        "color": "#414754",
+        "width": 1
+      },
+      "corner_radius": 4,
+      "margin": {
+        "top": 4,
+        "bottom": 4
+      },
+      "padding": {
+        "top": 3,
+        "bottom": 3,
+        "left": 7,
+        "right": 7
+      },
+      "family": "Zed Sans",
+      "size": 14,
+      "color": "#c8ccd4",
+      "hover": {
+        "family": "Zed Sans",
+        "size": 14,
+        "color": "#c8ccd4",
+        "background": "#2e333c",
+        "border": {
+          "color": "#414754",
+          "width": 1
         }
+      }
+    },
+    "usage_note": {
+      "family": "Zed Sans",
+      "size": 10,
+      "color": "#838994",
+      "padding": {
+        "top": -4
+      }
+    },
+    "checkbox_container": {
+      "margin": {
+        "top": 4
+      },
+      "padding": {
+        "bottom": 8
+      }
+    },
+    "checkbox": {
+      "label": {
+        "family": "Zed Sans",
+        "size": 14,
+        "color": "#c8ccd4"
+      },
+      "icon": {
+        "color": "#c8ccd4",
+        "asset": "icons/check_12.svg",
+        "dimensions": {
+          "width": 12,
+          "height": 12
+        }
+      },
+      "default": {
+        "corner_radius": 4,
+        "padding": {
+          "left": 3,
+          "right": 3,
+          "top": 3,
+          "bottom": 3
+        },
+        "border": {
+          "color": "#414754",
+          "width": 1
+        },
+        "margin": {
+          "right": 8,
+          "top": 5,
+          "bottom": 5
+        },
+        "background": "#282c34"
+      },
+      "checked": {
+        "corner_radius": 4,
+        "padding": {
+          "left": 3,
+          "right": 3,
+          "top": 3,
+          "bottom": 3
+        },
+        "border": {
+          "color": "#414754",
+          "width": 1
+        },
+        "margin": {
+          "right": 8,
+          "top": 5,
+          "bottom": 5
+        },
+        "background": "#2e333c"
+      },
+      "hovered": {
+        "corner_radius": 4,
+        "padding": {
+          "left": 3,
+          "right": 3,
+          "top": 3,
+          "bottom": 3
+        },
+        "border": {
+          "color": "#414754",
+          "width": 1
+        },
+        "margin": {
+          "right": 8,
+          "top": 5,
+          "bottom": 5
+        },
+        "background": "#2e333c"
+      },
+      "hovered_and_checked": {
+        "corner_radius": 4,
+        "padding": {
+          "left": 3,
+          "right": 3,
+          "top": 3,
+          "bottom": 3
+        },
+        "border": {
+          "color": "#414754",
+          "width": 1
+        },
+        "margin": {
+          "right": 8,
+          "top": 5,
+          "bottom": 5
+        },
+        "background": "#2e333c"
+      }
     }
+  }
 }

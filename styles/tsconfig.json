@@ -1,27 +1,27 @@
 {
-    "compilerOptions": {
-        "target": "es2015",
-        "module": "commonjs",
-        "esModuleInterop": true,
-        "noImplicitAny": true,
-        "removeComments": true,
-        "preserveConstEnums": true,
-        "resolveJsonModule": true,
-        "sourceMap": true,
-        "paths": {
-            "@components/*": ["./components/*"],
-            "@lib/*": ["./lib/*"],
-            "@theme": ["./theme/index"],
-            "@theme/*": ["./theme/*"],
-            "@themes": ["./themes/index"],
-            "@themes/*": ["./themes/*"],
-            "@system/*": ["./theme/system/*"],
-            "@ui/*": ["./ui/*"],
-            "@/*": ["./*"]
-        }
-    },
-    "exclude": ["node_modules", "/theme/legacy_ui/wip/**/*.ts"],
-    "ts-node": {
-        "require": ["tsconfig-paths/register"]
+  "compilerOptions": {
+    "target": "es2015",
+    "module": "commonjs",
+    "esModuleInterop": true,
+    "noImplicitAny": true,
+    "removeComments": true,
+    "preserveConstEnums": true,
+    "resolveJsonModule": true,
+    "sourceMap": true,
+    "paths": {
+      "@components/*": ["./components/*"],
+      "@lib/*": ["./lib/*"],
+      "@theme": ["./theme/index"],
+      "@theme/*": ["./theme/*"],
+      "@themes": ["./themes/index"],
+      "@themes/*": ["./themes/*"],
+      "@system/*": ["./theme/system/*"],
+      "@ui/*": ["./ui/*"],
+      "@/*": ["./*"]
     }
+  },
+  "exclude": ["node_modules", "/theme/legacy_ui/wip/**/*.ts"],
+  "ts-node": {
+    "require": ["tsconfig-paths/register"]
+  }
 }

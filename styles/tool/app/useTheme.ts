@@ -3,12 +3,12 @@ import { buildTheme } from "../../theme/build/buildTheme"
 import { buildUI } from "../../ui"
 
 export function useTheme() {
-    const themeConfig = zedLight
-    const theme = buildTheme(themeConfig)
-    const ui = buildUI(theme)
+  const themeConfig = zedLight
+  const theme = buildTheme(themeConfig)
+  const ui = buildUI(theme)
 
-    return {
-        config: themeConfig,
-        ui,
-    }
+  return {
+    config: themeConfig,
+    ui,
+  }
 }

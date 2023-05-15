@@ -3,58 +3,58 @@ import { Theme } from "@theme"
 import { activeTab, inactiveTab } from "@ui/pane/tab"
 
 export default function tabBar(theme: Theme) {
-    const inactive_tab = inactiveTab(theme)
-    const active_tab = activeTab(theme)
+  const inactive_tab = inactiveTab(theme)
+  const active_tab = activeTab(theme)
 
-    const legacy_tab = {
-        ...inactive_tab.default.container,
-        spacing: inactive_tab.default.flex.spacing,
-        typeIconWidth: inactive_tab.default.icon.size,
-        closeIconWidth: inactive_tab.default.close.default.icon.size,
-        iconClose: inactive_tab.default.close.default.icon.color,
-        iconCloseActive: active_tab.default.close.default.icon.color,
-        iconConflict: inactive_tab.default.indicator.conflict.color,
-        iconDirty: inactive_tab.default.indicator.dirty.color,
-        description: {
-            margin: inactive_tab.default.description.container.margin,
-            ...inactive_tab.default.description.text,
-        },
-    }
+  const legacy_tab = {
+    ...inactive_tab.default.container,
+    spacing: inactive_tab.default.flex.spacing,
+    typeIconWidth: inactive_tab.default.icon.size,
+    closeIconWidth: inactive_tab.default.close.default.icon.size,
+    iconClose: inactive_tab.default.close.default.icon.color,
+    iconCloseActive: active_tab.default.close.default.icon.color,
+    iconConflict: inactive_tab.default.indicator.conflict.color,
+    iconDirty: inactive_tab.default.indicator.dirty.color,
+    description: {
+      margin: inactive_tab.default.description.container.margin,
+      ...inactive_tab.default.description.text,
+    },
+  }
 
-    const TAB_BAR_HEIGHT = 32
+  const TAB_BAR_HEIGHT = 32
 
-    const legacy_styles = {
-        height: TAB_BAR_HEIGHT,
-        background: useSurfaceStyle(theme, "pane").background,
-    }
+  const legacy_styles = {
+    height: TAB_BAR_HEIGHT,
+    background: useSurfaceStyle(theme, "pane").background,
+  }
 
-    return {
-        ...legacy_styles,
-        activePane: {
-            activeTab: legacy_tab,
-            inactiveTab: legacy_tab,
-        },
-        inactivePane: {
-            activeTab: legacy_tab,
-            inactiveTab: legacy_tab,
-        },
-        // draggedTab,
-        // paneButton: {
-        //     color: foreground(layer, "variant"),
-        //     iconWidth: 12,
-        //     buttonWidth: activePaneActiveTab.height,
-        //     hover: {
-        //         color: foreground(layer, "hovered"),
-        //     },
-        // },
-        // paneButtonContainer: {
-        //     background: tab.background,
-        //     border: {
-        //         ...tab.border,
-        //         right: false,
-        //     },
-        // },
-    }
+  return {
+    ...legacy_styles,
+    activePane: {
+      activeTab: legacy_tab,
+      inactiveTab: legacy_tab,
+    },
+    inactivePane: {
+      activeTab: legacy_tab,
+      inactiveTab: legacy_tab,
+    },
+    // draggedTab,
+    // paneButton: {
+    //     color: foreground(layer, "variant"),
+    //     iconWidth: 12,
+    //     buttonWidth: activePaneActiveTab.height,
+    //     hover: {
+    //         color: foreground(layer, "hovered"),
+    //     },
+    // },
+    // paneButtonContainer: {
+    //     background: tab.background,
+    //     border: {
+    //         ...tab.border,
+    //         right: false,
+    //     },
+    // },
+  }
 }
 
 // const tab = {

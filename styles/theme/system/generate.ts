@@ -5,14 +5,14 @@ import { Color, ColorFamily, ColorFamilyConfig, ColorScale } from "./color"
 
 /** Converts a percentage scale value (0-100) to normalized scale (0-1) value. */
 export function percentageToNormalized(value: number) {
-    const normalized = value / 100
-    return normalized
+  const normalized = value / 100
+  return normalized
 }
 
 /** Converts a normalized scale (0-1) value to a percentage scale (0-100) value. */
 export function normalizedToPercetage(value: number) {
-    const percentage = value * 100
-    return percentage
+  const percentage = value * 100
+  return percentage
 }
 
 /**
@@ -28,46 +28,46 @@ export function normalizedToPercetage(value: number) {
  * @returns {Color} The generated color, with its calculated contrast against black and white, as well as its LCH values, RGBA array, hexadecimal representation, and a flag indicating if it is light or dark.
  */
 function generateColor(
-    hueEasing: bezier.EasingFunction,
-    saturationEasing: bezier.EasingFunction,
-    lightnessEasing: bezier.EasingFunction,
-    family: ColorFamilyConfig,
-    step: number,
-    steps: number
+  hueEasing: bezier.EasingFunction,
+  saturationEasing: bezier.EasingFunction,
+  lightnessEasing: bezier.EasingFunction,
+  family: ColorFamilyConfig,
+  step: number,
+  steps: number
 ): Color {
-    const { hue, saturation, lightness } = family.color
+  const { hue, saturation, lightness } = family.color
 
-    const stepHue = hueEasing(step / steps) * (hue.end - hue.start) + hue.start
-    const stepSaturation =
-        saturationEasing(step / steps) * (saturation.end - saturation.start) +
-        saturation.start
-    const stepLightness =
-        lightnessEasing(step / steps) * (lightness.end - lightness.start) +
-        lightness.start
+  const stepHue = hueEasing(step / steps) * (hue.end - hue.start) + hue.start
+  const stepSaturation =
+    saturationEasing(step / steps) * (saturation.end - saturation.start) +
+    saturation.start
+  const stepLightness =
+    lightnessEasing(step / steps) * (lightness.end - lightness.start) +
+    lightness.start
 
-    const color = chroma.hsl(
-        stepHue,
-        percentageToNormalized(stepSaturation),
-        percentageToNormalized(stepLightness)
-    )
+  const color = chroma.hsl(
+    stepHue,
+    percentageToNormalized(stepSaturation),
+    percentageToNormalized(stepLightness)
+  )
 
-    const lch = color.lch()
-    const rgba = color.rgba()
-    const hex = color.hex()
+  const lch = color.lch()
+  const rgba = color.rgba()
+  const hex = color.hex()
 
-    // 55 is a magic number. It's the lightness value at which we consider a color to be "light".
-    // It was picked by eye with some testing. We might want to use a more scientific approach in the future.
-    const isLight = lch[0] > 55
+  // 55 is a magic number. It's the lightness value at which we consider a color to be "light".
+  // It was picked by eye with some testing. We might want to use a more scientific approach in the future.
+  const isLight = lch[0] > 55
 
-    const result: Color = {
-        step,
-        lch,
-        hex,
-        rgba,
-        isLight,
-    }
+  const result: Color = {
+    step,
+    lch,
+    hex,
+    rgba,
+    isLight,
+  }
 
-    return result
+  return result
 }
 
 /**
@@ -79,50 +79,50 @@ function generateColor(
  * @returns {ColorScale} The generated color scale.
  */
 export function generateColorScale(
-    config: ColorFamilyConfig,
-    inverted = false
+  config: ColorFamilyConfig,
+  inverted = false
 ): ColorScale {
-    const { hue, saturation, lightness } = config.color
+  const { hue, saturation, lightness } = config.color
 
-    // 101 steps means we get values from 0-100
-    const NUM_STEPS = 101
+  // 101 steps means we get values from 0-100
+  const NUM_STEPS = 101
 
-    const hueEasing = useCurve(hue.curve, inverted)
-    const saturationEasing = useCurve(saturation.curve, inverted)
-    const lightnessEasing = useCurve(lightness.curve, inverted)
+  const hueEasing = useCurve(hue.curve, inverted)
+  const saturationEasing = useCurve(saturation.curve, inverted)
+  const lightnessEasing = useCurve(lightness.curve, inverted)
 
-    const scale: ColorScale = {
-        colors: [],
-        values: [],
-    }
+  const scale: ColorScale = {
+    colors: [],
+    values: [],
+  }
 
-    for (let i = 0; i < NUM_STEPS; i++) {
-        const color = generateColor(
-            hueEasing,
-            saturationEasing,
-            lightnessEasing,
-            config,
-            i,
-            NUM_STEPS
-        )
+  for (let i = 0; i < NUM_STEPS; i++) {
+    const color = generateColor(
+      hueEasing,
+      saturationEasing,
+      lightnessEasing,
+      config,
+      i,
+      NUM_STEPS
+    )
 
-        scale.colors.push(color)
-        scale.values.push(color.hex)
-    }
+    scale.colors.push(color)
+    scale.values.push(color.hex)
+  }
 
-    return scale
+  return scale
 }
 
 /** Generates a color family with a scale and an inverted scale. */
 export function generateColorFamily(config: ColorFamilyConfig) {
-    const scale = generateColorScale(config, false)
-    const invertedScale = generateColorScale(config, true)
+  const scale = generateColorScale(config, false)
+  const invertedScale = generateColorScale(config, true)
 
-    const family: ColorFamily = {
-        name: config.name,
-        scale,
-        invertedScale,
-    }
+  const family: ColorFamily = {
+    name: config.name,
+    scale,
+    invertedScale,
+  }
 
-    return family
+  return family
 }

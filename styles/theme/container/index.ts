@@ -1,40 +1,40 @@
 import {
-    ContainedIcon,
-    ContainedText,
-    ContainedTextAndIcon,
-    ContainedTextProps,
-    containedText,
+  ContainedIcon,
+  ContainedText,
+  ContainedTextAndIcon,
+  ContainedTextProps,
+  containedText,
 } from "./containedElement"
 import { FlexStyle } from "@theme/element/flex"
 import {
-    ContainerStyle,
-    containerStyle,
-    ContainerOptions,
-    DEFAULT_CONTAINER_OPTIONS,
+  ContainerStyle,
+  containerStyle,
+  ContainerOptions,
+  DEFAULT_CONTAINER_OPTIONS,
 } from "./containerStyle"
 export {
-    ContainedText,
-    ContainedTextProps,
-    containedText,
-    ContainedIcon,
-    ContainedTextAndIcon,
+  ContainedText,
+  ContainedTextProps,
+  containedText,
+  ContainedIcon,
+  ContainedTextAndIcon,
 }
 export {
-    ContainerStyle,
-    containerStyle,
-    ContainerOptions,
-    DEFAULT_CONTAINER_OPTIONS,
+  ContainerStyle,
+  containerStyle,
+  ContainerOptions,
+  DEFAULT_CONTAINER_OPTIONS,
 }
 
 const blankContainer: ContainerStyle = {}
 
 export const container: Record<string, ContainerStyle> = {
-    blank: blankContainer,
+  blank: blankContainer,
 }
 
 export type Element =
-    | FlexStyle
-    | ContainerStyle
-    | ContainedIcon
-    | ContainedText
-    | ContainedTextAndIcon
+  | FlexStyle
+  | ContainerStyle
+  | ContainedIcon
+  | ContainedText
+  | ContainedTextAndIcon
