@@ -1,6 +1,6 @@
 {
   // The name of the Zed theme to use for the UI
-  "theme": "One Dark",
+  "theme": "one_dark",
   // Features that can be globally enabled or disabled
   "features": {
     // Show Copilot icon in status bar

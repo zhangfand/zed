@@ -25,5 +25,5 @@ fn main() {
         );
     }
 
-    println!("cargo:rerun-if-changed=../../styles/src");
+    println!("cargo:rerun-if-changed=../../styles");
 }

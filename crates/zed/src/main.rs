@@ -555,7 +555,7 @@ async fn watch_themes(
     mut cx: AsyncAppContext,
 ) -> Option<()> {
     let mut events = fs
-        .watch("styles/src".as_ref(), Duration::from_millis(100))
+        .watch("styles".as_ref(), Duration::from_millis(100))
         .await;
     while (events.next().await).is_some() {
         let output = Command::new("npm")

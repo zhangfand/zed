@@ -3,7 +3,7 @@ import { Theme } from "@theme"
 
 export default function editor(theme: Theme) {
   const static_properties = {
-    text_color: "#ACB2BE",
+    text_color: "#FF0000",
     active_line_background: "#2f343ebf",
     highlighted_line_background: "#2f343e",
     suggestion: {

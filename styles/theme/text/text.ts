@@ -217,21 +217,12 @@ export function textStyle(
     throw new Error(`No text color provided`)
   }
 
-  if (fontSize > 32) {
-    console.log(`
-      size: ${size}
-      baseFontSize: ${baseFontSize}
-      fontSize: ${fontSize}`)
-  }
-
-  if (intensity !== 100) {
-    console.log(`============
-    intensity: ${intensity}
-    text: ${text.color}
-    options: ${JSON.stringify(options)}
-    mergedOptions: ${JSON.stringify(mergedOptions)}
-    `)
-  }
+  // if (fontSize > 32) {
+  //   console.log(`
+  //     size: ${size}
+  //     baseFontSize: ${baseFontSize}
+  //     fontSize: ${fontSize}`)
+  // }
 
   return text
 }
