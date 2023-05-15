@@ -3,14 +3,16 @@ import { Intensity } from "./intensity"
 // The primary intensities that should be used for components and UI.
 // Readonly is used to prevent the intensities from being modified.
 interface SemanticIntensities {
-    primary: Readonly<Intensity>
-    secondary: Readonly<Intensity>
-    inactive: Readonly<Intensity>
-    disabled: Readonly<Intensity>
+  primary: Readonly<Intensity>
+  secondary: Readonly<Intensity>
+  inactive: Readonly<Intensity>
+  hidden: Readonly<Intensity>
+  disabled: Readonly<Intensity>
 }
 const PRIMARY_INTENSITY: Readonly<Intensity> = 100
 const SECONDARY_INTENSITY: Readonly<Intensity> = 75
 const INACTIVE_INTENSITY: Readonly<Intensity> = 50
+const HIDDEN_INTENSITY: Readonly<Intensity> = 40
 const DISABLED_INTENSITY: Readonly<Intensity> = 30
 
 /**
@@ -53,10 +55,11 @@ const DISABLED_INTENSITY: Readonly<Intensity> = 30
  * - Use for anything a user can interact with.
  */
 const semanticIntensities: SemanticIntensities = {
-    primary: PRIMARY_INTENSITY,
-    secondary: SECONDARY_INTENSITY,
-    inactive: INACTIVE_INTENSITY,
-    disabled: DISABLED_INTENSITY,
+  primary: PRIMARY_INTENSITY,
+  secondary: SECONDARY_INTENSITY,
+  inactive: INACTIVE_INTENSITY,
+  hidden: HIDDEN_INTENSITY,
+  disabled: DISABLED_INTENSITY,
 }
 
 export { semanticIntensities }

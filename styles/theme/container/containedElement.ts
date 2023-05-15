@@ -1,15 +1,13 @@
 import {
-  DEFAULT_TEXT_OPTIONS,
   TextOptions,
   TextStyle,
   textStyle,
 } from "@theme/text/text"
 import { Prettify } from "@theme/types/utility"
-import { ContainerOptions, DEFAULT_CONTAINER_OPTIONS } from "./containerStyle"
-import { ContainerStyle } from "./containerStyle"
-import { containerStyle } from "./containerStyle"
+import { ContainerOptions, ContainerStyle, containerStyle } from "./containerStyle"
 import { Theme } from "@theme"
 import { IconStyle } from "@theme/icon/icon"
+import { extractContainerOptions, extractTextOptions } from "@theme/options/extract"
 
 export interface ContainedText {
   container: ContainerStyle
@@ -28,21 +26,9 @@ export const containedText = ({
   theme,
   options,
 }: ContainedTextProps): ContainedText => {
-  const mergedOptions = {
-    ...DEFAULT_TEXT_OPTIONS,
-    ...DEFAULT_CONTAINER_OPTIONS,
-    ...options,
-  }
 
-  const textOptions: Partial<TextOptions> = mergedOptions
-  const containerOptions: Partial<ContainerOptions> = mergedOptions
-
-  if (mergedOptions.themeColor !== "neutral") {
-    console.log(`
-      textOptions: ${JSON.stringify(textOptions, null, 2)}
-      containerOptions: ${JSON.stringify(containerOptions, null, 2)}
-      `)
-  }
+  const textOptions: Partial<TextOptions> = extractTextOptions(options)
+  const containerOptions: Partial<ContainerOptions> = extractContainerOptions(options)
 
   const text = textStyle(theme, textOptions)
   const container = containerStyle({ theme, options: containerOptions })

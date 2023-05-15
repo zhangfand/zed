@@ -1,3 +1,4 @@
-import oneDark from "./oneDark"
+import tailwindDark from "./tailwindDark"
+import tailwindLight from "./tailwindLight"
 
-export { oneDark }
+export { tailwindDark, tailwindLight }

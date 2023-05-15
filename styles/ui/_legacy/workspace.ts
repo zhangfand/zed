@@ -8,7 +8,7 @@ import { statusBar } from "./status_bar"
 
 // VERY WIP
 export default function workspace(theme: Theme) {
-  const LOGO_SIZE: Readonly<number> = 256
+  // const LOGO_SIZE: Readonly<number> = 256
 
   const surface = useSurfaceStyle(theme, "background")
   const pane = useSurfaceStyle(theme, "pane")
@@ -26,6 +26,7 @@ export default function workspace(theme: Theme) {
   const ITEM_SPACING: Readonly<number> = 8
   const FACEPILE_SPACING: Readonly<number> = 2
 
+  const title_bar_surface_style = useSurfaceStyle(theme, "background")
   const title_bar_surface_intensity = useSurfaceIntensity(theme, "background")
 
   const title_bar = {
@@ -34,7 +35,7 @@ export default function workspace(theme: Theme) {
     face_pile_spacing: FACEPILE_SPACING,
     // Account for the bottom border
     height: TAB_BAR_HEIGHT + 1,
-    background: pane.background,
+    background: title_bar_surface_style.background,
     border: borderStyle({
       theme,
       intensity: title_bar_surface_intensity.border,
