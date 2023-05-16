@@ -1,5 +1,8 @@
 import { Intensity } from "@theme"
 
+export const MINIMUM_CONTRAST: Readonly<number> = 3
+export const LOW_CONTRAST: Readonly<number> = 4.5
+
 export const checkContrast = (
   name: string,
   background: Intensity,
@@ -18,11 +21,11 @@ export const checkContrast = (
       `Contrast on ${name}: ${contrast}. Foreground: ${foreground}, Background: ${background}`
     )
 
-  if (contrast < 4.5) {
+  if (contrast < LOW_CONTRAST) {
     console.log(`Constrast on ${name} may be too low: ${contrast}`)
   }
 
-  if (contrast < 3) {
+  if (contrast < MINIMUM_CONTRAST) {
     throw new Error(`Constrast on ${name} is too low: ${contrast}`)
   }
 }
