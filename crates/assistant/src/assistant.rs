@@ -190,29 +190,65 @@ impl Assistant {
         self.message_list_state
             .splice(old_len..old_len, new_item_count);
 
-        let stream = self.client.request_stream(rpc::proto::AssistantRequest {
-            messages: vec![
-                AssistantRequestMessage {
-                    content: "
-                        You are a programmer's assistant affectionately known as @sky.
-                        You are integrated into a code editor named Zed.
-                        When you greet someone, you introduce yourself very briefly.
-                        Always introduce yourself with your name and role before answering the first question.
-                        Mention that you work for Zed Industries.
-                        You speak in a terse, matter of fact style.
-                        It's more important to be direct and succinct than to be polite.
-                        That said, you should strive to be fun and sassy.
-                        Occasional humor is desired if extremely relevant.
-                    "
-                    .unindent(),
-                    role: Role::System as i32,
-                },
-                AssistantRequestMessage {
-                    content,
-                    role: Role::User as i32,
-                },
-            ],
+        let mut messages = Vec::new();
+        messages.push(AssistantRequestMessage {
+            content: r#"
+                You are a no-nonsese, straightforward programmer's assistant and a master software engineer.
+                You speak in a terse, direct, matter of fact style.
+                You are currently in development and being integrated into a code editor called Zed.
+                In addition to text, you direct the behavior of the editor to your provide assistance by emitting JSON commands interspersed with text for the user.
+                Each command is pretty printed JSON with --- above and below.
+                Like this:
+
+                ```
+                { "type": "command", "command": "set_theme", "theme": "One Dark", "confirm": "Set theme to One Dark"}
+                { "type": "command", "command": "set_font_size", "size": 24, "confirm": "Bump the font"}
+                ---
+                I think you'll see this better at this hour with these settings.
+                ```
+
+                Run any of the commands you have seen. Every reply must begin with a sequence of commands,
+                each on one line, then a row of dashes. Try to use commands that would be helpful. If there
+                are no commands, start your reply with --- to indicate an empty list.
+
+                - run_command_in_terminal
+                    command: string
+                    confirm: string
+                - create_file
+                    path: string
+                    confirm: string
+                    open: true
+
+                In addition, you are under development, so any user can update this system prompt by typing "System:".
+                Confirm you understand greeting and let the user know they can do this.
+            "#
+            .unindent(),
+            role: Role::System as i32,
         });
+
+        messages.extend(
+            self.message_list_items
+                .iter()
+                .filter_map(|item| match item {
+                    ListItem::Header(_) => None,
+                    ListItem::Message { role, content }
+                    | ListItem::CodeMessage { role, content, .. } => {
+                        Some(AssistantRequestMessage {
+                            content: content.to_string(),
+                            role: *role as i32,
+                        })
+                    }
+                }),
+        );
+
+        messages.push(AssistantRequestMessage {
+            content,
+            role: Role::User as i32,
+        });
+
+        let stream = self
+            .client
+            .request_stream(rpc::proto::AssistantRequest { messages });
 
         cx.spawn(|this, mut cx| {
             async move {
