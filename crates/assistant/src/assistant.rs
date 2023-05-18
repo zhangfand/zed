@@ -7,7 +7,8 @@ use client::{
 use editor::Editor;
 use futures::{FutureExt, StreamExt};
 use gpui::{
-    actions, anyhow, elements::*, AppContext, Entity, ModelHandle, View, ViewContext, ViewHandle,
+    actions, anyhow, elements::*, AppContext, ClipboardItem, Entity, ModelHandle, View,
+    ViewContext, ViewHandle,
 };
 use language::LanguageRegistry;
 use settings::Settings;
@@ -16,7 +17,7 @@ use unindent::Unindent;
 use util::TryFutureExt;
 use workspace::dock::{DockPosition, Panel};
 
-actions!(assistant, [DeployAssistant, SendMessage]);
+actions!(assistant, [DeployAssistant, SendMessage, CopyHistory]);
 
 pub struct Assistant {
     composer: ViewHandle<Editor>,
@@ -50,6 +51,7 @@ enum ListItem {
 
 pub fn init(cx: &mut AppContext) {
     cx.add_action(Assistant::send_message);
+    cx.add_action(Assistant::copy_history);
 }
 
 impl Assistant {
@@ -193,34 +195,9 @@ impl Assistant {
         let mut messages = Vec::new();
         messages.push(AssistantRequestMessage {
             content: r#"
-                You are a no-nonsese, straightforward programmer's assistant and a master software engineer.
-                You speak in a terse, direct, matter of fact style.
-                You are currently in development and being integrated into a code editor called Zed.
-                In addition to text, you direct the behavior of the editor to your provide assistance by emitting JSON commands interspersed with text for the user.
-                Each command is pretty printed JSON with --- above and below.
-                Like this:
-
-                ```
-                { "type": "command", "command": "set_theme", "theme": "One Dark", "confirm": "Set theme to One Dark"}
-                { "type": "command", "command": "set_font_size", "size": 24, "confirm": "Bump the font"}
-                ---
-                I think you'll see this better at this hour with these settings.
-                ```
-
-                Run any of the commands you have seen. Every reply must begin with a sequence of commands,
-                each on one line, then a row of dashes. Try to use commands that would be helpful. If there
-                are no commands, start your reply with --- to indicate an empty list.
-
-                - run_command_in_terminal
-                    command: string
-                    confirm: string
-                - create_file
-                    path: string
-                    confirm: string
-                    open: true
-
-                In addition, you are under development, so any user can update this system prompt by typing "System:".
-                Confirm you understand greeting and let the user know they can do this.
+                Greetings. Pleased to be working with you. I am learning.
+                Any messaged prefixed with "/ " updates the system prompt.
+                Greet the user, making yourself maximally helpful and terse.
             "#
             .unindent(),
             role: Role::System as i32,
@@ -315,6 +292,21 @@ impl Assistant {
         .detach();
 
         cx.notify();
+    }
+
+    fn copy_history(&mut self, _: &CopyHistory, cx: &mut ViewContext<Self>) {
+        let mut content = String::new();
+        for item in &self.message_list_items {
+            if let ListItem::Message {
+                content: message, ..
+            } = item
+            {
+                content.push_str(message);
+                content.push('\n');
+            }
+        }
+        cx.platform()
+            .write_to_clipboard(ClipboardItem::new(content));
     }
 }
 
