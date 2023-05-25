@@ -2980,65 +2980,51 @@ impl View for Workspace {
 
     fn render(&mut self, cx: &mut ViewContext<Self>) -> AnyElement<Self> {
         let theme = theme::current(cx).clone();
+        let content =
+            if let Some(zoomed) = self.zoomed.as_ref().and_then(|zoomed| zoomed.upgrade(cx)) {
+                ChildView::new(&zoomed, cx).into_any()
+            } else {
+                Stack::new()
+                    .with_child({
+                        let project = self.project.clone();
+                        Flex::row()
+                            .with_children(self.render_dock(DockPosition::Left, cx))
+                            .with_child(
+                                Flex::column()
+                                    .with_child(
+                                        FlexItem::new(
+                                            self.center.render(
+                                                &project,
+                                                &theme,
+                                                &self.follower_states_by_leader,
+                                                self.active_call(),
+                                                self.active_pane(),
+                                                self.zoomed
+                                                    .as_ref()
+                                                    .and_then(|zoomed| zoomed.upgrade(cx))
+                                                    .as_ref(),
+                                                &self.app_state,
+                                                cx,
+                                            ),
+                                        )
+                                        .flex(1., true),
+                                    )
+                                    .with_children(self.render_dock(DockPosition::Bottom, cx))
+                                    .flex(1., true),
+                            )
+                            .with_children(self.render_dock(DockPosition::Right, cx))
+                    })
+                    .into_any()
+            };
         Stack::new()
             .with_child(
                 Flex::column()
                     .with_child(self.render_titlebar(&theme, cx))
                     .with_child(
                         Stack::new()
-                            .with_child({
-                                let project = self.project.clone();
-                                Flex::row()
-                                    .with_children(self.render_dock(DockPosition::Left, cx))
-                                    .with_child(
-                                        Flex::column()
-                                            .with_child(
-                                                FlexItem::new(
-                                                    self.center.render(
-                                                        &project,
-                                                        &theme,
-                                                        &self.follower_states_by_leader,
-                                                        self.active_call(),
-                                                        self.active_pane(),
-                                                        self.zoomed
-                                                            .as_ref()
-                                                            .and_then(|zoomed| zoomed.upgrade(cx))
-                                                            .as_ref(),
-                                                        &self.app_state,
-                                                        cx,
-                                                    ),
-                                                )
-                                                .flex(1., true),
-                                            )
-                                            .with_children(
-                                                self.render_dock(DockPosition::Bottom, cx),
-                                            )
-                                            .flex(1., true),
-                                    )
-                                    .with_children(self.render_dock(DockPosition::Right, cx))
-                            })
+                            .with_child(content)
                             .with_child(Overlay::new(
                                 Stack::new()
-                                    .with_children(self.zoomed.as_ref().and_then(|zoomed| {
-                                        enum ZoomBackground {}
-                                        let zoomed = zoomed.upgrade(cx)?;
-                                        Some(
-                                            ChildView::new(&zoomed, cx)
-                                                .contained()
-                                                .with_style(theme.workspace.zoomed_foreground)
-                                                .aligned()
-                                                .contained()
-                                                .with_style(theme.workspace.zoomed_background)
-                                                .mouse::<ZoomBackground>(0)
-                                                .capture_all()
-                                                .on_down(
-                                                    MouseButton::Left,
-                                                    |_, this: &mut Self, cx| {
-                                                        this.zoom_out(cx);
-                                                    },
-                                                ),
-                                        )
-                                    }))
                                     .with_children(self.modal.as_ref().map(|modal| {
                                         ChildView::new(modal, cx)
                                             .contained()
@@ -3048,7 +3034,8 @@ impl View for Workspace {
                                     }))
                                     .with_children(self.render_notifications(&theme.workspace, cx)),
                             ))
-                            .flex(1.0, true),
+                            .flex(1.0, true)
+                            .into_any(),
                     )
                     .with_child(ChildView::new(&self.status_bar, cx))
                     .contained()
