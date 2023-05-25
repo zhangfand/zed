@@ -16,15 +16,17 @@ Contexts themselves are arranged in a tree, with all contexts bottoming out in Z
 
 Some example contexts:
 
-- zed
-    - staff
-    - insiders
-    - contributors
-- root
-    - deals
-        - ex.dev
-    - hacking
-    - zed
+#zed
+    /zed
+        /new-feature
+        /bug-fix
+    /staff
+    /insiders
+    /contributors
+#root
+    /deals
+    /hacking
+    /zed
 
 When you arrive at a context, you'll see a top-level sequence of existing messages, like this.
 
@@ -45,9 +47,9 @@ When a user places their cursor *between* messages, they see their own pending m
 
 ## Implementation: CRDB
 
-CRDB is essentially an ordered sequence of text fragments, and each fragment is associated with a globally-unique document id that represents the higher order bit for ordering purposes.
+CRDB is essentially an ordered sequence of text fragments, and each fragment is associated with a branch id and operation id.
 
-The document id is an operation id. The operation id is obtained from an incrementing operation counter maintained for each branch. When the document is created on a branch, the current operation count is assigned as the id. The branch id further decomposes into a context id and installation id. Contexts are uniquely identified across Zed. You have to talk to our database to create one. Installation ids are similarly unique, assigned the first time a user signs in.
+The operation id is obtained from an incrementing operation counter maintained for each branch. When the document is created on a branch, the current operation count is assigned as the id. The branch id further decomposes into a context id and installation id. Contexts are uniquely identified across Zed. You have to talk to our database to create one. Installation ids are similarly unique, assigned the first time a user signs in.
 
 ```rs
 struct BranchId(ContextId, InstallationId, LocalBranchCount);
@@ -66,7 +68,7 @@ Documents are actually stored as sequences of fragments. Each fragment contains 
 
 We can use our existing buffer CRDT, which is only designed to model a single file, as a starting point. We can replace our CRDTs replica id with a branch id, then add a document id to each fragment as well to go from a single document to multiple.
 
-If we use u32s for various ids the overhead is 16 bytes and gives us 4.3m contexts, installations, local operations etc.
+If we use u32s for various ids the overhead is 16 bytes and gives us ~4.3m contexts, installations, local operations etc.
 
 OperationId
     BranchId
@@ -82,6 +84,7 @@ Our CRDT currently stores fragments' text in external ropes. One is the visible 
 In memory, we'll have a Context object, and from it we'll be able to request documents by their id.
 
 ```rs
+let context = db.context(context_id)
 let document = context.document(doc_id);
 document.edit(...)
 ```
@@ -90,7 +93,7 @@ The lightweight Document object wraps a reference to the context and the documen
 
 ## Portals
 
-In addition to text, documents in a context can embed *portals* into any other document tracked by CRDB. A portal is a special type of fragment that injects a live-updating excerpt from some other document. The range is described by two *anchors*.
+In addition to text, documents in a context can embed *portals* into any other document tracked by CRDB. A portal is a special type of fragment that injects a live-updating excerpt from some other document. The range is described by two *anchors* and a version vector.
 
 Anchors combine an operation id describing an insertion, an offset into the originally inserted text, and a lamport timestamp to preserve causality, and a bias. They can reliably resolve references into documents even as they change through time.
 
@@ -109,3 +112,50 @@ I'm not sure this "portals for everything" approach makes sense, but I think it 
 I think we should think about this up front but consider deferring implementation. We're building a B-tree. We should be able to serialize nodes of the B-tree to disk. Any algorithm that selectively descends will work in this setting.
 
 But does this involve extending the SumTree with persistence? Seems like maybe? I could see doing a blocking implementation so we could keep the same interface, but just make the SumTree pull nodes out of the database sometimes. Once we've pulled nodes into memory we can clone the relevant ones onto the foreground thread.
+
+> Define the key data types in Rust
+
+Here are the key data types in Rust based on the provided information:
+
+```rust
+// Represents a unique identifier for a context
+struct ContextId(u32);
+
+// Represents a unique identifier for an installation
+struct InstallationId(u32);
+
+// Represents the count of local branches in a Zed installation
+struct LocalBranchCount(u32);
+
+// Represents the count of local operations in a branch
+struct LocalOperationCount(u32);
+
+// Represents a branch ID, combining context, installation, and local branch count
+struct BranchId(ContextId, InstallationId, LocalBranchCount);
+
+// Represents an operation ID, combining branch ID and local operation count
+struct OperationId(BranchId, LocalOperationCount);
+
+// Represents a document ID, which is the same type as an operation ID
+type DocumentId = OperationId;
+
+// Represents a lamport clock timestamp
+struct LamportTimestamp(u64);
+
+// Represents an anchor with operation ID, offset, lamport timestamp, and bias
+struct Anchor {
+    operation_id: OperationId,
+    offset: usize,
+    lamport_timestamp: LamportTimestamp,
+    bias: isize,
+}
+
+// Represents a portal to a document with two anchors and a version vector
+struct Portal {
+    start_anchor: Anchor,
+    end_anchor: Anchor,
+    version_vector: Vec<u32>, // Using a simple vector for simplicity, adjust as needed
+}
+```
+
+These data types should give a good starting point for implementing the described system in Rust.
