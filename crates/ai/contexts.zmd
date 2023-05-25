@@ -105,3 +105,7 @@ I feel this plays well into the idea of rendering messages inline inside of sour
 I'm not sure this "portals for everything" approach makes sense, but I think it has some nice properties.
 
 ## Persistence
+
+I think we should think about this up front but consider deferring implementation. We're building a B-tree. We should be able to serialize nodes of the B-tree to disk. Any algorithm that selectively descends will work in this setting.
+
+But does this involve extending the SumTree with persistence? Seems like maybe? I could see doing a blocking implementation so we could keep the same interface, but just make the SumTree pull nodes out of the database sometimes. Once we've pulled nodes into memory we can clone the relevant ones onto the foreground thread.
