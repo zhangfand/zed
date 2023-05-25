@@ -1,0 +1,107 @@
+# Contexts
+
+In Zed, contexts act as shared mental models, blending aspects of chat conversations and documents. They are founded on two primary components: versioning and hypertext.
+
+1. *Versioning*: CRDB, our CRDT-based eventually consistent document database, enables versioning by handling change at the level of individual edit operations. This allows recalling any state of the context, not just specific commit points. Lightweight branching is supported, enabling continuous merging of upstream changes into downstream branches.
+
+2. *Hypertext*: Portals bring the hypertext aspect to life by allowing excerpts from anywhere within the context to be embedded into other text. Portals can even cross different branches, providing a live-updated and interconnected web of ideas and conversations.
+
+By combining both versioning and hypertext elements, Zed's contexts foster a dynamic and collaborative environment that adapts to evolving team knowledge and streamlines communication.
+
+Our ultimate goal is for interaction with contexts to be completely customized for each individual. In the short term, however, we'll model every context as a tree of messages.
+
+## The basic UX of contexts
+
+Contexts themselves are arranged in a tree, with all contexts bottoming out in Zed's root context. Contexts serve as organizational units and permission boundaries.
+
+Some example contexts:
+
+- zed
+    - staff
+    - insiders
+    - contributors
+- root
+    - deals
+        - ex.dev
+    - hacking
+    - zed
+
+When you arrive at a context, you'll see a top-level sequence of existing messages, like this.
+
+```
+@ascii   I optimized our representation of version vector.
+12:00p   [code excerpt]
+
+@nathan  Very cool! I'm glad we were able to keep up with demand.
+12:10p
+
+@nathan  Check out the new flow for adding a new agent.
+12:29p   Just tell #zed you want to add one.
+```
+
+By default, the current users cursor is placed at the bottom of the conversation in a new pending message. If they move their cursor up, it goes up into the previous message, which they can edit. If they do edit it, attribution is added to the original message representing their participation.
+
+When a user places their cursor *between* messages, they see their own pending message, which invites them to reply and thus start a new thread. When a message already has replies, you initially see a summary, which you can expand with a key binding or hover-activated mouse affordance.
+
+## Implementation: CRDB
+
+CRDB is essentially an ordered sequence of text fragments, and each fragment is associated with a globally-unique document id that represents the higher order bit for ordering purposes.
+
+The document id is an operation id. The operation id is obtained from an incrementing operation counter maintained for each branch. When the document is created on a branch, the current operation count is assigned as the id. The branch id further decomposes into a context id and installation id. Contexts are uniquely identified across Zed. You have to talk to our database to create one. Installation ids are similarly unique, assigned the first time a user signs in.
+
+```rs
+struct BranchId(ContextId, InstallationId, LocalBranchCount);
+struct OperationId(BranchId, LocalOperationCount);
+type DocumentId = OperationId;
+```
+
+Every unique Zed installation is assigned an installation id on first sign in.
+For each context, each installation can create an arbitrary number of branches, which are assigned a unique branch id from an incrementing counter on local to that Zed installation.
+
+In addition, each Zed installation maintains a lamport clock to help us craft orderings that respect causality.
+
+For each branch, we also maintain an incrementing operation counter. It's this counter from which the document ids discussed above are drawn. But document creation is just one kind of operation. Documents can be deleted and have their metadata updated. And within documents, you can also insert and delete text. You can also undo and redo past operations, which are operations in themselves.
+
+Documents are actually stored as sequences of fragments. Each fragment contains a summary that can be associatively combined with the summaries of neighboring fragments (the fragment summaries form a monoid).
+
+We can use our existing buffer CRDT, which is only designed to model a single file, as a starting point. We can replace our CRDTs replica id with a branch id, then add a document id to each fragment as well to go from a single document to multiple.
+
+If we use u32s for various ids the overhead is 16 bytes and gives us 4.3m contexts, installations, local operations etc.
+
+OperationId
+    BranchId
+        ContextId - 4 bytes
+        InstallationId - 4 bytes
+        LocalBranchCount - 4 bytes
+    LocalOperationCount - 4 bytes
+
+I don't want to worry about memory efficiency right now. We should assume we'll figure it out, and I already have some ideas, such as mapping ids to smaller sizes locally or using context- and document- specific representations.
+
+Our CRDT currently stores fragments' text in external ropes. One is the visible text and the other is the text of everything that's been deleted. I think we could keep this design and just store the text of every document in a single giant rope.
+
+In memory, we'll have a Context object, and from it we'll be able to request documents by their id.
+
+```rs
+let document = context.document(doc_id);
+document.edit(...)
+```
+
+The lightweight Document object wraps a reference to the context and the document id.
+
+## Portals
+
+In addition to text, documents in a context can embed *portals* into any other document tracked by CRDB. A portal is a special type of fragment that injects a live-updating excerpt from some other document. The range is described by two *anchors*.
+
+Anchors combine an operation id describing an insertion, an offset into the originally inserted text, and a lamport timestamp to preserve causality, and a bias. They can reliably resolve references into documents even as they change through time.
+
+## Supporting the UI
+
+Every context has a default document. This default document contains a series of portals into messages. This default context represents the root of the conversation occurring in the context.u
+
+To render this document, we can associate each portal with metadata consumed by the editor to control its behavior. When we render each portal in the editor, we can use the metadata to determine the portal represents a message and render it accordingly.
+
+I feel this plays well into the idea of rendering messages inline inside of source code or other documentation, like this one. When you place your cursor inside a message, you can edit the message if you have permissions, or you can hit cmd-enter to reply, and Zed inserts another portal containing another message following it. If you hit tab at the start of this message, it gets indented and nested into a thread underneath the message above. To do this, we insert a portal to the message into the document representing the original message.
+
+I'm not sure this "portals for everything" approach makes sense, but I think it has some nice properties.
+
+## Persistence

@@ -1,0 +1,5 @@
+Editing context could be everything.
+
+Language models are not just going to be trained, they're also going to be programmed. An example of this is "tree of thoughts", where we need to perform multiple model calls etc.
+
+A huge part of the programming is crafting prompts. This is all text. Text that can benefits from a powerful editor and sophisticated version control.
