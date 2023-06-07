@@ -1,101 +1,77 @@
-##
+## What we need to build
 
+- Up-to-date mockups that closely align with the titlebar are in [Figma](https://www.figma.com/file/pLq7dvhx2mFeWFOedXpUQ5/Project-%E2%80%93-Collaboration-UI?type=design&node-id=178%3A9017&t=OOgXyPZoMJZfwUdf-1)
 
-
-### Linear issue tree
-
-
-- Conversation pane
-    - Display a channel's conversation when the channel is opened
-    - Display short title of current conversation
-    - Show/search recent conversations on title click
-    - Can show conversations in #channels, as well as with one or more @humans and /assistants.
-- Basic conversation editor
-    - Conversation is divided into blocks
-    - Each block displays its author(s)
-    - When a block has multiple authors, their relative contribution levels are indicated.
-    - When an author in a collaborative block is hovered, their current contributions are highlighted.
-    - *Private compose mode* allows users to defer sharing of edits.
-    - Hitting cmd-enter inserts a new block beneath the current block.
-    - When privately composing a message, cmd-enter shares it.
-    - When speaking with an assistant cmd-enter submits it to the model.
-- Threads
-    - Hitting tab at the start of a block moves it into a thread.
-    - Threads can be pinned, so they show up in recent threads for a conversation.
-    - By default, threads are displayed as the root message plus a summary.
-    -
-
------
-
-## Essential Features:
-
-
-- Channels panel
-- Stacks
-- Add user to call
-- Project menu
-    - Open projects
-    - Recent projects
-    - If streaming, projects shared in the call
-- Share/currently sharing split button
-    - Share/unshare the project by clicking on the main button
-    - Right side launches popover:
-        - The popover lists every project/terminal/screen you're sharing.
-        - Below the list there is a button to stop sharing everything "Stop sharing all".
-- Mute button
-    - Only visible when on a call
-    - Mute or unmute the user's audio on toggle
-    - When not muted, you see a mic icon in the same color as icons are by default ("variant")
-    - When muted, you see a red ("negative") mic icon with a slash through it and a background.
-- Screen sharing button
-    - When sharing, you see a blue ("accent") screen icon and it has a background
-    - When not sharing, you see a screen icon in the same color as icons are by default ("variant") You do *not* see a screen with a line through it, just a normal screen.
-- Hang up button
-
-
-
-https://www.figma.com/file/pLq7dvhx2mFeWFOedXpUQ5/Project-%E2%80%93-Collaboration-UI?type=design&node-id=178%3A9017&t=OOgXyPZoMJZfwUdf-1
-
-
-
-----
-
-- Conversations view for chat
-    - Can a conversation be a document in version 0.0.1 of CRDB?
-    - Keep the entire structure in RAM
-    - Periodically serialize to the database or R2?
-    - Integrate it with assistants is also presented as a conversation... like a DM channel with a person, except a language model
-- Iterate on the titlebar/sharing/collaboration UI
-    - Screen sharing and audio controls in the top middle
-    - Share button and collaborators on right
-        - Click share button
-            - Not streaming?
-                - See channels, contacts
-                - Search a Zed user by name and stream to them right away
-                - Copy link, on click, create a new channel
-            - Already streaming?
-                - Do you want to share /project in #channel? -> Yes/No
-        - Channels panel
-            - On left. Displays channels, contacts, and assistants.
-            - For each channel
-                - Who is active in the text based discussion?
-                - Who is streaming?
-            - Copy link?
-            - Collapse tree structure?
-            - Create, join, and leave channels
-            - Search for channels
-        - Web UI:
-            - Simplified, read-only overview of what's going on at Zed, with a
-            download link and links to channels.
-        - URLs for opening Zed channels `zed://`
-- Authorization
-    - Channel permissions
-        - Access the channel
-        - Edit other people's messages
-        - Write in a streamed project
-        - Need a ban or delete-all feature for channel moderation during livestreams
-    - Audit log
 - Voice
-    - Controls in the middle
-    - Part of LiveKit
-- Integrated scheduling. Schedule a stream in advance. People can subscribe and be notified within Zed.
+    - Enable audio when starting a stream, controllable below
+- Collaboration in titlebar
+    - Project menu
+        - Switch between open/recent projects
+        - Switch between shared branches on the call
+    - Branch menu
+        - Switch between recently active branches
+    - Participants
+        - Move to middle
+        - Clearly indicate when users are not focusing this project
+        - Sort avatars by the number of followers
+        - Context menu
+            - Mute
+            - Kick
+            - Follow (redundant with left click)
+        - Freeze updates when mouse moves nearby to keep a stable click target
+    - Call controls when streaming
+        - Mute
+        - Share screen
+        - Leave stream
+    - Share button
+        - When not in a stream, simple button labeled "Share"
+            - Click deploys *start sharing* popover
+        - When in a stream, it's a split button
+            - Main part of button
+                - "Share" with current stream.
+                - "Stop Sharing"
+            - Right arrow opens *currently shared* popover.
+    - Start sharing popover
+        - Displayed upon clicking share when not streaming
+        - An editor for entering a channel
+        - Suggested channels and users
+        - Start sharing
+        - Copy link and start sharing
+        - Invite as guest / Invite as member to affect link
+    - Currently sharing popover
+        - Copy link
+        - What terminals, screens, and projects you are sharing, with affordances to unshare
+    - Show user's avatar in corner when they are not streaming
+    - When streaming, replace user avatar with ...
+- Channels panel
+    - Channel tree
+        - Show when a channel is streaming
+        - Show who is active in the channel
+    - Create a channel
+    - Add an existing channel
+    - Contacts
+        - Add contact
+    - Assistants
+        - For now, maybe just model names?
+    - Stream controls
+        - Mute
+        - Share screen
+        - Exit stream
+        - Stage controls for public channels
+            - Invite to stage
+            - Kick from stage
+            - Leave stage
+- Conversation panel
+    - Maintain a (potentially empty) block for the current user at the end
+    - Anyone can edit any message (we can add permissions later)
+    - Authorship attribution (who wrote this block?)
+    - Insert a new block with cmd-enter
+    - When /mentioning or direct messaging an assistant, cmd-enter submits an edited message to the LLM.
+    - Possibly defer: Threads
+        - Could indent with tab to enter a thread. (Shift tab to reverse?)
+        - Fold threads to their summary in the main conversation
+        - Summarize recently active threads somewhere?
+- Web UI
+    - Read-only initially, just a place people can link to.
+    - When visiting a link, see a summary of what's going on in the channel with a button to open or download Zed.
+    - Browse public channels, including #zed that are streaming
