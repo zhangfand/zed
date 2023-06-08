@@ -2,9 +2,9 @@
 
 - Up-to-date mockups that closely align with the titlebar are in [Figma](https://www.figma.com/file/pLq7dvhx2mFeWFOedXpUQ5/Project-%E2%80%93-Collaboration-UI?type=design&node-id=178%3A9017&t=OOgXyPZoMJZfwUdf-1)
 
-- Voice
-    - Enable audio when starting a stream, controllable below
-- Collaboration in titlebar
+- Make room for voice in titlebar
+    - When user is signed out, show "Sign in" in upper corner with no border
+    - When user is signed in but not streaming, show their avatar in the upper corner
     - Project menu
         - Switch between open/recent projects
         - Switch between shared branches on the call
@@ -13,15 +13,22 @@
     - Participants
         - Move to middle
         - Clearly indicate when users are not focusing this project
+            - If they have it open but not focused, show them dimmed with a ribbon
+            - If they don't have it open but are in the stream, don't show a colored ribbon
         - Sort avatars by the number of followers
-        - Context menu
+        - Avatar context menu
             - Mute
             - Kick
             - Follow (redundant with left click)
-        - Freeze updates when mouse moves nearby to keep a stable click target
+        - Freeze updates to avatars when mouse moves nearby to keep a stable click target
     - Call controls when streaming
-        - Mute
-        - Share screen
+        - Mute button
+            - When muted, render a red microphone with a strikethrough and a background
+            - When not muted, render a microphone with *no* strikethrough in a neutral color with no background
+        - Share screen button
+            - Use same icon for both states, only changing the color and background
+            - When sharing, render in blue with a background
+            - When not sharing, render with no background
         - Leave stream
     - Share button
         - When not in a stream, simple button labeled "Share"
@@ -34,23 +41,36 @@
     - Start sharing popover
         - Displayed upon clicking share when not streaming
         - An editor for entering a channel
+        - Suggest a channel:
+            - Use Git if possible to determine the org and repo name
+            - First choice: #zed/zed/feature
+                - If this channel does not exist, allow the user to create it
+                - If it does exist, do they have access?
+                    - Yes: Allow user to stream here
+                    - No? Suggest @ascii/zed/rope instead
+        - Affordance to set channel permissions
+            - Public: People can join as guests by browsing with no link
+            - Private: Need to be invited
         - Suggested channels and users
-        - Start sharing
-        - Copy link and start sharing
-        - Invite as guest / Invite as member to affect link
+        - Start sharing button
+        - Copy link to invite guests
     - Currently sharing popover
-        - Copy link
         - What terminals, screens, and projects you are sharing, with affordances to unshare
-    - Show user's avatar in corner when they are not streaming
-    - When streaming, replace user avatar with ...
+        - An affordance to copy a link to the current stream's channel
 - Channels panel
-    - Channel tree
-        - Show when a channel is streaming
+    - Channels section
+        - Show a tree of channels
         - Show who is active in the channel
-    - Create a channel
-    - Add an existing channel
+        - Show which channels are streaming, and which projects are shared
+        - Gray out or hide inactive channels with an affordance to show more
+        - When showing inactive channels, sort by recent activity
+        - Affordance to create a channel
+        - Affordance to add an existing channel to your list
+        - Affordance to remove channels
+        - Affordance to invite users to your channel
     - Contacts
         - Add contact
+        - See who is streaming
     - Assistants
         - For now, maybe just model names?
     - Stream controls
@@ -62,13 +82,14 @@
             - Kick from stage
             - Leave stage
 - Conversation panel
+    - Conversation is divided into "blocks", which are like messages but allow multiple authors
     - Maintain a (potentially empty) block for the current user at the end
     - Anyone can edit any message (we can add permissions later)
-    - Authorship attribution (who wrote this block?)
+    - Show who authored each block (could be multiple users)
     - Insert a new block with cmd-enter
-    - When /mentioning or direct messaging an assistant, cmd-enter submits an edited message to the LLM.
-    - Possibly defer: Threads
-        - Could indent with tab to enter a thread. (Shift tab to reverse?)
+    - When /mentioning or direct messaging with an assistant, cmd-enter submits an edited message to the LLM.
+    - Possibly defer: Threads?
+        - Could indent block with tab to enter a thread. (Shift tab to reverse?)
         - Fold threads to their summary in the main conversation
         - Summarize recently active threads somewhere?
 - Web UI
