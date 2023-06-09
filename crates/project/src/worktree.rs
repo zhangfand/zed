@@ -1950,7 +1950,7 @@ impl LocalSnapshot {
         // TODO - optimize, knowing that removed_entries are sorted.
         removed_entries.retain(|id| updated_entries.binary_search_by_key(id, |e| e.id).is_err());
 
-        proto::UpdateWorktree {
+        let message = proto::UpdateWorktree {
             project_id,
             worktree_id,
             abs_path: self.abs_path().to_string_lossy().into(),
@@ -1961,7 +1961,11 @@ impl LocalSnapshot {
             is_last_update: self.completed_scan_id == self.scan_id,
             updated_repositories,
             removed_repositories,
-        }
+        };
+
+        log::info!("update worktree {:?}", message);
+
+        message
     }
 
     fn build_initial_update(&self, project_id: u64, worktree_id: u64) -> proto::UpdateWorktree {
