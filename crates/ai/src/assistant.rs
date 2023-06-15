@@ -543,7 +543,7 @@ impl Assistant {
 
     fn count_remaining_tokens(&mut self, cx: &mut ModelContext<Self>) {
         let messages = self
-            .open_ai_request_messages(cx)
+            .open_ai_request_messages(Some(self.next_message_id), cx)
             .into_iter()
             .filter_map(|message| {
                 Some(tiktoken_rs::ChatCompletionRequestMessage {
@@ -594,18 +594,18 @@ impl Assistant {
         selection: Selection<usize>,
         cx: &mut ModelContext<Self>,
     ) -> Option<(MessageAnchor, MessageAnchor)> {
+        let selected_message_id = self.message_for_offset(selection.head(), cx)?.id;
         let request = OpenAIRequest {
             model: self.model.clone(),
-            messages: self.open_ai_request_messages(cx),
+            messages: self.open_ai_request_messages(Some(selected_message_id), cx),
             stream: true,
         };
 
         let api_key = self.api_key.borrow().clone()?;
         let stream = stream_completion(api_key, cx.background().clone(), request);
 
-        let selected_message = self.message_for_offset(selection.head(), cx);
         let assistant_reply =
-            self.insert_message_after(selected_message?.id, Role::Assistant, cx)?;
+            self.insert_message_after(selected_message_id, Role::Assistant, cx)?;
         let user_message = self.insert_message_after(assistant_reply.id, Role::User, cx)?;
         let task = cx.spawn_weak({
             |this, mut cx| async move {
@@ -795,7 +795,7 @@ impl Assistant {
         if self.message_anchors.len() >= 2 && self.summary.is_none() {
             let api_key = self.api_key.borrow().clone();
             if let Some(api_key) = api_key {
-                let mut messages = self.open_ai_request_messages(cx);
+                let mut messages = self.open_ai_request_messages(None, cx);
                 messages.truncate(2);
                 messages.push(RequestMessage {
                     role: Role::User,
@@ -832,14 +832,35 @@ impl Assistant {
         }
     }
 
-    fn open_ai_request_messages(&self, cx: &AppContext) -> Vec<RequestMessage> {
+    fn open_ai_request_messages(
+        &self,
+        selected_message_id: Option<MessageId>,
+        cx: &AppContext,
+    ) -> Vec<RequestMessage> {
         let buffer = self.buffer.read(cx);
-        self.messages(cx)
-            .map(|message| RequestMessage {
-                role: message.role,
-                content: buffer.text_for_range(message.range).collect(),
+        let mut messages = self
+            .messages(cx)
+            .map(|message| {
+                let mut content = format!("[Message {}]\n", message.id.0).to_string();
+                content.extend(buffer.text_for_range(message.range));
+                RequestMessage {
+                    role: message.role,
+                    content,
+                }
             })
-            .collect()
+            .collect::<Vec<_>>();
+
+        if let Some(selected_message) = selected_message_id {
+            messages.push(RequestMessage {
+                role: Role::System,
+                content: format!(
+                    "Direct your reply to message with id {}. Do not include a [Message X] header.",
+                    selected_message.0
+                ),
+            });
+        }
+
+        messages
     }
 
     fn message_for_offset<'a>(&'a self, offset: usize, cx: &'a AppContext) -> Option<Message> {
