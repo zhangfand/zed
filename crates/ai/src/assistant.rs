@@ -736,13 +736,17 @@ impl Assistant {
             }
 
             let role = metadata.role;
-            self.buffer.update(cx, |buffer, cx| {
-                buffer.edit([(range.end..range.end, "\n")], None, cx)
+            let suffix_start_anchor = self.buffer.update(cx, |buffer, cx| {
+                if buffer.chars_at(range.end).next() != Some('\n') {
+                    buffer.edit([(range.end..range.end, "\n")], None, cx);
+                }
+                buffer.anchor_before(range.end + 1)
             });
             let suffix = Message {
                 id: MessageId(post_inc(&mut self.next_message_id.0)),
-                start: self.buffer.read(cx).anchor_before(range.end + 1),
+                start: suffix_start_anchor,
             };
+
             self.messages.insert(start_message_ix + 1, suffix.clone());
             self.messages_metadata.insert(
                 suffix.id,
@@ -757,7 +761,7 @@ impl Assistant {
                 (None, Some(suffix))
             } else {
                 self.buffer.update(cx, |buffer, cx| {
-                    buffer.edit([(range.start..range.start, "\n")], None, cx)
+                    buffer.edit([(range.start..range.start, "\n")], None, cx);
                 });
                 let selection = Message {
                     id: MessageId(post_inc(&mut self.next_message_id.0)),
@@ -1520,6 +1524,7 @@ mod tests {
         buffer.update(cx, |buffer, cx| {
             buffer.edit([(4..4, "C"), (5..5, "D")], None, cx)
         });
+
         assert_eq!(
             messages(&assistant, cx),
             vec![
@@ -1587,6 +1592,7 @@ mod tests {
                 (message_3.id, Role::User, 5..6)
             ]
         );
+
         let (message_6, message_7) =
             assistant.update(cx, |assistant, cx| assistant.split_message(2..3, cx));
         let (message_6, message_7) = (message_6.unwrap(), message_7.unwrap());
@@ -1595,26 +1601,55 @@ mod tests {
             vec![
                 (message_1.id, Role::User, 0..3),
                 (message_6.id, Role::User, 3..5),
-                (message_7.id, Role::User, 5..6),
-                (message_5.id, Role::System, 6..7),
-                (message_3.id, Role::User, 7..8)
+                (message_7.id, Role::User, 4..5),
+                (message_5.id, Role::System, 5..6),
+                (message_3.id, Role::User, 6..7)
             ]
         );
 
-        // Don't include an empty prefix when splitting with a non-empty range
+        // When splitting, don't include an empty prefix when splitting with a non-empty range
         let (no_message, message_8) =
-            assistant.update(cx, |assistant, cx| assistant.split_message(3..4, cx));
+            assistant.update(cx, |assistant, cx| assistant.split_message(0..1, cx));
         assert!(no_message.is_none());
         let message_8 = message_8.unwrap();
         assert_eq!(
             messages(&assistant, cx),
             vec![
-                (message_1.id, Role::User, 0..3),
-                (message_6.id, Role::User, 3..5),
-                (message_8.id, Role::User, 5..6),
-                (message_7.id, Role::User, 6..7),
-                (message_5.id, Role::System, 7..8),
-                (message_3.id, Role::User, 8..9)
+                (message_1.id, Role::User, 0..2),
+                (message_8.id, Role::User, 2..4),
+                (message_6.id, Role::User, 4..5),
+                (message_7.id, Role::User, 5..6),
+                (message_5.id, Role::System, 6..7),
+                (message_3.id, Role::User, 7..8)
+            ]
+        );
+    }
+
+    #[gpui::test]
+    fn test_splitting_messages_at_newlines(cx: &mut AppContext) {
+        let registry = Arc::new(LanguageRegistry::test());
+        let assistant = cx.add_model(|cx| Assistant::new(Default::default(), registry, cx));
+        let buffer = assistant.read(cx).buffer.clone();
+
+        let message_1 = assistant.read(cx).messages[0].clone();
+        assert_eq!(
+            messages(&assistant, cx),
+            vec![(message_1.id, Role::User, 0..0)]
+        );
+
+        buffer.update(cx, |buffer, cx| {
+            buffer.edit([(0..0, "red\ngreen\nblue\nyellow")], None, cx)
+        });
+
+        let (no_message, message_2) =
+            assistant.update(cx, |assistant, cx| assistant.split_message(3..3, cx));
+        assert!(no_message.is_none());
+        let message_2 = message_2.unwrap();
+        assert_eq!(
+            messages(&assistant, cx),
+            vec![
+                (message_1.id, Role::User, 0..4),
+                (message_2.id, Role::User, 0..21),
             ]
         );
     }
