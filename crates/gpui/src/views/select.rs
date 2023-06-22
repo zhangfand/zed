@@ -88,6 +88,8 @@ impl Entity for Select {
 }
 
 impl View for Select {
+    type Style = ();
+
     fn ui_name() -> &'static str {
         "Select"
     }

@@ -238,6 +238,8 @@ impl Entity for EmptyView {
 }
 
 impl View for EmptyView {
+    type Style = ();
+
     fn ui_name() -> &'static str {
         "empty view"
     }

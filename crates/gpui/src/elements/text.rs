@@ -438,6 +438,8 @@ mod tests {
     }
 
     impl View for TestView {
+        type Style = ();
+
         fn ui_name() -> &'static str {
             "TestView"
         }
