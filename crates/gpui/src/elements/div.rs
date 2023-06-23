@@ -158,16 +158,30 @@ impl Entity for TestView {
 }
 
 impl View for TestView {
-    type Style = ();
+    type Style = TestStyle;
 
     // type Style = TestStyle;
+
+    fn style_name() -> &'static str {
+        "crate_name/TestStyle"
+    }
 
     fn ui_name() -> &'static str {
         "TestView"
     }
 
     fn render(&mut self, cx: &mut ViewContext<'_, '_, Self>) -> AnyElement<Self> {
-        // div(cx.style().root).with_child()
+        let style = cx.style();
+
+        // For each view's style type, generate a typescript interface
+        // For each view's style type, have a typescript function that generates it given a theme
+        //
+
+        // div(style.root)
+        //     .with_child(
+        //         div(style.titlebar)
+        //             .with_child()
+        //     )
         todo!()
     }
 }
