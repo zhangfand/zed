@@ -82,7 +82,7 @@ impl<V: View> Flex<V> {
     ) {
         let cross_axis = self.axis.invert();
         for child in &mut self.children {
-            if let Some(metadata) = child.metadata::<FlexParentData>() {
+            if let Some(metadata) = child.metadata::<FlexItemMetadata>() {
                 if let Some((flex, expanded)) = metadata.flex {
                     if expanded != layout_expanded {
                         continue;
@@ -138,7 +138,7 @@ impl<V: View> Element<V> for Flex<V> {
         let cross_axis = self.axis.invert();
         let mut cross_axis_max: f32 = 0.0;
         for child in &mut self.children {
-            let metadata = child.metadata::<FlexParentData>();
+            let metadata = child.metadata::<FlexItemMetadata>();
             contains_float |= metadata.map_or(false, |metadata| metadata.float);
 
             if let Some(flex) = metadata.and_then(|metadata| metadata.flex.map(|(flex, _)| flex)) {
@@ -317,7 +317,7 @@ impl<V: View> Element<V> for Flex<V> {
 
         for child in &mut self.children {
             if remaining_space > 0. {
-                if let Some(metadata) = child.metadata::<FlexParentData>() {
+                if let Some(metadata) = child.metadata::<FlexItemMetadata>() {
                     if metadata.float {
                         match self.axis {
                             Axis::Horizontal => child_origin += vec2f(remaining_space, 0.0),
@@ -396,20 +396,20 @@ impl<V: View> Element<V> for Flex<V> {
     }
 }
 
-struct FlexParentData {
-    flex: Option<(f32, bool)>,
-    float: bool,
+pub(crate) struct FlexItemMetadata {
+    pub(crate) flex: Option<(f32, bool)>,
+    pub(crate) float: bool,
 }
 
 pub struct FlexItem<V: View> {
-    metadata: FlexParentData,
+    metadata: FlexItemMetadata,
     child: AnyElement<V>,
 }
 
 impl<V: View> FlexItem<V> {
     pub fn new(child: impl Element<V>) -> Self {
         FlexItem {
-            metadata: FlexParentData {
+            metadata: FlexItemMetadata {
                 flex: None,
                 float: false,
             },
