@@ -1,6 +1,6 @@
 use crate::{
-    color::Color, fonts::TextStyle, platform::CursorStyle, AnyElement, Element, Entity,
-    LayoutContext, SceneBuilder, SizeConstraint, View, ViewContext,
+    color::Color, fonts::TextStyle, platform::CursorStyle, AnyElement, Element, LayoutContext,
+    SceneBuilder, SizeConstraint, View, ViewContext,
 };
 use crate::{
     geometry::{
@@ -221,18 +221,18 @@ impl<V: View> Div<V> {
                 panic!("flex contains flexible children but has an infinite constraint along the flex axis");
             }
 
-            self.layout_flex_children(
-                false,
+            self.layout_flexible_children(
                 constraint,
+                false,
                 &mut remaining_space,
                 &mut remaining_flex,
                 &mut cross_axis_max,
                 view,
                 cx,
             );
-            self.layout_flex_children(
-                true,
+            self.layout_flexible_children(
                 constraint,
+                true,
                 &mut remaining_space,
                 &mut remaining_flex,
                 &mut cross_axis_max,
@@ -269,35 +269,79 @@ impl<V: View> Div<V> {
             size.set_y(constraint.max.y());
         }
 
-        if let Some(scroll_state) = self.scroll_state.as_ref() {
-            scroll_state.0.update(cx.view_context(), |scroll_state, _| {
-                if let Some(scroll_to) = scroll_state.scroll_to.take() {
-                    let visible_start = scroll_state.scroll_position.get();
-                    let visible_end = visible_start + size.along(self.axis);
-                    if let Some(child) = self.children.get(scroll_to) {
-                        let child_start: f32 = self.children[..scroll_to]
-                            .iter()
-                            .map(|c| c.size().along(self.axis))
-                            .sum();
-                        let child_end = child_start + child.size().along(self.axis);
-                        if child_start < visible_start {
-                            scroll_state.scroll_position.set(child_start);
-                        } else if child_end > visible_end {
-                            scroll_state
-                                .scroll_position
-                                .set(child_end - size.along(self.axis));
-                        }
-                    }
-                }
+        // if let Some(scroll_state) = self.scroll_state.as_ref() {
+        //     scroll_state.0.update(cx.view_context(), |scroll_state, _| {
+        //         if let Some(scroll_to) = scroll_state.scroll_to.take() {
+        //             let visible_start = scroll_state.scroll_position.get();
+        //             let visible_end = visible_start + size.along(self.axis);
+        //             if let Some(child) = self.children.get(scroll_to) {
+        //                 let child_start: f32 = self.children[..scroll_to]
+        //                     .iter()
+        //                     .map(|c| c.size().along(self.axis))
+        //                     .sum();
+        //                 let child_end = child_start + child.size().along(self.axis);
+        //                 if child_start < visible_start {
+        //                     scroll_state.scroll_position.set(child_start);
+        //                 } else if child_end > visible_end {
+        //                     scroll_state
+        //                         .scroll_position
+        //                         .set(child_end - size.along(self.axis));
+        //                 }
+        //             }
+        //         }
 
-                scroll_state.scroll_position.set(
-                    scroll_state
-                        .scroll_position
-                        .get()
-                        .min(-remaining_space)
-                        .max(0.),
-                );
-            });
+        //         scroll_state.scroll_position.set(
+        //             scroll_state
+        //                 .scroll_position
+        //                 .get()
+        //                 .min(-remaining_space)
+        //                 .max(0.),
+        //         );
+        //     });
+        // }
+    }
+
+    fn layout_flexible_children(
+        &mut self,
+        constraint: SizeConstraint,
+        layout_expanded: bool,
+        remaining_space: &mut f32,
+        remaining_flex: &mut f32,
+        cross_axis_max: &mut f32,
+        view: &mut V,
+        cx: &mut LayoutContext<V>,
+    ) {
+        let cross_axis = self.axis.invert();
+        for child in &mut self.children {
+            if let Some(metadata) = child.metadata::<FlexItemMetadata>() {
+                if let Some((flex, expanded)) = metadata.flex {
+                    if expanded != layout_expanded {
+                        continue;
+                    }
+
+                    let child_max = if *remaining_flex == 0.0 {
+                        *remaining_space
+                    } else {
+                        let space_per_flex = *remaining_space / *remaining_flex;
+                        space_per_flex * flex
+                    };
+                    let child_min = if expanded { child_max } else { 0. };
+                    let child_constraint = match self.axis {
+                        Axis::Horizontal => SizeConstraint::new(
+                            vec2f(child_min, constraint.min.y()),
+                            vec2f(child_max, constraint.max.y()),
+                        ),
+                        Axis::Vertical => SizeConstraint::new(
+                            vec2f(constraint.min.x(), child_min),
+                            vec2f(constraint.max.x(), child_max),
+                        ),
+                    };
+                    let child_size = child.layout(child_constraint, view, cx);
+                    *remaining_space -= child_size.along(self.axis);
+                    *remaining_flex -= flex;
+                    *cross_axis_max = cross_axis_max.max(child_size.along(cross_axis));
+                }
+            }
         }
     }
 
