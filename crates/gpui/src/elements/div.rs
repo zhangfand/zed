@@ -1,18 +1,14 @@
+use crate::geometry::{
+    rect::RectF,
+    vector::{vec2f, Vector2F},
+};
 use crate::{
     color::Color, fonts::TextStyle, platform::CursorStyle, AnyElement, Element, LayoutContext,
     SceneBuilder, SizeConstraint, View, ViewContext,
 };
-use crate::{
-    geometry::{
-        rect::RectF,
-        vector::{vec2f, Vector2F},
-    },
-    Vector2FExt,
-};
 use serde_json::Value;
+use std::any::Any;
 use std::{f32::INFINITY, ops::Range, rc::Rc};
-
-use super::FlexItemMetadata;
 
 pub struct Div<V: View> {
     style: Rc<DivStyle>,
@@ -27,6 +23,7 @@ pub struct DivStyle {
     margin: Margin,
     padding: Padding,
     alignment: Option<Alignment>,
+    flex: Option<f32>,
 
     // Appearance
     // ----------
@@ -67,6 +64,15 @@ impl Orientation {
 pub enum LinearOrientation {
     Vertical,
     Horizontal,
+}
+
+impl LinearOrientation {
+    fn invert(&self) -> Self {
+        match self {
+            LinearOrientation::Vertical => LinearOrientation::Horizontal,
+            LinearOrientation::Horizontal => LinearOrientation::Vertical,
+        }
+    }
 }
 
 #[derive(Default)]
@@ -170,22 +176,20 @@ impl<V: View> Div<V> {
         constraint: SizeConstraint,
         view: &mut V,
         cx: &mut LayoutContext<V>,
-    ) {
-        let mut flex_total = None;
-        let mut fixed_space = 0.0;
+    ) -> Vector2F {
+        let cross_axis = orientation.invert();
 
-        let cross_axis = match orientation {
-            LinearOrientation::Vertical => LinearOrientation::Horizontal,
-            LinearOrientation::Horizontal => LinearOrientation::Vertical,
-        };
-
-        // First pass: Layout fixed children and add up the total flex factor of flexible children.
+        let mut total_flex: Option<f32> = None;
+        let mut total_size = 0.0;
         let mut cross_axis_max: f32 = 0.0;
-        for child in &mut self.children {
-            let metadata = child.metadata::<FlexItemMetadata>();
 
-            if let Some(flex) = metadata.and_then(|metadata| metadata.flex.map(|(flex, _)| flex)) {
-                *flex_total.get_or_insert(0.) += flex;
+        // First pass: Layout fixed children only
+        for child in &mut self.children {
+            if let Some(child_flex) = child
+                .metadata::<DivStyle>()
+                .and_then(|style| style.size.flex)
+            {
+                *total_flex.get_or_insert(0.) += child_flex;
             } else {
                 let child_constraint = match orientation {
                     LinearOrientation::Horizontal => SizeConstraint::new(
@@ -198,7 +202,7 @@ impl<V: View> Div<V> {
                     ),
                 };
                 let child_size = child.layout(child_constraint, view, cx);
-                fixed_space += match orientation {
+                total_size += match orientation {
                     LinearOrientation::Horizontal => {
                         cross_axis_max = cross_axis_max.max(child_size.y());
                         child_size.x()
@@ -212,137 +216,72 @@ impl<V: View> Div<V> {
         }
 
         let mut remaining_space = match orientation {
-            LinearOrientation::Vertical => constraint.max.y() - fixed_space,
-            LinearOrientation::Horizontal => constraint.max.x() - fixed_space,
+            LinearOrientation::Vertical => constraint.max.y() - total_size,
+            LinearOrientation::Horizontal => constraint.max.x() - total_size,
         };
 
-        let mut size = if let Some(mut remaining_flex) = flex_total {
-            if remaining_space.is_infinite() {
-                panic!("flex contains flexible children but has an infinite constraint along the flex axis");
-            }
+        // Second pass: Layout flexible children
+        if let Some(total_flex) = total_flex {
+            if total_flex > 0. {
+                let space_per_flex = remaining_space.max(0.) / total_flex;
 
-            self.layout_flexible_children(
-                constraint,
-                false,
-                &mut remaining_space,
-                &mut remaining_flex,
-                &mut cross_axis_max,
-                view,
-                cx,
-            );
-            self.layout_flexible_children(
-                constraint,
-                true,
-                &mut remaining_space,
-                &mut remaining_flex,
-                &mut cross_axis_max,
-                view,
-                cx,
-            );
+                for child in &mut self.children {
+                    if let Some(child_flex) =
+                        child.metadata::<DivStyle>().and_then(|style| style.flex)
+                    {
+                        let child_max = space_per_flex * child_flex;
+                        let mut child_constraint = constraint;
+                        match orientation {
+                            LinearOrientation::Vertical => {
+                                child_constraint.min.set_y(0.0);
+                                child_constraint.max.set_y(child_max);
+                            }
+                            LinearOrientation::Horizontal => {
+                                child_constraint.min.set_x(0.0);
+                                child_constraint.max.set_x(child_max);
+                            }
+                        }
 
-            match orientation {
-                LinearOrientation::Vertical => {
-                    vec2f(cross_axis_max, constraint.max.y() - remaining_space)
-                }
-                LinearOrientation::Horizontal => {
-                    vec2f(constraint.max.x() - remaining_space, cross_axis_max)
+                        let child_size = child.layout(child_constraint, view, cx);
+
+                        cross_axis_max = match orientation {
+                            LinearOrientation::Vertical => {
+                                total_size += child_size.y();
+                                cross_axis_max.max(child_size.x())
+                            }
+                            LinearOrientation::Horizontal => {
+                                total_size += child_size.x();
+                                cross_axis_max.max(child_size.y())
+                            }
+                        };
+                    }
                 }
             }
-        } else {
-            match orientation {
-                LinearOrientation::Vertical => vec2f(cross_axis_max, fixed_space),
-                LinearOrientation::Horizontal => vec2f(fixed_space, cross_axis_max),
-            }
+        }
+
+        let mut size = match orientation {
+            LinearOrientation::Vertical => vec2f(cross_axis_max, total_size),
+            LinearOrientation::Horizontal => vec2f(total_size, cross_axis_max),
         };
 
-        if constraint.min.x().is_finite() {
-            size.set_x(size.x().max(constraint.min.x()));
-        }
-        if constraint.min.y().is_finite() {
-            size.set_y(size.y().max(constraint.min.y()));
-        }
-
-        if size.x() > constraint.max.x() {
-            size.set_x(constraint.max.x());
-        }
-        if size.y() > constraint.max.y() {
-            size.set_y(constraint.max.y());
-        }
-
-        // if let Some(scroll_state) = self.scroll_state.as_ref() {
-        //     scroll_state.0.update(cx.view_context(), |scroll_state, _| {
-        //         if let Some(scroll_to) = scroll_state.scroll_to.take() {
-        //             let visible_start = scroll_state.scroll_position.get();
-        //             let visible_end = visible_start + size.along(self.axis);
-        //             if let Some(child) = self.children.get(scroll_to) {
-        //                 let child_start: f32 = self.children[..scroll_to]
-        //                     .iter()
-        //                     .map(|c| c.size().along(self.axis))
-        //                     .sum();
-        //                 let child_end = child_start + child.size().along(self.axis);
-        //                 if child_start < visible_start {
-        //                     scroll_state.scroll_position.set(child_start);
-        //                 } else if child_end > visible_end {
-        //                     scroll_state
-        //                         .scroll_position
-        //                         .set(child_end - size.along(self.axis));
-        //                 }
-        //             }
-        //         }
-
-        //         scroll_state.scroll_position.set(
-        //             scroll_state
-        //                 .scroll_position
-        //                 .get()
-        //                 .min(-remaining_space)
-        //                 .max(0.),
-        //         );
-        //     });
-        // }
+        size
     }
 
-    fn layout_flexible_children(
-        &mut self,
+    fn layout_stacked_children(
+        &self,
         constraint: SizeConstraint,
-        layout_expanded: bool,
-        remaining_space: &mut f32,
-        remaining_flex: &mut f32,
-        cross_axis_max: &mut f32,
         view: &mut V,
         cx: &mut LayoutContext<V>,
-    ) {
-        let cross_axis = self.axis.invert();
-        for child in &mut self.children {
-            if let Some(metadata) = child.metadata::<FlexItemMetadata>() {
-                if let Some((flex, expanded)) = metadata.flex {
-                    if expanded != layout_expanded {
-                        continue;
-                    }
+    ) -> Vector2F {
+        let mut size = Vector2F::zero();
 
-                    let child_max = if *remaining_flex == 0.0 {
-                        *remaining_space
-                    } else {
-                        let space_per_flex = *remaining_space / *remaining_flex;
-                        space_per_flex * flex
-                    };
-                    let child_min = if expanded { child_max } else { 0. };
-                    let child_constraint = match self.axis {
-                        Axis::Horizontal => SizeConstraint::new(
-                            vec2f(child_min, constraint.min.y()),
-                            vec2f(child_max, constraint.max.y()),
-                        ),
-                        Axis::Vertical => SizeConstraint::new(
-                            vec2f(constraint.min.x(), child_min),
-                            vec2f(constraint.max.x(), child_max),
-                        ),
-                    };
-                    let child_size = child.layout(child_constraint, view, cx);
-                    *remaining_space -= child_size.along(self.axis);
-                    *remaining_flex -= flex;
-                    *cross_axis_max = cross_axis_max.max(child_size.along(cross_axis));
-                }
-            }
+        for child in &self.children {
+            let child_size = child.layout(constraint, view, cx);
+            size.set_x(size.x().max(child_size.x()));
+            size.set_y(size.y().max(child_size.y()));
         }
+
+        size
     }
 
     fn margin_size(&self) -> Vector2F {
@@ -382,7 +321,6 @@ impl<V: View> Div<V> {
 
 impl<V: View> Element<V> for Div<V> {
     type LayoutState = ();
-
     type PaintState = ();
 
     fn layout(
@@ -392,9 +330,33 @@ impl<V: View> Element<V> for Div<V> {
         cx: &mut LayoutContext<V>,
     ) -> (Vector2F, Self::LayoutState) {
         let inner_constraint = self.inner_constraint(constraint);
+        let mut size = match self.style.orientation {
+            Orientation::Vertical => {
+                self.layout_linear_children(LinearOrientation::Vertical, inner_constraint, view, cx)
+            }
+            Orientation::Horizontal => self.layout_linear_children(
+                LinearOrientation::Horizontal,
+                inner_constraint,
+                view,
+                cx,
+            ),
+            Orientation::Stacked => self.layout_stacked_children(inner_constraint, view, cx),
+        };
 
-        if let Some(linear_orientation) = self.style.orientation.linear() {
-            self.layout_linear_children(linear_orientation, inner_constraint, view, cx);
+        size += self.padding_size() + self.border_size() + self.margin_size();
+
+        if constraint.min.x().is_finite() {
+            size.set_x(size.x().max(constraint.min.x()));
+        }
+        if size.x() > constraint.max.x() {
+            size.set_x(constraint.max.x());
+        }
+
+        if constraint.min.y().is_finite() {
+            size.set_y(size.y().max(constraint.min.y()));
+        }
+        if size.y() > constraint.max.y() {
+            size.set_y(constraint.max.y());
         }
 
         todo!()
@@ -434,6 +396,10 @@ impl<V: View> Element<V> for Div<V> {
         cx: &ViewContext<V>,
     ) -> Value {
         todo!()
+    }
+
+    fn metadata(&self) -> Option<&dyn Any> {
+        Some(&self.style)
     }
 }
 
