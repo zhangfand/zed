@@ -1,11 +1,15 @@
-use crate::geometry::{
-    rect::RectF,
-    vector::{vec2f, Vector2F},
-};
 use crate::{
     color::Color, fonts::TextStyle, platform::CursorStyle, AnyElement, Element, LayoutContext,
     SceneBuilder, SizeConstraint, View, ViewContext,
 };
+use crate::{
+    geometry::{
+        rect::RectF,
+        vector::{vec2f, Vector2F},
+    },
+    scene,
+};
+use crate::{Border, CursorRegion, Quad};
 use serde_json::Value;
 use std::any::Any;
 use std::{f32::INFINITY, ops::Range, rc::Rc};
@@ -22,7 +26,6 @@ pub struct DivStyle {
     size: Size,
     margin: Margin,
     padding: Padding,
-    alignment: Option<Alignment>,
     flex: Option<f32>,
 
     // Appearance
@@ -36,10 +39,26 @@ pub struct DivStyle {
 
     // Children
     // --------
+    /// How to align the children. 0.0 is center, -1.0 is top/left, 1.0 is bottom/right.
+    child_alignment: Alignment,
     /// How to layout the children.
     orientation: Orientation,
     /// This style cascades to children.
     text_style: Option<TextStyle>,
+}
+
+pub struct Alignment {
+    horizontal: f32,
+    vertical: f32,
+}
+
+impl Default for Alignment {
+    fn default() -> Self {
+        Self {
+            horizontal: -1.,
+            vertical: -1.,
+        }
+    }
 }
 
 #[derive(Default)]
@@ -101,20 +120,10 @@ pub struct Padding {
     left: f32,
 }
 
-pub struct Alignment {
-    horizontal: f32,
-    vertical: f32,
-}
-
-#[derive(Default)]
-pub struct Border {
-    pub width: f32,
-    pub color: Color,
-    pub overlay: bool,
-    pub top: bool,
-    pub right: bool,
-    pub bottom: bool,
-    pub left: bool,
+impl Border {
+    fn is_visible(&self) -> bool {
+        self.width > 0. && (self.top || self.right || self.bottom || self.left)
+    }
 }
 
 pub struct Shadow {
@@ -159,11 +168,7 @@ impl<V: View> Div<V> {
         }
 
         // Account for margin, border, and padding
-        let mut inset = self.margin_size() + self.padding_size();
-        if !self.style.border.overlay {
-            inset += self.border_size();
-        }
-
+        let inset = self.inset_size();
         SizeConstraint {
             min: (constraint.min - inset).max(Vector2F::zero()),
             max: (constraint.max - inset).max(Vector2F::zero()),
@@ -171,7 +176,7 @@ impl<V: View> Div<V> {
     }
 
     fn layout_linear_children(
-        &self,
+        &mut self,
         orientation: LinearOrientation,
         constraint: SizeConstraint,
         view: &mut V,
@@ -185,10 +190,7 @@ impl<V: View> Div<V> {
 
         // First pass: Layout fixed children only
         for child in &mut self.children {
-            if let Some(child_flex) = child
-                .metadata::<DivStyle>()
-                .and_then(|style| style.size.flex)
-            {
+            if let Some(child_flex) = child.metadata::<DivStyle>().and_then(|style| style.flex) {
                 *total_flex.get_or_insert(0.) += child_flex;
             } else {
                 let child_constraint = match orientation {
@@ -284,6 +286,10 @@ impl<V: View> Div<V> {
         size
     }
 
+    fn inset_size(&self) -> Vector2F {
+        self.padding_size() + self.border_size() + self.margin_size()
+    }
+
     fn margin_size(&self) -> Vector2F {
         vec2f(
             self.style.margin.left + self.style.margin.right,
@@ -299,6 +305,10 @@ impl<V: View> Div<V> {
     }
 
     fn border_size(&self) -> Vector2F {
+        if self.style.border.overlay {
+            return Vector2F::zero();
+        }
+
         let mut x = 0.0;
         if self.style.border.left {
             x += self.style.border.width;
@@ -320,7 +330,7 @@ impl<V: View> Div<V> {
 }
 
 impl<V: View> Element<V> for Div<V> {
-    type LayoutState = ();
+    type LayoutState = Vector2F; // Content size
     type PaintState = ();
 
     fn layout(
@@ -329,22 +339,27 @@ impl<V: View> Element<V> for Div<V> {
         view: &mut V,
         cx: &mut LayoutContext<V>,
     ) -> (Vector2F, Self::LayoutState) {
-        let inner_constraint = self.inner_constraint(constraint);
-        let mut size = match self.style.orientation {
-            Orientation::Vertical => {
-                self.layout_linear_children(LinearOrientation::Vertical, inner_constraint, view, cx)
-            }
-            Orientation::Horizontal => self.layout_linear_children(
-                LinearOrientation::Horizontal,
-                inner_constraint,
+        let children_constraint = self.inner_constraint(constraint);
+        let children_size = match self.style.orientation {
+            Orientation::Vertical => self.layout_linear_children(
+                LinearOrientation::Vertical,
+                children_constraint,
                 view,
                 cx,
             ),
-            Orientation::Stacked => self.layout_stacked_children(inner_constraint, view, cx),
+            Orientation::Horizontal => self.layout_linear_children(
+                LinearOrientation::Horizontal,
+                children_constraint,
+                view,
+                cx,
+            ),
+            Orientation::Stacked => self.layout_stacked_children(children_constraint, view, cx),
         };
 
-        size += self.padding_size() + self.border_size() + self.margin_size();
+        // Add back space for padding, border, and margin.
+        let mut size = children_size + self.inset_size();
 
+        // Impose horizontal constraints
         if constraint.min.x().is_finite() {
             size.set_x(size.x().max(constraint.min.x()));
         }
@@ -352,6 +367,7 @@ impl<V: View> Element<V> for Div<V> {
             size.set_x(constraint.max.x());
         }
 
+        // Impose vertical constraints
         if constraint.min.y().is_finite() {
             size.set_y(size.y().max(constraint.min.y()));
         }
@@ -359,7 +375,7 @@ impl<V: View> Element<V> for Div<V> {
             size.set_y(constraint.max.y());
         }
 
-        todo!()
+        (size, children_size)
     }
 
     fn paint(
@@ -367,11 +383,123 @@ impl<V: View> Element<V> for Div<V> {
         scene: &mut SceneBuilder,
         bounds: RectF,
         visible_bounds: RectF,
-        layout: &mut Self::LayoutState,
+        content_size: &mut Vector2F,
         view: &mut V,
         cx: &mut ViewContext<V>,
     ) -> Self::PaintState {
-        todo!()
+        let margin = &self.style.margin;
+
+        // Account for margins
+        let content_bounds = RectF::from_points(
+            bounds.origin() + vec2f(margin.left, margin.top),
+            bounds.lower_right() - vec2f(margin.right, margin.bottom),
+        );
+
+        // Paint drop shadow
+        if let Some(shadow) = self.style.shadow.as_ref() {
+            scene.push_shadow(scene::Shadow {
+                bounds: content_bounds + shadow.offset,
+                corner_radius: self.style.corner_radius,
+                sigma: shadow.blur,
+                color: shadow.color,
+            });
+        }
+
+        // Paint cursor style
+        if let Some(hit_bounds) = content_bounds.intersection(visible_bounds) {
+            if let Some(style) = self.style.cursor {
+                scene.push_cursor_region(CursorRegion {
+                    bounds: hit_bounds,
+                    style,
+                });
+            }
+        }
+
+        // Render the background and/or the border (if it not an overlay border).
+        if self.style.background_color.is_some()
+            || (self.style.border.is_visible() && !self.style.border.overlay)
+        {
+            // If the border is overlay, render the background now and wait to
+            // render the border until after the children are rendered.
+            if self.style.border.overlay {
+                scene.push_quad(Quad {
+                    bounds: content_bounds,
+                    background: self.style.background_color,
+                    border: Default::default(),
+                    corner_radius: self.style.corner_radius,
+                });
+            } else {
+                scene.push_quad(Quad {
+                    bounds: content_bounds,
+                    background: self.style.background_color,
+                    border: self.style.border,
+                    corner_radius: self.style.corner_radius,
+                });
+            }
+        }
+
+        let padding = &self.style.padding;
+        let children_bounds = RectF::from_points(
+            content_bounds.origin() + vec2f(padding.left, padding.top),
+            content_bounds.lower_right() - vec2f(padding.right, padding.top),
+        );
+
+        match self.style.orientation {
+            Orientation::Vertical => todo!(),
+            Orientation::Horizontal => todo!(),
+            Orientation::Stacked => todo!(),
+        }
+
+        // Draw overlay border on top
+        if self.style.border.is_visible() && self.style.border.overlay {
+            scene.paint_layer(None, |scene| {
+                scene.push_quad(Quad {
+                    bounds: content_bounds,
+                    background: Default::default(),
+                    border: self.style.border,
+                    corner_radius: self.style.corner_radius,
+                });
+            })
+        }
+
+        // self.child
+        //     .paint(scene, child_origin, visible_bounds, view, cx);
+
+        // scene.push_layer(None);
+        // scene.push_quad(Quad {
+        //     bounds: quad_bounds,
+        //     background: self.style.overlay_color,
+        //     border: self.style.border,
+        //     corner_radius: self.style.corner_radius,
+        // });
+        // scene.pop_layer();
+        // } else {
+        //     scene.push_quad(Quad {
+        //         bounds: quad_bounds,
+        //         background: self.style.background_color,
+        //         border: self.style.border,
+        //         corner_radius: self.style.corner_radius,
+        //     });
+
+        //     let child_origin = child_origin
+        //         + vec2f(
+        //             self.style.border.left_width(),
+        //             self.style.border.top_width(),
+        //         );
+        //     self.child
+        //         .paint(scene, child_origin, visible_bounds, view, cx);
+
+        //     if self.style.overlay_color.is_some() {
+        //         scene.push_layer(None);
+        //         scene.push_quad(Quad {
+        //             bounds: quad_bounds,
+        //             background: self.style.overlay_color,
+        //             border: Default::default(),
+        //             corner_radius: 0.,
+        //         });
+        //         scene.pop_layer();
+        //     }
+        // }
     }
 
     fn rect_for_text_range(
