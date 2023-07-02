@@ -9,7 +9,7 @@ use crate::{
     },
     scene,
 };
-use crate::{Border, CursorRegion, Quad};
+use crate::{Axis, Border, CursorRegion, Quad};
 use serde_json::Value;
 use std::any::Any;
 use std::{f32::INFINITY, ops::Range, rc::Rc};
@@ -52,6 +52,12 @@ pub struct Alignment {
     vertical: f32,
 }
 
+impl Alignment {
+    fn to_vec2f(&self) -> Vector2F {
+        vec2f(self.horizontal, self.vertical)
+    }
+}
+
 impl Default for Alignment {
     fn default() -> Self {
         Self {
@@ -61,36 +67,14 @@ impl Default for Alignment {
     }
 }
 
-#[derive(Default)]
 pub enum Orientation {
-    #[default]
-    Vertical,
-    Horizontal,
+    Axial(Axis),
     Stacked,
 }
 
-impl Orientation {
-    fn linear(&self) -> Option<LinearOrientation> {
-        match self {
-            Orientation::Vertical => Some(LinearOrientation::Vertical),
-            Orientation::Horizontal => Some(LinearOrientation::Horizontal),
-            _ => None,
-        }
-    }
-}
-
-#[derive(Clone, Copy)]
-pub enum LinearOrientation {
-    Vertical,
-    Horizontal,
-}
-
-impl LinearOrientation {
-    fn invert(&self) -> Self {
-        match self {
-            LinearOrientation::Vertical => LinearOrientation::Horizontal,
-            LinearOrientation::Horizontal => LinearOrientation::Vertical,
-        }
+impl Default for Orientation {
+    fn default() -> Self {
+        Self::Axial(Axis::Vertical)
     }
 }
 
@@ -175,9 +159,9 @@ impl<V: View> Div<V> {
         }
     }
 
-    fn layout_linear_children(
+    fn layout_axial_children(
         &mut self,
-        orientation: LinearOrientation,
+        orientation: Axis,
         constraint: SizeConstraint,
         view: &mut V,
         cx: &mut LayoutContext<V>,
@@ -194,22 +178,22 @@ impl<V: View> Div<V> {
                 *total_flex.get_or_insert(0.) += child_flex;
             } else {
                 let child_constraint = match orientation {
-                    LinearOrientation::Horizontal => SizeConstraint::new(
+                    Axis::Horizontal => SizeConstraint::new(
                         vec2f(0.0, constraint.min.y()),
                         vec2f(INFINITY, constraint.max.y()),
                     ),
-                    LinearOrientation::Vertical => SizeConstraint::new(
+                    Axis::Vertical => SizeConstraint::new(
                         vec2f(constraint.min.x(), 0.0),
                         vec2f(constraint.max.x(), INFINITY),
                     ),
                 };
                 let child_size = child.layout(child_constraint, view, cx);
                 total_size += match orientation {
-                    LinearOrientation::Horizontal => {
+                    Axis::Horizontal => {
                         cross_axis_max = cross_axis_max.max(child_size.y());
                         child_size.x()
                     }
-                    LinearOrientation::Vertical => {
+                    Axis::Vertical => {
                         cross_axis_max = cross_axis_max.max(child_size.x());
                         child_size.y()
                     }
@@ -218,8 +202,8 @@ impl<V: View> Div<V> {
         }
 
         let mut remaining_space = match orientation {
-            LinearOrientation::Vertical => constraint.max.y() - total_size,
-            LinearOrientation::Horizontal => constraint.max.x() - total_size,
+            Axis::Vertical => constraint.max.y() - total_size,
+            Axis::Horizontal => constraint.max.x() - total_size,
         };
 
         // Second pass: Layout flexible children
@@ -234,11 +218,11 @@ impl<V: View> Div<V> {
                         let child_max = space_per_flex * child_flex;
                         let mut child_constraint = constraint;
                         match orientation {
-                            LinearOrientation::Vertical => {
+                            Axis::Vertical => {
                                 child_constraint.min.set_y(0.0);
                                 child_constraint.max.set_y(child_max);
                             }
-                            LinearOrientation::Horizontal => {
+                            Axis::Horizontal => {
                                 child_constraint.min.set_x(0.0);
                                 child_constraint.max.set_x(child_max);
                             }
@@ -247,11 +231,11 @@ impl<V: View> Div<V> {
                         let child_size = child.layout(child_constraint, view, cx);
 
                         cross_axis_max = match orientation {
-                            LinearOrientation::Vertical => {
+                            Axis::Vertical => {
                                 total_size += child_size.y();
                                 cross_axis_max.max(child_size.x())
                             }
-                            LinearOrientation::Horizontal => {
+                            Axis::Horizontal => {
                                 total_size += child_size.x();
                                 cross_axis_max.max(child_size.y())
                             }
@@ -262,22 +246,22 @@ impl<V: View> Div<V> {
         }
 
         let mut size = match orientation {
-            LinearOrientation::Vertical => vec2f(cross_axis_max, total_size),
-            LinearOrientation::Horizontal => vec2f(total_size, cross_axis_max),
+            Axis::Vertical => vec2f(cross_axis_max, total_size),
+            Axis::Horizontal => vec2f(total_size, cross_axis_max),
         };
 
         size
     }
 
     fn layout_stacked_children(
-        &self,
+        &mut self,
         constraint: SizeConstraint,
         view: &mut V,
         cx: &mut LayoutContext<V>,
     ) -> Vector2F {
         let mut size = Vector2F::zero();
 
-        for child in &self.children {
+        for child in &mut self.children {
             let child_size = child.layout(constraint, view, cx);
             size.set_x(size.x().max(child_size.x()));
             size.set_y(size.y().max(child_size.y()));
@@ -340,24 +324,15 @@ impl<V: View> Element<V> for Div<V> {
         cx: &mut LayoutContext<V>,
     ) -> (Vector2F, Self::LayoutState) {
         let children_constraint = self.inner_constraint(constraint);
-        let children_size = match self.style.orientation {
-            Orientation::Vertical => self.layout_linear_children(
-                LinearOrientation::Vertical,
-                children_constraint,
-                view,
-                cx,
-            ),
-            Orientation::Horizontal => self.layout_linear_children(
-                LinearOrientation::Horizontal,
-                children_constraint,
-                view,
-                cx,
-            ),
+        let size_of_children = match self.style.orientation {
+            Orientation::Axial(axis) => {
+                self.layout_axial_children(axis, children_constraint, view, cx)
+            }
             Orientation::Stacked => self.layout_stacked_children(children_constraint, view, cx),
         };
 
         // Add back space for padding, border, and margin.
-        let mut size = children_size + self.inset_size();
+        let mut size = size_of_children + self.inset_size();
 
         // Impose horizontal constraints
         if constraint.min.x().is_finite() {
@@ -375,7 +350,7 @@ impl<V: View> Element<V> for Div<V> {
             size.set_y(constraint.max.y());
         }
 
-        (size, children_size)
+        (size, size_of_children)
     }
 
     fn paint(
@@ -383,7 +358,7 @@ impl<V: View> Element<V> for Div<V> {
         scene: &mut SceneBuilder,
         bounds: RectF,
         visible_bounds: RectF,
-        content_size: &mut Vector2F,
+        size_of_children: &mut Vector2F,
         view: &mut V,
         cx: &mut ViewContext<V>,
     ) -> Self::PaintState {
@@ -438,16 +413,76 @@ impl<V: View> Element<V> for Div<V> {
             }
         }
 
+        // Paint children
+        // Account for padding
         let padding = &self.style.padding;
-        let children_bounds = RectF::from_points(
+        let parent_bounds = RectF::from_points(
             content_bounds.origin() + vec2f(padding.left, padding.top),
             content_bounds.lower_right() - vec2f(padding.right, padding.top),
         );
+        let parent_size = parent_bounds.size();
 
+        let mut child_bounds = parent_bounds.origin();
         match self.style.orientation {
-            Orientation::Vertical => todo!(),
-            Orientation::Horizontal => todo!(),
-            Orientation::Stacked => todo!(),
+            Orientation::Axial(axis) => {
+                let mut child_origin = bounds.origin();
+                // Align all children along the primary axis
+                match axis {
+                    Axis::Horizontal => align_child(
+                        &mut child_origin,
+                        parent_size,
+                        *size_of_children,
+                        &self.style.child_alignment,
+                        true,
+                        false,
+                    ),
+                    Axis::Vertical => align_child(
+                        &mut child_origin,
+                        parent_size,
+                        *size_of_children,
+                        &self.style.child_alignment,
+                        false,
+                        true,
+                    ),
+                };
+
+                for child in &mut self.children {
+                    // Align the child along the cross axis
+                    match axis {
+                        Axis::Horizontal => {
+                            child_origin.set_y(parent_bounds.origin_y());
+                            align_child(
+                                &mut child_origin,
+                                parent_size,
+                                child.size(),
+                                &self.style.child_alignment,
+                                false,
+                                true,
+                            );
+                        }
+                        Axis::Vertical => {
+                            child_origin.set_x(parent_bounds.origin_x());
+                            align_child(
+                                &mut child_origin,
+                                parent_size,
+                                child.size(),
+                                &self.style.child_alignment,
+                                true,
+                                false,
+                            );
+                        }
+                    }
+
+                    child.paint(scene, child_origin, visible_bounds, view, cx);
+
+                    // Advance along the cross axis by the size of this child
+                    match axis {
+                        Axis::Horizontal => child_origin.set_x(child_origin.x() + child.size().x()),
+                        Axis::Vertical => child_origin.set_y(child_origin.x() + child.size().y()),
+                    }
+                }
+            }
+            Orientation::Stacked => {}
         }
 
         // Draw overlay border on top
@@ -528,6 +563,28 @@ impl<V: View> Element<V> for Div<V> {
 
     fn metadata(&self) -> Option<&dyn Any> {
         Some(&self.style)
+    }
+}
+
+fn align_child(
+    child_origin: &mut Vector2F,
+    parent_size: Vector2F,
+    child_size: Vector2F,
+    alignment: &Alignment,
+    horizontal: bool,
+    vertical: bool,
+) {
+    let alignment = self.style.child_alignment.to_vec2f();
+    let parent_center = parent_size / 2.;
+    let parent_target = parent_center + parent_center * alignment;
+    let child_center = child_size / 2.;
+    let child_target = child_center + child_center * self.style.child_alignment.to_vec2f();
+
+    if horizontal {
+        child_origin.set_x(child_origin.x() + parent_target.x() - child_target.x())
+    }
+    if vertical {
+        child_origin.set_y(child_origin.y() + parent_target.y() - child_target.y());
     }
 }
 

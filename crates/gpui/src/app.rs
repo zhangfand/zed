@@ -70,8 +70,6 @@ pub trait Entity: 'static {
 }
 
 pub trait View: Entity + Sized {
-    type Style: 'static;
-
     fn ui_name() -> &'static str;
     fn render(&mut self, cx: &mut ViewContext<'_, '_, Self>) -> AnyElement<Self>;
     fn focus_in(&mut self, _: AnyViewHandle, _: &mut ViewContext<Self>) {}
@@ -2904,10 +2902,6 @@ impl<'a, 'b, V: View> ViewContext<'a, 'b, V> {
         &mut self.window_context
     }
 
-    pub fn style(&self) -> Rc<V::Style> {
-        self.styles[V::ui_name()].clone().downcast().unwrap()
-    }
-
     pub fn handle(&self) -> ViewHandle<V> {
         ViewHandle::new(
             self.window_id,
@@ -4656,8 +4650,6 @@ mod tests {
         }
 
         impl super::View for View {
-            type Style = ();
-
             fn render(&mut self, _: &mut ViewContext<Self>) -> AnyElement<Self> {
                 post_inc(&mut self.render_count);
                 Empty::new().into_any()
@@ -4711,8 +4703,6 @@ mod tests {
         }
 
         impl super::View for View {
-            type Style = ();
-
             fn render(&mut self, _: &mut ViewContext<Self>) -> AnyElement<Self> {
                 Empty::new().into_any()
             }
@@ -4783,8 +4773,6 @@ mod tests {
         }
 
         impl super::View for View {
-            type Style = ();
-
             fn render(&mut self, cx: &mut ViewContext<Self>) -> AnyElement<Self> {
                 enum Handler {}
                 let mouse_down_count = self.mouse_down_count.clone();
@@ -4847,8 +4835,6 @@ mod tests {
         }
 
         impl super::View for View {
-            type Style = ();
-
             fn ui_name() -> &'static str {
                 "View"
             }
@@ -5371,8 +5357,6 @@ mod tests {
         }
 
         impl super::View for View {
-            type Style = ();
-
             fn render(&mut self, _: &mut ViewContext<Self>) -> AnyElement<Self> {
                 Empty::new().into_any()
             }
@@ -5441,8 +5425,6 @@ mod tests {
         }
 
         impl super::View for View {
-            type Style = ();
-
             fn render(&mut self, cx: &mut ViewContext<Self>) -> AnyElement<Self> {
                 self.child
                     .as_ref()
@@ -5624,8 +5606,6 @@ mod tests {
         }
 
         impl View for ViewA {
-            type Style = ();
-
             fn render(&mut self, cx: &mut ViewContext<Self>) -> AnyElement<Self> {
                 self.child
                     .as_ref()
@@ -5648,8 +5628,6 @@ mod tests {
         }
 
         impl View for ViewB {
-            type Style = ();
-
             fn render(&mut self, cx: &mut ViewContext<Self>) -> AnyElement<Self> {
                 self.child
                     .as_ref()
@@ -5849,8 +5827,6 @@ mod tests {
         }
 
         impl super::View for View {
-            type Style = ();
-
             fn render(&mut self, cx: &mut ViewContext<Self>) -> AnyElement<Self> {
                 self.child
                     .as_ref()
@@ -5990,8 +5966,6 @@ mod tests {
         }
 
         impl super::View for View1 {
-            type Style = ();
-
             fn render(&mut self, cx: &mut ViewContext<Self>) -> AnyElement<Self> {
                 ChildView::new(&self.child, cx).into_any()
             }
@@ -6000,8 +5974,6 @@ mod tests {
             }
         }
         impl super::View for View2 {
-            type Style = ();
-
             fn render(&mut self, _: &mut ViewContext<Self>) -> AnyElement<Self> {
                 Empty::new().into_any()
             }
@@ -6132,8 +6104,6 @@ mod tests {
             type Event = ();
         }
         impl super::View for View {
-            type Style = ();
-
             fn render(&mut self, _: &mut ViewContext<Self>) -> AnyElement<Self> {
                 Empty::new().into_any()
             }
@@ -6240,8 +6210,6 @@ mod tests {
         }
 
         impl super::View for Counter {
-            type Style = ();
-
             fn ui_name() -> &'static str {
                 "test view"
             }
@@ -6304,8 +6272,6 @@ mod tests {
         }
 
         impl super::View for View {
-            type Style = ();
-
             fn ui_name() -> &'static str {
                 "test view"
             }
@@ -6397,8 +6363,6 @@ mod tests {
         }
 
         impl super::View for View {
-            type Style = ();
-
             fn ui_name() -> &'static str {
                 "test view"
             }
@@ -6479,8 +6443,6 @@ mod tests {
         }
 
         impl super::View for Child {
-            type Style = ();
-
             fn ui_name() -> &'static str {
                 "child view"
             }
@@ -6506,8 +6468,6 @@ mod tests {
         }
 
         impl super::View for Parent {
-            type Style = ();
-
             fn ui_name() -> &'static str {
                 "parent view"
             }
@@ -6550,8 +6510,6 @@ mod tests {
     }
 
     impl View for TestView {
-        type Style = ();
-
         fn ui_name() -> &'static str {
             "TestView"
         }
