@@ -961,8 +961,70 @@ async fn ask_to_join_room(
     response: Response<proto::AskToJoinRoom>,
     session: Session,
 ) -> Result<()> {
+    let asked_user_id = UserId::from_proto(request.called_user_id);
+
     println!("GOT ASK TO JOIN ROOM for: {:?}", request.called_user_id);
-    Err(anyhow!("not implemented"))?
+
+    if !session
+        .db()
+        .await
+        .has_contact(session.user_id, asked_user_id)
+        .await?
+    {
+        return Err(anyhow!("cannot ask to join a user who isn't a contact"))?;
+    }
+
+    let room_id: RoomId = db::RoomId(0); // TODO: Find room ID from requested user
+
+    let room = {
+        let room = session
+            .db()
+            .await
+            .ask_to_join_room(asked_user_id, session.user_id, session.connection_id)
+            .await?;
+        room_updated(&room, &session.peer);
+        room.clone()
+    };
+
+    for connection_id in session
+        .connection_pool()
+        .await
+        .user_connection_ids(session.user_id)
+    {
+        session
+            .peer
+            .send(
+                connection_id,
+                proto::CallCanceled {
+                    room_id: room_id.to_proto(),
+                },
+            )
+            .trace_err();
+    }
+
+    let live_kit_connection_info = if let Some(live_kit) = session.live_kit_client.as_ref() {
+        if let Some(token) = live_kit
+            .room_token(&room.live_kit_room, &session.user_id.to_string())
+            .trace_err()
+        {
+            Some(proto::LiveKitConnectionInfo {
+                server_url: live_kit.url().into(),
+                token,
+            })
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    response.send(proto::AskToJoinRoomResponse {
+        room: Some(room),
+        live_kit_connection_info,
+    })?;
+
+    update_user_contacts(session.user_id, &session).await?;
+    Ok(())
 }
 
 async fn rejoin_room(

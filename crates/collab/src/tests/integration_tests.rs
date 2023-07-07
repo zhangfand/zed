@@ -1201,6 +1201,177 @@ async fn test_calls_on_multiple_connections(
 }
 
 #[gpui::test(iterations = 10)]
+async fn test_ask_to_join(
+    deterministic: Arc<Deterministic>,
+    cx_a: &mut TestAppContext,
+    cx_b: &mut TestAppContext,
+    cx_c: &mut TestAppContext,
+) {
+    deterministic.forbid_parking();
+    let mut server = TestServer::start(&deterministic).await;
+
+    let client_a = server.create_client(cx_a, "user_a").await;
+    let client_b = server.create_client(cx_b, "user_b").await;
+    let client_c = server.create_client(cx_c, "user_c").await;
+    server
+        .make_contacts(&mut [(&client_a, cx_a), (&client_b, cx_b), (&client_c, cx_c)])
+        .await;
+
+    let active_call_a = cx_a.read(ActiveCall::global);
+    let active_call_b = cx_b.read(ActiveCall::global);
+    let active_call_c = cx_c.read(ActiveCall::global);
+
+    // Call user B from client A.
+    active_call_a
+        .update(cx_a, |call, cx| {
+            call.invite(client_b.user_id().unwrap(), None, cx)
+        })
+        .await
+        .unwrap();
+    let room_a = active_call_a.read_with(cx_a, |call, _| call.room().unwrap().clone());
+    deterministic.run_until_parked();
+    assert_eq!(
+        room_participants(&room_a, cx_a),
+        RoomParticipants {
+            remote: Default::default(),
+            pending: vec!["user_b".to_string()]
+        }
+    );
+
+    // User B receives the call.
+    let mut incoming_call_b = active_call_b.read_with(cx_b, |call, _| call.incoming());
+    let call_b = incoming_call_b.next().await.unwrap().unwrap();
+    assert_eq!(call_b.calling_user.github_login, "user_a");
+
+    // User B joins the room using the first client.
+    active_call_b
+        .update(cx_b, |call, cx| call.accept_incoming(cx))
+        .await
+        .unwrap();
+    let room_b = active_call_b.read_with(cx_b, |call, _| call.room().unwrap().clone());
+    assert!(incoming_call_b.next().await.unwrap().is_none());
+
+    deterministic.run_until_parked();
+    assert_eq!(
+        room_participants(&room_a, cx_a),
+        RoomParticipants {
+            remote: vec!["user_b".to_string()],
+            pending: Default::default()
+        }
+    );
+    assert_eq!(
+        room_participants(&room_b, cx_b),
+        RoomParticipants {
+            remote: vec!["user_a".to_string()],
+            pending: Default::default()
+        }
+    );
+
+    // User C asks to join B's room
+    active_call_c
+        .update(cx_c, |call, cx| {
+            call.ask_to_join(client_b.user_id().unwrap(), cx)
+        })
+        .await
+        .unwrap();
+    deterministic.run_until_parked();
+    assert_eq!(
+        room_participants(&room_a, cx_a),
+        RoomParticipants {
+            remote: vec!["user_b".to_string()],
+            pending: vec!["user_c".to_string()]
+        }
+    );
+    assert_eq!(
+        room_participants(&room_b, cx_b),
+        RoomParticipants {
+            remote: vec!["user_a".to_string()],
+            pending: vec!["user_c".to_string()]
+        }
+    );
+
+    // User B declines the request.
+    let call_b = incoming_call_b.next().await.unwrap().unwrap();
+    assert_eq!(call_b.calling_user.github_login, "user_c");
+    active_call_b.update(cx_b, |call, _| call.decline_incoming().unwrap());
+    assert!(incoming_call_b.next().await.unwrap().is_none());
+
+    deterministic.run_until_parked();
+    assert_eq!(
+        room_participants(&room_a, cx_a),
+        RoomParticipants {
+            remote: vec!["user_b".to_string()],
+            pending: Default::default()
+        }
+    );
+    assert_eq!(
+        room_participants(&room_b, cx_b),
+        RoomParticipants {
+            remote: vec!["user_a".to_string()],
+            pending: Default::default()
+        }
+    );
+
+    // User C asks to join A's room
+    active_call_c
+        .update(cx_c, |call, cx| {
+            call.ask_to_join(client_a.user_id().unwrap(), cx)
+        })
+        .await
+        .unwrap();
+    deterministic.run_until_parked();
+    assert_eq!(
+        room_participants(&room_a, cx_a),
+        RoomParticipants {
+            remote: vec!["user_b".to_string()],
+            pending: vec!["user_c".to_string()]
+        }
+    );
+    assert_eq!(
+        room_participants(&room_b, cx_b),
+        RoomParticipants {
+            remote: vec!["user_a".to_string()],
+            pending: vec!["user_c".to_string()]
+        }
+    );
+
+    // User A accepts the request.
+    let mut incoming_call_a = active_call_a.read_with(cx_a, |call, _| call.incoming());
+    let call_a = incoming_call_a.next().await.unwrap().unwrap();
+    assert_eq!(call_a.calling_user.github_login, "user_c");
+    active_call_a
+        .update(cx_c, |call, cx| call.accept_incoming(cx))
+        .await
+        .unwrap();
+    assert!(incoming_call_a.next().await.unwrap().is_none());
+    let room_c = active_call_c.read_with(cx_c, |call, _| call.room().unwrap().clone());
+
+    deterministic.run_until_parked();
+    assert_eq!(
+        room_participants(&room_a, cx_a),
+        RoomParticipants {
+            remote: vec!["user_b".to_string(), "user_c".to_string()],
+            pending: Default::default()
+        }
+    );
+    assert_eq!(
+        room_participants(&room_b, cx_b),
+        RoomParticipants {
+            remote: vec!["user_a".to_string(), "user_c".to_string()],
+            pending: Default::default()
+        }
+    );
+    assert_eq!(
+        room_participants(&room_c, cx_c),
+        RoomParticipants {
+            remote: vec!["user_a".to_string(), "user_b".to_string()],
+            pending: Default::default()
+        }
+    );
+
+}
+
+#[gpui::test(iterations = 10)]
 async fn test_share_project(
     deterministic: Arc<Deterministic>,
     cx_a: &mut TestAppContext,

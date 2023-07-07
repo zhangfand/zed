@@ -1364,6 +1364,15 @@ impl Database {
         .await
     }
 
+    pub async fn ask_to_join_room(
+        &self,
+        asked_user_id: UserId,
+        user_id: UserId,
+        connection: ConnectionId,
+    ) -> Result<RoomGuard<proto::Room>> {
+        Err(anyhow!("not implemented"))?
+    }
+
     pub async fn rejoin_room(
         &self,
         rejoin_room: proto::RejoinRoom,
