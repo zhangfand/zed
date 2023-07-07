@@ -140,6 +140,9 @@ message Envelope {
         InlayHints inlay_hints = 116;
         InlayHintsResponse inlay_hints_response = 117;
         RefreshInlayHints refresh_inlay_hints = 118;
+
+        AskToJoinRoom ask_to_join_room = 119;
+        AskToJoinRoomResponse ask_to_join_room_response = 120;
     }
 }
 
@@ -173,6 +176,15 @@ message JoinRoom {
 }
 
 message JoinRoomResponse {
+    Room room = 1;
+    optional LiveKitConnectionInfo live_kit_connection_info = 2;
+}
+
+message AskToJoinRoom {
+    uint64 called_user_id = 1;
+}
+
+message AskToJoinRoomResponse {
     Room room = 1;
     optional LiveKitConnectionInfo live_kit_connection_info = 2;
 }

@@ -245,6 +245,34 @@ impl Room {
         })
     }
 
+    pub(crate) fn ask_to_join(
+        called_user_id: u64,
+        client: Arc<Client>,
+        user_store: ModelHandle<UserStore>,
+        cx: &mut AppContext,
+    ) -> Task<Result<ModelHandle<Self>>> {
+        cx.spawn(|mut cx| async move {
+            let response = client.request(proto::AskToJoinRoom { called_user_id }).await?;
+            let room_proto = response.room.ok_or_else(|| anyhow!("invalid room"))?;
+            let room = cx.add_model(|cx| {
+                Self::new(
+                    room_proto.id,
+                    response.live_kit_connection_info,
+                    client,
+                    user_store,
+                    cx,
+                )
+            });
+            room.update(&mut cx, |room, cx| {
+                room.leave_when_empty = true;
+                room.apply_room_update(room_proto, cx)?;
+                anyhow::Ok(())
+            })?;
+
+            Ok(room)
+        })
+    }
+
     pub(crate) fn join(
         call: &IncomingCall,
         client: Arc<Client>,

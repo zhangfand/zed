@@ -1071,6 +1071,7 @@ impl ContactList {
     ) -> AnyElement<Self> {
         let online = contact.online;
         let busy = contact.busy || calling;
+        let contact_busy = contact.busy;
         let user_id = contact.user.id;
         let github_login = contact.user.github_login.clone();
         let initial_project = project.clone();
@@ -1160,6 +1161,8 @@ impl ContactList {
             .on_click(MouseButton::Left, move |_, this, cx| {
                 if online && !busy {
                     this.call(user_id, Some(initial_project.clone()), cx);
+                } else if online && contact_busy && !calling {
+                    this.ask_to_join(user_id, cx);
                 }
             });
 
@@ -1300,6 +1303,18 @@ impl ContactList {
         ActiveCall::global(cx)
             .update(cx, |call, cx| {
                 call.invite(recipient_user_id, initial_project, cx)
+            })
+            .detach_and_log_err(cx);
+    }
+
+    fn ask_to_join(
+        &mut self,
+        recipient_user_id: u64,
+        cx: &mut ViewContext<Self>,
+    ) {
+        ActiveCall::global(cx)
+            .update(cx, |call, cx| {
+                call.ask_to_join(recipient_user_id, cx)
             })
             .detach_and_log_err(cx);
     }

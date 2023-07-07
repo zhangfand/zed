@@ -185,6 +185,7 @@ impl Server {
             .add_request_handler(ping)
             .add_request_handler(create_room)
             .add_request_handler(join_room)
+            .add_request_handler(ask_to_join_room)
             .add_request_handler(rejoin_room)
             .add_request_handler(leave_room)
             .add_request_handler(call)
@@ -953,6 +954,15 @@ async fn join_room(
 
     update_user_contacts(session.user_id, &session).await?;
     Ok(())
+}
+
+async fn ask_to_join_room(
+    request: proto::AskToJoinRoom,
+    response: Response<proto::AskToJoinRoom>,
+    session: Session,
+) -> Result<()> {
+    println!("GOT ASK TO JOIN ROOM for: {:?}", request.called_user_id);
+    Err(anyhow!("not implemented"))?
 }
 
 async fn rejoin_room(

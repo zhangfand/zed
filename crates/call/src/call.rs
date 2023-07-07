@@ -227,6 +227,49 @@ impl ActiveCall {
         })
     }
 
+    pub fn ask_to_join(
+        &mut self,
+        asked_user_id: u64,
+        cx: &mut ModelContext<Self>,
+    ) -> Task<Result<()>> {
+        let room = if let Some(room) = self.room().cloned() {
+            Some(Task::ready(Ok(room)).shared())
+        } else {
+            self.pending_room_creation.clone()
+        };
+
+        if room.is_some() {
+            return Task::ready(Err(anyhow!("cannot join while on another call")));
+        }
+
+        let client = self.client.clone();
+        let user_store = self.user_store.clone();
+        let room = cx
+            .spawn(|this, mut cx| async move {
+                let join_room = async {
+                    let join = cx.update(|cx| {
+                        Room::ask_to_join(asked_user_id, client, user_store, cx)
+                    });
+                    let room = join.await?;
+                    this.update(&mut cx, |this, cx| this.set_room(Some(room.clone()), cx))
+                        .await?;
+
+                    anyhow::Ok(room)
+                };
+
+                let room = join_room.await;
+                this.update(&mut cx, |this, _| this.pending_room_creation = None);
+                room.map_err(Arc::new)
+            })
+            .shared();
+
+        self.pending_room_creation = Some(room.clone());
+        cx.foreground().spawn(async move {
+            room.await.map_err(|err| anyhow!("{:?}", err))?;
+            anyhow::Ok(())
+        })
+    }
+
     pub fn incoming(&self) -> watch::Receiver<Option<IncomingCall>> {
         self.incoming_call.1.clone()
     }

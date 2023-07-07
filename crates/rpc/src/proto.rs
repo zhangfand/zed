@@ -245,6 +245,9 @@ messages!(
     (UpdateDiffBase, Foreground),
     (GetPrivateUserInfo, Foreground),
     (GetPrivateUserInfoResponse, Foreground),
+    (AskToJoinRoom, Foreground),
+    (AskToJoinRoomResponse, Foreground),
+
 );
 
 request_messages!(
@@ -279,6 +282,7 @@ request_messages!(
     (JoinChannel, JoinChannelResponse),
     (JoinProject, JoinProjectResponse),
     (JoinRoom, JoinRoomResponse),
+    (AskToJoinRoom, AskToJoinRoomResponse),
     (LeaveRoom, Ack),
     (RejoinRoom, RejoinRoomResponse),
     (IncomingCall, Ack),
