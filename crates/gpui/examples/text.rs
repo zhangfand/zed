@@ -24,8 +24,6 @@ impl gpui::Entity for TextView {
 }
 
 impl gpui::View for TextView {
-    type Style = ();
-
     fn ui_name() -> &'static str {
         "View"
     }

@@ -21,6 +21,7 @@ use anyhow::{anyhow, bail, Result};
 use collections::{HashMap, HashSet};
 use pathfinder_geometry::vector::{vec2f, Vector2F};
 use postage::oneshot;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use smallvec::SmallVec;
 use sqlez::{
@@ -1182,7 +1183,8 @@ pub struct RenderParams {
     pub appearance: Appearance,
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Axis {
     #[default]
     Horizontal,

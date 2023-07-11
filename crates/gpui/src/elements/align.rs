@@ -71,11 +71,6 @@ impl<V: View> Element<V> for Align<V> {
         view: &mut V,
         cx: &mut ViewContext<V>,
     ) -> Self::PaintState {
-        let padded = bounds.size() / 2.;
-        let padded_target = padded + padded * self.alignment;
-        let child_center = self.child.size() / 2.;
-        let child_target = child_center + child_center * self.alignment;
-
         let my_center = bounds.size() / 2.;
         let my_target = my_center + my_center * self.alignment;
 

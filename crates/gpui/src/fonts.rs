@@ -59,14 +59,17 @@ pub struct Features {
     pub zero: Option<bool>,
 }
 
-#[derive(Clone, Debug, JsonSchema)]
+#[derive(Clone, Debug, JsonSchema, Serialize)]
 pub struct TextStyle {
     pub color: Color,
     pub font_family_name: Arc<str>,
+    #[serde(skip)]
     pub font_family_id: FamilyId,
+    #[serde(skip)]
     pub font_id: FontId,
     pub font_size: f32,
     #[schemars(with = "PropertiesDef")]
+    #[serde(skip)]
     pub font_properties: Properties,
     pub underline: Underline,
 }
@@ -105,10 +108,11 @@ pub struct HighlightStyle {
 
 impl Eq for HighlightStyle {}
 
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, JsonSchema)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, JsonSchema, Serialize)]
 pub struct Underline {
     pub color: Option<Color>,
     #[schemars(with = "f32")]
+    #[serde(skip)]
     pub thickness: OrderedFloat<f32>,
     pub squiggly: bool,
 }

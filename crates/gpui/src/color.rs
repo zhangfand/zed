@@ -9,9 +9,8 @@ use pathfinder_color::{ColorF, ColorU};
 use schemars::JsonSchema;
 use serde::{
     de::{self, Unexpected},
-    Deserialize, Deserializer,
+    Deserialize, Deserializer, Serialize,
 };
-use serde_json::json;
 
 #[derive(Clone, Copy, Default, PartialEq, Eq, Hash, PartialOrd, Ord, JsonSchema)]
 #[repr(transparent)]
@@ -103,7 +102,16 @@ impl<'de> Deserialize<'de> for Color {
 
 impl ToJson for Color {
     fn to_json(&self) -> serde_json::Value {
-        json!(format!(
+        serde_json::to_value(self).unwrap()
+    }
+}
+
+impl Serialize for Color {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&format!(
             "0x{:x}{:x}{:x}{:x}",
             self.0.r, self.0.g, self.0.b, self.0.a
         ))

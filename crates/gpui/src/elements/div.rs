@@ -1,3 +1,4 @@
+use crate::json::{json, ToJson};
 use crate::{
     color::Color, fonts::TextStyle, platform::CursorStyle, AnyElement, Element, LayoutContext,
     SceneBuilder, SizeConstraint, View, ViewContext,
@@ -9,7 +10,9 @@ use crate::{
     },
     scene,
 };
-use crate::{Axis, Border, CursorRegion, Quad};
+use crate::{json, Axis, Border, CursorRegion, Quad};
+use serde::Deserialize;
+use serde_derive::Serialize;
 use serde_json::Value;
 use std::any::Any;
 use std::{f32::INFINITY, ops::Range, rc::Rc};
@@ -19,7 +22,7 @@ pub struct Div<V: View> {
     children: Vec<AnyElement<V>>,
 }
 
-#[derive(Default)]
+#[derive(Default, Deserialize, Serialize)]
 pub struct DivStyle {
     // Size and alignment
     // ------------------
@@ -47,6 +50,13 @@ pub struct DivStyle {
     text_style: Option<TextStyle>,
 }
 
+impl ToJson for DivStyle {
+    fn to_json(&self) -> Value {
+        serde_json::to_value(self).unwrap()
+    }
+}
+
+#[derive(Deserialize, Serialize)]
 pub struct Alignment {
     horizontal: f32,
     vertical: f32,
@@ -67,6 +77,16 @@ impl Default for Alignment {
     }
 }
 
+impl ToJson for Alignment {
+    fn to_json(&self) -> Value {
+        json!({
+            "horizontal": self.horizontal,
+            "vertical": self.vertical,
+        })
+    }
+}
+
+#[derive(Deserialize, Serialize)]
 pub enum Orientation {
     Axial(Axis),
     Stacked,
@@ -78,7 +98,7 @@ impl Default for Orientation {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Deserialize, Serialize)]
 struct Size {
     min_width: Option<f32>,
     max_width: Option<f32>,
@@ -88,7 +108,13 @@ struct Size {
     maximize_height: bool,
 }
 
-#[derive(Default)]
+impl ToJson for Size {
+    fn to_json(&self) -> Value {
+        serde_json::to_value(self).unwrap()
+    }
+}
+
+#[derive(Default, Deserialize, Serialize)]
 pub struct Margin {
     top: f32,
     right: f32,
@@ -96,12 +122,24 @@ pub struct Margin {
     left: f32,
 }
 
-#[derive(Default)]
+impl ToJson for Margin {
+    fn to_json(&self) -> Value {
+        serde_json::to_value(self).unwrap()
+    }
+}
+
+#[derive(Default, Deserialize, Serialize)]
 pub struct Padding {
     top: f32,
     right: f32,
     bottom: f32,
     left: f32,
+}
+
+impl ToJson for Padding {
+    fn to_json(&self) -> Value {
+        serde_json::to_value(self).unwrap()
+    }
 }
 
 impl Border {
@@ -110,10 +148,18 @@ impl Border {
     }
 }
 
+#[derive(Default, Deserialize, Serialize)]
 pub struct Shadow {
-    offset: Vector2F,
+    horizontal_offset: f32,
+    vertical_offset: f32,
     blur: f32,
     color: Color,
+}
+
+impl Shadow {
+    fn offset(&self) -> Vector2F {
+        vec2f(self.horizontal_offset, self.vertical_offset)
+    }
 }
 
 impl<V: View> Div<V> {
@@ -166,13 +212,11 @@ impl<V: View> Div<V> {
         view: &mut V,
         cx: &mut LayoutContext<V>,
     ) -> Vector2F {
-        let cross_axis = orientation.invert();
-
         let mut total_flex: Option<f32> = None;
         let mut total_size = 0.0;
         let mut cross_axis_max: f32 = 0.0;
 
-        // First pass: Layout fixed children only
+        // First pass: Layout non-flex children only
         for child in &mut self.children {
             if let Some(child_flex) = child.metadata::<DivStyle>().and_then(|style| style.flex) {
                 *total_flex.get_or_insert(0.) += child_flex;
@@ -201,7 +245,7 @@ impl<V: View> Div<V> {
             }
         }
 
-        let mut remaining_space = match orientation {
+        let remaining_space = match orientation {
             Axis::Vertical => constraint.max.y() - total_size,
             Axis::Horizontal => constraint.max.x() - total_size,
         };
@@ -245,11 +289,10 @@ impl<V: View> Div<V> {
             }
         }
 
-        let mut size = match orientation {
+        let size = match orientation {
             Axis::Vertical => vec2f(cross_axis_max, total_size),
             Axis::Horizontal => vec2f(total_size, cross_axis_max),
         };
-
         size
     }
 
@@ -373,7 +416,7 @@ impl<V: View> Element<V> for Div<V> {
         // Paint drop shadow
         if let Some(shadow) = self.style.shadow.as_ref() {
             scene.push_shadow(scene::Shadow {
-                bounds: content_bounds + shadow.offset,
+                bounds: content_bounds + shadow.offset(),
                 corner_radius: self.style.corner_radius,
                 sigma: shadow.blur,
                 color: shadow.color,
@@ -413,76 +456,98 @@ impl<V: View> Element<V> for Div<V> {
             }
         }
 
-        // Paint children
-        // Account for padding
-        let padding = &self.style.padding;
-        let parent_bounds = RectF::from_points(
-            content_bounds.origin() + vec2f(padding.left, padding.top),
-            content_bounds.lower_right() - vec2f(padding.right, padding.top),
-        );
-        let parent_size = parent_bounds.size();
+        if !self.children.is_empty() {
+            // Account for padding first.
+            let padding = &self.style.padding;
+            let padded_bounds = RectF::from_points(
+                content_bounds.origin() + vec2f(padding.left, padding.top),
+                content_bounds.lower_right() - vec2f(padding.right, padding.top),
+            );
+            let parent_size = padded_bounds.size();
 
-        let mut child_bounds = parent_bounds.origin();
-        match self.style.orientation {
-            Orientation::Axial(axis) => {
-                let mut child_origin = bounds.origin();
-                // Align all children along the primary axis
-                match axis {
-                    Axis::Horizontal => align_child(
-                        &mut child_origin,
-                        parent_size,
-                        *size_of_children,
-                        &self.style.child_alignment,
-                        true,
-                        false,
-                    ),
-                    Axis::Vertical => align_child(
-                        &mut child_origin,
-                        parent_size,
-                        *size_of_children,
-                        &self.style.child_alignment,
-                        false,
-                        true,
-                    ),
-                };
-
-                for child in &mut self.children {
-                    // Align the child along the cross axis
+            // Now paint the children accourding to the orientation.
+            let child_aligment = self.style.child_alignment.to_vec2f();
+            match self.style.orientation {
+                Orientation::Axial(axis) => {
+                    let mut child_origin = padded_bounds.origin();
+                    // Align all children together along the primary axis
                     match axis {
-                        Axis::Horizontal => {
-                            child_origin.set_y(parent_bounds.origin_y());
-                            align_child(
-                                &mut child_origin,
-                                parent_size,
-                                child.size(),
-                                &self.style.child_alignment,
-                                false,
-                                true,
-                            );
+                        Axis::Horizontal => align_child(
+                            &mut child_origin,
+                            parent_size,
+                            *size_of_children,
+                            child_aligment,
+                            true,
+                            false,
+                        ),
+                        Axis::Vertical => align_child(
+                            &mut child_origin,
+                            parent_size,
+                            *size_of_children,
+                            child_aligment,
+                            false,
+                            true,
+                        ),
+                    };
+
+                    for child in &mut self.children {
+                        // Align each child along the cross axis
+                        match axis {
+                            Axis::Horizontal => {
+                                child_origin.set_y(padded_bounds.origin_y());
+                                align_child(
+                                    &mut child_origin,
+                                    parent_size,
+                                    child.size(),
+                                    child_aligment,
+                                    false,
+                                    true,
+                                );
+                            }
+                            Axis::Vertical => {
+                                child_origin.set_x(padded_bounds.origin_x());
+                                align_child(
+                                    &mut child_origin,
+                                    parent_size,
+                                    child.size(),
+                                    child_aligment,
+                                    true,
+                                    false,
+                                );
+                            }
                         }
-                        Axis::Vertical => {
-                            child_origin.set_x(parent_bounds.origin_x());
-                            align_child(
-                                &mut child_origin,
-                                parent_size,
-                                child.size(),
-                                &self.style.child_alignment,
-                                true,
-                                false,
-                            );
+
+                        child.paint(scene, child_origin, visible_bounds, view, cx);
+
+                        // Advance along the cross axis by the size of this child
+                        match axis {
+                            Axis::Horizontal => {
+                                child_origin.set_x(child_origin.x() + child.size().x())
+                            }
+                            Axis::Vertical => {
+                                child_origin.set_y(child_origin.x() + child.size().y())
+                            }
                         }
                     }
+                }
+                Orientation::Stacked => {
+                    for child in &mut self.children {
+                        let mut child_origin = padded_bounds.origin();
+                        align_child(
+                            &mut child_origin,
+                            parent_size,
+                            child.size(),
+                            child_aligment,
+                            true,
+                            true,
+                        );
 
-                    child.paint(scene, child_origin, visible_bounds, view, cx);
-
-                    // Advance along the cross axis by the size of this child
-                    match axis {
-                        Axis::Horizontal => child_origin.set_x(child_origin.x() + child.size().x()),
-                        Axis::Vertical => child_origin.set_y(child_origin.x() + child.size().y()),
+                        scene.paint_layer(None, |scene| {
+                            child.paint(scene, child_origin, visible_bounds, view, cx);
+                        });
                     }
                 }
             }
-            Orientation::Stacked => {}
         }
 
         // Draw overlay border on top
@@ -496,69 +561,37 @@ impl<V: View> Element<V> for Div<V> {
                 });
             })
         }
-
-        // self.child
-        //     .paint(scene, child_origin, visible_bounds, view, cx);
-
-        // scene.push_layer(None);
-        // scene.push_quad(Quad {
-        //     bounds: quad_bounds,
-        //     background: self.style.overlay_color,
-        //     border: self.style.border,
-        //     corner_radius: self.style.corner_radius,
-        // });
-        // scene.pop_layer();
-        // } else {
-        //     scene.push_quad(Quad {
-        //         bounds: quad_bounds,
-        //         background: self.style.background_color,
-        //         border: self.style.border,
-        //         corner_radius: self.style.corner_radius,
-        //     });
-
-        //     let child_origin = child_origin
-        //         + vec2f(
-        //             self.style.border.left_width(),
-        //             self.style.border.top_width(),
-        //         );
-        //     self.child
-        //         .paint(scene, child_origin, visible_bounds, view, cx);
-
-        //     if self.style.overlay_color.is_some() {
-        //         scene.push_layer(None);
-        //         scene.push_quad(Quad {
-        //             bounds: quad_bounds,
-        //             background: self.style.overlay_color,
-        //             border: Default::default(),
-        //             corner_radius: 0.,
-        //         });
-        //         scene.pop_layer();
-        //     }
-        // }
     }
 
     fn rect_for_text_range(
         &self,
         range_utf16: Range<usize>,
-        bounds: RectF,
-        visible_bounds: RectF,
-        layout: &Self::LayoutState,
-        paint: &Self::PaintState,
+        _: RectF,
+        _: RectF,
+        _: &Self::LayoutState,
+        _: &Self::PaintState,
         view: &V,
         cx: &ViewContext<V>,
     ) -> Option<RectF> {
-        todo!()
+        self.children
+            .iter()
+            .find_map(|child| child.rect_for_text_range(range_utf16.clone(), view, cx))
     }
 
     fn debug(
         &self,
         bounds: RectF,
-        layout: &Self::LayoutState,
-        paint: &Self::PaintState,
+        _: &Self::LayoutState,
+        _: &Self::PaintState,
         view: &V,
         cx: &ViewContext<V>,
     ) -> Value {
-        todo!()
+        json!({
+            "type": "Div",
+            "bounds": bounds.to_json(),
+            "style": self.style.to_json(),
+            "children": self.children.iter().map(|child| child.debug(view, cx)).collect::<Vec<json::Value>>()
+        })
     }
 
     fn metadata(&self) -> Option<&dyn Any> {
@@ -570,15 +603,14 @@ fn align_child(
     child_origin: &mut Vector2F,
     parent_size: Vector2F,
     child_size: Vector2F,
-    alignment: &Alignment,
+    alignment: Vector2F,
     horizontal: bool,
     vertical: bool,
 ) {
-    let alignment = self.style.child_alignment.to_vec2f();
     let parent_center = parent_size / 2.;
     let parent_target = parent_center + parent_center * alignment;
     let child_center = child_size / 2.;
-    let child_target = child_center + child_center * self.style.child_alignment.to_vec2f();
+    let child_target = child_center + child_center * alignment;
 
     if horizontal {
         child_origin.set_x(child_origin.x() + parent_target.x() - child_target.x())
@@ -587,38 +619,3 @@ fn align_child(
         child_origin.set_y(child_origin.y() + parent_target.y() - child_target.y());
     }
 }
-
-// struct TestStyle {
-//     root: DivStyle,
-// }
-
-// struct TestView {}
-
-// impl Entity for TestView {
-//     type Event = ();
-// }
-
-// impl View for TestView {
-//     type Style = TestStyle;
-
-//     // type Style = TestStyle;
-
-//     fn ui_name() -> &'static str {
-//         "TestView"
-//     }
-
-//     fn render(&mut self, cx: &mut ViewContext<'_, '_, Self>) -> AnyElement<Self> {
-//         let style = cx.style();
-
-//         // For each view's style type, generate a typescript interface
-//         // For each view's style type, have a typescript function that generates it given a theme
-//         //
-
-//         // div(style.root)
-//         //     .with_child(
-//         //         div(style.titlebar)
-//         //             .with_child()
-//         //     )
-//         todo!()
-//     }
-// }
