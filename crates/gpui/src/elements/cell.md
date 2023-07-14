@@ -4,10 +4,7 @@ A key idea is that any length can be flexible relative to its parent, in additio
 
 ```rs
 enum Length {
-    Flex {
-        grow: f16,
-        shrink: f16,
-    },
+    Flex(f32),
     Fixed(f32),
 }
 ```
@@ -56,9 +53,14 @@ struct CellStyle {
     child_orientation: Orientation,
     child_alignment: Vector2F,
     // Push children apart by this much if not achieved by their margins
-    min_child_spacing: Length,
+    child_spacing: ChildSpacing,
     overflow: Overflow,
     // ...
+}
+
+struct ChildSpacing {
+    horizontal: Length,
+    vertical: Length
 }
 
 enum Orientation {

@@ -2,6 +2,7 @@
 members = [
     "crates/activity_indicator",
     "crates/ai",
+    "crates/ai/styles",
     "crates/auto_update",
     "crates/breadcrumbs",
     "crates/call",
@@ -61,6 +62,7 @@ members = [
     "crates/terminal",
     "crates/text",
     "crates/theme",
+    "crates/theme2",
     "crates/theme_selector",
     "crates/util",
     "crates/vim",
@@ -73,6 +75,8 @@ default-members = ["crates/zed"]
 resolver = "2"
 
 [workspace.dependencies]
+theme2 = { path = "crates/theme2" }
+
 anyhow = { version = "1.0.57" }
 async-trait = { version = "0.1" }
 ctor = { version = "0.1" }

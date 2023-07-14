@@ -6722,6 +6722,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "73473c0e59e6d5812c5dfe2a064a6444949f089e20eec9a2e5506596494e4623"
 
 [[package]]
+name = "styles"
+version = "0.1.0"
+dependencies = [
+ "theme2",
+]
+
+[[package]]
 name = "subtle"
 version = "2.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6997,6 +7004,10 @@ dependencies = [
  "toml",
  "util",
 ]
+
+[[package]]
+name = "theme2"
+version = "0.1.0"
 
 [[package]]
 name = "theme_selector"
