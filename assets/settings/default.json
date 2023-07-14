@@ -24,6 +24,17 @@
   },
   // The default font size for text in the editor
   "buffer_font_size": 15,
+  // Set the buffer's line height.
+  // May take 3 values:
+  //  1. Use a line height that's comfortable for reading (1.618)
+  //         "line_height": "comfortable"
+  //  2. Use a standard line height, (1.3)
+  //         "line_height": "standard",
+  //  3. Use a custom line height
+  //         "line_height": {
+  //           "custom": 2
+  //         },
+  "buffer_line_height": "comfortable",
   // The factor to grow the active pane by. Defaults to 1.0
   // which gives the same size as all other panes.
   "active_pane_magnification": 1.0,
@@ -57,37 +68,49 @@
   "show_whitespaces": "selection",
   // Scrollbar related settings
   "scrollbar": {
-      // When to show the scrollbar in the editor.
-      // This setting can take four values:
-      //
-      // 1. Show the scrollbar if there's important information or
-      //    follow the system's configured behavior (default):
-      //   "auto"
-      // 2. Match the system's configured behavior:
-      //    "system"
-      // 3. Always show the scrollbar:
-      //    "always"
-      // 4. Never show the scrollbar:
-      //    "never"
-      "show": "auto",
-      // Whether to show git diff indicators in the scrollbar.
-      "git_diff": true
+    // When to show the scrollbar in the editor.
+    // This setting can take four values:
+    //
+    // 1. Show the scrollbar if there's important information or
+    //    follow the system's configured behavior (default):
+    //   "auto"
+    // 2. Match the system's configured behavior:
+    //    "system"
+    // 3. Always show the scrollbar:
+    //    "always"
+    // 4. Never show the scrollbar:
+    //    "never"
+    "show": "auto",
+    // Whether to show git diff indicators in the scrollbar.
+    "git_diff": true,
+    // Whether to show selections in the scrollbar.
+    "selections": true
+  },
+  // Inlay hint related settings
+  "inlay_hints": {
+    // Global switch to toggle hints on and off, switched off by default.
+    "enabled": false,
+    // Toggle certain types of hints on and off, all switched on by default.
+    "show_type_hints": true,
+    "show_parameter_hints": true,
+    // Corresponds to null/None LSP hint type value.
+    "show_other_hints": true
   },
   "project_panel": {
-      // Whether to show the git status in the project panel.
-      "git_status": true,
-      // Where to dock project panel. Can be 'left' or 'right'.
-      "dock": "left",
-      // Default width of the project panel.
-      "default_width": 240
+    // Whether to show the git status in the project panel.
+    "git_status": true,
+    // Where to dock project panel. Can be 'left' or 'right'.
+    "dock": "left",
+    // Default width of the project panel.
+    "default_width": 240
   },
   "assistant": {
-      // Where to dock the assistant. Can be 'left', 'right' or 'bottom'.
-      "dock": "right",
-      // Default width when the assistant is docked to the left or right.
-      "default_width": 450,
-      // Default height when the assistant is docked to the bottom.
-      "default_height": 320
+    // Where to dock the assistant. Can be 'left', 'right' or 'bottom'.
+    "dock": "right",
+    // Default width when the assistant is docked to the left or right.
+    "default_width": 640,
+    // Default height when the assistant is docked to the bottom.
+    "default_height": 320
   },
   // Whether the screen sharing icon is shown in the os status bar.
   "show_call_status_icon": true,
@@ -270,7 +293,6 @@
     //         "line_height": {
     //           "custom": 2
     //         },
-    //
     "line_height": "comfortable"
     // Set the terminal's font size. If this option is not included,
     // the terminal will default to matching the buffer's font size.
@@ -278,6 +300,11 @@
     // Set the terminal's font family. If this option is not included,
     // the terminal will default to matching the buffer's font family.
     // "font_family": "Zed Mono"
+  },
+  // Difference settings for vector_store
+  "vector_store": {
+    "enabled": false,
+    "reindexing_delay_seconds": 600
   },
   // Different settings for specific languages.
   "languages": {

@@ -152,6 +152,29 @@ impl App {
             asset_source,
         ))));
 
+        foreground_platform.on_event(Box::new({
+            let cx = app.0.clone();
+            move |event| {
+                if let Event::KeyDown(KeyDownEvent { keystroke, .. }) = &event {
+                    // Allow system menu "cmd-?" shortcut to be overridden
+                    if keystroke.cmd
+                        && !keystroke.shift
+                        && !keystroke.alt
+                        && !keystroke.function
+                        && keystroke.key == "?"
+                    {
+                        if cx
+                            .borrow_mut()
+                            .update_active_window(|cx| cx.dispatch_keystroke(keystroke))
+                            .unwrap_or(false)
+                        {
+                            return true;
+                        }
+                    }
+                }
+                false
+            }
+        }));
         foreground_platform.on_quit(Box::new({
             let cx = app.0.clone();
             move || {
@@ -2950,14 +2973,12 @@ impl<'a, 'b, V: View> ViewContext<'a, 'b, V> {
     }
 
     pub fn focus(&mut self, handle: &AnyViewHandle) {
-        self.window_context
-            .focus(handle.window_id, Some(handle.view_id));
+        self.window_context.focus(Some(handle.view_id));
     }
 
     pub fn focus_self(&mut self) {
-        let window_id = self.window_id;
         let view_id = self.view_id;
-        self.window_context.focus(window_id, Some(view_id));
+        self.window_context.focus(Some(view_id));
     }
 
     pub fn is_self_focused(&self) -> bool {
@@ -2976,8 +2997,7 @@ impl<'a, 'b, V: View> ViewContext<'a, 'b, V> {
     }
 
     pub fn blur(&mut self) {
-        let window_id = self.window_id;
-        self.window_context.focus(window_id, None);
+        self.window_context.focus(None);
     }
 
     pub fn on_window_should_close<F>(&mut self, mut callback: F)
@@ -3283,11 +3303,15 @@ impl<'a, 'b, V: View> ViewContext<'a, 'b, V> {
         let region_id = MouseRegionId::new::<Tag>(self.view_id, region_id);
         MouseState {
             hovered: self.window.hovered_region_ids.contains(&region_id),
-            clicked: self
-                .window
-                .clicked_region_ids
-                .get(&region_id)
-                .and_then(|_| self.window.clicked_button),
+            clicked: if let Some((clicked_region_id, button)) = self.window.clicked_region {
+                if region_id == clicked_region_id {
+                    Some(button)
+                } else {
+                    None
+                }
+            } else {
+                None
+            },
             accessed_hovered: false,
             accessed_clicked: false,
         }

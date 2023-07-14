@@ -1539,6 +1539,7 @@ impl Database {
                                     }),
                                     is_symlink: db_entry.is_symlink,
                                     is_ignored: db_entry.is_ignored,
+                                    is_external: db_entry.is_external,
                                     git_status: db_entry.git_status.map(|status| status as i32),
                                 });
                             }
@@ -2349,6 +2350,7 @@ impl Database {
                         mtime_nanos: ActiveValue::set(mtime.nanos as i32),
                         is_symlink: ActiveValue::set(entry.is_symlink),
                         is_ignored: ActiveValue::set(entry.is_ignored),
+                        is_external: ActiveValue::set(entry.is_external),
                         git_status: ActiveValue::set(entry.git_status.map(|status| status as i64)),
                         is_deleted: ActiveValue::set(false),
                         scan_id: ActiveValue::set(update.scan_id as i64),
@@ -2705,6 +2707,7 @@ impl Database {
                             }),
                             is_symlink: db_entry.is_symlink,
                             is_ignored: db_entry.is_ignored,
+                            is_external: db_entry.is_external,
                             git_status: db_entry.git_status.map(|status| status as i32),
                         });
                     }
@@ -3514,7 +3517,6 @@ pub use test::*;
 mod test {
     use super::*;
     use gpui::executor::Background;
-    use lazy_static::lazy_static;
     use parking_lot::Mutex;
     use sea_orm::ConnectionTrait;
     use sqlx::migrate::MigrateDatabase;
@@ -3563,9 +3565,7 @@ mod test {
         }
 
         pub fn postgres(background: Arc<Background>) -> Self {
-            lazy_static! {
-                static ref LOCK: Mutex<()> = Mutex::new(());
-            }
+            static LOCK: Mutex<()> = Mutex::new(());
 
             let _guard = LOCK.lock();
             let mut rng = StdRng::from_entropy();

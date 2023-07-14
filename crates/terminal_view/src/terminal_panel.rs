@@ -25,6 +25,7 @@ pub fn init(cx: &mut AppContext) {
     cx.add_action(TerminalPanel::new_terminal);
 }
 
+#[derive(Debug)]
 pub enum Event {
     Close,
     DockPositionChanged,
@@ -86,6 +87,7 @@ impl TerminalPanel {
                                 }
                             })
                         },
+                        |_, _| {},
                         None,
                     ))
                     .with_child(Pane::render_tab_bar_button(
@@ -99,6 +101,7 @@ impl TerminalPanel {
                         Some(("Toggle Zoom".into(), Some(Box::new(workspace::ToggleZoom)))),
                         cx,
                         move |pane, cx| pane.toggle_zoom(&Default::default(), cx),
+                        |_, _| {},
                         None,
                     ))
                     .into_any()
@@ -218,6 +221,14 @@ impl TerminalPanel {
             pane::Event::ZoomIn => cx.emit(Event::ZoomIn),
             pane::Event::ZoomOut => cx.emit(Event::ZoomOut),
             pane::Event::Focus => cx.emit(Event::Focus),
+
+            pane::Event::AddItem { item } => {
+                if let Some(workspace) = self.workspace.upgrade(cx) {
+                    let pane = self.pane.clone();
+                    workspace.update(cx, |workspace, cx| item.added_to_pane(workspace, pane, cx))
+                }
+            }
+
             _ => {}
         }
     }

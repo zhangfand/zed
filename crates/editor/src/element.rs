@@ -1008,6 +1008,7 @@ impl EditorElement {
         bounds: RectF,
         layout: &mut LayoutState,
         cx: &mut ViewContext<Editor>,
+        editor: &Editor,
     ) {
         enum ScrollbarMouseHandlers {}
         if layout.mode != EditorMode::Full {
@@ -1050,9 +1051,76 @@ impl EditorElement {
                 background: style.track.background_color,
                 ..Default::default()
             });
+            let scrollbar_settings = settings::get::<EditorSettings>(cx).scrollbar;
+            let theme = theme::current(cx);
+            let scrollbar_theme = &theme.editor.scrollbar;
+            if layout.is_singleton && scrollbar_settings.selections {
+                let start_anchor = Anchor::min();
+                let end_anchor = Anchor::max();
+                let mut start_row = None;
+                let mut end_row = None;
+                let color = scrollbar_theme.selections;
+                let border = Border {
+                    width: 1.,
+                    color: style.thumb.border.color,
+                    overlay: false,
+                    top: false,
+                    right: true,
+                    bottom: false,
+                    left: true,
+                };
+                let mut push_region = |start, end| {
+                    if let (Some(start_display), Some(end_display)) = (start, end) {
+                        let start_y = y_for_row(start_display as f32);
+                        let mut end_y = y_for_row(end_display as f32);
+                        if end_y - start_y < 1. {
+                            end_y = start_y + 1.;
+                        }
+                        let bounds = RectF::from_points(vec2f(left, start_y), vec2f(right, end_y));
 
-            if layout.is_singleton && settings::get::<EditorSettings>(cx).scrollbar.git_diff {
-                let diff_style = theme::current(cx).editor.scrollbar.git.clone();
+                        scene.push_quad(Quad {
+                            bounds,
+                            background: Some(color),
+                            border,
+                            corner_radius: style.thumb.corner_radius,
+                        })
+                    }
+                };
+                for (row, _) in &editor
+                    .background_highlights_in_range_for::<crate::items::BufferSearchHighlights>(
+                        start_anchor..end_anchor,
+                        &layout.position_map.snapshot,
+                        &theme,
+                    )
+                {
+                    let start_display = row.start;
+                    let end_display = row.end;
+
+                    if start_row.is_none() {
+                        assert_eq!(end_row, None);
+                        start_row = Some(start_display.row());
+                        end_row = Some(end_display.row());
+                        continue;
+                    }
+                    if let Some(current_end) = end_row.as_mut() {
+                        if start_display.row() > *current_end + 1 {
+                            push_region(start_row, end_row);
+                            start_row = Some(start_display.row());
+                            end_row = Some(end_display.row());
+                        } else {
+                            // Merge two hunks.
+                            *current_end = end_display.row();
+                        }
+                    } else {
+                        unreachable!();
+                    }
+                }
+                // We might still have a hunk that was not rendered (if there was a search hit on the last line)
+                push_region(start_row, end_row);
+            }
+
+            if layout.is_singleton && scrollbar_settings.git_diff {
+                let diff_style = scrollbar_theme.git.clone();
                 for hunk in layout
                     .position_map
                     .snapshot
@@ -1114,8 +1182,10 @@ impl EditorElement {
         });
         scene.push_mouse_region(
             MouseRegion::new::<ScrollbarMouseHandlers>(cx.view_id(), cx.view_id(), track_bounds)
-                .on_move(move |_, editor: &mut Editor, cx| {
-                    editor.scroll_manager.show_scrollbar(cx);
+                .on_move(move |event, editor: &mut Editor, cx| {
+                    if event.pressed_button.is_none() {
+                        editor.scroll_manager.show_scrollbar(cx);
+                    }
                 })
                 .on_down(MouseButton::Left, {
                     let row_range = row_range.clone();
@@ -1392,7 +1462,12 @@ impl EditorElement {
         } else {
             let style = &self.style;
             let chunks = snapshot
-                .chunks(rows.clone(), true, Some(style.theme.suggestion))
+                .chunks(
+                    rows.clone(),
+                    true,
+                    Some(style.theme.hint),
+                    Some(style.theme.suggestion),
+                )
                 .map(|chunk| {
                     let mut highlight_style = chunk
                         .syntax_highlight_id
@@ -1900,7 +1975,7 @@ impl Element<Editor> for EditorElement {
 
         let snapshot = editor.snapshot(cx);
         let style = self.style.clone();
-        let line_height = style.text.line_height(cx.font_cache());
+        let line_height = (style.text.font_size * style.line_height_scalar).round();
 
         let gutter_padding;
         let gutter_width;
@@ -1921,7 +1996,7 @@ impl Element<Editor> for EditorElement {
         let em_advance = style.text.em_advance(cx.font_cache());
         let overscroll = vec2f(em_width, 0.);
         let snapshot = {
-            editor.set_visible_line_count(size.y() / line_height);
+            editor.set_visible_line_count(size.y() / line_height, cx);
 
             let editor_width = text_width - gutter_margin - overscroll.x() - em_width;
             let wrap_width = match editor.soft_wrap_mode(cx) {
@@ -2078,6 +2153,9 @@ impl Element<Editor> for EditorElement {
             ShowScrollbar::Auto => {
                 // Git
                 (is_singleton && scrollbar_settings.git_diff && snapshot.buffer_snapshot.has_git_diffs())
+                ||
+                // Selections
+                (is_singleton && scrollbar_settings.selections && !highlighted_ranges.is_empty())
                 // Scrollmanager
                 || editor.scroll_manager.scrollbars_visible()
             }
@@ -2363,7 +2441,7 @@ impl Element<Editor> for EditorElement {
         if !layout.blocks.is_empty() {
             self.paint_blocks(scene, bounds, visible_bounds, layout, editor, cx);
         }
-        self.paint_scrollbar(scene, bounds, layout, cx);
+        self.paint_scrollbar(scene, bounds, layout, cx, &editor);
         scene.pop_layer();
 
         scene.pop_layer();
@@ -2840,7 +2918,7 @@ mod tests {
     use super::*;
     use crate::{
         display_map::{BlockDisposition, BlockProperties},
-        editor_tests::{init_test, update_test_settings},
+        editor_tests::{init_test, update_test_language_settings},
         Editor, MultiBuffer,
     };
     use gpui::TestAppContext;
@@ -3037,7 +3115,7 @@ mod tests {
         let resize_step = 10.0;
         let mut editor_width = 200.0;
         while editor_width <= 1000.0 {
-            update_test_settings(cx, |s| {
+            update_test_language_settings(cx, |s| {
                 s.defaults.tab_size = NonZeroU32::new(tab_size);
                 s.defaults.show_whitespaces = Some(ShowWhitespaceSetting::All);
                 s.defaults.preferred_line_length = Some(editor_width as u32);

@@ -1,8 +1,4 @@
 pub mod dock;
-/// NOTE: Focus only 'takes' after an update has flushed_effects.
-///
-/// This may cause issues when you're trying to write tests that use workspace focus to add items at
-/// specific locations.
 pub mod item;
 pub mod notifications;
 pub mod pane;
@@ -97,7 +93,23 @@ lazy_static! {
 }
 
 pub trait Modal: View {
+    fn has_focus(&self) -> bool;
     fn dismiss_on_event(event: &Self::Event) -> bool;
+}
+
+trait ModalHandle {
+    fn as_any(&self) -> &AnyViewHandle;
+    fn has_focus(&self, cx: &WindowContext) -> bool;
+}
+
+impl<T: Modal> ModalHandle for ViewHandle<T> {
+    fn as_any(&self) -> &AnyViewHandle {
+        self
+    }
+
+    fn has_focus(&self, cx: &WindowContext) -> bool {
+        self.read(cx).has_focus()
+    }
 }
 
 #[derive(Clone, PartialEq)]
@@ -466,7 +478,7 @@ pub enum Event {
 pub struct Workspace {
     weak_self: WeakViewHandle<Self>,
     remote_entity_subscription: Option<client::Subscription>,
-    modal: Option<AnyViewHandle>,
+    modal: Option<ActiveModal>,
     zoomed: Option<AnyWeakViewHandle>,
     zoomed_position: Option<DockPosition>,
     center: PaneGroup,
@@ -492,7 +504,13 @@ pub struct Workspace {
     subscriptions: Vec<Subscription>,
     _apply_leader_updates: Task<Result<()>>,
     _observe_current_user: Task<Result<()>>,
+    _schedule_serialize: Option<Task<()>>,
     pane_history_timestamp: Arc<AtomicUsize>,
+}
+
+struct ActiveModal {
+    view: Box<dyn ModalHandle>,
+    previously_focused_view_id: Option<usize>,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -701,6 +719,7 @@ impl Workspace {
             app_state,
             _observe_current_user,
             _apply_leader_updates,
+            _schedule_serialize: None,
             leader_updates_tx,
             subscriptions,
             pane_history_timestamp,
@@ -861,7 +880,10 @@ impl Workspace {
         &self.right_dock
     }
 
-    pub fn add_panel<T: Panel>(&mut self, panel: ViewHandle<T>, cx: &mut ViewContext<Self>) {
+    pub fn add_panel<T: Panel>(&mut self, panel: ViewHandle<T>, cx: &mut ViewContext<Self>)
+    where
+        T::Event: std::fmt::Debug,
+    {
         let dock = match panel.position(cx) {
             DockPosition::Left => &self.left_dock,
             DockPosition::Bottom => &self.bottom_dock,
@@ -904,10 +926,11 @@ impl Workspace {
                     });
                 } else if T::should_zoom_in_on_event(event) {
                     dock.update(cx, |dock, cx| dock.set_panel_zoomed(&panel, true, cx));
-                    if panel.has_focus(cx) {
-                        this.zoomed = Some(panel.downgrade().into_any());
-                        this.zoomed_position = Some(panel.read(cx).position(cx));
+                    if !panel.has_focus(cx) {
+                        cx.focus(&panel);
                     }
+                    this.zoomed = Some(panel.downgrade().into_any());
+                    this.zoomed_position = Some(panel.read(cx).position(cx));
                 } else if T::should_zoom_out_on_event(event) {
                     dock.update(cx, |dock, cx| dock.set_panel_zoomed(&panel, false, cx));
                     if this.zoomed_position == Some(prev_position) {
@@ -1478,8 +1501,10 @@ impl Workspace {
         cx.notify();
         // Whatever modal was visible is getting clobbered. If its the same type as V, then return
         // it. Otherwise, create a new modal and set it as active.
-        let already_open_modal = self.modal.take().and_then(|modal| modal.downcast::<V>());
-        if let Some(already_open_modal) = already_open_modal {
+        if let Some(already_open_modal) = self
+            .dismiss_modal(cx)
+            .and_then(|modal| modal.downcast::<V>())
+        {
             cx.focus_self();
             Some(already_open_modal)
         } else {
@@ -1490,8 +1515,12 @@ impl Workspace {
                 }
             })
             .detach();
+            let previously_focused_view_id = cx.focused_view_id();
             cx.focus(&modal);
-            self.modal = Some(modal.into_any());
+            self.modal = Some(ActiveModal {
+                view: Box::new(modal),
+                previously_focused_view_id,
+            });
             None
         }
     }
@@ -1499,13 +1528,20 @@ impl Workspace {
     pub fn modal<V: 'static + View>(&self) -> Option<ViewHandle<V>> {
         self.modal
             .as_ref()
-            .and_then(|modal| modal.clone().downcast::<V>())
+            .and_then(|modal| modal.view.as_any().clone().downcast::<V>())
     }
 
-    pub fn dismiss_modal(&mut self, cx: &mut ViewContext<Self>) {
-        if self.modal.take().is_some() {
-            cx.focus(&self.active_pane);
+    pub fn dismiss_modal(&mut self, cx: &mut ViewContext<Self>) -> Option<AnyViewHandle> {
+        if let Some(modal) = self.modal.take() {
+            if let Some(previously_focused_view_id) = modal.previously_focused_view_id {
+                if modal.view.has_focus(cx) {
+                    cx.window_context().focus(Some(previously_focused_view_id));
+                }
+            }
             cx.notify();
+            Some(modal.view.as_any().clone())
+        } else {
+            None
         }
     }
 
@@ -1700,6 +1736,11 @@ impl Workspace {
         self.zoomed_position = None;
 
         cx.notify();
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn zoomed_view(&self, cx: &AppContext) -> Option<AnyViewHandle> {
+        self.zoomed.and_then(|view| view.upgrade(cx))
     }
 
     fn dismiss_zoomed_items_to_reveal(
@@ -2287,11 +2328,11 @@ impl Workspace {
         // (https://github.com/zed-industries/zed/issues/1290)
         let is_fullscreen = cx.window_is_fullscreen();
         let container_theme = if is_fullscreen {
-            let mut container_theme = theme.workspace.titlebar.container;
+            let mut container_theme = theme.titlebar.container;
             container_theme.padding.left = container_theme.padding.right;
             container_theme
         } else {
-            theme.workspace.titlebar.container
+            theme.titlebar.container
         };
 
         enum TitleBar {}
@@ -2311,7 +2352,7 @@ impl Workspace {
             }
         })
         .constrained()
-        .with_height(theme.workspace.titlebar.height)
+        .with_height(theme.titlebar.height)
         .into_any_named("titlebar")
     }
 
@@ -2756,7 +2797,7 @@ impl Workspace {
         let call = self.active_call()?;
         let room = call.read(cx).room()?.read(cx);
         let participant = room.remote_participant_for_peer_id(peer_id)?;
-        let track = participant.tracks.values().next()?.clone();
+        let track = participant.video_tracks.values().next()?.clone();
         let user = participant.user.clone();
 
         for item in pane.read(cx).items_of_type::<SharedScreen>() {
@@ -2854,6 +2895,14 @@ impl Workspace {
         cx.notify();
     }
 
+    fn schedule_serialize(&mut self, cx: &mut ViewContext<Self>) {
+        self._schedule_serialize = Some(cx.spawn(|this, cx| async move {
+            cx.background().timer(Duration::from_millis(100)).await;
+            this.read_with(&cx, |this, cx| this.serialize_workspace(cx))
+                .ok();
+        }));
+    }
+
     fn serialize_workspace(&self, cx: &ViewContext<Self>) {
         fn serialize_pane_handle(
             pane_handle: &ViewHandle<Pane>,
@@ -2884,12 +2933,17 @@ impl Workspace {
             cx: &AppContext,
         ) -> SerializedPaneGroup {
             match pane_group {
-                Member::Axis(PaneAxis { axis, members }) => SerializedPaneGroup::Group {
+                Member::Axis(PaneAxis {
+                    axis,
+                    members,
+                    flexes,
+                }) => SerializedPaneGroup::Group {
                     axis: *axis,
                     children: members
                         .iter()
                         .map(|member| build_serialized_pane_group(member, cx))
                         .collect::<Vec<_>>(),
+                    flexes: Some(flexes.borrow().clone()),
                 },
                 Member::Pane(pane_handle) => {
                     SerializedPaneGroup::Pane(serialize_pane_handle(&pane_handle, cx))
@@ -3487,7 +3541,7 @@ impl View for Workspace {
                                         )
                                     }))
                                     .with_children(self.modal.as_ref().map(|modal| {
-                                        ChildView::new(modal, cx)
+                                        ChildView::new(modal.view.as_any(), cx)
                                             .contained()
                                             .with_style(theme.workspace.modal)
                                             .aligned()
@@ -4766,6 +4820,7 @@ mod tests {
             theme::init((), cx);
             language::init(cx);
             crate::init_settings(cx);
+            Project::init_settings(cx);
         });
     }
 }

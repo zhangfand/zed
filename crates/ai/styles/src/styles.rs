@@ -1,29 +1,43 @@
-use theme2::Theme;
+// use theme2::Theme;
 
-pub struct AssistantStyle {
-    sidebar: SidebarStyle,
-    header: CellStyle,
-    body: CellStyle,
-}
+// pub struct AssistantStyle {
+//     sidebar: SidebarStyle,
+//     header: CellStyle,
+//     body: CellStyle,
+// }
 
-impl AssistantStyle {
-    fn for_theme(theme: Theme) -> Self {
-        Self {
-            sidebar: SidebarStyle::for_theme(theme),
-        }
-    }
-}
+// impl AssistantStyle {
+//     fn for_theme(theme: Theme) -> Self {
+//         Self {
+//             sidebar: SidebarStyle::for_theme(theme),
+//         }
+//     }
+// }
 
-pub struct SidebarStyle {
-    panel: CellStyle,
-    section: CellStyle,
-    section_header: CellStyle,
-    section_list_item: CellStyle,
-}
+// pub struct SidebarStyle {
+//     panel: CellStyle,
+//     section: CellStyle,
+//     section_header: CellStyle,
+//     section_list_item: CellStyle,
+// }
 
-struct CellStyle;
+// struct CellStyle;
+// struct TextStyle;
 
-struct ButtonStyle {
-    content: CellStyle,
-    icon: Option<CellStyle>,
-}
+// struct ButtonStyle {
+//     cell: CellStyle,
+//     label: TextStyle,
+// }
+
+// impl ButtonStyle {
+//     fn new(theme: &Theme) {}
+// }
+
+// struct IconButton {
+//     cell: CellStyle,
+//     icon: TextStyle,
+// }
+
+// struct SplitButtonStyle {
+
+// }

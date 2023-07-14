@@ -4,7 +4,7 @@ pub mod ui;
 
 use gpui::{
     color::Color,
-    elements::{ContainerStyle, ImageStyle, LabelStyle, Shadow, TooltipStyle},
+    elements::{ContainerStyle, ImageStyle, LabelStyle, Shadow, SvgStyle, TooltipStyle},
     fonts::{HighlightStyle, TextStyle},
     platform, AppContext, AssetSource, Border, MouseState,
 };
@@ -13,7 +13,7 @@ use serde::{de::DeserializeOwned, Deserialize};
 use serde_json::Value;
 use settings::SettingsStore;
 use std::{collections::HashMap, sync::Arc};
-use ui::{ButtonStyle, CheckboxStyle, IconStyle, ModalStyle, SvgStyle};
+use ui::{ButtonStyle, CheckboxStyle, IconStyle, ModalStyle};
 
 pub use theme_registry::*;
 pub use theme_settings::*;
@@ -65,7 +65,7 @@ pub struct Theme {
     pub assistant: AssistantStyle,
     pub feedback: FeedbackStyle,
     pub welcome: WelcomeStyle,
-    pub color_scheme: ColorScheme,
+    pub titlebar: Titlebar,
 }
 
 #[derive(Deserialize, Default, Clone, JsonSchema)]
@@ -80,7 +80,6 @@ pub struct ThemeMeta {
 pub struct Workspace {
     pub background: Color,
     pub blank_pane: BlankPaneStyle,
-    pub titlebar: Titlebar,
     pub tab_bar: TabBar,
     pub pane_divider: Border,
     pub leader_border_opacity: f32,
@@ -118,8 +117,9 @@ pub struct Titlebar {
     #[serde(flatten)]
     pub container: ContainerStyle,
     pub height: f32,
-    pub title: TextStyle,
-    pub highlight_color: Color,
+    pub project_menu_button: Toggleable<Interactive<ContainedText>>,
+    pub project_name_divider: ContainedText,
+    pub git_menu_button: Toggleable<Interactive<ContainedText>>,
     pub item_spacing: f32,
     pub face_pile_spacing: f32,
     pub avatar_ribbon: AvatarRibbon,
@@ -129,13 +129,31 @@ pub struct Titlebar {
     pub leader_avatar: AvatarStyle,
     pub follower_avatar: AvatarStyle,
     pub inactive_avatar_grayscale: bool,
-    pub sign_in_prompt: Toggleable<Interactive<ContainedText>>,
+    pub sign_in_button: Toggleable<Interactive<ContainedText>>,
     pub outdated_warning: ContainedText,
     pub share_button: Toggleable<Interactive<ContainedText>>,
-    pub call_control: Interactive<IconButton>,
+    pub muted: Color,
+    pub speaking: Color,
+    pub screen_share_button: Toggleable<Interactive<IconButton>>,
     pub toggle_contacts_button: Toggleable<Interactive<IconButton>>,
-    pub user_menu_button: Toggleable<Interactive<IconButton>>,
+    pub toggle_microphone_button: Toggleable<Interactive<IconButton>>,
+    pub toggle_speakers_button: Toggleable<Interactive<IconButton>>,
+    pub leave_call_button: Interactive<IconButton>,
     pub toggle_contacts_badge: ContainerStyle,
+    pub user_menu: UserMenu,
+}
+
+#[derive(Clone, Deserialize, Default, JsonSchema)]
+pub struct UserMenu {
+    pub user_menu_button_online: UserMenuButton,
+    pub user_menu_button_offline: UserMenuButton,
+}
+
+#[derive(Clone, Deserialize, Default, JsonSchema)]
+pub struct UserMenuButton {
+    pub user_menu: Toggleable<Interactive<Icon>>,
+    pub avatar: AvatarStyle,
+    pub icon: Icon,
 }
 
 #[derive(Copy, Clone, Deserialize, Default, JsonSchema)]
@@ -567,6 +585,8 @@ pub struct Picker {
     pub empty_input_editor: FieldEditor,
     pub no_matches: ContainedLabel,
     pub item: Toggleable<Interactive<ContainedLabel>>,
+    pub header: ContainedLabel,
+    pub footer: Interactive<ContainedLabel>,
 }
 
 #[derive(Clone, Debug, Deserialize, Default, JsonSchema)]
@@ -671,6 +691,7 @@ pub struct Editor {
     pub line_number_active: Color,
     pub guest_selections: Vec<SelectionStyle>,
     pub syntax: Arc<SyntaxTheme>,
+    pub hint: HighlightStyle,
     pub suggestion: HighlightStyle,
     pub diagnostic_path_header: DiagnosticPathHeader,
     pub diagnostic_header: DiagnosticHeader,
@@ -701,6 +722,7 @@ pub struct Scrollbar {
     pub width: f32,
     pub min_height_factor: f32,
     pub git: GitDiffColors,
+    pub selections: Color,
 }
 
 #[derive(Clone, Deserialize, Default, JsonSchema)]
@@ -993,18 +1015,34 @@ pub struct TerminalStyle {
 #[derive(Clone, Deserialize, Default, JsonSchema)]
 pub struct AssistantStyle {
     pub container: ContainerStyle,
-    pub header: ContainerStyle,
+    pub hamburger_button: Interactive<IconStyle>,
+    pub split_button: Interactive<IconStyle>,
+    pub assist_button: Interactive<IconStyle>,
+    pub quote_button: Interactive<IconStyle>,
+    pub zoom_in_button: Interactive<IconStyle>,
+    pub zoom_out_button: Interactive<IconStyle>,
+    pub plus_button: Interactive<IconStyle>,
+    pub title: ContainedText,
+    pub message_header: ContainerStyle,
     pub sent_at: ContainedText,
     pub user_sender: Interactive<ContainedText>,
     pub assistant_sender: Interactive<ContainedText>,
     pub system_sender: Interactive<ContainedText>,
-    pub model_info_container: ContainerStyle,
     pub model: Interactive<ContainedText>,
     pub remaining_tokens: ContainedText,
+    pub low_remaining_tokens: ContainedText,
     pub no_remaining_tokens: ContainedText,
     pub error_icon: Icon,
     pub api_key_editor: FieldEditor,
     pub api_key_prompt: ContainedText,
+    pub saved_conversation: SavedConversation,
+}
+
+#[derive(Clone, Deserialize, Default, JsonSchema)]
+pub struct SavedConversation {
+    pub container: Interactive<ContainerStyle>,
+    pub saved_at: ContainedText,
+    pub title: ContainedText,
 }
 
 #[derive(Clone, Deserialize, Default, JsonSchema)]
