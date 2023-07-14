@@ -17,13 +17,13 @@ use serde_json::Value;
 use std::any::Any;
 use std::{f32::INFINITY, ops::Range, rc::Rc};
 
-pub struct Div<V: View> {
-    style: Rc<DivStyle>,
+pub struct Cell<V: View> {
+    style: Rc<CellStyle>,
     children: Vec<AnyElement<V>>,
 }
 
 #[derive(Default, Deserialize, Serialize)]
-pub struct DivStyle {
+pub struct CellStyle {
     // Size and alignment
     // ------------------
     size: Size,
@@ -50,7 +50,7 @@ pub struct DivStyle {
     text_style: Option<TextStyle>,
 }
 
-impl ToJson for DivStyle {
+impl ToJson for CellStyle {
     fn to_json(&self) -> Value {
         serde_json::to_value(self).unwrap()
     }
@@ -162,8 +162,8 @@ impl Shadow {
     }
 }
 
-impl<V: View> Div<V> {
-    pub fn new(style: Rc<DivStyle>) -> Self {
+impl<V: View> Cell<V> {
+    pub fn new(style: Rc<CellStyle>) -> Self {
         Self {
             style,
             children: Vec::new(),
@@ -218,7 +218,7 @@ impl<V: View> Div<V> {
 
         // First pass: Layout non-flex children only
         for child in &mut self.children {
-            if let Some(child_flex) = child.metadata::<DivStyle>().and_then(|style| style.flex) {
+            if let Some(child_flex) = child.metadata::<CellStyle>().and_then(|style| style.flex) {
                 *total_flex.get_or_insert(0.) += child_flex;
             } else {
                 let child_constraint = match orientation {
@@ -257,7 +257,7 @@ impl<V: View> Div<V> {
 
                 for child in &mut self.children {
                     if let Some(child_flex) =
-                        child.metadata::<DivStyle>().and_then(|style| style.flex)
+                        child.metadata::<CellStyle>().and_then(|style| style.flex)
                     {
                         let child_max = space_per_flex * child_flex;
                         let mut child_constraint = constraint;
@@ -356,7 +356,7 @@ impl<V: View> Div<V> {
     }
 }
 
-impl<V: View> Element<V> for Div<V> {
+impl<V: View> Element<V> for Cell<V> {
     type LayoutState = Vector2F; // Content size
     type PaintState = ();
 
@@ -587,7 +587,7 @@ impl<V: View> Element<V> for Div<V> {
         cx: &ViewContext<V>,
     ) -> Value {
         json!({
-            "type": "Div",
+            "type": "Cell",
             "bounds": bounds.to_json(),
             "style": self.style.to_json(),
             "children": self.children.iter().map(|child| child.debug(view, cx)).collect::<Vec<json::Value>>()
