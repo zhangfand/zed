@@ -786,10 +786,19 @@ impl ProjectSearchView {
         if let Some(query) = self.build_search_query(cx) {
             if let Some(replace_text) = query.replace_text() {
                 if let Some(idx) = self.active_match_index {
+
                     self.model
                         .update(cx, |model, cx| model.replace(idx, replace_text, cx));
 
-                    self.select_match(Direction::Next, cx);
+                    self.results_editor.update(cx, |editor, cx| {
+                        editor.select_matches(self.model.read(cx).match_ranges.clone(), cx)
+                    });
+
+                    if idx < self.model.read(cx).match_ranges.len() - 1{
+                        self.active_match_index = Some(idx + 1);
+                    } else {
+                        self.active_match_index = Some(0);
+                    }
 
                     cx.notify();
                 }
