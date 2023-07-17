@@ -18,6 +18,7 @@ pub enum SearchQuery {
     Text {
         search: Arc<AhoCorasick<usize>>,
         query: Arc<str>,
+        replace: Option<Arc<str>>,
         whole_word: bool,
         case_sensitive: bool,
         files_to_include: Vec<PathMatcher>,
@@ -26,6 +27,7 @@ pub enum SearchQuery {
     Regex {
         regex: Regex,
         query: Arc<str>,
+        replace: Option<Arc<str>>,
         multiline: bool,
         whole_word: bool,
         case_sensitive: bool,
@@ -62,12 +64,14 @@ impl PathMatcher {
 impl SearchQuery {
     pub fn text(
         query: impl ToString,
+        replace: Option<impl ToString>,
         whole_word: bool,
         case_sensitive: bool,
         files_to_include: Vec<PathMatcher>,
         files_to_exclude: Vec<PathMatcher>,
     ) -> Self {
         let query = query.to_string();
+        let replace = replace.map(|replace| Arc::from(replace.to_string()));
         let search = AhoCorasickBuilder::new()
             .auto_configure(&[&query])
             .ascii_case_insensitive(!case_sensitive)
@@ -75,6 +79,7 @@ impl SearchQuery {
         Self::Text {
             search: Arc::new(search),
             query: Arc::from(query),
+            replace,
             whole_word,
             case_sensitive,
             files_to_include,
@@ -84,12 +89,14 @@ impl SearchQuery {
 
     pub fn regex(
         query: impl ToString,
+        replace: Option<impl ToString>,
         whole_word: bool,
         case_sensitive: bool,
         files_to_include: Vec<PathMatcher>,
         files_to_exclude: Vec<PathMatcher>,
     ) -> Result<Self> {
         let mut query = query.to_string();
+        let replace = replace.map(|replace| Arc::from(replace.to_string()));
         let initial_query = Arc::from(query.as_str());
         if whole_word {
             let mut word_query = String::new();
@@ -107,6 +114,7 @@ impl SearchQuery {
         Ok(Self::Regex {
             regex,
             query: initial_query,
+            replace,
             multiline,
             whole_word,
             case_sensitive,
@@ -119,6 +127,7 @@ impl SearchQuery {
         if message.regex {
             Self::regex(
                 message.query,
+                Option::<String>::None,
                 message.whole_word,
                 message.case_sensitive,
                 deserialize_path_matches(&message.files_to_include)?,
@@ -127,6 +136,7 @@ impl SearchQuery {
         } else {
             Ok(Self::text(
                 message.query,
+                Option::<String>::None,
                 message.whole_word,
                 message.case_sensitive,
                 deserialize_path_matches(&message.files_to_include)?,
@@ -327,6 +337,13 @@ impl SearchQuery {
                             .any(|include_glob| include_glob.is_match(file_path)))
             }
             None => self.files_to_include().is_empty(),
+        }
+    }
+
+    pub fn replace_text(&self) -> Option<Arc<str>> {
+        match self {
+            Self::Text { replace, .. } => replace.clone(),
+            Self::Regex { replace, .. } => replace.clone(),
         }
     }
 }
