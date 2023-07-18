@@ -1,6 +1,6 @@
 use crate::{
-    SearchOptions, SelectNextMatch, SelectPrevMatch, ToggleCaseSensitive, ToggleRegex,
-    ToggleWholeWord,
+    Replace, ReplaceAll, SearchOptions, SelectNextMatch, SelectPrevMatch, ToggleCaseSensitive,
+    ToggleRegex, ToggleReplace, ToggleWholeWord,
 };
 use anyhow::Context;
 use collections::HashMap;
@@ -49,9 +49,6 @@ actions!(
         ToggleFocus,
         NextField,
         ToggleSemanticSearch,
-        Replace,
-        ReplaceAll,
-        ToggleReplace,
         ToggleFilter,
         Undo
     ]
@@ -1075,7 +1072,6 @@ impl ProjectSearchBar {
         _: &ToggleFocus,
         cx: &mut ViewContext<ProjectSearchBar>,
     ) {
-        dbg!("TOGGLE BAR FOCUS");
         if let Some(view) = &search_bar.active_project_search {
             view.update(cx, |view, cx| view.focus_results_editor(cx));
         }
