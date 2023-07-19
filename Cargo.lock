@@ -1165,6 +1165,31 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
+name = "channels"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "client",
+ "collections",
+ "context_menu",
+ "db",
+ "editor",
+ "futures 0.3.28",
+ "gpui",
+ "log",
+ "menu",
+ "project",
+ "schemars",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "settings",
+ "theme",
+ "util",
+ "workspace",
+]
+
+[[package]]
 name = "chrono"
 version = "0.4.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9462,6 +9487,7 @@ dependencies = [
  "backtrace",
  "breadcrumbs",
  "call",
+ "channels",
  "chrono",
  "cli",
  "client",
