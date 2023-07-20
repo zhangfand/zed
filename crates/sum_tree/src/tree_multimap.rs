@@ -9,7 +9,7 @@ use std::{
 use crate::{Bias, Dimension, Edit, Item, KeyedItem, SeekTarget, SumTree, Summary};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct TreeMultimap<K, V>(SumTree<MapEntry<K, V>>)
+pub struct TreeMultimap<K, V: KeyedItem>(SumTree<MapEntry<K, V>>)
 where
     K: Clone + Debug + Default + Ord,
     V: Clone + Debug;
@@ -23,13 +23,16 @@ pub struct MapEntry<K, V> {
 #[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct MapKey<K>(K);
 
+#[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+pub struct MultimapKey<K, V>(K, V);
+
 #[derive(Clone, Debug, Default)]
 pub struct MapKeyRef<'a, K>(Option<&'a K>);
 
 impl<K, V> TreeMultimap<K, V>
 where
     K: Clone + Debug + Default + Ord,
-    V: Clone + Debug,
+    V: Clone + Debug + KeyedItem,
 {
     pub fn from_ordered_entries(entries: impl IntoIterator<Item = (K, V)>) -> Self {
         let tree = SumTree::from_iter(
@@ -52,7 +55,7 @@ where
         iter::from_fn(move || {
             if let Some(item) = cursor.item() {
                 cursor.next(&());
-                if *key == item.key().0 {
+                if *key == item.key {
                     Some(&item.value)
                 } else {
                     None
@@ -204,7 +207,7 @@ where
 impl<K, V> Into<BTreeMap<K, V>> for &TreeMultimap<K, V>
 where
     K: Clone + Debug + Default + Ord,
-    V: Clone + Debug,
+    V: Clone + Debug + KeyedItem,
 {
     fn into(self) -> BTreeMap<K, V> {
         self.iter()
@@ -216,7 +219,7 @@ where
 impl<K, V> From<&BTreeMap<K, V>> for TreeMultimap<K, V>
 where
     K: Clone + Debug + Default + Ord,
-    V: Clone + Debug,
+    V: Clone + Debug + KeyedItem,
 {
     fn from(value: &BTreeMap<K, V>) -> Self {
         TreeMultimap::from_ordered_entries(value.into_iter().map(|(k, v)| (k.clone(), v.clone())))
@@ -251,7 +254,7 @@ impl<K: Debug + Ord> MapSeekTarget<K> for K {
 impl<K, V> Default for TreeMultimap<K, V>
 where
     K: Clone + Debug + Default + Ord,
-    V: Clone + Debug,
+    V: Clone + Debug + KeyedItem,
 {
     fn default() -> Self {
         Self(Default::default())
@@ -261,24 +264,24 @@ where
 impl<K, V> Item for MapEntry<K, V>
 where
     K: Clone + Debug + Default + Ord,
-    V: Clone,
+    V: Clone + KeyedItem,
 {
-    type Summary = MapKey<K>;
+    type Summary = MultimapKey<K, V::Key>;
 
     fn summary(&self) -> Self::Summary {
         self.key()
     }
 }
 
-impl<K, V> KeyedItem for MapEntry<K, V>
+impl<K, V: KeyedItem> KeyedItem for MapEntry<K, V>
 where
     K: Clone + Debug + Default + Ord,
     V: Clone,
 {
-    type Key = MapKey<K>;
+    type Key = MultimapKey<K, V::Key>;
 
     fn key(&self) -> Self::Key {
-        MapKey(self.key.clone())
+        MultimapKey(self.key.clone(), self.value.key())
     }
 }
 
@@ -311,9 +314,29 @@ where
     }
 }
 
+impl<K, V> Summary for MultimapKey<K, V>
+where
+    K: Clone + Debug + Default,
+    V: Clone + Debug + Default,
+{
+    type Context = ();
+
+    fn add_summary(&mut self, summary: &Self, _: &()) {
+        *self = summary.clone()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    impl KeyedItem for &str {
+        type Key = Self;
+
+        fn key(&self) -> Self::Key {
+            self
+        }
+    }
 
     #[test]
     fn test_basic() {
