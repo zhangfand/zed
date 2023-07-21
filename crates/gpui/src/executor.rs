@@ -13,7 +13,7 @@ use std::{
     sync::Arc,
     task::{Context, Poll},
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use crate::{
@@ -517,6 +517,16 @@ impl Deterministic {
     }
 }
 
+impl Timer {
+    pub fn next(&mut self) -> impl Future<Output = Option<Instant>> + '_ {
+        match self {
+            Timer::Production(timer) => timer.next(),
+            #[cfg(any(test, feature = "test-support"))]
+            Timer::Deterministic(_) => todo!(),
+        }
+    }
+}
+
 impl Drop for Timer {
     fn drop(&mut self) {
         #[cfg(any(test, feature = "test-support"))]
@@ -835,6 +845,14 @@ impl Background {
             Background::Production { .. } => Timer::Production(smol::Timer::after(duration)),
             #[cfg(any(test, feature = "test-support"))]
             Background::Deterministic { executor } => executor.timer(duration),
+        }
+    }
+
+    pub fn interval(&self, duration: Duration) -> Timer {
+        match self {
+            Background::Production { .. } => Timer::Production(smol::Timer::interval(duration)),
+            #[cfg(any(test, feature = "test-support"))]
+            Background::Deterministic { executor } => panic!("NOT IMPLEMENTED"),
         }
     }
 

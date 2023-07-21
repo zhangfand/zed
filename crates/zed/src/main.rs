@@ -148,6 +148,7 @@ fn main() {
         project::Project::init(&client, cx);
         client::init(&client, cx);
         command_palette::init(cx);
+        animation_box::zed::init(cx);
         language::init(cx);
         editor::init(cx);
         go_to_line::init(cx);

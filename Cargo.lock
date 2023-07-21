@@ -215,6 +215,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "animation_box"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "gpui",
+ "project",
+ "theme",
+ "util",
+ "workspace",
+]
+
+[[package]]
 name = "anstream"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9458,6 +9470,7 @@ version = "0.97.0"
 dependencies = [
  "activity_indicator",
  "ai",
+ "animation_box",
  "anyhow",
  "async-compression",
  "async-recursion 0.3.2",

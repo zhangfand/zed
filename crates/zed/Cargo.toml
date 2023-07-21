@@ -17,6 +17,7 @@ path = "src/main.rs"
 
 [dependencies]
 audio = { path = "../audio" }
+animation_box = { path = "../animation_box" }
 activity_indicator = { path = "../activity_indicator" }
 auto_update = { path = "../auto_update" }
 breadcrumbs = { path = "../breadcrumbs" }
