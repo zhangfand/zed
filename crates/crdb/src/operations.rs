@@ -1,7 +1,7 @@
 use crate::{
-    btree, dense_id::DenseId, AnchorRange, BranchSnapshot, DocumentFragment,
+    btree, dense_id::DenseId, Anchor, AnchorRange, BranchSnapshot, DocumentFragment,
     DocumentFragmentSummary, DocumentMetadata, InsertionFragment, OperationId, RepoSnapshot,
-    Revision, RevisionId, RopeBuilder,
+    Revision, RevisionId, RopeBuilder, Tombstone,
 };
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
@@ -139,20 +139,67 @@ impl Edit {
                 }
             }
 
-            let fragment = old_fragments.item().unwrap();
-            if fragment.insertion_id == range.start_insertion_id
-                && range.start_offset_in_insertion > fragment_insertion_start
-            {
-                let mut prefix = fragment.clone();
-                let prefix_len = range.start_offset_in_insertion - fragment_insertion_start;
-                prefix.insertion_subrange.start = fragment_insertion_start;
-                prefix.insertion_subrange.end = prefix.insertion_subrange.start + prefix_len;
-                prefix.location =
-                    DenseId::between(&new_fragments.summary().max_location, &prefix.location);
-                new_insertions.push(btree::Edit::Insert(InsertionFragment::new(&prefix)));
-                new_ropes.push_fragment(&prefix, prefix.visible());
-                new_fragments.push(prefix, &());
-                fragment_insertion_start = range.start_offset_in_insertion;
+            for parent_fragment in parent_revision.visible_fragments_for_range(range.clone()) {
+                let parent_fragment_range = AnchorRange {
+                    document_id: self.document_id,
+                    start_insertion_id: parent_fragment.insertion_id,
+                    start_offset_in_insertion: parent_fragment.insertion_subrange.start,
+                    start_bias: Bias::Left,
+                    end_insertion_id: parent_fragment.insertion_id,
+                    end_offset_in_insertion: parent_fragment.insertion_subrange.end,
+                    end_bias: Bias::Left,
+                };
+
+                for fragment_location in revision.fragment_locations(
+                    parent_fragment.insertion_id,
+                    parent_fragment.insertion_subrange,
+                ) {
+                    new_fragments.append(
+                        old_fragments.slice(
+                            &(self.document_id, fragment_location),
+                            Bias::Left,
+                            &(),
+                        ),
+                        &(),
+                    );
+
+                    let mut fragment = old_fragments.item().unwrap().clone();
+                    let (prefix, middle, suffix) = fragment.intersect();
+
+                    if fragment.insertion_id == range.start_insertion_id
+                        && range.start_offset_in_insertion > fragment_insertion_start
+                    {
+                        let mut prefix = fragment.clone();
+                        let prefix_len = range.start_offset_in_insertion - fragment_insertion_start;
+                        prefix.insertion_subrange.start = fragment_insertion_start;
+                        prefix.insertion_subrange.end =
+                            prefix.insertion_subrange.start + prefix_len;
+                        prefix.location = DenseId::between(
+                            &new_fragments.summary().max_location,
+                            &prefix.location,
+                        );
+                        new_insertions.push(btree::Edit::Insert(InsertionFragment::new(&prefix)));
+                        new_ropes.push_fragment(&prefix, prefix.visible());
+                        new_fragments.push(prefix, &());
+                        fragment_insertion_start = range.start_offset_in_insertion;
+                    }
+
+                    fragment.insertion_subrange.start = fragment_insertion_start;
+
+                    // Does this fragment end after the end of the range?
+                    if fragment.insertion_id == range.end_insertion_id
+                        && range.end_offset_in_insertion > fragment.insertion_subrange.end
+                    {
+                    }
+
+                    fragment.insertion_subrange.end = fragment.tombstones.push(Tombstone {
+                        id: self.id,
+                        undo_count: 0,
+                    });
+                    new_fragments.push(fragment, &());
+                    old_fragments.next(&());
+                    // old_fragments.seek(insertion_fragment.)
+                }
             }
 
             if !new_text.is_empty() {
@@ -173,19 +220,31 @@ impl Edit {
                 insertion_offset += new_text.len();
             }
 
-            while let Some(fragment) = old_fragments.item() {
-                for parent_fragment in parent_revision.fragments_for_insertion_range(
-                    fragment.insertion_id,
-                    fragment.insertion_subrange,
-                ) {}
+            // What was visible in the parent?
+            //
+            // Walk through old_fragments. Skip anything that isn't visible currently.
 
-                if fragment.insertion_id != range.end_insertion_id {
-                    todo!()
-                } else {
-                    // calculate intersection
-                    break;
-                }
-            }
+            // while let Some(fragment) = old_fragments.item() {
+            // for parent_fragment in parent_revision.visible_fragments_in_range(range) {}
+
+            // if let Some(parent_fragments) = parent_revision.fragments_for_insertion_range(
+            //     fragment.insertion_id,
+            //     fragment.insertion_subrange,
+            // ) {
+            // } else {
+            // }
+            // for parent_fragment in parent_revision.fragments_for_insertion_range(
+            //     fragment.insertion_id,
+            //     fragment.insertion_subrange,
+            // ) {}
+
+            // if fragment.insertion_id != range.end_insertion_id {
+            //     todo!()
+            // } else {
+            //     // calculate intersection
+            //     break;
+            // }
+            // }
         }
 
         // If the current fragment has been partially consumed, then consume the rest of it

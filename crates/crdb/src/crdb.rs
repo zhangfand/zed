@@ -1133,7 +1133,6 @@ impl Document {
                 edit_op.edits.push((
                     AnchorRange {
                         document_id: self.id,
-                        revision_id: parent.clone(),
                         start_insertion_id: edit_start.insertion_id,
                         start_offset_in_insertion: edit_start.offset_in_insertion,
                         start_bias: edit_start.bias,
@@ -1242,7 +1241,6 @@ struct Anchor {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AnchorRange {
     document_id: OperationId,
-    revision_id: RevisionId,
     start_insertion_id: OperationId,
     start_offset_in_insertion: usize,
     #[serde(with = "bias_serialization")]
@@ -1727,6 +1725,22 @@ impl Revision {
         } else {
             None
         }
+    }
+
+    fn fragment_locations(
+        &self,
+        insertion_id: InsertionId,
+        insertion_subrange: Range<usize>,
+    ) -> impl Iterator<Item = &DenseId> {
+        todo!();
+        std::iter::empty()
+    }
+
+    fn visible_fragments_for_range(
+        &self,
+        range: AnchorRange,
+    ) -> impl Iterator<Item = &DocumentFragment> {
+        std::iter::empty()
     }
 }
 
