@@ -1,4 +1,5 @@
 mod connection_pool;
+mod channels;
 
 use crate::{
     auth,
@@ -244,6 +245,8 @@ impl Server {
             .add_message_handler(update_followers)
             .add_message_handler(update_diff_base)
             .add_request_handler(get_private_user_info);
+
+        channels::init(&mut server);
 
         Arc::new(server)
     }

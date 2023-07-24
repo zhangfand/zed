@@ -867,7 +867,9 @@ message LspDiskBasedDiagnosticsUpdating {}
 
 message LspDiskBasedDiagnosticsUpdated {}
 
-message GetChannels {}
+message GetChannels {
+    repeated uint64 channel_roots = 1;
+}
 
 message GetChannelsResponse {
     repeated Channel channels = 1;

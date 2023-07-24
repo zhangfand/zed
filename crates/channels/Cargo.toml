@@ -8,6 +8,15 @@ publish = false
 path = "src/channels.rs"
 doctest = false
 
+[features]
+test-support = [
+    "client/test-support",
+    "collections/test-support",
+    "gpui/test-support",
+    "project/test-support",
+    "util/test-support"
+]
+
 [dependencies]
 collections = { path = "../collections" }
 context_menu = { path = "../context_menu" }
@@ -16,6 +25,7 @@ db = { path = "../db" }
 editor = { path = "../editor" }
 gpui = { path = "../gpui" }
 project = { path = "../project" }
+rpc = { path = "../rpc" }
 theme = { path = "../theme" }
 settings = { path = "../settings" }
 workspace = { path = "../workspace" }

@@ -33,6 +33,7 @@ use std::{
 use util::http::FakeHttpClient;
 use workspace::Workspace;
 
+mod channel_tests;
 mod integration_tests;
 mod randomized_integration_tests;
 
@@ -205,6 +206,7 @@ impl TestServer {
             workspace::init(app_state.clone(), cx);
             audio::init((), cx);
             call::init(client.clone(), user_store.clone(), cx);
+            channels::init(client.clone(), cx)
         });
 
         client

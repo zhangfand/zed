@@ -2,7 +2,8 @@ mod channels_panel;
 mod channels_panel_settings;
 
 pub use channels_panel::*;
-use gpui::{AppContext, Entity};
+use gpui::{AppContext, Entity, ModelContext, ModelHandle, Task};
+use rpc::proto;
 
 use std::sync::Arc;
 
@@ -15,7 +16,7 @@ pub fn init(client: Arc<Client>, cx: &mut AppContext) {
 }
 
 #[derive(Debug, Clone)]
-struct Channel {
+pub struct Channel {
     id: u64,
     name: String,
     sub_channels: Vec<Channel>,
@@ -41,7 +42,9 @@ impl Channel {
     }
 }
 
-struct Channels {
+pub struct Channels {
+    roots: Vec<u64>,
+    client: Arc<Client>,
     channels: Vec<Channel>,
 }
 
@@ -51,53 +54,76 @@ impl Channels {
     }
 }
 
-enum ChannelEvents {}
+pub enum ChannelEvents {}
 
 impl Entity for Channels {
     type Event = ChannelEvents;
 }
 
 impl Channels {
-    fn new(_client: Arc<Client>, _cx: &mut AppContext) -> Self {
+    pub fn global(cx: &AppContext) -> ModelHandle<Self> {
+        cx.global::<ModelHandle<Self>>().clone()
+    }
+
+    fn new(client: Arc<Client>, _cx: &mut AppContext) -> Self {
         //TODO: Subscribe to channel updates from the server
         Channels {
-            channels: vec![Channel::new(
-                0,
-                "Zed Industries",
-                vec![
-                    Channel::new(1, "#general", Vec::new()),
-                    Channel::new(2, "#admiral", Vec::new()),
-                    Channel::new(3, "#livestreaming", vec![]),
-                    Channel::new(4, "#crdb", Vec::new()),
-                    Channel::new(5, "#crdb-1", Vec::new()),
-                    Channel::new(6, "#crdb-2", Vec::new()),
-                    Channel::new(7, "#crdb-3", vec![]),
-                    Channel::new(8, "#crdb-4", Vec::new()),
-                    Channel::new(9, "#crdb-1", Vec::new()),
-                    Channel::new(10, "#crdb-1", Vec::new()),
-                    Channel::new(11, "#crdb-1", Vec::new()),
-                    Channel::new(12, "#crdb-1", vec![]),
-                    Channel::new(13, "#crdb-1", Vec::new()),
-                    Channel::new(14, "#crdb-1", Vec::new()),
-                    Channel::new(15, "#crdb-1", Vec::new()),
-                    Channel::new(16, "#crdb-1", Vec::new()),
-                    Channel::new(17, "#crdb", vec![]),
-                ],
-            ),
-            Channel::new(
-                18,
-                "CRDB Consulting",
-                vec![
-                    Channel::new(19, "#crdb 😭", Vec::new()),
-                    Channel::new(20, "#crdb 😌", Vec::new()),
-                    Channel::new(21, "#crdb 🦀", vec![]),
-                    Channel::new(22, "#crdb 😤", Vec::new()),
-                    Channel::new(23, "#crdb 😤", Vec::new()),
-                    Channel::new(24, "#crdb 😤", Vec::new()),
-                    Channel::new(25, "#crdb 😤", vec![]),
-                    Channel::new(26, "#crdb 😤", Vec::new()),
-                ],
-            )],
+            roots: Default::default(),
+            channels: Default::default(),
+            client,
         }
+    }
+
+    pub fn add_root_channel(&mut self, cx: &mut ModelContext<'_, Self>, channel_id: u64) -> Task<anyhow::Result<Channel>> {
+        self.roots.push(channel_id);
+        self.get_channel(channel_id, cx)
+    }
+
+    /*
+     *
+     */
+
+    pub fn get_channel(
+        &mut self,
+        cx: &mut ModelContext<'_, Self>,
+        id: u64,
+    ) -> Task<anyhow::Result<Vec<Channel>>> {
+        let client = self.client.clone();
+        cx.spawn(|_this, _cx| async move {
+            client
+                .request(proto::GetChannels {
+                    channel_roots: vec![id],
+                })
+                .await
+                .map(|response| {
+                    response
+                        .channels
+                        .into_iter()
+                        .map(|channel| Channel::new(channel.id, channel.name, vec![]))
+                        .collect()
+                })
+        })
+    }
+
+    pub fn get_channels(
+        &mut self,
+        cx: &mut ModelContext<'_, Self>,
+    ) -> Task<anyhow::Result<Vec<Channel>>> {
+        let client = self.client.clone();
+        let roots = self.roots.clone();
+        cx.spawn(|_this, _cx| async move {
+            client
+                .request(proto::GetChannels {
+                    channel_roots: roots,
+                })
+                .await
+                .map(|response| {
+                    response
+                        .channels
+                        .into_iter()
+                        .map(|channel| Channel::new(channel.id, channel.name, vec![]))
+                        .collect()
+                })
+        })
     }
 }
