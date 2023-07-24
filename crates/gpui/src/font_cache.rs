@@ -13,6 +13,7 @@ use std::{
     ops::{Deref, DerefMut},
     sync::Arc,
 };
+use util::ResultExt;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, JsonSchema)]
 pub struct FamilyId(usize);
@@ -76,7 +77,7 @@ impl FontCache {
 
             let mut state = RwLockUpgradableReadGuard::upgrade(state);
 
-            if let Ok(font_ids) = state.font_system.load_family(name, features) {
+            if let Some(font_ids) = state.font_system.load_family(name, features).log_err() {
                 if font_ids.is_empty() {
                     continue;
                 }

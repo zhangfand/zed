@@ -11,7 +11,7 @@ use crate::{
     text_layout::{Glyph, LineLayout, Run, RunStyle},
 };
 use cocoa::appkit::{CGFloat, CGPoint};
-use collections::HashMap;
+use collections::{BTreeSet, HashMap};
 use core_foundation::{
     array::CFIndex,
     attributed_string::{CFAttributedStringRef, CFMutableAttributedString},
@@ -24,20 +24,19 @@ use core_graphics::{
     context::CGContext,
 };
 use core_text::{font::CTFont, line::CTLine, string_attributes::kCTFontAttributeName};
+use cosmic_text::FontSystem as FontLoader;
 use font_kit::{
     handle::Handle, hinting::HintingOptions, source::SystemSource, sources::mem::MemSource,
 };
 use parking_lot::RwLock;
 use std::{cell::RefCell, char, cmp, convert::TryFrom, ffi::c_void, sync::Arc};
-
 #[allow(non_upper_case_globals)]
 const kCGImageAlphaOnly: u32 = 7;
 
 pub struct FontSystem(RwLock<FontSystemState>);
 
 struct FontSystemState {
-    memory_source: MemSource,
-    system_source: SystemSource,
+    loader: FontLoader,
     fonts: Vec<font_kit::font::Font>,
     font_ids_by_postscript_name: HashMap<String, FontId>,
     postscript_names_by_font_id: HashMap<FontId, String>,
@@ -46,8 +45,7 @@ struct FontSystemState {
 impl FontSystem {
     pub fn new() -> Self {
         Self(RwLock::new(FontSystemState {
-            memory_source: MemSource::empty(),
-            system_source: SystemSource::new(),
+            loader: FontLoader::new(),
             fonts: Vec::new(),
             font_ids_by_postscript_name: Default::default(),
             postscript_names_by_font_id: Default::default(),
@@ -67,11 +65,16 @@ impl platform::FontSystem for FontSystem {
     }
 
     fn all_families(&self) -> Vec<String> {
-        self.0
-            .read()
-            .system_source
-            .all_families()
-            .expect("core text should never return an error")
+        Vec::from_iter(
+            self.0
+                .read()
+                .loader
+                .db()
+                .faces()
+                .flat_map(|f| f.families.iter().map(|(family, _)| family))
+                .cloned()
+                .collect::<BTreeSet<_>>(),
+        )
     }
 
     fn load_family(&self, name: &str, features: &Features) -> anyhow::Result<Vec<FontId>> {
@@ -128,11 +131,13 @@ impl platform::FontSystem for FontSystem {
 
 impl FontSystemState {
     fn add_fonts(&mut self, fonts: &[Arc<Vec<u8>>]) -> anyhow::Result<()> {
-        self.memory_source.add_fonts(
-            fonts
-                .iter()
-                .map(|bytes| Handle::from_memory(bytes.clone(), 0)),
-        )?;
+        for font in fonts {
+            let v: Vec<_> = font.to_vec();
+
+            self.loader
+                .db_mut()
+                .load_font_source(cosmic_text::fontdb::Source::Binary(Arc::new(v)));
+        }
         Ok(())
     }
 
@@ -140,11 +145,18 @@ impl FontSystemState {
         let mut font_ids = Vec::new();
 
         let family = self
-            .memory_source
-            .select_family_by_name(name)
-            .or_else(|_| self.system_source.select_family_by_name(name))?;
-        for font in family.fonts() {
-            let mut font = font.load()?;
+            .loader
+            .db()
+            .faces()
+            .filter(|face| face.families.iter().any(|(family, _)| family == name))
+            .cloned()
+            .collect::<Vec<_>>();
+        for font in family {
+            let index = dbg!(font.index);
+            let font = self.loader.get_font(font.id).unwrap();
+            //let mut font = font.data().to_owned();
+            let mut font =
+                font_kit::font::Font::from_bytes(Arc::new(font.data().to_owned()), index)?;
             open_type::apply_features(&mut font, features);
             let font_id = FontId(self.fonts.len());
             font_ids.push(font_id);
