@@ -1,0 +1,9 @@
+package project
+
+interface lsp-adapter {
+    name: func(callback: func(name: string))
+}
+
+world project {
+    use lsp-adapter
+}
