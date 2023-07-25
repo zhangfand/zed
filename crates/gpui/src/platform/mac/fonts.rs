@@ -152,7 +152,7 @@ impl FontSystemState {
             .cloned()
             .collect::<Vec<_>>();
         for font in family {
-            let index = dbg!(font.index);
+            let index = font.index;
             let font = self.loader.get_font(font.id).unwrap();
             //let mut font = font.data().to_owned();
             let mut font =
