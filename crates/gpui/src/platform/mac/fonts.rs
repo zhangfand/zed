@@ -24,7 +24,7 @@ use core_graphics::{
     context::CGContext,
 };
 use core_text::{font::CTFont, line::CTLine, string_attributes::kCTFontAttributeName};
-use cosmic_text::FontSystem as FontLoader;
+use cosmic_text::{fontdb::FaceInfo, FontSystem as FontLoader};
 use font_kit::{
     handle::Handle, hinting::HintingOptions, source::SystemSource, sources::mem::MemSource,
 };
@@ -35,9 +35,103 @@ const kCGImageAlphaOnly: u32 = 7;
 
 pub struct FontSystem(RwLock<FontSystemState>);
 
+enum LazyFont {
+    Present {
+        font: font_kit::font::Font,
+        props: Properties,
+    },
+    Missing {
+        index: u32,
+        features: Features,
+        props: Properties,
+        cosmic_font: Arc<cosmic_text::Font>,
+    },
+}
+
+impl LazyFont {
+    fn missing(
+        face_info: &FaceInfo,
+        features: &Features,
+        cosmic_font: Arc<cosmic_text::Font>,
+    ) -> Self {
+        let props = Self::convert_props(face_info);
+        Self::Missing {
+            index: face_info.index,
+            features: features.clone(),
+            props,
+            cosmic_font,
+        }
+    }
+    fn present(font: font_kit::font::Font) -> Self {
+        let props = font.properties();
+        Self::Present { font, props }
+    }
+    fn convert_props(props: &FaceInfo) -> Properties {
+        let style = match props.style {
+            cosmic_text::Style::Normal => font_kit::properties::Style::Normal,
+            cosmic_text::Style::Italic => font_kit::properties::Style::Italic,
+            cosmic_text::Style::Oblique => font_kit::properties::Style::Oblique,
+        };
+        let weight = font_kit::properties::Weight(props.weight.0 as f32);
+        use font_kit::properties::Stretch;
+        let stretch = match props.stretch {
+            cosmic_text::Stretch::UltraCondensed => Stretch::ULTRA_CONDENSED,
+            cosmic_text::Stretch::ExtraCondensed => Stretch::EXTRA_CONDENSED,
+            cosmic_text::Stretch::Condensed => Stretch::CONDENSED,
+            cosmic_text::Stretch::SemiCondensed => Stretch::SEMI_CONDENSED,
+            cosmic_text::Stretch::Normal => Stretch::NORMAL,
+            cosmic_text::Stretch::SemiExpanded => Stretch::SEMI_EXPANDED,
+            cosmic_text::Stretch::Expanded => Stretch::EXPANDED,
+            cosmic_text::Stretch::ExtraExpanded => Stretch::ULTRA_EXPANDED,
+            cosmic_text::Stretch::UltraExpanded => Stretch::ULTRA_EXPANDED,
+        };
+
+        Properties {
+            style,
+            weight,
+            stretch,
+        }
+    }
+    fn get(&mut self) -> &mut font_kit::font::Font {
+        self.try_get().unwrap()
+    }
+    fn try_get(&mut self) -> anyhow::Result<&mut font_kit::font::Font> {
+        if let Self::Present { font, .. } = self {
+            dbg!("so yeah");
+            return Ok(font);
+        }
+
+        let Self::Missing {
+            index,
+            cosmic_font,
+            features,
+            props,
+        } = self else { unreachable!();};
+        let mut font =
+            font_kit::font::Font::from_bytes(Arc::new(cosmic_font.data().to_owned()), *index)?;
+        open_type::apply_features(&mut font, &features);
+        *self = Self::Present {
+            font,
+            props: *props,
+        };
+        if let Self::Present { font, .. } = self {
+            dbg!(font.postscript_name());
+            Ok(font)
+        } else {
+            unreachable!();
+        }
+    }
+    fn properties(&self) -> &Properties {
+        if let Self::Present { props, .. } | Self::Missing { props, .. } = self {
+            props
+        } else {
+            unreachable!();
+        }
+    }
+}
 struct FontSystemState {
     loader: FontLoader,
-    fonts: Vec<font_kit::font::Font>,
+    fonts: Vec<LazyFont>,
     font_ids_by_postscript_name: HashMap<String, FontId>,
     postscript_names_by_font_id: HashMap<FontId, String>,
 }
@@ -86,19 +180,19 @@ impl platform::FontSystem for FontSystem {
     }
 
     fn font_metrics(&self, font_id: FontId) -> Metrics {
-        self.0.read().font_metrics(font_id)
+        self.0.write().font_metrics(font_id)
     }
 
     fn typographic_bounds(&self, font_id: FontId, glyph_id: GlyphId) -> anyhow::Result<RectF> {
-        self.0.read().typographic_bounds(font_id, glyph_id)
+        self.0.write().typographic_bounds(font_id, glyph_id)
     }
 
     fn advance(&self, font_id: FontId, glyph_id: GlyphId) -> anyhow::Result<Vector2F> {
-        self.0.read().advance(font_id, glyph_id)
+        self.0.write().advance(font_id, glyph_id)
     }
 
     fn glyph_for_char(&self, font_id: FontId, ch: char) -> Option<GlyphId> {
-        self.0.read().glyph_for_char(font_id, ch)
+        self.0.write().glyph_for_char(font_id, ch)
     }
 
     fn rasterize_glyph(
@@ -110,7 +204,7 @@ impl platform::FontSystem for FontSystem {
         scale_factor: f32,
         options: RasterizationOptions,
     ) -> Option<(RectI, Vec<u8>)> {
-        self.0.read().rasterize_glyph(
+        self.0.write().rasterize_glyph(
             font_id,
             font_size,
             glyph_id,
@@ -125,7 +219,7 @@ impl platform::FontSystem for FontSystem {
     }
 
     fn wrap_line(&self, text: &str, font_id: FontId, font_size: f32, width: f32) -> Vec<usize> {
-        self.0.read().wrap_line(text, font_id, font_size, width)
+        self.0.write().wrap_line(text, font_id, font_size, width)
     }
 }
 
@@ -151,21 +245,20 @@ impl FontSystemState {
             .filter(|face| face.families.iter().any(|(family, _)| family == name))
             .cloned()
             .collect::<Vec<_>>();
-        for font in family {
-            let index = font.index;
-            let font = self.loader.get_font(font.id).unwrap();
+        for face_info in family {
+            let index = face_info.index;
+            let font = self.loader.get_font(face_info.id).unwrap();
             //let mut font = font.data().to_owned();
-            let mut font =
-                font_kit::font::Font::from_bytes(Arc::new(font.data().to_owned()), index)?;
-            open_type::apply_features(&mut font, features);
+
             let font_id = FontId(self.fonts.len());
             font_ids.push(font_id);
-            let postscript_name = font.postscript_name().unwrap();
+            let postscript_name = face_info.post_script_name.clone();
             self.font_ids_by_postscript_name
                 .insert(postscript_name.clone(), font_id);
             self.postscript_names_by_font_id
                 .insert(font_id, postscript_name);
-            self.fonts.push(font);
+            self.fonts
+                .push(LazyFont::missing(&face_info, features, font));
         }
         Ok(font_ids)
     }
@@ -174,25 +267,26 @@ impl FontSystemState {
         let candidates = font_ids
             .iter()
             .map(|font_id| self.fonts[font_id.0].properties())
+            .cloned()
             .collect::<Vec<_>>();
         let idx = font_kit::matching::find_best_match(&candidates, properties)?;
         Ok(font_ids[idx])
     }
 
-    fn font_metrics(&self, font_id: FontId) -> Metrics {
-        self.fonts[font_id.0].metrics()
+    fn font_metrics(&mut self, font_id: FontId) -> Metrics {
+        self.fonts[font_id.0].get().metrics()
     }
 
-    fn typographic_bounds(&self, font_id: FontId, glyph_id: GlyphId) -> anyhow::Result<RectF> {
-        Ok(self.fonts[font_id.0].typographic_bounds(glyph_id)?)
+    fn typographic_bounds(&mut self, font_id: FontId, glyph_id: GlyphId) -> anyhow::Result<RectF> {
+        Ok(self.fonts[font_id.0].get().typographic_bounds(glyph_id)?)
     }
 
-    fn advance(&self, font_id: FontId, glyph_id: GlyphId) -> anyhow::Result<Vector2F> {
-        Ok(self.fonts[font_id.0].advance(glyph_id)?)
+    fn advance(&mut self, font_id: FontId, glyph_id: GlyphId) -> anyhow::Result<Vector2F> {
+        Ok(self.fonts[font_id.0].get().advance(glyph_id)?)
     }
 
-    fn glyph_for_char(&self, font_id: FontId, ch: char) -> Option<GlyphId> {
-        self.fonts[font_id.0].glyph_for_char(ch)
+    fn glyph_for_char(&mut self, font_id: FontId, ch: char) -> Option<GlyphId> {
+        self.fonts[font_id.0].get().glyph_for_char(ch)
     }
 
     fn id_for_native_font(&mut self, requested_font: CTFont) -> FontId {
@@ -205,10 +299,9 @@ impl FontSystemState {
                 .insert(postscript_name.clone(), font_id);
             self.postscript_names_by_font_id
                 .insert(font_id, postscript_name);
-            self.fonts
-                .push(font_kit::font::Font::from_core_graphics_font(
-                    requested_font.copy_to_CGFont(),
-                ));
+            self.fonts.push(LazyFont::present(
+                font_kit::font::Font::from_core_graphics_font(requested_font.copy_to_CGFont()),
+            ));
             font_id
         }
     }
@@ -222,7 +315,7 @@ impl FontSystemState {
     }
 
     fn rasterize_glyph(
-        &self,
+        &mut self,
         font_id: FontId,
         font_size: f32,
         glyph_id: GlyphId,
@@ -230,7 +323,7 @@ impl FontSystemState {
         scale_factor: f32,
         options: RasterizationOptions,
     ) -> Option<(RectI, Vec<u8>)> {
-        let font = &self.fonts[font_id.0];
+        let font = &self.fonts[font_id.0].get();
         let scale = Transform2F::from_scale(scale_factor);
         let glyph_bounds = font
             .raster_bounds(
@@ -367,12 +460,15 @@ impl FontSystemState {
 
                 let cf_range =
                     CFRange::init(utf16_start as isize, (utf16_end - utf16_start) as isize);
-                let font = &self.fonts[font_id.0];
+                let font = &mut self.fonts[font_id.0];
                 unsafe {
                     string.set_attribute(
                         cf_range,
                         kCTFontAttributeName,
-                        &font.native_font().clone_with_font_size(font_size as f64),
+                        &font
+                            .get()
+                            .native_font()
+                            .clone_with_font_size(font_size as f64),
                     );
                 }
 
@@ -428,11 +524,11 @@ impl FontSystemState {
         }
     }
 
-    fn wrap_line(&self, text: &str, font_id: FontId, font_size: f32, width: f32) -> Vec<usize> {
+    fn wrap_line(&mut self, text: &str, font_id: FontId, font_size: f32, width: f32) -> Vec<usize> {
         let mut string = CFMutableAttributedString::new();
         string.replace_str(&CFString::new(text), CFRange::init(0, 0));
         let cf_range = CFRange::init(0, text.encode_utf16().count() as isize);
-        let font = &self.fonts[font_id.0];
+        let font = &mut self.fonts[font_id.0].get();
         unsafe {
             string.set_attribute(
                 cf_range,
