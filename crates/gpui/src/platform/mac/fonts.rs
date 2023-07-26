@@ -35,7 +35,9 @@ const kCGImageAlphaOnly: u32 = 7;
 
 pub struct FontSystem(RwLock<FontSystemState>);
 
-enum LazyFont {
+struct LazyFont(RwLock<LazyFontInner>);
+
+enum LazyFontInner {
     Present {
         font: font_kit::font::Font,
         props: Properties,
@@ -55,16 +57,16 @@ impl LazyFont {
         cosmic_font: Arc<cosmic_text::Font>,
     ) -> Self {
         let props = Self::convert_props(face_info);
-        Self::Missing {
+        Self(RwLock::new(LazyFontInner::Missing {
             index: face_info.index,
             features: features.clone(),
             props,
             cosmic_font,
-        }
+        }))
     }
     fn present(font: font_kit::font::Font) -> Self {
         let props = font.properties();
-        Self::Present { font, props }
+        Self(RwLock::new(LazyFontInner::Present { font, props }))
     }
     fn convert_props(props: &FaceInfo) -> Properties {
         let style = match props.style {
@@ -92,37 +94,35 @@ impl LazyFont {
             stretch,
         }
     }
-    fn get(&mut self) -> &mut font_kit::font::Font {
+    fn get(&self) -> font_kit::font::Font {
         self.try_get().unwrap()
     }
-    fn try_get(&mut self) -> anyhow::Result<&mut font_kit::font::Font> {
-        if let Self::Present { font, .. } = self {
-            dbg!("so yeah");
-            return Ok(font);
+    fn try_get(&self) -> anyhow::Result<font_kit::font::Font> {
+        let mut inner = self.0.write();
+        if let LazyFontInner::Present { font, .. } = &mut *inner {
+            return Ok(font.clone());
         }
 
-        let Self::Missing {
+        let LazyFontInner::Missing {
             index,
             cosmic_font,
             features,
             props,
-        } = self else { unreachable!();};
+        } = &*inner else { unreachable!();};
         let mut font =
             font_kit::font::Font::from_bytes(Arc::new(cosmic_font.data().to_owned()), *index)?;
         open_type::apply_features(&mut font, &features);
-        *self = Self::Present {
+        let ret = font.clone();
+        *inner = LazyFontInner::Present {
             font,
-            props: *props,
+            props: props.clone(),
         };
-        if let Self::Present { font, .. } = self {
-            dbg!(font.postscript_name());
-            Ok(font)
-        } else {
-            unreachable!();
-        }
+        Ok(ret)
     }
-    fn properties(&self) -> &Properties {
-        if let Self::Present { props, .. } | Self::Missing { props, .. } = self {
+    fn properties(&self) -> Properties {
+        if let LazyFontInner::Present { props, .. } | LazyFontInner::Missing { props, .. } =
+            *self.0.read()
+        {
             props
         } else {
             unreachable!();
@@ -180,19 +180,19 @@ impl platform::FontSystem for FontSystem {
     }
 
     fn font_metrics(&self, font_id: FontId) -> Metrics {
-        self.0.write().font_metrics(font_id)
+        self.0.read().font_metrics(font_id)
     }
 
     fn typographic_bounds(&self, font_id: FontId, glyph_id: GlyphId) -> anyhow::Result<RectF> {
-        self.0.write().typographic_bounds(font_id, glyph_id)
+        self.0.read().typographic_bounds(font_id, glyph_id)
     }
 
     fn advance(&self, font_id: FontId, glyph_id: GlyphId) -> anyhow::Result<Vector2F> {
-        self.0.write().advance(font_id, glyph_id)
+        self.0.read().advance(font_id, glyph_id)
     }
 
     fn glyph_for_char(&self, font_id: FontId, ch: char) -> Option<GlyphId> {
-        self.0.write().glyph_for_char(font_id, ch)
+        self.0.read().glyph_for_char(font_id, ch)
     }
 
     fn rasterize_glyph(
@@ -204,7 +204,7 @@ impl platform::FontSystem for FontSystem {
         scale_factor: f32,
         options: RasterizationOptions,
     ) -> Option<(RectI, Vec<u8>)> {
-        self.0.write().rasterize_glyph(
+        self.0.read().rasterize_glyph(
             font_id,
             font_size,
             glyph_id,
@@ -219,7 +219,7 @@ impl platform::FontSystem for FontSystem {
     }
 
     fn wrap_line(&self, text: &str, font_id: FontId, font_size: f32, width: f32) -> Vec<usize> {
-        self.0.write().wrap_line(text, font_id, font_size, width)
+        self.0.read().wrap_line(text, font_id, font_size, width)
     }
 }
 
@@ -267,25 +267,24 @@ impl FontSystemState {
         let candidates = font_ids
             .iter()
             .map(|font_id| self.fonts[font_id.0].properties())
-            .cloned()
             .collect::<Vec<_>>();
         let idx = font_kit::matching::find_best_match(&candidates, properties)?;
         Ok(font_ids[idx])
     }
 
-    fn font_metrics(&mut self, font_id: FontId) -> Metrics {
+    fn font_metrics(&self, font_id: FontId) -> Metrics {
         self.fonts[font_id.0].get().metrics()
     }
 
-    fn typographic_bounds(&mut self, font_id: FontId, glyph_id: GlyphId) -> anyhow::Result<RectF> {
+    fn typographic_bounds(&self, font_id: FontId, glyph_id: GlyphId) -> anyhow::Result<RectF> {
         Ok(self.fonts[font_id.0].get().typographic_bounds(glyph_id)?)
     }
 
-    fn advance(&mut self, font_id: FontId, glyph_id: GlyphId) -> anyhow::Result<Vector2F> {
+    fn advance(&self, font_id: FontId, glyph_id: GlyphId) -> anyhow::Result<Vector2F> {
         Ok(self.fonts[font_id.0].get().advance(glyph_id)?)
     }
 
-    fn glyph_for_char(&mut self, font_id: FontId, ch: char) -> Option<GlyphId> {
+    fn glyph_for_char(&self, font_id: FontId, ch: char) -> Option<GlyphId> {
         self.fonts[font_id.0].get().glyph_for_char(ch)
     }
 
@@ -315,7 +314,7 @@ impl FontSystemState {
     }
 
     fn rasterize_glyph(
-        &mut self,
+        &self,
         font_id: FontId,
         font_size: f32,
         glyph_id: GlyphId,
@@ -524,7 +523,7 @@ impl FontSystemState {
         }
     }
 
-    fn wrap_line(&mut self, text: &str, font_id: FontId, font_size: f32, width: f32) -> Vec<usize> {
+    fn wrap_line(&self, text: &str, font_id: FontId, font_size: f32, width: f32) -> Vec<usize> {
         let mut string = CFMutableAttributedString::new();
         string.replace_str(&CFString::new(text), CFRange::init(0, 0));
         let cf_range = CFRange::init(0, text.encode_utf16().count() as isize);
