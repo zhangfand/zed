@@ -28,7 +28,7 @@ use cosmic_text::{fontdb::FaceInfo, FontSystem as FontLoader};
 use font_kit::{
     handle::Handle, hinting::HintingOptions, source::SystemSource, sources::mem::MemSource,
 };
-use parking_lot::RwLock;
+use parking_lot::{RwLock, RwLockUpgradableReadGuard};
 use std::{cell::RefCell, char, cmp, convert::TryFrom, ffi::c_void, sync::Arc};
 #[allow(non_upper_case_globals)]
 const kCGImageAlphaOnly: u32 = 7;
@@ -98,11 +98,11 @@ impl LazyFont {
         self.try_get().unwrap()
     }
     fn try_get(&self) -> anyhow::Result<font_kit::font::Font> {
-        let mut inner = self.0.write();
-        if let LazyFontInner::Present { font, .. } = &mut *inner {
+        let inner = self.0.upgradable_read();
+        if let LazyFontInner::Present { font, .. } = &*inner {
             return Ok(font.clone());
         }
-
+        let mut inner = RwLockUpgradableReadGuard::upgrade(inner);
         let LazyFontInner::Missing {
             index,
             cosmic_font,
@@ -237,7 +237,6 @@ impl FontSystemState {
 
     fn load_family(&mut self, name: &str, features: &Features) -> anyhow::Result<Vec<FontId>> {
         let mut font_ids = Vec::new();
-
         let family = self
             .loader
             .db()
