@@ -307,6 +307,7 @@ impl ProjectSearch {
         debug_assert!(index < self.match_ranges.len());
 
         self.excerpts.update(cx, |multibuffer, cx| {
+            multibuffer.start_transaction(cx);
             multibuffer.edit(
                 [(
                     self.match_ranges[index].clone(),
@@ -315,6 +316,7 @@ impl ProjectSearch {
                 None,
                 cx,
             );
+            multibuffer.end_transaction(cx);
         });
 
         self.out_of_date_ranges
