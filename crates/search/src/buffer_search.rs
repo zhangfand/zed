@@ -278,7 +278,6 @@ impl ToolbarItemView for BufferSearchBar {
     }
 }
 
-// TODO: Add support for replace
 impl BufferSearchBar {
     pub fn new(cx: &mut ViewContext<Self>) -> Self {
         let query_editor = cx.add_view(|cx| {
@@ -680,9 +679,13 @@ impl BufferSearchBar {
         }
     }
 
-    fn replace(&mut self, _: &Replace, _: &mut ViewContext<Self>) {}
+    fn replace(&mut self, _: &Replace, _: &mut ViewContext<Self>) {
+        unimplemented!();
+    }
 
-    fn replace_all(&mut self, _: &ReplaceAll, _: &mut ViewContext<Self>) {}
+    fn replace_all(&mut self, _: &ReplaceAll, _: &mut ViewContext<Self>) {
+        unimplemented!();
+    }
 
     fn toggle_replace(&mut self, _: &ToggleReplace, cx: &mut ViewContext<Self>) {
         if self.show_replace && self.replace_editor.is_focused(cx) {

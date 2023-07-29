@@ -3557,7 +3557,6 @@ async fn test_rename(cx: &mut gpui::TestAppContext) {
     );
 }
 
-// TODO: Add support for replace
 #[gpui::test]
 async fn test_search(cx: &mut gpui::TestAppContext) {
     init_test(cx);
