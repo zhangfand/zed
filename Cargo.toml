@@ -70,7 +70,8 @@ members = [
     "crates/welcome",
     "crates/xtask",
     "crates/zed",
-    "crates/zed-actions"
+    "crates/zed-actions",
+    "plugins/json_language"
 ]
 default-members = ["crates/zed"]
 resolver = "2"

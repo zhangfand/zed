@@ -1,0 +1,5 @@
+package zed:lsp-adapter
+
+world host {
+    export download: func()
+}
