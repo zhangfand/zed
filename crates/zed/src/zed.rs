@@ -2365,7 +2365,7 @@ mod tests {
         let languages = Arc::new(languages);
         let http = FakeHttpClient::with_404_response();
         let node_runtime = NodeRuntime::instance(http);
-        languages::init(languages.clone(), node_runtime);
+        languages::init(cx.background().clone(), languages.clone(), node_runtime);
         for name in languages.language_names() {
             languages.language_for_name(&name);
         }

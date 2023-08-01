@@ -139,7 +139,11 @@ fn main() {
         let languages = Arc::new(languages);
         let node_runtime = NodeRuntime::instance(http.clone());
 
-        languages::init(languages.clone(), node_runtime.clone());
+        languages::init(
+            cx.background().clone(),
+            languages.clone(),
+            node_runtime.clone(),
+        );
         let user_store = cx.add_model(|cx| UserStore::new(client.clone(), http.clone(), cx));
 
         cx.set_global(client.clone());

@@ -1,5 +1,14 @@
+use std::path::PathBuf;
+
 pub use bincode;
 pub use serde;
+use serde_derive::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LanguageServerBinary {
+    pub path: PathBuf,
+    pub arguments: Vec<String>,
+}
 
 /// This is the buffer that is used Wasm side.
 /// Note that it mirrors the functionality of
@@ -56,6 +65,6 @@ impl __Buffer {
 }
 
 pub mod prelude {
-    pub use super::{__Buffer, __alloc_buffer};
+    pub use super::{LanguageServerBinary, __Buffer, __alloc_buffer};
     pub use plugin_macros::{export, import};
 }

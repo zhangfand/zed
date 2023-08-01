@@ -9869,6 +9869,7 @@ dependencies = [
  "num_cpus",
  "outline",
  "parking_lot 0.11.2",
+ "plugin",
  "plugin_runtime",
  "postage",
  "project",

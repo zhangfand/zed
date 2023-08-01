@@ -4,7 +4,7 @@ use plugin::prelude::*;
 use serde::Deserialize;
 
 #[import]
-fn command(string: &str) -> Option<Vec<u8>>;
+fn command(working_dir: PathBuf, command: &str) -> Option<Vec<u8>>;
 
 const SERVER_PATH: &str = "node_modules/vscode-json-languageserver/bin/vscode-json-languageserver";
 
@@ -25,8 +25,8 @@ pub fn fetch_latest_server_version() -> Option<String> {
         versions: Vec<String>,
     }
 
-    let output =
-        command("npm info vscode-json-languageserver --json").expect("could not run command");
+    let output = command(".".into(), "npm info vscode-json-languageserver --json")
+        .expect("could not run command");
     let output = String::from_utf8(output).unwrap();
 
     let mut info: NpmInfo = serde_json::from_str(&output).ok()?;
@@ -34,17 +34,20 @@ pub fn fetch_latest_server_version() -> Option<String> {
 }
 
 #[export]
-pub fn fetch_server_binary(container_dir: PathBuf, version: String) -> Result<PathBuf, String> {
+pub fn fetch_server_binary(
+    container_dir: PathBuf,
+    version: String,
+) -> Result<LanguageServerBinary, String> {
     let version_dir = container_dir.join(version.as_str());
     fs::create_dir_all(&version_dir)
         .map_err(|_| "failed to create version directory".to_string())?;
     let binary_path = version_dir.join(SERVER_PATH);
 
     if fs::metadata(&binary_path).is_err() {
-        let output = command(&format!(
-            "npm install vscode-json-languageserver@{}",
-            version
-        ));
+        let output = command(
+            version_dir.clone(),
+            &format!("npm install vscode-json-languageserver@{}", version),
+        );
         let output = output.map(String::from_utf8);
         if output.is_none() {
             return Err("failed to install vscode-json-languageserver".to_string());
@@ -60,11 +63,14 @@ pub fn fetch_server_binary(container_dir: PathBuf, version: String) -> Result<Pa
         }
     }
 
-    Ok(binary_path)
+    Ok(LanguageServerBinary {
+        path: binary_path,
+        arguments: vec!["--stdio".to_owned()],
+    })
 }
 
 #[export]
-pub fn cached_server_binary(container_dir: PathBuf) -> Option<PathBuf> {
+pub fn cached_server_binary(container_dir: PathBuf) -> Option<LanguageServerBinary> {
     let mut last_version_dir = None;
     let entries = fs::read_dir(&container_dir).ok()?;
 
@@ -78,7 +84,10 @@ pub fn cached_server_binary(container_dir: PathBuf) -> Option<PathBuf> {
     let last_version_dir = last_version_dir?;
     let server_path = last_version_dir.join(SERVER_PATH);
     if server_path.exists() {
-        Some(server_path)
+        Some(LanguageServerBinary {
+            path: server_path,
+            arguments: vec!["--stdio".to_owned()],
+        })
     } else {
         println!("no binary found");
         None

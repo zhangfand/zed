@@ -500,8 +500,14 @@ impl Plugin {
 
         // read the buffer at this point into a byte array
         // deserialize the byte array into the provided serde type
-        let result = &plugin_memory.data(store.as_context())[buffer_start..buffer_end];
-        let result = bincode::deserialize(result)?;
+        let buffer = &plugin_memory.data(store.as_context())[buffer_start..buffer_end];
+        let a = bincode::deserialize(buffer);
+        if let Err(err) = &a {
+            dbg!(std::any::type_name::<R>());
+            dbg!(buffer);
+            panic!("{:?}", err);
+        }
+        let result = a?;
 
         Ok(result)
     }

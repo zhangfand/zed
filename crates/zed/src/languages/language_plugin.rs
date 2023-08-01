@@ -5,23 +5,27 @@ use futures::lock::Mutex;
 use gpui::executor::Background;
 use language::{LanguageServerName, LspAdapter, LspAdapterDelegate};
 use lsp::LanguageServerBinary;
+use plugin::LanguageServerBinary as PluginLanguageServerBinary;
 use plugin_runtime::{Plugin, PluginBinary, PluginBuilder, WasiFn};
 use std::{any::Any, path::PathBuf, sync::Arc};
 use util::ResultExt;
 
-#[allow(dead_code)]
 pub async fn new_json(executor: Arc<Background>) -> Result<PluginLspAdapter> {
     let plugin = PluginBuilder::new_default()?
-        .host_function_async("command", |command: String| async move {
-            let mut args = command.split(' ');
-            let command = args.next().unwrap();
-            smol::process::Command::new(command)
-                .args(args)
-                .output()
-                .await
-                .log_err()
-                .map(|output| output.stdout)
-        })?
+        .host_function_async(
+            "command",
+            |(working_dir, command): (PathBuf, String)| async move {
+                let mut args = command.split(' ');
+                let command = args.next().unwrap();
+                smol::process::Command::new(command)
+                    .args(args)
+                    .current_dir(working_dir)
+                    .output()
+                    .await
+                    .log_err()
+                    .map(|output| output.stdout)
+            },
+        )?
         .init(PluginBinary::Precompiled(include_bytes!(
             "../../../../plugins/bin/json_language.wasm.pre",
         )))
@@ -33,9 +37,9 @@ pub async fn new_json(executor: Arc<Background>) -> Result<PluginLspAdapter> {
 pub struct PluginLspAdapter {
     name: WasiFn<(), String>,
     fetch_latest_server_version: WasiFn<(), Option<String>>,
-    fetch_server_binary: WasiFn<(PathBuf, String), Result<LanguageServerBinary, String>>,
-    cached_server_binary: WasiFn<PathBuf, Option<LanguageServerBinary>>,
-    initialization_options: WasiFn<(), String>,
+    fetch_server_binary: WasiFn<(PathBuf, String), Result<PluginLanguageServerBinary, String>>,
+    cached_server_binary: WasiFn<PathBuf, Option<PluginLanguageServerBinary>>,
+    initialization_options: WasiFn<(), Option<String>>,
     language_ids: WasiFn<(), Vec<(String, String)>>,
     executor: Arc<Background>,
     runtime: Arc<Mutex<Plugin>>,
@@ -67,7 +71,7 @@ impl LspAdapter for PluginLspAdapter {
             .call(&self.name, ())
             .await
             .unwrap();
-        LanguageServerName(name.into())
+        dbg!(LanguageServerName(name.into()))
     }
 
     async fn fetch_latest_server_version(
@@ -76,7 +80,8 @@ impl LspAdapter for PluginLspAdapter {
     ) -> Result<Box<dyn 'static + Send + Any>> {
         let runtime = self.runtime.clone();
         let function = self.fetch_latest_server_version;
-        self.executor
+        let version = self
+            .executor
             .spawn(async move {
                 let mut runtime = runtime.lock().await;
                 let versions: Result<Option<String>> =
@@ -86,7 +91,8 @@ impl LspAdapter for PluginLspAdapter {
                     .ok_or_else(|| anyhow!("Could not fetch latest server version"))
                     .map(|v| Box::new(v) as Box<_>)
             })
-            .await
+            .await;
+        dbg!(version)
     }
 
     async fn fetch_server_binary(
@@ -98,16 +104,23 @@ impl LspAdapter for PluginLspAdapter {
         let version = *version.downcast::<String>().unwrap();
         let runtime = self.runtime.clone();
         let function = self.fetch_server_binary;
-        self.executor
+        let binary = self
+            .executor
             .spawn(async move {
                 let mut runtime = runtime.lock().await;
                 let handle = runtime.attach_path(&container_dir)?;
-                let result: Result<LanguageServerBinary, String> =
+                let result: Result<PluginLanguageServerBinary, String> =
                     runtime.call(&function, (container_dir, version)).await?;
                 runtime.remove_resource(handle)?;
-                result.map_err(|e| anyhow!("{}", e))
+                result
+                    .map(|binary| LanguageServerBinary {
+                        path: binary.path,
+                        arguments: binary.arguments.iter().map(|arg| arg.into()).collect(),
+                    })
+                    .map_err(|e| anyhow!("{}", e))
             })
-            .await
+            .await;
+        dbg!(binary)
     }
 
     async fn cached_server_binary(
@@ -122,10 +135,13 @@ impl LspAdapter for PluginLspAdapter {
             .spawn(async move {
                 let mut runtime = runtime.lock().await;
                 let handle = runtime.attach_path(&container_dir).ok()?;
-                let result: Option<LanguageServerBinary> =
+                let result: Option<PluginLanguageServerBinary> =
                     runtime.call(&function, container_dir).await.ok()?;
                 runtime.remove_resource(handle).ok()?;
-                result
+                result.map(|binary| LanguageServerBinary {
+                    path: binary.path,
+                    arguments: binary.arguments.iter().map(|arg| arg.into()).collect(),
+                })
             })
             .await
     }
@@ -139,13 +155,13 @@ impl LspAdapter for PluginLspAdapter {
     }
 
     async fn initialization_options(&self) -> Option<serde_json::Value> {
-        let string: String = self
+        let string = self
             .runtime
             .lock()
             .await
             .call(&self.initialization_options, ())
             .await
-            .log_err()?;
+            .log_err()??;
 
         serde_json::from_str(&string).ok()
     }

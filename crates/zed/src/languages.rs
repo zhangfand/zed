@@ -1,16 +1,16 @@
 use anyhow::Context;
+use gpui::executor::Background;
 pub use language::*;
 use node_runtime::NodeRuntime;
 use rust_embed::RustEmbed;
 use std::{borrow::Cow, str, sync::Arc};
-use util::asset_str;
+use util::{asset_str, TryFutureExt};
 
 mod c;
 mod elixir;
 mod go;
 mod html;
 mod json;
-#[cfg(feature = "plugin_runtime")]
 mod language_plugin;
 mod lua;
 mod php;
@@ -35,7 +35,11 @@ mod yaml;
 #[exclude = "*.rs"]
 struct LanguageDir;
 
-pub fn init(languages: Arc<LanguageRegistry>, node_runtime: Arc<NodeRuntime>) {
+pub fn init(
+    executor: Arc<Background>,
+    languages: Arc<LanguageRegistry>,
+    node_runtime: Arc<NodeRuntime>,
+) {
     let language = |name, grammar, adapters| {
         languages.register(name, load_config(name), grammar, adapters, load_queries)
     };
@@ -70,10 +74,9 @@ pub fn init(languages: Arc<LanguageRegistry>, node_runtime: Arc<NodeRuntime>) {
     language(
         "json",
         tree_sitter_json::language(),
-        vec![Arc::new(json::JsonLspAdapter::new(
-            node_runtime.clone(),
-            languages.clone(),
-        ))],
+        vec![Arc::new(
+            smol::block_on(language_plugin::new_json(executor)).unwrap(),
+        )],
     );
     language("markdown", tree_sitter_markdown::language(), vec![]);
     language(
