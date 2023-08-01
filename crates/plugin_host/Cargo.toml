@@ -1,0 +1,11 @@
+[package]
+name = "plugin_host"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+path = "src/plugin_host.rs"
+
+[dependencies]
+wasmtime.workspace = true

@@ -44,7 +44,7 @@ members = [
     "crates/picker",
     "crates/plugin",
     "crates/plugin_macros",
-    "crates/plugin_runtime",
+    "crates/plugin_host",
     "crates/project",
     "crates/project_panel",
     "crates/project_symbols",
@@ -70,7 +70,8 @@ members = [
     "crates/welcome",
     "crates/xtask",
     "crates/zed",
-    "crates/zed-actions"
+    "crates/zed-actions",
+    "plugins/json_language"
 ]
 default-members = ["crates/zed"]
 resolver = "2"
@@ -106,6 +107,7 @@ toml = { version = "0.5" }
 tree-sitter = "0.20"
 unindent = { version = "0.1.7" }
 pretty_assertions = "1.3.0"
+wasmtime = { version = "11.0.1", features = ["component-model"] }
 
 tree-sitter-bash = { git = "https://github.com/tree-sitter/tree-sitter-bash", rev = "1b0321ee85701d5036c334a6f04761cdc672e64c" }
 tree-sitter-c = "0.20.1"
