@@ -115,6 +115,7 @@ actions!(
     [
         ExpandSelectedEntry,
         CollapseSelectedEntry,
+        CollapseAllEntries,
         NewDirectory,
         NewFile,
         Copy,
@@ -125,6 +126,7 @@ actions!(
         Paste,
         Delete,
         Rename,
+        Open,
         ToggleFocus,
         NewSearchInDirectory,
     ]
@@ -139,6 +141,7 @@ pub fn init(assets: impl AssetSource, cx: &mut AppContext) {
     file_associations::init(assets, cx);
     cx.add_action(ProjectPanel::expand_selected_entry);
     cx.add_action(ProjectPanel::collapse_selected_entry);
+    cx.add_action(ProjectPanel::collapse_all_entries);
     cx.add_action(ProjectPanel::select_prev);
     cx.add_action(ProjectPanel::select_next);
     cx.add_action(ProjectPanel::new_file);
@@ -146,6 +149,7 @@ pub fn init(assets: impl AssetSource, cx: &mut AppContext) {
     cx.add_action(ProjectPanel::rename);
     cx.add_async_action(ProjectPanel::delete);
     cx.add_async_action(ProjectPanel::confirm);
+    cx.add_async_action(ProjectPanel::open_file);
     cx.add_action(ProjectPanel::cancel);
     cx.add_action(ProjectPanel::cut);
     cx.add_action(ProjectPanel::copy);
@@ -428,7 +432,7 @@ impl ProjectPanel {
             menu_entries.push(ContextMenuItem::action("Reveal in Finder", RevealInFinder));
             if entry.is_dir() {
                 menu_entries.push(ContextMenuItem::action(
-                    "Search inside",
+                    "Search Inside",
                     NewSearchInDirectory,
                 ));
             }
@@ -512,6 +516,12 @@ impl ProjectPanel {
         }
     }
 
+    pub fn collapse_all_entries(&mut self, _: &CollapseAllEntries, cx: &mut ViewContext<Self>) {
+        self.expanded_dir_ids.clear();
+        self.update_visible_entries(None, cx);
+        cx.notify();
+    }
+
     fn toggle_expanded(&mut self, entry_id: ProjectEntryId, cx: &mut ViewContext<Self>) {
         if let Some(worktree_id) = self.project.read(cx).worktree_id_for_entry(entry_id, cx) {
             if let Some(expanded_dir_ids) = self.expanded_dir_ids.get_mut(&worktree_id) {
@@ -560,15 +570,20 @@ impl ProjectPanel {
 
     fn confirm(&mut self, _: &Confirm, cx: &mut ViewContext<Self>) -> Option<Task<Result<()>>> {
         if let Some(task) = self.confirm_edit(cx) {
-            Some(task)
-        } else if let Some((_, entry)) = self.selected_entry(cx) {
+            return Some(task);
+        }
+
+        None
+    }
+
+    fn open_file(&mut self, _: &Open, cx: &mut ViewContext<Self>) -> Option<Task<Result<()>>> {
+        if let Some((_, entry)) = self.selected_entry(cx) {
             if entry.is_file() {
                 self.open_entry(entry.id, true, cx);
             }
-            None
-        } else {
-            None
         }
+
+        None
     }
 
     fn confirm_edit(&mut self, cx: &mut ViewContext<Self>) -> Option<Task<Result<()>>> {
@@ -2382,7 +2397,7 @@ mod tests {
 
         toggle_expand_dir(&panel, "src/test", cx);
         select_path(&panel, "src/test/first.rs", cx);
-        panel.update(cx, |panel, cx| panel.confirm(&Confirm, cx));
+        panel.update(cx, |panel, cx| panel.open_file(&Open, cx));
         cx.foreground().run_until_parked();
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
@@ -2410,7 +2425,7 @@ mod tests {
         ensure_no_open_items_and_panes(window_id, &workspace, cx);
 
         select_path(&panel, "src/test/second.rs", cx);
-        panel.update(cx, |panel, cx| panel.confirm(&Confirm, cx));
+        panel.update(cx, |panel, cx| panel.open_file(&Open, cx));
         cx.foreground().run_until_parked();
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
@@ -2671,6 +2686,63 @@ mod tests {
         );
     }
 
+    #[gpui::test]
+    async fn test_collapse_all_entries(cx: &mut gpui::TestAppContext) {
+        init_test_with_editor(cx);
+
+        let fs = FakeFs::new(cx.background());
+        fs.insert_tree(
+            "/project_root",
+            json!({
+                "dir_1": {
+                    "nested_dir": {
+                        "file_a.py": "# File contents",
+                        "file_b.py": "# File contents",
+                        "file_c.py": "# File contents",
+                    },
+                    "file_1.py": "# File contents",
+                    "file_2.py": "# File contents",
+                    "file_3.py": "# File contents",
+                },
+                "dir_2": {
+                    "file_1.py": "# File contents",
+                    "file_2.py": "# File contents",
+                    "file_3.py": "# File contents",
+                }
+            }),
+        )
+        .await;
+
+        let project = Project::test(fs.clone(), ["/project_root".as_ref()], cx).await;
+        let (_, workspace) = cx.add_window(|cx| Workspace::test_new(project.clone(), cx));
+        let panel = workspace.update(cx, |workspace, cx| ProjectPanel::new(workspace, cx));
+
+        panel.update(cx, |panel, cx| {
+            panel.collapse_all_entries(&CollapseAllEntries, cx)
+        });
+        cx.foreground().run_until_parked();
+        assert_eq!(
+            visible_entries_as_strings(&panel, 0..10, cx),
+            &["v project_root", "    > dir_1", "    > dir_2",]
+        );
+
+        // Open dir_1 and make sure nested_dir was collapsed when running collapse_all_entries
+        toggle_expand_dir(&panel, "project_root/dir_1", cx);
+        cx.foreground().run_until_parked();
+        assert_eq!(
+            visible_entries_as_strings(&panel, 0..10, cx),
+            &[
+                "v project_root",
+                "    v dir_1  <== selected",
+                "        > nested_dir",
+                "          file_1.py",
+                "          file_2.py",
+                "          file_3.py",
+                "    > dir_2",
+            ]
+        );
+    }
+
     fn toggle_expand_dir(
         panel: &ViewHandle<ProjectPanel>,
         path: impl AsRef<Path>,
@@ -2871,3 +2943,4 @@ mod tests {
         });
     }
 }
+// TODO - a workspace command?
