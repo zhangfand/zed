@@ -72,6 +72,8 @@ fn main() {
         return;
     }
 
+    plugin_host::function().unwrap();
+
     log::info!("========== starting zed ==========");
     let mut app = gpui::App::new(Assets).unwrap();
 

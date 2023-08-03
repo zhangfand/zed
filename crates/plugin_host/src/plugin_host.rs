@@ -17,13 +17,14 @@ bindgen!();
 //     }
 // }
 
-fn main() -> wasmtime::Result<()> {
+pub fn function() -> wasmtime::Result<()> {
     // Configure an `Engine` and compile the `Component` that is being run for
     // the application.
     let mut config = Config::new();
     config.wasm_component_model(true);
     let engine = Engine::new(&config)?;
-    let component = Component::new(&engine, "/Users/julia/Stuff/zed/target/wasm32-wasi/debug/json_language.wasm")?;
+    let bytes = include_bytes!("../../../plugins/bin/json_language.wasm");
+    let component = Component::new(&engine, bytes)?;
 
     // Instantiation of bindings always happens through a `Linker`.
     // Configuration of the linker is done through a generated `add_to_linker`
