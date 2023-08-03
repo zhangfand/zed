@@ -4,6 +4,7 @@ struct JsonLspAdapter;
 
 impl LspAdapter for JsonLspAdapter {
     fn run() -> i32 {
+        log("Hey there, logging from within the guest");
         42
     }
 }

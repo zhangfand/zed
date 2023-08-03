@@ -17,6 +17,15 @@ bindgen!();
 //     }
 // }
 
+struct Host;
+
+impl LspAdapterImports for Host {
+    fn log(&mut self, param: String) -> wasmtime::Result<()> {
+        println!("{}", param);
+        Ok(())
+    }
+}
+
 pub fn function() -> wasmtime::Result<()> {
     // Configure an `Engine` and compile the `Component` that is being run for
     // the application.
@@ -34,14 +43,15 @@ pub fn function() -> wasmtime::Result<()> {
     // `Store<T>` to `&mut U` where `U` implements the `HelloWorldImports`
     // trait. In this case the `T`, `MyState`, is stored directly in the
     // structure so no projection is necessary here.
-    let linker = Linker::new(&engine);
+    let mut linker = Linker::new(&engine);
+    LspAdapter::add_to_linker(&mut linker, |host: &mut Host| host)?;
 
     // As with the core wasm API of Wasmtime instantiation occurs within a
     // `Store`. The bindings structure contains an `instantiate` method which
     // takes the store, component, and linker. This returns the `bindings`
     // structure which is an instance of `HelloWorld` and supports typed access
     // to the exports of the component.
-    let mut store = Store::new(&engine, ());
+    let mut store = Store::new(&engine, Host);
     let (bindings, _) = LspAdapter::instantiate(&mut store, &component, &linker)?;
 
     // Here our `greet` function doesn't take any parameters for the component,

@@ -1,5 +1,7 @@
 package zed:lsp-adapter
 
 world lsp-adapter {
+    import log: func(param: string)
+
     export run: func() -> s32
 }
