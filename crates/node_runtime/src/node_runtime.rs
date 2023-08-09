@@ -44,7 +44,7 @@ impl NodeRuntime {
         Ok(installation_path.join("bin/node"))
     }
 
-    pub async fn run_npm_subcommand(
+    pub async fn npm_run_subcommand(
         &self,
         directory: Option<&Path>,
         subcommand: &str,
@@ -108,7 +108,7 @@ impl NodeRuntime {
 
     pub async fn npm_package_latest_version(&self, name: &str) -> Result<String> {
         let output = self
-            .run_npm_subcommand(
+            .npm_run_subcommand(
                 None,
                 "info",
                 &[
@@ -151,7 +151,7 @@ impl NodeRuntime {
             "5000",
         ]);
 
-        self.run_npm_subcommand(Some(directory), "install", &arguments)
+        self.npm_run_subcommand(Some(directory), "install", &arguments)
             .await?;
         Ok(())
     }

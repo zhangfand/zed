@@ -1,4 +1,5 @@
 use std::any::Any;
+use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::anyhow;
@@ -83,6 +84,59 @@ impl LspAdapterImports for Host {
         Ok(smol::block_on(async {
             let path = runtime.binary_path().await.map_err(|_| ())?;
             path.to_str().map(|str| str.to_owned()).ok_or(())
+        }))
+    }
+
+    fn zed_node_runtime_npm_package_latest_version(
+        &mut self,
+        id: NodeRuntimeId,
+        package: String,
+    ) -> wasmtime::Result<Result<String, ()>> {
+        let runtime = self.object_store.get::<Arc<NodeRuntime>>(id)?;
+        Ok(smol::block_on(async {
+            runtime
+                .npm_package_latest_version(&package)
+                .await
+                .map_err(|_| ())
+        }))
+    }
+
+    fn zed_node_runtime_npm_install_packages(
+        &mut self,
+        id: NodeRuntimeId,
+        dir: String,
+        packages: Vec<NpmPackage>,
+    ) -> wasmtime::Result<Result<(), ()>> {
+        let runtime = self.object_store.get::<Arc<NodeRuntime>>(id)?;
+        let packages = packages
+            .iter()
+            .map(|p| (p.name.as_str(), p.version.as_str()));
+
+        Ok(smol::block_on(async {
+            runtime
+                .npm_install_packages(Path::new(&dir), packages)
+                .await
+                .map_err(|_| ())
+        }))
+    }
+
+    fn zed_node_runtime_npm_run_subcommand(
+        &mut self,
+        id: NodeRuntimeId,
+        dir: Option<String>,
+        subcommand: String,
+        args: Vec<String>,
+    ) -> wasmtime::Result<Result<(), ()>> {
+        let runtime = self.object_store.get::<Arc<NodeRuntime>>(id)?;
+        let dir = dir.as_ref().map(|d| Path::new(d));
+        let args: Vec<_> = args.iter().map(|a| a.as_str()).collect();
+
+        Ok(smol::block_on(async {
+            runtime
+                .npm_run_subcommand(dir, &subcommand, &args)
+                .await
+                .map_err(|_| ())?;
+            Ok(())
         }))
     }
 }

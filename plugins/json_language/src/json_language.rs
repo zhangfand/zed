@@ -15,13 +15,30 @@ struct NodeRuntime {
 }
 
 impl NodeRuntime {
-    fn acquire() -> NodeRuntime {
+    pub fn acquire() -> NodeRuntime {
         let id = zed_node_runtime_acquire();
         NodeRuntime { id }
     }
 
-    fn binary_path(&self) -> Result<String, ()> {
+    pub fn binary_path(&self) -> Result<String, ()> {
         zed_node_runtime_binary_path(self.id)
+    }
+
+    pub fn npm_package_latest_version(&self, package: &str) -> Result<String, ()> {
+        zed_node_runtime_npm_package_latest_version(self.id, package)
+    }
+
+    pub fn npm_install_packages(&self, dir: &str, packages: &[NpmPackage]) -> Result<(), ()> {
+        zed_node_runtime_npm_install_packages(self.id, dir, packages)
+    }
+
+    pub fn npm_run_subcommand(
+        &self,
+        dir: Option<&str>,
+        subcommand: &str,
+        args: &[String],
+    ) -> Result<(), ()> {
+        zed_node_runtime_npm_run_subcommand(self.id, dir, subcommand, args)
     }
 }
 
