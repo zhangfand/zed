@@ -27,7 +27,7 @@ fn main() {
             .args([
                 "build",
                 "--target",
-                "wasm32-wasi",
+                "wasm32-unknown-unknown",
                 "--manifest-path",
                 path.join("Cargo.toml").to_str().unwrap(),
                 "--release",
@@ -39,11 +39,13 @@ fn main() {
         let status = std::process::Command::new("wasm-tools")
             .arg("component")
             .arg("new")
-            .arg(format!("../../target/wasm32-wasi/release/{name}.wasm",))
+            .arg(format!(
+                "../../target/wasm32-unknown-unknown/release/{name}.wasm",
+            ))
             .arg("-o")
             .arg(format!("../../plugins/bin/{name}.wasm"))
             // .arg("--adapt")
-            // .arg("./wasi_snapshot_preview1.wasm")
+            // .arg("wasi_snapshot_preview1=./wasi_preview1_component_adapter.reactor.wasm")
             .status();
         assert!(matches!(status, Ok(e) if e.success()), "{path}: {status:?}");
     }

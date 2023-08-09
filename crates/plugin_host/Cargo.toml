@@ -8,4 +8,10 @@ publish = false
 path = "src/plugin_host.rs"
 
 [dependencies]
+node_runtime = { path = "../node_runtime" }
+collections = { path = "../collections" }
+util = { path = "../util" }
+
+smol.workspace = true
+anyhow.workspace = true
 wasmtime.workspace = true

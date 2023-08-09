@@ -72,7 +72,7 @@ fn main() {
         return;
     }
 
-    plugin_host::function().unwrap();
+    plugin_host::function(&http).unwrap();
 
     log::info!("========== starting zed ==========");
     let mut app = gpui::App::new(Assets).unwrap();
@@ -139,7 +139,7 @@ fn main() {
         languages.set_executor(cx.background().clone());
         languages.set_language_server_download_dir(paths::LANGUAGES_DIR.clone());
         let languages = Arc::new(languages);
-        let node_runtime = NodeRuntime::instance(http.clone());
+        let node_runtime = NodeRuntime::instance(&http);
 
         languages::init(languages.clone(), node_runtime.clone());
         let user_store = cx.add_model(|cx| UserStore::new(client.clone(), http.clone(), cx));

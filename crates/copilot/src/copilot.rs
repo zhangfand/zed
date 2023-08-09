@@ -338,9 +338,10 @@ impl Copilot {
         let (server, fake_server) =
             LanguageServer::fake("copilot".into(), Default::default(), cx.to_async());
         let http = util::http::FakeHttpClient::create(|_| async { unreachable!() });
+        let node_runtime = NodeRuntime::instance(&http);
         let this = cx.add_model(|_| Self {
-            http: http.clone(),
-            node_runtime: NodeRuntime::instance(http),
+            http,
+            node_runtime,
             server: CopilotServer::Running(RunningCopilotServer {
                 lsp: Arc::new(server),
                 sign_in_status: SignInStatus::Authorized,

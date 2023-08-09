@@ -5181,6 +5181,11 @@ dependencies = [
 name = "plugin_host"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "collections",
+ "node_runtime",
+ "smol",
+ "util",
  "wasmtime",
 ]
 

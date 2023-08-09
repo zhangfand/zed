@@ -1,63 +1,108 @@
+use std::any::Any;
+use std::sync::Arc;
+
+use anyhow::anyhow;
 use wasmtime::component::*;
 use wasmtime::{Config, Engine, Store};
 
+use collections::HashMap;
+use node_runtime::NodeRuntime;
+use util::http::HttpClient;
+
 bindgen!();
 
-// struct MyState {
-//     name: String,
-// }
+struct ObjectStore {
+    next_id: u64,
+    objects: HashMap<Id, Box<dyn Any>>,
+}
 
-// // Imports into the world, like the `name` import for this world, are satisfied
-// // through traits.
-// impl HelloWorldImports for MyState {
-//     // Note the `Result` return value here where `Ok` is returned back to
-//     // the component and `Err` will raise a trap.
-//     fn name(&mut self) -> wasmtime::Result<String> {
-//         Ok(self.name.clone())
-//     }
-// }
+impl ObjectStore {
+    fn new() -> ObjectStore {
+        ObjectStore {
+            next_id: 0,
+            objects: HashMap::default(),
+        }
+    }
 
-struct Host;
+    fn register<T: Any>(&mut self, object: T) -> Id {
+        let id = util::post_inc(&mut self.next_id);
+        self.objects.insert(id, Box::new(object));
+        id
+    }
 
-impl LspAdapterImports for Host {
-    fn log(&mut self, param: String) -> wasmtime::Result<()> {
-        println!("{}", param);
-        Ok(())
+    fn get<T: Any>(&mut self, id: Id) -> wasmtime::Result<&mut T> {
+        let Some(object) = self.objects.get_mut(&id) else {
+            return Err(anyhow!("Host object id {id} does not exist"));
+        };
+
+        match object.downcast_mut::<T>() {
+            Some(object) => return Ok(object),
+
+            None => {
+                let expected = std::any::type_name::<T>();
+                return Err(anyhow!(
+                    "Host object id {id} type mismatch, expected {expected:?}"
+                ));
+            }
+        }
     }
 }
 
-pub fn function() -> wasmtime::Result<()> {
-    // Configure an `Engine` and compile the `Component` that is being run for
-    // the application.
+struct Host {
+    object_store: ObjectStore,
+    node_runtime_id: NodeRuntimeId,
+}
+
+impl Host {
+    fn new(http: &Arc<dyn HttpClient>) -> Host {
+        let mut object_store = ObjectStore::new();
+        let node_runtime_id = object_store.register(NodeRuntime::instance(http));
+
+        Host {
+            object_store,
+            node_runtime_id,
+        }
+    }
+}
+
+impl LspAdapterImports for Host {
+    fn zed_log(&mut self, text: String) -> wasmtime::Result<()> {
+        println!("{}", text);
+        Ok(())
+    }
+
+    fn zed_node_runtime_acquire(&mut self) -> wasmtime::Result<NodeRuntimeId> {
+        Ok(self.node_runtime_id)
+    }
+
+    fn zed_node_runtime_binary_path(
+        &mut self,
+        id: NodeRuntimeId,
+    ) -> wasmtime::Result<Result<String, ()>> {
+        let runtime = self.object_store.get::<Arc<NodeRuntime>>(id)?;
+        Ok(smol::block_on(async {
+            let path = runtime.binary_path().await.map_err(|_| ())?;
+            path.to_str().map(|str| str.to_owned()).ok_or(())
+        }))
+    }
+}
+
+pub fn function(http: &Arc<dyn HttpClient>) -> wasmtime::Result<()> {
     let mut config = Config::new();
     config.wasm_component_model(true);
+
     let engine = Engine::new(&config)?;
     let bytes = include_bytes!("../../../plugins/bin/json_language.wasm");
     let component = Component::new(&engine, bytes)?;
 
-    // Instantiation of bindings always happens through a `Linker`.
-    // Configuration of the linker is done through a generated `add_to_linker`
-    // method on the bindings structure.
-    //
-    // Note that the closure provided here is a projection from `T` in
-    // `Store<T>` to `&mut U` where `U` implements the `HelloWorldImports`
-    // trait. In this case the `T`, `MyState`, is stored directly in the
-    // structure so no projection is necessary here.
     let mut linker = Linker::new(&engine);
     LspAdapter::add_to_linker(&mut linker, |host: &mut Host| host)?;
 
-    // As with the core wasm API of Wasmtime instantiation occurs within a
-    // `Store`. The bindings structure contains an `instantiate` method which
-    // takes the store, component, and linker. This returns the `bindings`
-    // structure which is an instance of `HelloWorld` and supports typed access
-    // to the exports of the component.
-    let mut store = Store::new(&engine, Host);
+    let mut store = Store::new(&engine, Host::new(http));
     let (bindings, _) = LspAdapter::instantiate(&mut store, &component, &linker)?;
 
-    // Here our `greet` function doesn't take any parameters for the component,
-    // but in the Wasmtime embedding API the first argument is always a `Store`.
     let answer = bindings.call_run(&mut store)?;
-    eprintln!("Life, universe, etc: {}", answer);
+    println!("Life, universe, etc: {}", answer);
 
     Ok(())
 }

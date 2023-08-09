@@ -1,7 +1,16 @@
 package zed:lsp-adapter
 
 world lsp-adapter {
-    import log: func(param: string)
+    type id = u64
+    type node-runtime-id = id
+
+    import zed-log: func(text: string)
+    
+    import zed-node-runtime-acquire: func() -> node-runtime-id
+    import zed-node-runtime-binary-path: func(id: node-runtime-id) -> result<string>
+    //import zed-node-runtime-npm-package-latest-version: func(id: node-runtime-id, %package: string) -> result<string>
+    //import zed-node-runtime-npm-install-packages: func(id: node-runtime-id, packages: list<string>) -> result
+    //import zed-node-runtime-run-npm-subcommand: func(id: node-runtime-id, dir: option<string>, subcommand: string, args: list<string>) -> result
 
     export run: func() -> s32
 }

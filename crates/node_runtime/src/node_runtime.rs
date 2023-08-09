@@ -33,9 +33,9 @@ pub struct NodeRuntime {
 }
 
 impl NodeRuntime {
-    pub fn instance(http: Arc<dyn HttpClient>) -> Arc<NodeRuntime> {
+    pub fn instance(http: &Arc<dyn HttpClient>) -> Arc<NodeRuntime> {
         RUNTIME_INSTANCE
-            .get_or_init(|| Arc::new(NodeRuntime { http }))
+            .get_or_init(|| Arc::new(NodeRuntime { http: http.clone() }))
             .clone()
     }
 
