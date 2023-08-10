@@ -8,7 +8,6 @@ use wasmtime::{Config, Engine, Store};
 
 use collections::HashMap;
 use node_runtime::NodeRuntime;
-use util::http::HttpClient;
 
 bindgen!();
 
@@ -55,9 +54,9 @@ struct Host {
 }
 
 impl Host {
-    fn new(http: &Arc<dyn HttpClient>) -> Host {
+    fn new(node_runtime: Arc<dyn NodeRuntime>) -> Host {
         let mut object_store = ObjectStore::new();
-        let node_runtime_id = object_store.register(NodeRuntime::instance(http));
+        let node_runtime_id = object_store.register(node_runtime);
 
         Host {
             object_store,
@@ -80,7 +79,7 @@ impl LspAdapterImports for Host {
         &mut self,
         id: NodeRuntimeId,
     ) -> wasmtime::Result<Result<String, ()>> {
-        let runtime = self.object_store.get::<Arc<NodeRuntime>>(id)?;
+        let runtime = self.object_store.get::<Arc<dyn NodeRuntime>>(id)?;
         Ok(smol::block_on(async {
             let path = runtime.binary_path().await.map_err(|_| ())?;
             path.to_str().map(|str| str.to_owned()).ok_or(())
@@ -92,7 +91,7 @@ impl LspAdapterImports for Host {
         id: NodeRuntimeId,
         package: String,
     ) -> wasmtime::Result<Result<String, ()>> {
-        let runtime = self.object_store.get::<Arc<NodeRuntime>>(id)?;
+        let runtime = self.object_store.get::<Arc<dyn NodeRuntime>>(id)?;
         Ok(smol::block_on(async {
             runtime
                 .npm_package_latest_version(&package)
@@ -107,14 +106,15 @@ impl LspAdapterImports for Host {
         dir: String,
         packages: Vec<NpmPackage>,
     ) -> wasmtime::Result<Result<(), ()>> {
-        let runtime = self.object_store.get::<Arc<NodeRuntime>>(id)?;
-        let packages = packages
+        let runtime = self.object_store.get::<Arc<dyn NodeRuntime>>(id)?;
+        let packages: Vec<_> = packages
             .iter()
-            .map(|p| (p.name.as_str(), p.version.as_str()));
+            .map(|p| (p.name.as_str(), p.version.as_str()))
+            .collect();
 
         Ok(smol::block_on(async {
             runtime
-                .npm_install_packages(Path::new(&dir), packages)
+                .npm_install_packages(Path::new(&dir), &packages)
                 .await
                 .map_err(|_| ())
         }))
@@ -127,7 +127,7 @@ impl LspAdapterImports for Host {
         subcommand: String,
         args: Vec<String>,
     ) -> wasmtime::Result<Result<(), ()>> {
-        let runtime = self.object_store.get::<Arc<NodeRuntime>>(id)?;
+        let runtime = self.object_store.get::<Arc<dyn NodeRuntime>>(id)?;
         let dir = dir.as_ref().map(|d| Path::new(d));
         let args: Vec<_> = args.iter().map(|a| a.as_str()).collect();
 
@@ -141,7 +141,7 @@ impl LspAdapterImports for Host {
     }
 }
 
-pub fn function(http: &Arc<dyn HttpClient>) -> wasmtime::Result<()> {
+pub fn function(node_runtime: Arc<dyn NodeRuntime>) -> wasmtime::Result<()> {
     let mut config = Config::new();
     config.wasm_component_model(true);
 
@@ -152,7 +152,7 @@ pub fn function(http: &Arc<dyn HttpClient>) -> wasmtime::Result<()> {
     let mut linker = Linker::new(&engine);
     LspAdapter::add_to_linker(&mut linker, |host: &mut Host| host)?;
 
-    let mut store = Store::new(&engine, Host::new(http));
+    let mut store = Store::new(&engine, Host::new(node_runtime));
     let (bindings, _) = LspAdapter::instantiate(&mut store, &component, &linker)?;
 
     let answer = bindings.call_run(&mut store)?;

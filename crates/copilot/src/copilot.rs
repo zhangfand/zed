@@ -41,7 +41,7 @@ actions!(
     [Suggest, NextSuggestion, PreviousSuggestion, Reinstall]
 );
 
-pub fn init(http: Arc<dyn HttpClient>, node_runtime: Arc<NodeRuntime>, cx: &mut AppContext) {
+pub fn init(http: Arc<dyn HttpClient>, node_runtime: Arc<dyn NodeRuntime>, cx: &mut AppContext) {
     let copilot = cx.add_model({
         let node_runtime = node_runtime.clone();
         move |cx| Copilot::start(http, node_runtime, cx)
@@ -265,7 +265,7 @@ pub struct Completion {
 
 pub struct Copilot {
     http: Arc<dyn HttpClient>,
-    node_runtime: Arc<NodeRuntime>,
+    node_runtime: Arc<dyn NodeRuntime>,
     server: CopilotServer,
     buffers: HashSet<WeakModelHandle<Buffer>>,
 }
@@ -299,7 +299,7 @@ impl Copilot {
 
     fn start(
         http: Arc<dyn HttpClient>,
-        node_runtime: Arc<NodeRuntime>,
+        node_runtime: Arc<dyn NodeRuntime>,
         cx: &mut ModelContext<Self>,
     ) -> Self {
         let mut this = Self {
@@ -335,10 +335,12 @@ impl Copilot {
 
     #[cfg(any(test, feature = "test-support"))]
     pub fn fake(cx: &mut gpui::TestAppContext) -> (ModelHandle<Self>, lsp::FakeLanguageServer) {
+        use node_runtime::FakeNodeRuntime;
+
         let (server, fake_server) =
             LanguageServer::fake("copilot".into(), Default::default(), cx.to_async());
         let http = util::http::FakeHttpClient::create(|_| async { unreachable!() });
-        let node_runtime = NodeRuntime::instance(&http);
+        let node_runtime = FakeNodeRuntime::new();
         let this = cx.add_model(|_| Self {
             http,
             node_runtime,
@@ -354,7 +356,7 @@ impl Copilot {
 
     fn start_language_server(
         http: Arc<dyn HttpClient>,
-        node_runtime: Arc<NodeRuntime>,
+        node_runtime: Arc<dyn NodeRuntime>,
         this: ModelHandle<Self>,
         mut cx: AsyncAppContext,
     ) -> impl Future<Output = ()> {
