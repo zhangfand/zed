@@ -242,3 +242,169 @@ where
         .constrained()
         .with_height(style.dimensions().y())
 }
+
+pub mod collab_panel {
+
+    use std::ops::Deref;
+
+    use gpui::{
+        elements::{ContainerStyle, ElementRender, ImageStyle},
+        fonts::TextStyle,
+        AnyElement, Element, View, ViewContext,
+    };
+    use schemars::JsonSchema;
+    use serde_derive::Deserialize;
+
+    use crate::{Interactive, Toggleable};
+
+    use super::IconStyle;
+
+    #[derive(Clone, Deserialize, Default, JsonSchema)]
+    pub struct DecoratedLabelStructure<L, R> {
+        pub left: L,
+        pub label: TextStyle,
+        pub right: R,
+    }
+    pub type LabelWithIcon = DecoratedLabelStructure<IconStyle, ()>;
+    pub type ChannelName = LabelWithIcon;
+
+    #[derive(Clone, Deserialize, Default, JsonSchema)]
+    pub struct ListItemStructure<L, R> {
+        pub container: Toggleable<Interactive<ContainerStyle>>,
+        pub contents: L,
+        pub right: R,
+    }
+
+    impl<L, R> ListItemStructure<L, R> {
+        pub fn list_container(&self) -> &Toggleable<Interactive<ContainerStyle>> {
+            &self.container
+        }
+        pub fn list_contents(&self) -> &L {
+            &self.contents
+        }
+        pub fn right_item(&self) -> &R {
+            &self.right
+        }
+    }
+
+    #[derive(Clone, Deserialize, Default, JsonSchema)]
+    pub struct Disclosable<T> {
+        pub disclosure: Toggleable<Interactive<IconStyle>>,
+        #[serde(flatten)] // Simulate the typescript kidna thing
+        pub item: T,
+    }
+
+    impl<T> Deref for Disclosable<T> {
+        type Target = T;
+
+        fn deref(&self) -> &Self::Target {
+            &self.item
+        }
+    }
+
+    pub type ListItemWithMeta<L, R> = ListItemStructure<L, R>;
+
+    pub struct ChannelListItemStyle(
+        Disclosable<ListItemWithMeta<ChannelName, ChannelListItemRight>>,
+    );
+
+    impl Deref for ChannelListItemStyle {
+        type Target = Disclosable<ListItemWithMeta<ChannelName, ChannelListItemRight>>;
+
+        fn deref(&self) -> &Self::Target {
+            &self.0
+        }
+    }
+
+    #[derive(Element)]
+    pub struct ChannelListItem {
+        style: ChannelListItemStyle,
+    }
+
+    impl ElementRender for ChannelListItem {
+        fn render<V: View>(&mut self, _: &mut V, _: &mut ViewContext<V>) -> AnyElement<V> {
+            todo!()
+            //     Flex::row()
+            //         .with_child(
+            //             Svg::new("icons/channel_hash.svg")
+            //                 .with_color(theme.channel_hash.color)
+            //                 .constrained()
+            //                 .with_width(theme.channel_hash.width)
+            //                 .aligned()
+            //                 .left(),
+            //         )
+            //         .with_child(
+            //             Label::new(channel.name.clone(), theme.contact_username.text.clone())
+            //                 .contained()
+            //                 .with_style(theme.contact_username.container)
+            //                 .aligned()
+            //                 .left()
+            //                 .flex(1., true),
+            //         )
+            //         .with_child(
+            //             FacePile::new(theme.face_overlap).with_children(
+            //                 self.channel_store
+            //                     .read(cx)
+            //                     .channel_participants(channel_id)
+            //                     .iter()
+            //                     .filter_map(|user| {
+            //                         Some(
+            //                             Image::from_data(user.avatar.clone()?)
+            //                                 .with_style(theme.contact_avatar),
+            //                         )
+            //                     }),
+            //             ),
+            //         )
+            //         .align_children_center()
+            //         .constrained()
+            //         .with_height(theme.row_height)
+            //         .contained()
+            //         .with_style(*theme.contact_row.style_for(is_selected, state))
+            //         .with_padding_left(
+            //             theme.contact_row.default_style().padding.left
+            //                 + theme.channel_indent * channel.depth as f32,
+            //         )
+            //         .into_any()
+        }
+    }
+
+    impl ChannelListItem {
+        pub fn new(style: ChannelListItemStyle) -> Self {
+            return Self { style };
+        }
+    }
+
+    pub type ListItem<L> = ListItemStructure<L, ()>;
+
+    // ---- Specific Channels items ----
+
+    pub type ContactName = LabelWithImage;
+
+    pub enum ChannelListItemRight {
+        FacePile(Facepile),
+        ContextItem(IconButton),
+    }
+
+    // pub type ChannelListItem = Disclosable<ListItemWithMeta<ChannelName, ChannelListItemRight>>;
+    pub type ContactListItem = ListItemWithMeta<ContactName, IconButton>;
+    pub type CurrentCallProjectItem = ListItem<TextStyle>;
+    pub type CurrentCallScreenItem = ListItem<LabelWithIcon>;
+
+    pub type SectionHeader = Disclosable<ListItem<TextStyle>>;
+
+    // ---- Generalizable infrastructure and aliases ----
+
+    pub type IconButton = Interactive<IconStyle>;
+
+    pub type Label = DecoratedLabelStructure<(), ()>;
+    pub type LabelWithImage = DecoratedLabelStructure<ImageStyle, ()>;
+
+    pub type Facepile = FlexStyle<ImageStyle>;
+
+    #[derive(Clone, Deserialize, Default, JsonSchema)]
+    pub struct FlexStyle<T> {
+        spacing: f32,
+        container: Option<ContainerStyle>,
+        children: T,
+    }
+}

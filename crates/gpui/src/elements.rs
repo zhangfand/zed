@@ -236,6 +236,10 @@ trait AnyElementState<V: View> {
     fn metadata(&self) -> Option<&dyn Any>;
 }
 
+pub trait ElementRender {
+    fn render<V: View>(&mut self, view: &mut V, cx: &mut ViewContext<V>) -> AnyElement<V>;
+}
+
 enum ElementState<V: View, E: Element<V>> {
     Empty,
     Init {

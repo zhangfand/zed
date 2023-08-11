@@ -35,7 +35,7 @@ use serde_derive::{Deserialize, Serialize};
 use settings::SettingsStore;
 use staff_mode::StaffMode;
 use std::{mem, sync::Arc};
-use theme::IconButton;
+use theme::{ui::collab_panel::ChannelListItem, IconButton};
 use util::{ResultExt, TryFutureExt};
 use workspace::{
     dock::{DockPosition, Panel},
@@ -313,7 +313,7 @@ impl CollabPanel {
                             )
                         }
                         ListEntry::Channel(channel) => {
-                            let channel_row = this.render_channel(
+                            let channel_row = this.render_channel_component(
                                 &*channel,
                                 &theme.collab_panel,
                                 is_selected,
@@ -1500,6 +1500,31 @@ impl CollabPanel {
                     theme.contact_row.default_style().padding.left
                         + theme.channel_indent * channel.depth as f32,
                 )
+        })
+        .on_click(MouseButton::Left, move |_, this, cx| {
+            this.join_channel(channel_id, cx);
+        })
+        .on_click(MouseButton::Right, move |e, this, cx| {
+            this.deploy_channel_context_menu(Some(e.position), channel_id, cx);
+        })
+        .into_any()
+    }
+
+    fn render_channel_component(
+        &self,
+        channel: &Channel,
+        theme: &theme::CollabPanel,
+        is_selected: bool,
+        cx: &mut ViewContext<Self>,
+    ) -> AnyElement<Self> {
+        fn style() -> ChannelListItem {
+            todo!()
+        }
+        let style = style();
+        let channel_id = channel.id;
+
+        MouseEventHandler::<Channel, Self>::new(channel.id as usize, cx, |state, cx| {
+            ChannelListItem::new(style).into_any()
         })
         .on_click(MouseButton::Left, move |_, this, cx| {
             this.join_channel(channel_id, cx);
