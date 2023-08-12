@@ -3,17 +3,19 @@ use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::anyhow;
+use futures::StreamExt;
 use wasmtime::component::*;
 use wasmtime::{Config, Engine, Store};
 
 use collections::HashMap;
+use fs::Fs;
 use node_runtime::NodeRuntime;
 
 bindgen!();
 
 struct ObjectStore {
     next_id: u64,
-    objects: HashMap<Id, Box<dyn Any>>,
+    objects: HashMap<ObjectId, Box<dyn Any>>,
 }
 
 impl ObjectStore {
@@ -24,13 +26,13 @@ impl ObjectStore {
         }
     }
 
-    fn register<T: Any>(&mut self, object: T) -> Id {
+    fn register<T: Any>(&mut self, object: T) -> ObjectId {
         let id = util::post_inc(&mut self.next_id);
         self.objects.insert(id, Box::new(object));
         id
     }
 
-    fn get<T: Any>(&mut self, id: Id) -> wasmtime::Result<&mut T> {
+    fn get<T: Any>(&mut self, id: ObjectId) -> wasmtime::Result<&mut T> {
         let Some(object) = self.objects.get_mut(&id) else {
             return Err(anyhow!("Host object id {id} does not exist"));
         };
@@ -50,16 +52,18 @@ impl ObjectStore {
 
 struct Host {
     object_store: ObjectStore,
-    node_runtime_id: NodeRuntimeId,
+    fs: Arc<dyn Fs>,
+    node_runtime_id: ObjectId,
 }
 
 impl Host {
-    fn new(node_runtime: Arc<dyn NodeRuntime>) -> Host {
+    fn new(fs: Arc<dyn Fs>, node_runtime: Arc<dyn NodeRuntime>) -> Host {
         let mut object_store = ObjectStore::new();
         let node_runtime_id = object_store.register(node_runtime);
 
         Host {
             object_store,
+            fs,
             node_runtime_id,
         }
     }
@@ -71,13 +75,43 @@ impl LspAdapterImports for Host {
         Ok(())
     }
 
-    fn zed_node_runtime_acquire(&mut self) -> wasmtime::Result<NodeRuntimeId> {
+    fn zed_fs_file_info(&mut self, path: String) -> wasmtime::Result<Option<FileInfo>> {
+        let Ok(Some(metadata)) = smol::block_on(self.fs.metadata(path)) else {
+            return Ok(None);
+        };
+
+        Ok(Some(FileInfo {
+            is_dir: metadata.is_dir,
+            is_symlink: metadata.is_symlink,
+        }))
+    }
+
+    fn zed_fs_read_dir(&mut self, path: String) -> Option<Vec<Result<String, ()>>> {
+        smol::block_on(async {
+            let Ok(read_dir) = self.fs.read_dir(path).await else {
+                return None;
+            };
+
+            let mut entries = Vec::new();
+            while let Some(entry) = read_dir.next().await {
+                let entry = entry
+                    .map(|e| e.to_str().map(|s| s.to_owned()))
+                    .ok()
+                    .flatten();
+                entries.push(entry);
+            }
+
+            Some(entries)
+        })
+    }
+
+    fn zed_node_runtime_acquire(&mut self) -> wasmtime::Result<ObjectId> {
         Ok(self.node_runtime_id)
     }
 
     fn zed_node_runtime_binary_path(
         &mut self,
-        id: NodeRuntimeId,
+        id: ObjectId,
     ) -> wasmtime::Result<Result<String, ()>> {
         let runtime = self.object_store.get::<Arc<dyn NodeRuntime>>(id)?;
         Ok(smol::block_on(async {
@@ -88,7 +122,7 @@ impl LspAdapterImports for Host {
 
     fn zed_node_runtime_npm_package_latest_version(
         &mut self,
-        id: NodeRuntimeId,
+        id: ObjectId,
         package: String,
     ) -> wasmtime::Result<Result<String, ()>> {
         let runtime = self.object_store.get::<Arc<dyn NodeRuntime>>(id)?;
@@ -102,7 +136,7 @@ impl LspAdapterImports for Host {
 
     fn zed_node_runtime_npm_install_packages(
         &mut self,
-        id: NodeRuntimeId,
+        id: ObjectId,
         dir: String,
         packages: Vec<NpmPackage>,
     ) -> wasmtime::Result<Result<(), ()>> {
@@ -122,7 +156,7 @@ impl LspAdapterImports for Host {
 
     fn zed_node_runtime_npm_run_subcommand(
         &mut self,
-        id: NodeRuntimeId,
+        id: ObjectId,
         dir: Option<String>,
         subcommand: String,
         args: Vec<String>,

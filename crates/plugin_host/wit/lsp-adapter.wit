@@ -1,21 +1,41 @@
 package zed:lsp-adapter
 
 world lsp-adapter {
-    type id = u64
-    type node-runtime-id = id
-    
+    type object-id = u64
+
+    import zed-log: func(text: string)
+
+    record file-info {
+        is-dir: bool,
+        is-symlink: bool,
+    }
+
+    import zed-fs-file-info: func(path: string) -> option<file-info>
+    import zed-fs-read-dir: func(path: string) -> option<list<result<string>>>
+
     record npm-package {
         name: string,
         version: string,
     }
 
-    import zed-log: func(text: string)
-    
-    import zed-node-runtime-acquire: func() -> node-runtime-id
-    import zed-node-runtime-binary-path: func(id: node-runtime-id) -> result<string>
-    import zed-node-runtime-npm-package-latest-version: func(id: node-runtime-id, %package: string) -> result<string>
-    import zed-node-runtime-npm-install-packages: func(id: node-runtime-id, dir: string, packages: list<npm-package>) -> result
-    import zed-node-runtime-npm-run-subcommand: func(id: node-runtime-id, dir: option<string>, subcommand: string, args: list<string>) -> result
+    import zed-node-runtime-acquire: func() -> object-id
+    import zed-node-runtime-binary-path: func(id: object-id) -> result<string>
+    import zed-node-runtime-npm-package-latest-version: func(id: object-id, %package: string) -> result<string>
+    import zed-node-runtime-npm-install-packages: func(id: object-id, dir: string, packages: list<npm-package>) -> result
+    import zed-node-runtime-npm-run-subcommand: func(id: object-id, dir: option<string>, subcommand: string, args: list<string>) -> result
 
-    export run: func() -> s32
+    record language-server-binary {
+        path: string,
+        arguments: list<string>,
+    }
+
+    export name: func() -> string
+    export fetch-latest-server-version: func() -> result<string>
+    export fetch-server-binary: func(version: string, container-dir: string) -> result<language-server-binary>
+    export cached-server-binary: func(container-dir: string) -> option<language-server-binary>
+    export can-be-reinstalled: func() -> bool
+    export installation-test-binary: func(container-dir: string) -> option<language-server-binary>
+    export initialization-options: func() -> option<string> // TODO: json encoded
+    export workspace-configuration: func() -> option<string> // TODO: json encoded
+    export language-ids: func() -> list<tuple<string, string>>
 }
