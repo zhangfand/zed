@@ -2,6 +2,8 @@ import { with_opacity } from "../theme/color"
 import { background, border, foreground, text } from "./components"
 import { interactive, toggleable } from "../element"
 import { useTheme } from "../theme"
+import { icon_button, toggleable_icon_button } from "../component/icon_button"
+import { text_button } from "../component/text_button"
 
 export default function search(): any {
     const theme = useTheme()
@@ -40,81 +42,10 @@ export default function search(): any {
             foreground(theme.highest, "accent"),
             0.4
         ),
-        option_button: toggleable({
-            base: interactive({
-                base: {
-                    ...text(theme.highest, "mono", "variant"),
-                    background: background(theme.highest, "on"),
-                    corner_radius: 2,
-                    margin: { right: 2 },
-                    border: {
-                        width: 1., color: background(theme.highest, "on")
-                    },
-                    padding: {
-                        left: 4,
-                        right: 4,
-                    },
-                },
-                state: {
-                    hovered: {
-                        ...text(theme.highest, "mono", "variant", "hovered"),
-                        background: background(theme.highest, "on", "hovered"),
-                        border: {
-                            width: 1., color: background(theme.highest, "on", "hovered")
-                        },
-                    },
-                    clicked: {
-                        ...text(theme.highest, "mono", "variant", "pressed"),
-                        background: background(theme.highest, "on", "pressed"),
-                        border: {
-                            width: 1., color: background(theme.highest, "on", "pressed")
-                        },
-                    },
-                },
-            }),
-            state: {
-                active: {
-                    default: {
-                        background: background(theme.highest, "accent"),
-                        border: border(theme.highest, "accent"),
-                    },
-                    hovered: {
-                        background: background(theme.highest, "accent", "hovered"),
-                        border: border(theme.highest, "accent", "hovered"),
-                    },
-                    clicked: {
-                        background: background(theme.highest, "accent", "pressed"),
-                        border: border(theme.highest, "accent", "pressed"),
-                    },
-                },
-            },
+        option_button: toggleable_icon_button(theme, {
+            active_color: "accent"
         }),
-        action_button: interactive({
-            base: {
-                ...text(theme.highest, "mono", "on"),
-                background: background(theme.highest, "on"),
-                corner_radius: 6,
-                border: border(theme.highest, "on"),
-                padding: {
-                    // bottom: 2,
-                    left: 10,
-                    right: 10,
-                    // top: 2,
-                },
-            },
-            state: {
-                hovered: {
-                    ...text(theme.highest, "mono", "on", "hovered"),
-                    background: background(theme.highest, "on", "hovered"),
-                    border: border(theme.highest, "on", "hovered"),
-                },
-                clicked: {
-                    ...text(theme.highest, "mono", "on", "pressed"),
-                    background: background(theme.highest, "on", "pressed"),
-                    border: border(theme.highest, "on", "pressed"),
-                },
-            },
-        }),
+        action_button: text_button({}),
         editor,
         invalid_editor: {
             ...editor,
@@ -153,34 +84,7 @@ export default function search(): any {
             ...text(theme.highest, "mono", "variant"),
             size: 13,
         },
-        dismiss_button: interactive({
-            base: {
-                color: foreground(theme.highest, "variant"),
-                icon_width: 14,
-                button_width: 32,
-                corner_radius: 6,
-                padding: {
-                    // // top: 10,
-                    // bottom: 10,
-                    left: 10,
-                    right: 10,
-                },
-
-                background: background(theme.highest, "variant"),
-
-                border: border(theme.highest, "on"),
-            },
-            state: {
-                hovered: {
-                    color: foreground(theme.highest, "hovered"),
-                    background: background(theme.highest, "variant", "hovered")
-                },
-                clicked: {
-                    color: foreground(theme.highest, "pressed"),
-                    background: background(theme.highest, "variant", "pressed")
-                },
-            },
-        }),
+        dismiss_button: icon_button({}),
         editor_icon: {
             icon: {
                 color: foreground(theme.highest, "variant"),
@@ -245,63 +149,7 @@ export default function search(): any {
                 },
             },
         }),
-        nav_button: toggleable({
-            state: {
-                inactive: interactive({
-                    base: {
-                        background: background(theme.highest, "disabled"),
-                        text: text(theme.highest, "mono", "disabled"),
-                        corner_radius: 6,
-                        border: {
-                            ...border(theme.highest, "disabled"),
-                            left: false,
-                            right: false,
-                        },
-
-                        padding: {
-                            bottom: 0,
-                            left: 10,
-                            right: 10,
-                            top: 0,
-                        },
-                    },
-                    state: {
-                        hovered: {}
-                    }
-                }),
-                active: interactive({
-                    base: {
-                        text: text(theme.highest, "mono", "on"),
-                        background: background(theme.highest, "on"),
-                        corner_radius: 6,
-                        border: {
-                            ...border(theme.highest, "on"),
-                            left: false,
-                            right: false,
-                        },
-
-                        padding: {
-                            bottom: 0,
-                            left: 10,
-                            right: 10,
-                            top: 0,
-                        },
-                    },
-                    state: {
-                        hovered: {
-                            ...text(theme.highest, "mono", "on", "hovered"),
-                            background: background(theme.highest, "on", "hovered"),
-                            border: border(theme.highest, "on", "hovered"),
-                        },
-                        clicked: {
-                            ...text(theme.highest, "mono", "on", "pressed"),
-                            background: background(theme.highest, "on", "pressed"),
-                            border: border(theme.highest, "on", "pressed"),
-                        },
-                    },
-                })
-            }
-        }),
+        nav_button: icon_button({}),
         search_bar_row_height: 32,
         option_button_height: 22,
         modes_container: {

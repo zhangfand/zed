@@ -379,7 +379,9 @@ pub struct Search {
     pub include_exclude_editor: FindEditor,
     pub invalid_include_exclude_editor: ContainerStyle,
     pub include_exclude_inputs: ContainedText,
+    // Toggleable<Interactive<IconButton>>
     pub option_button: Toggleable<Interactive<ContainedText>>,
+    // Select all
     pub action_button: Interactive<ContainedText>,
     pub match_background: Color,
     pub match_index: ContainedText,
@@ -388,6 +390,9 @@ pub struct Search {
     pub dismiss_button: Interactive<IconButton>,
     pub editor_icon: IconStyle,
     pub mode_button: Toggleable<Interactive<ContainedText>>,
+    // Toggleable<Interactive<IconButton>>
+    // chevron_left.svg, chevron_right.svg (not chevron_x_16.svg)
+    // should be 14 px
     pub nav_button: Toggleable<Interactive<ContainedLabel>>,
     pub search_bar_row_height: f32,
     pub option_button_height: f32,
