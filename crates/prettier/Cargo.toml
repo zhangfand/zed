@@ -1,0 +1,20 @@
+[package]
+name = "prettier"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+path = "src/prettier.rs"
+doctest = false
+
+[dependencies]
+gpui = { path = "../gpui" }
+language = { path = "../language" }
+node_runtime = { path = "../node_runtime"}
+util = { path = "../util" }
+
+[dev-dependencies]
+gpui = { path = "../gpui", features = ["test-support"] }
+language = { path = "../language", features = ["test-support"] }
+util = { path = "../util", features = ["test-support"] }

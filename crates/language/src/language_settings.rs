@@ -153,6 +153,7 @@ pub enum ShowWhitespaceSetting {
 #[serde(rename_all = "snake_case")]
 pub enum Formatter {
     LanguageServer,
+    Prettier, // TODO: support the same settings as vscode-prettier
     External {
         command: Arc<str>,
         arguments: Arc<[String]>,

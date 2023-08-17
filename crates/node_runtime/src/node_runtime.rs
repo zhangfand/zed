@@ -138,7 +138,13 @@ impl NodeRuntime {
     ) -> Result<()> {
         let packages: Vec<_> = packages
             .into_iter()
-            .map(|(name, version)| format!("{name}@{version}"))
+            .map(|(name, version)| {
+                if version.is_empty() {
+                    name.to_string()
+                } else {
+                    format!("{name}@{version}")
+                }
+            })
             .collect();
 
         let mut arguments: Vec<_> = packages.iter().map(|p| p.as_str()).collect();

@@ -50,6 +50,7 @@ use lsp::{
 };
 use lsp_command::*;
 use postage::watch;
+use prettier::Prettier;
 use project_settings::{LspSettings, ProjectSettings};
 use rand::prelude::*;
 use search::SearchQuery;
@@ -3782,6 +3783,14 @@ impl Project {
         Ok(())
     }
 
+    fn load_prettier_for_path(
+        &mut self,
+        buffer_path: Option<ProjectPath>,
+        cx: &mut ModelContext<Self>,
+    ) -> Task<Result<Prettier>> {
+        todo!()
+    }
+
     pub fn reload_buffers(
         &self,
         buffers: HashSet<ModelHandle<Buffer>>,
@@ -3928,8 +3937,8 @@ impl Project {
                     // Currently, formatting operations are represented differently depending on
                     // whether they come from a language server or an external command.
                     enum FormatOperation {
-                        Lsp(Vec<(Range<Anchor>, String)>),
-                        External(Diff),
+                        Edits(Vec<(Range<Anchor>, String)>),
+                        Diff(Diff),
                     }
 
                     // Apply language-specific formatting using either a language server
@@ -3938,12 +3947,11 @@ impl Project {
                     match (formatter, format_on_save) {
                         (_, FormatOnSave::Off) if trigger == FormatTrigger::Save => {}
 
-                        (Formatter::LanguageServer, FormatOnSave::On | FormatOnSave::Off)
-                        | (_, FormatOnSave::LanguageServer) => {
+                        (Formatter::LanguageServer, _) | (_, FormatOnSave::LanguageServer) => {
                             if let Some((language_server, buffer_abs_path)) =
                                 language_server.as_ref().zip(buffer_abs_path.as_ref())
                             {
-                                format_operation = Some(FormatOperation::Lsp(
+                                format_operation = Some(FormatOperation::Edits(
                                     Self::format_via_lsp(
                                         &this,
                                         &buffer,
@@ -3958,10 +3966,7 @@ impl Project {
                             }
                         }
 
-                        (
-                            Formatter::External { command, arguments },
-                            FormatOnSave::On | FormatOnSave::Off,
-                        )
+                        (Formatter::External { command, arguments }, _)
                         | (_, FormatOnSave::External { command, arguments }) => {
                             if let Some(buffer_abs_path) = buffer_abs_path {
                                 format_operation = Self::format_via_external_command(
@@ -3976,8 +3981,19 @@ impl Project {
                                     "failed to format via external command {:?}",
                                     command
                                 ))?
-                                .map(FormatOperation::External);
+                                .map(FormatOperation::Diff);
                             }
+                        }
+                        (Formatter::Prettier, _) => {
+                            let path = buffer.read_with(&cx, |buffer, cx| buffer.project_path(cx));
+                            let prettier = this
+                                .update(&mut cx, |this, cx| this.load_prettier_for_path(path, cx))
+                                .await?;
+                            let diff = cx
+                                .read(|cx| prettier.format(&buffer, cx))
+                                .await
+                                .context(format!("failed to format via prettier"))?;
+                            format_operation = Some(FormatOperation::Diff(diff));
                         }
                     };
 
@@ -3997,10 +4013,10 @@ impl Project {
                         // in the buffer's undo history.
                         if let Some(operation) = format_operation {
                             match operation {
-                                FormatOperation::Lsp(edits) => {
+                                FormatOperation::Edits(edits) => {
                                     b.edit(edits, None, cx);
                                 }
-                                FormatOperation::External(diff) => {
+                                FormatOperation::Diff(diff) => {
                                     b.apply_diff(diff, cx);
                                 }
                             }
