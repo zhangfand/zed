@@ -152,6 +152,7 @@ pub enum ShowWhitespaceSetting {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Formatter {
+    // Auto, TODO
     LanguageServer,
     Prettier, // TODO: support the same settings as vscode-prettier
     External {

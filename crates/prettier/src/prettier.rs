@@ -3,6 +3,7 @@ use std::sync::Arc;
 use gpui::{anyhow::Result, AppContext, ModelHandle, Task};
 use language::{Buffer, Diff};
 use node_runtime::NodeRuntime;
+use util::channel::ReleaseChannel;
 
 pub struct Prettier;
 
@@ -34,7 +35,12 @@ impl Prettier {
     }
 
     pub async fn install(node: &NodeRuntime) -> Result<()> {
-        node.npm_install_packages(&util::paths::PRETTIER_DIR, [("prettier_server", "0.0.1")])
+        let prettier_server = if util::channel::RELEASE_CHANNEL == ReleaseChannel::Dev {
+
+        } else {
+            ""
+        }
+        node.npm_install_packages(&util::paths::PRETTIER_DIR, [("prettier_server")])
             .await?;
         Ok(())
     }
