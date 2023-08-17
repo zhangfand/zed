@@ -4,9 +4,9 @@ export * from "./theme/theme_config"
 export { chroma }
 
 export const font_families = {
-    ui_sans: "IBM Plex Sans",
-    sans: "Zed Sans",
-    mono: "Zed Mono",
+    ui_sans: "iA Writer Quattro V",
+    sans: "iA Writer Duospace",
+    mono: "iA Writer Mono V",
 }
 
 export const font_sizes = {
