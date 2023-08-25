@@ -263,6 +263,13 @@ impl CodeContextRetriever {
                 );
             }
 
+            // Remove Whitespace
+            let document_content = document_content
+                .lines()
+                .map(|line| line.trim_start())
+                .collect::<Vec<_>>()
+                .join("\n");
+
             let mut sha1 = Sha1::new();
             sha1.update(&document_content);
 
