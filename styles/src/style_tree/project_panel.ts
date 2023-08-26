@@ -1,15 +1,14 @@
-import { with_opacity } from "../theme/color"
 import {
     Border,
     TextStyle,
     background,
     border,
-    foreground,
     text,
 } from "./components"
 import { interactive, toggleable } from "../element"
 import merge from "ts-deepmerge"
 import { useTheme } from "../theme"
+import { neutral } from "../color"
 export default function project_panel(): any {
     const theme = useTheme()
 
@@ -45,13 +44,13 @@ export default function project_panel(): any {
 
         const base_properties = {
             height: 22,
-            background: background(theme.middle),
-            chevron_color: foreground(theme.middle, "variant"),
-            icon_color: with_opacity(foreground(theme.middle, "active"), 0.3),
+            background: neutral.surface,
+            chevron_color: neutral.foreground_variant,
+            icon_color: neutral.foreground_variant,
             chevron_size: 7,
             icon_size: 14,
             icon_spacing: 6,
-            text: text(theme.middle, "sans", "variant", { size: "sm" }),
+            text: text(theme.middle, "sans", "variant", { size: "sm", color: neutral.foreground_variant }),
             status: {
                 ...git_status,
             },
@@ -68,35 +67,35 @@ export default function project_panel(): any {
         )
         const unselected_hovered_style = merge(
             base_properties,
-            { background: background(theme.middle, "hovered") },
+            { background: neutral.hover },
             unselected?.hovered ?? {},
         )
         const unselected_clicked_style = merge(
             base_properties,
-            { background: background(theme.middle, "pressed") },
+            { background: neutral.pressed },
             unselected?.clicked ?? {},
         )
         const selected_default_style = merge(
             base_properties,
             {
-                background: background(theme.lowest),
-                text: text(theme.lowest, "sans", { size: "sm" }),
+                background: neutral.selected,
+                text: text(theme.lowest, "sans", { size: "sm", color: neutral.foreground }),
             },
             selected_style?.default ?? {},
         )
         const selected_hovered_style = merge(
             base_properties,
             {
-                background: background(theme.lowest, "hovered"),
-                text: text(theme.lowest, "sans", { size: "sm" }),
+                background: neutral.hover,
+                text: text(theme.lowest, "sans", { size: "sm", color: neutral.foreground }),
             },
             selected_style?.hovered ?? {},
         )
         const selected_clicked_style = merge(
             base_properties,
             {
-                background: background(theme.lowest, "pressed"),
-                text: text(theme.lowest, "sans", { size: "sm" }),
+                background: neutral.pressed,
+                text: text(theme.lowest, "sans", { size: "sm", color: neutral.foreground }),
             },
             selected_style?.clicked ?? {},
         )
@@ -126,8 +125,15 @@ export default function project_panel(): any {
     return {
         open_project_button: interactive({
             base: {
-                background: background(theme.middle),
-                border: border(theme.middle, "active"),
+                background: neutral.surface,
+                border: {
+                    color: neutral.border,
+                    width: 1,
+                    top: true,
+                    bottom: true,
+                    left: true,
+                    right: true,
+                },
                 corner_radius: 4,
                 margin: {
                     top: 16,
@@ -140,7 +146,7 @@ export default function project_panel(): any {
                     left: 7,
                     right: 7,
                 },
-                ...text(theme.middle, "sans", "default", { size: "sm" }),
+                ...text(theme.middle, "sans", "default", { size: "sm", color: neutral.foreground }),
             },
             state: {
                 hovered: {
@@ -155,25 +161,55 @@ export default function project_panel(): any {
                 },
             },
         }),
-        background: background(theme.middle),
+        background: neutral.surface,
         padding: { left: 6, right: 6, top: 0, bottom: 6 },
         indent_width: 20,
         entry: default_entry,
         dragged_entry: {
             ...default_entry.inactive.default,
             text: text(theme.middle, "sans", "on", { size: "sm" }),
-            background: with_opacity(background(theme.middle, "on"), 0.9),
-            border: border(theme.middle),
+            background: neutral.background_inverse,
+            border: {
+                color: neutral.border,
+                width: 1,
+                top: true,
+                bottom: true,
+                left: true,
+                right: true,
+            }
         },
         ignored_entry: entry(
             {
                 default: {
-                    text: text(theme.middle, "sans", "disabled"),
+                    text: text(theme.middle, "sans", "disabled", { color: neutral.foreground_hidden }),
+                    icon_color: neutral.foreground_hidden,
+                },
+                hovered: {
+                    text: text(theme.middle, "sans", "disabled", { color: neutral.foreground_hidden }),
+                    icon_color: neutral.foreground_hidden,
+
+                    background: neutral.hover,
+                },
+                clicked: {
+                    text: text(theme.middle, "sans", "disabled", { color: neutral.foreground_hidden }),
+                    icon_color: neutral.foreground_hidden,
+                    background: neutral.pressed,
                 },
             },
             {
                 default: {
-                    icon_color: foreground(theme.middle, "variant"),
+                    text: text(theme.middle, "sans", "disabled", { color: neutral.foreground_muted }),
+                    icon_color: neutral.foreground_muted,
+                },
+                hovered: {
+                    text: text(theme.middle, "sans", "disabled", { color: neutral.foreground_muted }),
+                    icon_color: neutral.foreground_muted,
+                    background: neutral.hover,
+                },
+                clicked: {
+                    text: text(theme.middle, "sans", "disabled", { color: neutral.foreground_muted }),
+                    icon_color: neutral.foreground_muted,
+                    background: neutral.pressed,
                 },
             },
         ),

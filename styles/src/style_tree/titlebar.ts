@@ -1,3 +1,4 @@
+import { neutral } from "../color"
 import { icon_button, toggleable_icon_button } from "../component/icon_button"
 import { toggleable_text_button } from "../component/text_button"
 import { interactive, toggleable } from "../element"
@@ -172,7 +173,7 @@ export function titlebar(): any {
         item_spacing: ITEM_SPACING,
         face_pile_spacing: 2,
         height: TITLEBAR_HEIGHT,
-        background: background(theme.lowest),
+        background: neutral.surface,
         border: border(theme.lowest, { bottom: true }),
         padding: {
             left: 80,

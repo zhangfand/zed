@@ -1,7 +1,8 @@
 import { with_opacity } from "../theme/color"
-import { text, border, background, foreground } from "./components"
+import { text, background, foreground } from "./components"
 import { interactive, toggleable } from "../element"
 import { useTheme } from "../common"
+import { neutral } from "../color"
 
 export default function tab_bar(): any {
     const theme = useTheme()
@@ -15,13 +16,15 @@ export default function tab_bar(): any {
 
     const tab = {
         height,
-        text: text(layer, "sans", "variant", { size: "sm" }),
-        background: background(layer),
-        border: border(layer, {
+        text: text(theme.lowest, "sans", "variant", { size: "sm", color: neutral.foreground_variant }),
+        background: neutral.surface,
+        border: {
+            color: neutral.border_variant,
+            width: 1,
             right: true,
             bottom: true,
             overlay: true,
-        }),
+        },
         padding: {
             left: 8,
             right: 12,
@@ -33,8 +36,8 @@ export default function tab_bar(): any {
 
         // Close icons
         close_icon_width: 8,
-        icon_close: foreground(layer, "variant"),
-        icon_close_active: foreground(layer, "hovered"),
+        icon_close: neutral.foreground_variant,
+        icon_close_active: neutral.hover,
 
         // Indicators
         icon_conflict: foreground(layer, "warning"),
@@ -61,7 +64,7 @@ export default function tab_bar(): any {
 
     const active_pane_active_tab = {
         ...tab,
-        background: background(active_layer),
+        background: neutral.background,
         text: text(active_layer, "sans", "active", { size: "sm" }),
         border: {
             ...tab.border,
@@ -86,22 +89,26 @@ export default function tab_bar(): any {
     }
     const nav_button = interactive({
         base: {
-            color: foreground(theme.highest, "on"),
+            color: neutral.foreground,
             icon_width: 12,
 
             button_width: active_pane_active_tab.height,
-            border: border(theme.lowest, "on", {
+            border: {
+                color: neutral.border,
+                width: 1,
                 bottom: true,
                 overlay: true,
-            })
+            }
         },
         state: {
             hovered: {
-                color: foreground(theme.highest, "on", "hovered"),
-                background: background(theme.highest, "on", "hovered"),
+                background: neutral.hover,
+            },
+            clicked: {
+                background: neutral.pressed,
             },
             disabled: {
-                color: foreground(theme.highest, "on", "disabled")
+                color: neutral.foreground_disabled,
             },
         },
     })
@@ -115,7 +122,7 @@ export default function tab_bar(): any {
 
     return {
         height,
-        background: background(layer),
+        background: neutral.surface,
         active_pane: {
             active_tab: active_pane_active_tab,
             inactive_tab: tab,
@@ -128,7 +135,7 @@ export default function tab_bar(): any {
         pane_button: toggleable({
             base: interactive({
                 base: {
-                    color: foreground(layer, "variant"),
+                    color: neutral.foreground_variant,
                     icon_width: 12,
                     button_width: active_pane_active_tab.height,
                 },
@@ -144,7 +151,7 @@ export default function tab_bar(): any {
             state: {
                 active: {
                     default: {
-                        color: foreground(layer, "accent"),
+                        color: neutral.foreground,
                     },
                     hovered: {
                         color: foreground(layer, "hovered"),

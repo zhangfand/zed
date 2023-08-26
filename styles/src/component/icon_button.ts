@@ -1,6 +1,6 @@
+import { neutral } from "../color"
 import { interactive, toggleable } from "../element"
-import { background, foreground } from "../style_tree/components"
-import { useTheme, Theme, Layer } from "../theme"
+import { Theme, Layer } from "../theme"
 import { Button } from "./button"
 
 export type Margin = {
@@ -26,15 +26,15 @@ type ToggleableIconButtonOptions = IconButtonOptions & {
     active_layer?: Layer
 }
 
-export function icon_button({ color, margin, layer, variant, size }: IconButtonOptions = {
+export function icon_button({ color, margin, size }: IconButtonOptions = {
     variant: Button.variant.Default,
     size: Button.size.Medium,
 }) {
-    const theme = useTheme()
+    // const theme = useTheme()
 
     if (!color) color = "base"
 
-    const background_color = variant === Button.variant.Ghost ? null : background(layer ?? theme.lowest, color)
+    // const background_color = variant === Button.variant.Ghost ? null : background(layer ?? theme.lowest, color)
 
     const m = {
         top: margin?.top ?? 0,
@@ -62,16 +62,16 @@ export function icon_button({ color, margin, layer, variant, size }: IconButtonO
         },
         state: {
             default: {
-                background: background_color,
-                color: foreground(layer ?? theme.lowest, color),
+                background: neutral.surface,
+                color: neutral.foreground,
             },
             hovered: {
-                background: background(layer ?? theme.lowest, color, "hovered"),
-                color: foreground(layer ?? theme.lowest, color, "hovered"),
+                background: neutral.hover,
+                color: neutral.foreground,
             },
             clicked: {
-                background: background(layer ?? theme.lowest, color, "pressed"),
-                color: foreground(layer ?? theme.lowest, color, "pressed"),
+                background: neutral.pressed,
+                color: neutral.foreground,
             },
         },
     })

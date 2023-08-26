@@ -10,6 +10,7 @@ import { useTheme } from "../theme"
 import collab_modals from "./collab_modals"
 import { icon_button, toggleable_icon_button } from "../component/icon_button"
 import { indicator } from "../component/indicator"
+import { neutral } from "../color"
 
 export default function contacts_panel(): any {
     const theme = useTheme()
@@ -23,8 +24,8 @@ export default function contacts_panel(): any {
     const layer = theme.middle
 
     const contact_button = {
-        background: background(layer, "on"),
-        color: foreground(layer, "on"),
+        background: neutral.surface,
+        color: neutral.foreground,
         icon_width: 14,
         button_width: 16,
         corner_radius: 8
@@ -38,7 +39,7 @@ export default function contacts_panel(): any {
             width: 14,
         },
         name: {
-            ...text(layer, "sans", { size: "sm" }),
+            ...text(layer, "sans", { size: "sm", color: neutral.foreground }),
             margin: {
                 left: NAME_MARGIN,
                 right: 4,
@@ -57,7 +58,7 @@ export default function contacts_panel(): any {
     }
 
     const icon_style = {
-        color: foreground(layer, "variant"),
+        color: neutral.foreground,
         width: 14,
     }
 
@@ -70,7 +71,7 @@ export default function contacts_panel(): any {
     const subheader_row = toggleable({
         base: interactive({
             base: {
-                ...text(layer, "sans", { size: "sm" }),
+                ...text(layer, "sans", { size: "sm", color: neutral.foreground_variant }),
                 padding: {
                     left: SPACING,
                     right: SPACING,
@@ -78,10 +79,10 @@ export default function contacts_panel(): any {
             },
             state: {
                 hovered: {
-                    background: background(layer, "hovered"),
+                    background: neutral.hover,
                 },
                 clicked: {
-                    background: background(layer, "pressed"),
+                    background: neutral.pressed,
                 },
             },
         }),

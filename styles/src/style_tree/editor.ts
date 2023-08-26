@@ -12,6 +12,7 @@ import hover_popover from "./hover_popover"
 import { build_syntax } from "../theme/syntax"
 import { interactive, toggleable } from "../element"
 import { useTheme } from "../theme"
+import { neutral } from "../color"
 
 export default function editor(): any {
     const theme = useTheme()
@@ -52,9 +53,9 @@ export default function editor(): any {
 
     return {
         text_color: syntax.primary.color,
-        background: background(layer),
-        active_line_background: with_opacity(background(layer, "on"), 0.75),
-        highlighted_line_background: background(layer, "on"),
+        background: neutral.background,
+        active_line_background: neutral.surface,
+        highlighted_line_background: neutral.background_variant,
         // Inline autocomplete suggestions, Co-pilot suggestions, etc.
         hint: syntax.hint,
         suggestion: syntax.predictive,
@@ -165,10 +166,10 @@ export default function editor(): any {
             .alpha(0.4)
             .hex(), // TODO: This was blend * 2
         error_color: background(layer, "negative"),
-        gutter_background: background(layer),
+        gutter_background: neutral.background,
         gutter_padding_factor: 3.5,
-        line_number: with_opacity(foreground(layer), 0.35),
-        line_number_active: foreground(layer),
+        line_number: neutral.foreground_disabled,
+        line_number_active: neutral.foreground_variant,
         rename_fade: 0.6,
         wrap_guide: with_opacity(foreground(layer), 0.05),
         active_wrap_guide: with_opacity(foreground(layer), 0.1),
@@ -283,7 +284,11 @@ export default function editor(): any {
             width: 12,
             min_height_factor: 1.0,
             track: {
-                border: border(layer, "variant", { left: true }),
+                border: {
+                    color: neutral.border_variant,
+                    width: 1,
+                    left: true
+                },
             },
             thumb: {
                 background: with_opacity(background(layer, "inverted"), 0.3),

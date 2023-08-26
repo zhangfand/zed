@@ -2,7 +2,6 @@ import { with_opacity } from "../theme/color"
 import {
     background,
     border,
-    border_color,
     foreground,
     svg,
     text,
@@ -13,6 +12,7 @@ import { interactive } from "../element"
 import { titlebar } from "./titlebar"
 import { useTheme } from "../theme"
 import { toggleable_icon_button } from "../component/icon_button"
+import { neutral } from "../color"
 
 export default function workspace(): any {
     const theme = useTheme()
@@ -20,7 +20,7 @@ export default function workspace(): any {
     const { is_light } = theme
 
     return {
-        background: background(theme.lowest),
+        background: neutral.background_variant,
         blank_pane: {
             logo_container: {
                 width: 256,
@@ -123,15 +123,19 @@ export default function workspace(): any {
             },
         },
         pane_divider: {
-            color: border_color(theme.lowest),
+            color: neutral.border,
             width: 1,
         },
         status_bar: statusBar(),
         titlebar: titlebar(),
         toolbar: {
             height: 34,
-            background: background(theme.highest),
-            border: border(theme.highest, { bottom: true }),
+            background: neutral.background,
+            border: {
+                color: neutral.border,
+                width: 1,
+                bottom: true
+            },
             item_spacing: 8,
             toggleable_tool: toggleable_icon_button(theme, {
                 margin: { left: 8 },
