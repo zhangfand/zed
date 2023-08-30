@@ -1,7 +1,11 @@
 #![allow(dead_code, unused_variables)]
+use std::env::args_os;
+
 use crate::{element::ParentElement, style::StyleHelpers};
 use element::{Element, IntoElement};
 use gpui::{
+    color::Color,
+    fonts::with_font_cache,
     geometry::{pixels, rect::RectF, vector::vec2f},
     platform::WindowOptions,
     ViewContext,
@@ -9,7 +13,7 @@ use gpui::{
 use log::LevelFilter;
 use playground_macros::Element;
 use simplelog::SimpleLogger;
-use themes::{current_theme, rose_pine, Theme, ThemeColors};
+use themes::{current_theme, one, rose_pine, Theme, ThemeColors};
 use view::view;
 
 mod adapter;
@@ -27,6 +31,8 @@ mod text;
 mod themes;
 mod view;
 
+mod chat;
+
 fn main() {
     SimpleLogger::init(LevelFilter::Info, Default::default()).expect("could not initialize logger");
 
@@ -42,9 +48,35 @@ fn main() {
             },
             |_| {
                 view(|cx| {
-                    playground(Theme {
-                        colors: rose_pine::dawn(),
-                    })
+                    let text = {
+                        let fc = cx.font_cache();
+                        with_font_cache(fc.clone(), || gpui::fonts::TextStyle {
+                            color: Color::white(),
+                            ..Default::default()
+                        })
+                    };
+
+                    if let Some("c") = args_os()
+                        .skip(1)
+                        .next()
+                        .and_then(|s| s.into_string().ok())
+                        .as_deref()
+                    {
+                        cx.push_text_style(text.clone());
+                        let result = chat::chat(Theme {
+                            colors: one::dark(),
+                            text,
+                        })
+                        .into_any();
+                        cx.pop_text_style();
+                        result
+                    } else {
+                        playground(Theme {
+                            colors: rose_pine::dawn(),
+                            text,
+                        })
+                        .into_any()
+                    }
                 })
             },
         );

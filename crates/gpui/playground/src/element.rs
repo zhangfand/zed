@@ -2,7 +2,10 @@ use std::marker::PhantomData;
 
 pub use crate::layout_context::LayoutContext;
 pub use crate::paint_context::PaintContext;
-use crate::themes::{Theme, Themed};
+use crate::{
+    style::Style,
+    themes::{Theme, Themed},
+};
 use anyhow::Result;
 use gpui::geometry::vector::Vector2F;
 pub use gpui::{Layout, LayoutId};
@@ -118,6 +121,16 @@ impl<V, E: Element<V>> AnyStatefulElement<V> for StatefulElement<V, E> {
                 }
                 Err(error) => ElementPhase::Error(error.to_string()),
             },
+            ElementPhase::PostPaint {
+                layout,
+                mut paint_state,
+            } => {
+                self.element.paint(view, &layout, &mut paint_state, cx);
+                ElementPhase::PostPaint {
+                    layout,
+                    paint_state,
+                }
+            }
             phase @ ElementPhase::Error(_) => phase,
             _ => panic!("invalid element phase to call paint"),
         };
@@ -167,4 +180,53 @@ pub trait IntoElement<V: 'static> {
     type Element: Element<V>;
 
     fn into_element(self) -> Self::Element;
+}
+
+impl<V: 'static> Element<V> for AnyElement<V> {
+    type PaintState = ();
+
+    fn layout(
+        &mut self,
+        view: &mut V,
+        cx: &mut LayoutContext<V>,
+    ) -> Result<(LayoutId, Self::PaintState)>
+    where
+        Self: Sized,
+    {
+        self.layout(view, cx).map(|id| (id, ()))
+    }
+
+    fn paint(
+        &mut self,
+        view: &mut V,
+        layout: &Layout,
+        state: &mut Self::PaintState,
+        cx: &mut PaintContext<V>,
+    ) where
+        Self: Sized,
+    {
+        self.paint(view, layout.bounds.origin(), cx);
+    }
+}
+
+impl<V: 'static> Element<V> for () {
+    type PaintState = ();
+
+    fn layout(
+        &mut self,
+        _: &mut V,
+        cx: &mut LayoutContext<V>,
+    ) -> Result<(LayoutId, Self::PaintState)>
+    where
+        Self: Sized,
+    {
+        cx.add_layout_node(Style::default(), None)
+            .map(|id| (id, ()))
+    }
+
+    fn paint(&mut self, _: &mut V, _: &Layout, _: &mut Self::PaintState, _: &mut PaintContext<V>)
+    where
+        Self: Sized,
+    {
+    }
 }

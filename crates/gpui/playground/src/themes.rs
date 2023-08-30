@@ -1,16 +1,18 @@
 use crate::{
-    color::{Hsla, Lerp},
+    color::{hsla, Hsla, Lerp},
     element::{Element, PaintContext},
     layout_context::LayoutContext,
 };
-use gpui::{AppContext, WindowContext};
+use gpui::{fonts::TextStyle, AppContext, WindowContext};
 use std::{marker::PhantomData, ops::Range};
 
+pub mod one;
 pub mod rose_pine;
 
 #[derive(Clone, Debug)]
 pub struct Theme {
     pub colors: ThemeColors,
+    pub text: TextStyle,
 }
 
 pub fn current_theme<'a>(cx: &'a WindowContext) -> &'a Theme {
@@ -140,4 +142,12 @@ impl<V: 'static, E: Element<V>> Element<V> for Themed<V, E> {
         self.child.paint(view, layout, state, cx);
         cx.pop_theme();
     }
+}
+
+/// Produces a range by multiplying the saturation and lightness of the base color by the given
+/// start and end factors.
+fn scale_sl(base: Hsla, (start_s, start_l): (f32, f32), (end_s, end_l): (f32, f32)) -> Range<Hsla> {
+    let start = hsla(base.h, base.s * start_s, base.l * start_l, base.a);
+    let end = hsla(base.h, base.s * end_s, base.l * end_l, base.a);
+    Range { start, end }
 }

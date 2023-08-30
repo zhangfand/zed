@@ -108,7 +108,7 @@ impl<V: 'static> ParentElement<V> for Div<V> {
 }
 
 impl<V: 'static> IntoElement<V> for Div<V> {
-    type Element = Self;
+    type Element = Div<V>;
 
     fn into_element(self) -> Self::Element {
         self
