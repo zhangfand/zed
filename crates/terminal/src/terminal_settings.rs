@@ -28,38 +28,27 @@ pub struct TerminalSettings {
     pub dock: TerminalDockPosition,
     pub default_width: f32,
     pub default_height: f32,
-    pub detect_venv: VenvSettings,
+    pub activate_venv: ActivateVenvSettings,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum VenvSettings {
+pub enum ActivateVenvSettings {
     #[default]
     Off,
     On {
-        activate_script: Option<ActivateScript>,
-        directories: Option<Vec<PathBuf>>,
+        activation_method: ActivationMethod,
     },
 }
 
-pub struct VenvSettingsContent<'a> {
-    pub activate_script: ActivateScript,
-    pub directories: &'a [PathBuf],
-}
-
-impl VenvSettings {
-    pub fn as_option(&self) -> Option<VenvSettingsContent> {
-        match self {
-            VenvSettings::Off => None,
-            VenvSettings::On {
-                activate_script,
-                directories,
-            } => Some(VenvSettingsContent {
-                activate_script: activate_script.unwrap_or(ActivateScript::Default),
-                directories: directories.as_deref().unwrap_or(&[]),
-            }),
-        }
-    }
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ActivationMethod {
+    Custom {
+        activate_script: Option<ActivateScript>,
+        directories: Option<Vec<PathBuf>>,
+    },
+    Poetry,
 }
 
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, JsonSchema)]
@@ -87,7 +76,7 @@ pub struct TerminalSettingsContent {
     pub dock: Option<TerminalDockPosition>,
     pub default_width: Option<f32>,
     pub default_height: Option<f32>,
-    pub detect_venv: Option<VenvSettings>,
+    pub activate_venv: Option<ActivateVenvSettings>,
 }
 
 impl TerminalSettings {

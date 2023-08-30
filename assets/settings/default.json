@@ -334,22 +334,37 @@
     //           "custom": 2
     //         },
     "line_height": "comfortable",
-    // Activate the python virtual environment, if one is found, in the
-    // terminal's working directory (as resolved by the working_directory
-    // setting). Set this to "off" to disable this behavior.
-    "detect_venv": {
+    // Activate the python virtual environment, using a specified activation
+    // method. Set this to "off" to disable this behavior.
+    "activate_venv": {
       "on": {
-        // Default directories to search for virtual environments, relative
-        // to the current working directory. We recommend overriding this
-        // in your project's settings, rather than globally.
-        "directories": [
-          ".env",
-          "env",
-          ".venv",
-          "venv"
-        ],
-        // Can also be 'csh' and 'fish'
-        "activate_script": "default"
+        // The method to use to activate the virtual environment.
+        // May take 2 values:
+        // 1. Activate the python virtual environment, if one is found, in the
+        //    terminal's working directory (as resolved by the working_directory
+        //    setting).
+        //      "activation_method": {
+        //         "directories": [
+        //             ...
+        //         ],
+        //         "activate_script": "default"
+        //      }
+        // 2. Use Poetry to activate the virtual environment, by running
+        //    `poetry shell`
+        //       "activation_method": "poetry"
+        "activation_method": {
+          // Default directories to search for virtual environments, relative
+          // to the current working directory. We recommend overriding this
+          // in your project's settings, rather than globally.
+          "directories": [
+            ".env",
+            "env",
+            ".venv",
+            "venv"
+          ],
+          // Can also be 'csh' and 'fish'
+          "activate_script": "default"
+        }
       }
     }
     // Set the terminal's font size. If this option is not included,
