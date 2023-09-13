@@ -1,9 +1,13 @@
 use anyhow::{anyhow, bail, Context, Result};
 use async_compression::futures::bufread::GzipDecoder;
 use async_tar::Archive;
+use futures::FutureExt;
+use gpui::executor::Background;
 use serde::Deserialize;
+use smol::lock::Mutex;
 use smol::{fs, io::BufReader, process::Command};
 use std::process::{Output, Stdio};
+use std::time::Duration;
 use std::{
     env::consts,
     path::{Path, PathBuf},
@@ -44,15 +48,22 @@ pub trait NodeRuntime: Send + Sync {
 }
 
 pub struct RealNodeRuntime {
+    background: Arc<Background>,
     http: Arc<dyn HttpClient>,
+    lock: Mutex<()>,
 }
 
 impl RealNodeRuntime {
-    pub fn new(http: Arc<dyn HttpClient>) -> Arc<dyn NodeRuntime> {
-        Arc::new(RealNodeRuntime { http })
+    pub fn new(background: Arc<Background>, http: Arc<dyn HttpClient>) -> Arc<dyn NodeRuntime> {
+        Arc::new(RealNodeRuntime {
+            background,
+            http,
+            lock: Mutex::new(()),
+        })
     }
 
     async fn install_if_needed(&self) -> Result<PathBuf> {
+        let _lock = self.lock.lock().await;
         log::info!("Node runtime install_if_needed");
 
         let arch = match consts::ARCH {
@@ -67,15 +78,24 @@ impl RealNodeRuntime {
         let node_binary = node_dir.join("bin/node");
         let npm_file = node_dir.join("bin/npm");
 
-        let result = Command::new(&node_binary)
+        const PROCESS_TIMEOUT: Duration = Duration::from_secs(5);
+        let mut timeout = self.background.timer(PROCESS_TIMEOUT).fuse();
+
+        let mut command = Command::new(&node_binary);
+        command
             .arg(npm_file)
             .arg("--version")
             .stdin(Stdio::null())
             .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .await;
-        let valid = matches!(result, Ok(status) if status.success());
+            .stderr(Stdio::null());
+
+        let valid = futures::select! {
+            result = command.status().fuse() => {
+                matches!(result, Ok(status) if status.success())
+            },
+
+            _ = timeout => false,
+        };
 
         if !valid {
             _ = fs::remove_dir_all(&node_containing_dir).await;
@@ -147,11 +167,12 @@ impl NodeRuntime for RealNodeRuntime {
         };
 
         let mut output = attempt().await;
-        if output.is_err() {
+        if let Err(err) = output {
+            log::warn!("Err {err:?}; failed to run npm subcommand {subcommand}, re-attempting");
             output = attempt().await;
-            if output.is_err() {
+            if let Err(err) = output {
                 return Err(anyhow!(
-                    "failed to launch npm subcommand {subcommand} subcommand"
+                    "Err {err:?}; failed to launch npm subcommand {subcommand} for the second time"
                 ));
             }
         }
