@@ -275,6 +275,11 @@ impl AssistantPanel {
             cx.background().clone(),
         ));
         let selection = editor.read(cx).selections.newest_anchor().clone();
+        // Prevent codegen if the selection spans multiple excerpts.
+        if selection.start.excerpt_id() != selection.end.excerpt_id() {
+            return;
+        }
+
         let codegen_kind = if editor.read(cx).selections.newest::<usize>(cx).is_empty() {
             CodegenKind::Generate {
                 position: selection.start,
