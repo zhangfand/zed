@@ -58,7 +58,7 @@ impl WorkspaceElement {
                     )
                     .child(chat_panel(self.right_scroll_state.clone())),
             )
-            .child(statusbar())
+            // .child(statusbar())
             .child(status_bar())
     }
 }
