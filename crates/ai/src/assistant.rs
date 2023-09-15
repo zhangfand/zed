@@ -2986,21 +2986,52 @@ fn outline_for_prompt(
 
     let mut text = String::new();
     let mut items = outline.items.into_iter().peekable();
+
+    let mut intersected = false;
+    let mut extended_range = range.clone();
     while let Some(item) = items.next() {
         let item_range = item.range.to_offset(buffer);
-        text.extend(iter::repeat(indent.as_str()).take(item.depth));
-        if (item_range.contains(&range.start) || item_range.contains(&range.end))
-            && items
-                .peek()
-                .map_or(true, |next_item| next_item.depth <= item.depth)
-        {
-            text.extend(buffer.text_for_range(item_range.clone()));
-        } else {
+        if item_range.end < range.start || item_range.start > range.end {
+            if intersected {
+                intersected = false;
+                // push from extended_range.start to range.start
+                // insert <[[[
+                // push from range.start to range.end
+                // insert ]]]>
+                // push from range.end to extended_range.end
+                text.extend(buffer.text_for_range(range.clone()));
+                text.push('\n');
+            }
+            text.extend(iter::repeat(indent.as_str()).take(item.depth));
             text.push_str(&item.text);
-        }
+            text.push('\n');
+        } else {
+            let is_terminal = items
+                .peek()
+                .map_or(true, |next_item| next_item.depth <= item.depth);
+            if is_terminal {
+                extended_range.start = cmp::min(extended_range.start, item_range.start);
+                extended_range.end = cmp::max(extended_range.end, item_range.end);
+            } else {
+                let name_start = item.name_ranges.first().unwrap().start;
+                let name_end = item.name_ranges.last().unwrap().end;
+                if range.start > name_end {
+                    text.push_str(&item.text);
+                    text.push('\n');
+                } else {
+                    extended_range.start = cmp::min(extended_range.start, name_start);
+                    extended_range.end = cmp::min(extended_range.end, name_end);
+                }
+            }
 
-        text.push('\n');
+            intersected = true;
+        }
     }
+
+    if intersected {
+        text.extend(buffer.text_for_range(range));
+    }
+
     Some(text)
 }
 
@@ -3417,7 +3448,7 @@ pub(crate) mod tests {
         assert_eq!(
             outline.as_deref(),
             Some(indoc! {"
-                struct X
+                struct X {
                     a: usize
                     b
                 impl X
