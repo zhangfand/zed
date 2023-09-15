@@ -741,7 +741,7 @@ impl SemanticIndex {
         })
     }
 
-    pub fn search_files(
+    fn search_files(
         &mut self,
         project: ModelHandle<Project>,
         query: Embedding,
