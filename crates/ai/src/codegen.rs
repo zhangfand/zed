@@ -396,11 +396,13 @@ fn strip_markdown_codeblock(
 
 #[cfg(test)]
 mod tests {
+    use crate::assistant::tests::rust_lang;
+
     use super::*;
     use futures::stream;
     use gpui::{executor::Deterministic, TestAppContext};
     use indoc::indoc;
-    use language::{language_settings, tree_sitter_rust, Buffer, Language, LanguageConfig, Point};
+    use language::{language_settings, Buffer, Point};
     use parking_lot::Mutex;
     use rand::prelude::*;
     use settings::SettingsStore;
@@ -680,25 +682,5 @@ mod tests {
             *self.last_completion_tx.lock() = Some(tx);
             async move { Ok(rx.map(|rx| Ok(rx)).boxed()) }.boxed()
         }
-    }
-
-    fn rust_lang() -> Language {
-        Language::new(
-            LanguageConfig {
-                name: "Rust".into(),
-                path_suffixes: vec!["rs".to_string()],
-                ..Default::default()
-            },
-            Some(tree_sitter_rust::language()),
-        )
-        .with_indents_query(
-            r#"
-            (call_expression) @indent
-            (field_expression) @indent
-            (_ "(" ")" @end) @indent
-            (_ "{" "}" @end) @indent
-            "#,
-        )
-        .unwrap()
     }
 }

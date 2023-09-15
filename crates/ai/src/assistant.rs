@@ -29,7 +29,10 @@ use gpui::{
     ModelHandle, SizeConstraint, Subscription, Task, View, ViewContext, ViewHandle, WeakViewHandle,
     WindowContext,
 };
-use language::{language_settings::SoftWrap, Buffer, LanguageRegistry, ToOffset as _};
+use language::{
+    language_settings::SoftWrap, Buffer, BufferSnapshot, LanguageRegistry, OffsetRangeExt,
+    ToOffset as _,
+};
 use search::BufferSearchBar;
 use settings::SettingsStore;
 use std::{
@@ -2969,11 +2972,45 @@ fn merge_ranges(ranges: &mut Vec<Range<Anchor>>, buffer: &MultiBufferSnapshot) {
     }
 }
 
+fn outline_for_prompt(
+    buffer: &BufferSnapshot,
+    range: Range<language::Anchor>,
+    cx: &AppContext,
+) -> Option<String> {
+    let indent = buffer
+        .language_indent_size_at(0, cx)
+        .chars()
+        .collect::<String>();
+    let outline = buffer.outline(None)?;
+    let range = range.to_offset(buffer);
+
+    let mut text = String::new();
+    let mut items = outline.items.into_iter().peekable();
+    while let Some(item) = items.next() {
+        let item_range = item.range.to_offset(buffer);
+        text.extend(iter::repeat(indent.as_str()).take(item.depth));
+        if (item_range.contains(&range.start) || item_range.contains(&range.end))
+            && items
+                .peek()
+                .map_or(true, |next_item| next_item.depth <= item.depth)
+        {
+            text.extend(buffer.text_for_range(item_range.clone()));
+        } else {
+            text.push_str(&item.text);
+        }
+
+        text.push('\n');
+    }
+    Some(text)
+}
+
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::MessageId;
     use gpui::AppContext;
+    use indoc::indoc;
+    use language::{language_settings, tree_sitter_rust, Language, LanguageConfig, Point};
 
     #[gpui::test]
     fn test_inserting_and_removing_messages(cx: &mut AppContext) {
@@ -3341,6 +3378,120 @@ mod tests {
         );
     }
 
+    #[gpui::test]
+    fn test_outline_for_prompt(cx: &mut AppContext) {
+        cx.set_global(SettingsStore::test(cx));
+        language_settings::init(cx);
+        let text = indoc! {"
+            struct X {
+                a: usize,
+                b: usize,
+            }
+
+            impl X {
+
+                fn new() -> Self {
+                    let a = 1;
+                    let b = 2;
+                    Self { a, b }
+                }
+
+                pub fn a(&self, param: bool) -> usize {
+                    self.a
+                }
+
+                pub fn b(&self) -> usize {
+                    self.b
+                }
+            }
+        "};
+        let buffer =
+            cx.add_model(|cx| Buffer::new(0, 0, text).with_language(Arc::new(rust_lang()), cx));
+        let snapshot = buffer.read(cx).snapshot();
+
+        let outline = outline_for_prompt(
+            &snapshot,
+            snapshot.anchor_before(Point::new(1, 4))..snapshot.anchor_before(Point::new(1, 4)),
+            cx,
+        );
+        assert_eq!(
+            outline.as_deref(),
+            Some(indoc! {"
+                struct X
+                    a: usize
+                    b
+                impl X
+                    fn new
+                    fn a
+                    fn b
+            "})
+        );
+
+        let outline = outline_for_prompt(
+            &snapshot,
+            snapshot.anchor_before(Point::new(8, 12))..snapshot.anchor_before(Point::new(8, 14)),
+            cx,
+        );
+        assert_eq!(
+            outline.as_deref(),
+            Some(indoc! {"
+                struct X
+                    a
+                    b
+                impl X
+                    fn new() -> Self {
+                        let a = 1;
+                        let b = 2;
+                        Self { a, b }
+                    }
+                    fn a
+                    fn b
+            "})
+        );
+
+        let outline = outline_for_prompt(
+            &snapshot,
+            snapshot.anchor_before(Point::new(6, 0))..snapshot.anchor_before(Point::new(6, 0)),
+            cx,
+        );
+        assert_eq!(
+            outline.as_deref(),
+            Some(indoc! {"
+                struct X
+                    a
+                    b
+                impl X
+                    fn new
+                    fn a
+                    fn b
+            "})
+        );
+
+        let outline = outline_for_prompt(
+            &snapshot,
+            snapshot.anchor_before(Point::new(8, 12))..snapshot.anchor_before(Point::new(13, 9)),
+            cx,
+        );
+        assert_eq!(
+            outline.as_deref(),
+            Some(indoc! {"
+                struct X
+                    a
+                    b
+                impl X
+                    fn new() -> Self {
+                        let a = 1;
+                        let b = 2;
+                        Self { a, b }
+                    }
+                    pub fn a(&self, param: bool) -> usize {
+                        self.a
+                    }
+                    fn b
+            "})
+        );
+    }
+
     fn messages(
         conversation: &ModelHandle<Conversation>,
         cx: &AppContext,
@@ -3350,5 +3501,51 @@ mod tests {
             .messages(cx)
             .map(|message| (message.id, message.role, message.offset_range))
             .collect()
+    }
+
+    pub(crate) fn rust_lang() -> Language {
+        Language::new(
+            LanguageConfig {
+                name: "Rust".into(),
+                path_suffixes: vec!["rs".to_string()],
+                ..Default::default()
+            },
+            Some(tree_sitter_rust::language()),
+        )
+        .with_indents_query(
+            r#"
+            (call_expression) @indent
+            (field_expression) @indent
+            (_ "(" ")" @end) @indent
+            (_ "{" "}" @end) @indent
+            "#,
+        )
+        .unwrap()
+        .with_outline_query(
+            r#"
+            (struct_item
+                "struct" @context
+                name: (_) @name) @item
+            (enum_item
+                "enum" @context
+                name: (_) @name) @item
+            (enum_variant
+                name: (_) @name) @item
+            (field_declaration
+                name: (_) @name) @item
+            (impl_item
+                "impl" @context
+                trait: (_)? @name
+                "for"? @context
+                type: (_) @name) @item
+            (function_item
+                "fn" @context
+                name: (_) @name) @item
+            (mod_item
+                "mod" @context
+                name: (_) @name) @item
+            "#,
+        )
+        .unwrap()
     }
 }
