@@ -2988,48 +2988,58 @@ fn outline_for_prompt(
     let mut items = outline.items.into_iter().peekable();
 
     let mut intersected = false;
+    let mut intersection_indent = 0;
     let mut extended_range = range.clone();
+
     while let Some(item) = items.next() {
         let item_range = item.range.to_offset(buffer);
         if item_range.end < range.start || item_range.start > range.end {
-            if intersected {
-                intersected = false;
-                // push from extended_range.start to range.start
-                // insert <[[[
-                // push from range.start to range.end
-                // insert ]]]>
-                // push from range.end to extended_range.end
-                text.extend(buffer.text_for_range(range.clone()));
-                text.push('\n');
-            }
             text.extend(iter::repeat(indent.as_str()).take(item.depth));
             text.push_str(&item.text);
             text.push('\n');
         } else {
+            intersected = true;
             let is_terminal = items
                 .peek()
                 .map_or(true, |next_item| next_item.depth <= item.depth);
             if is_terminal {
-                extended_range.start = cmp::min(extended_range.start, item_range.start);
+                if item_range.start <= extended_range.start {
+                    extended_range.start = item_range.start;
+                    intersection_indent = item.depth;
+                }
                 extended_range.end = cmp::max(extended_range.end, item_range.end);
             } else {
-                let name_start = item.name_ranges.first().unwrap().start;
-                let name_end = item.name_ranges.last().unwrap().end;
+                let name_start = item_range.start + item.name_ranges.first().unwrap().start;
+                let name_end = item_range.start + item.name_ranges.last().unwrap().end;
+
                 if range.start > name_end {
+                    text.extend(iter::repeat(indent.as_str()).take(item.depth));
                     text.push_str(&item.text);
                     text.push('\n');
                 } else {
-                    extended_range.start = cmp::min(extended_range.start, name_start);
-                    extended_range.end = cmp::min(extended_range.end, name_end);
+                    if name_start <= extended_range.start {
+                        extended_range.start = item_range.start;
+                        intersection_indent = item.depth;
+                    }
+                    extended_range.end = cmp::max(extended_range.end, name_end);
                 }
             }
-
-            intersected = true;
         }
-    }
 
-    if intersected {
-        text.extend(buffer.text_for_range(range));
+        if intersected
+            && items.peek().map_or(true, |next_item| {
+                next_item.range.start.to_offset(buffer) > range.end
+            })
+        {
+            intersected = false;
+            text.extend(iter::repeat(indent.as_str()).take(intersection_indent));
+            text.extend(buffer.text_for_range(extended_range.start..range.start));
+            text.push_str("<|");
+            text.extend(buffer.text_for_range(range.clone()));
+            text.push_str("|>");
+            text.extend(buffer.text_for_range(range.end..extended_range.end));
+            text.push('\n');
+        }
     }
 
     Some(text)
@@ -3448,8 +3458,8 @@ pub(crate) mod tests {
         assert_eq!(
             outline.as_deref(),
             Some(indoc! {"
-                struct X {
-                    a: usize
+                struct X
+                    <||>a: usize
                     b
                 impl X
                     fn new
@@ -3471,7 +3481,7 @@ pub(crate) mod tests {
                     b
                 impl X
                     fn new() -> Self {
-                        let a = 1;
+                        let <|a |>= 1;
                         let b = 2;
                         Self { a, b }
                     }
@@ -3492,6 +3502,7 @@ pub(crate) mod tests {
                     a
                     b
                 impl X
+                <||>
                     fn new
                     fn a
                     fn b
@@ -3511,14 +3522,59 @@ pub(crate) mod tests {
                     b
                 impl X
                     fn new() -> Self {
+                        let <|a = 1;
+                        let b = 2;
+                        Self { a, b }
+                    }
+
+                    pub f|>n a(&self, param: bool) -> usize {
+                        self.a
+                    }
+                    fn b
+            "})
+        );
+
+        let outline = outline_for_prompt(
+            &snapshot,
+            snapshot.anchor_before(Point::new(5, 6))..snapshot.anchor_before(Point::new(12, 0)),
+            cx,
+        );
+        assert_eq!(
+            outline.as_deref(),
+            Some(indoc! {"
+                struct X
+                    a
+                    b
+                impl X<| {
+
+                    fn new() -> Self {
                         let a = 1;
                         let b = 2;
                         Self { a, b }
                     }
-                    pub fn a(&self, param: bool) -> usize {
-                        self.a
-                    }
+                |>
+                    fn a
                     fn b
+            "})
+        );
+
+        let outline = outline_for_prompt(
+            &snapshot,
+            snapshot.anchor_before(Point::new(18, 8))..snapshot.anchor_before(Point::new(18, 8)),
+            cx,
+        );
+        assert_eq!(
+            outline.as_deref(),
+            Some(indoc! {"
+                struct X
+                    a
+                    b
+                impl X
+                    fn new
+                    fn a
+                    pub fn b(&self) -> usize {
+                        <||>self.b
+                    }
             "})
         );
     }
