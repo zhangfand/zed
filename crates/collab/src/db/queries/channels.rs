@@ -637,6 +637,38 @@ impl Database {
         Ok(())
     }
 
+    /// Returns the immediate children of the channel
+    /// For example, in this DAG:
+    ///
+    ///       /- c
+    /// a - b -- d - e
+    ///       \-----/
+    ///
+    /// calling this method on 'b' would return [c, d, e]
+    pub async fn get_channel_children(&self, parent_id: ChannelId) -> Result<Vec<Channel>> {
+        todo!();
+    }
+
+    pub async fn set_position(
+        &self,
+        channel: ChannelId,
+        parent: ChannelId,
+        ix: usize,
+    ) -> Result<()> {
+        // channel_ordering is a table like this:
+        //
+        // id: i64, parent_id: i64, ordering: Vec<ChannelId>
+        //
+        // The ChannelIds in the ordering field should be exactly equal to the results
+        // of the get_channel_children query above
+        //
+        //let orders = SELECT ordering FROM channel_ordering WHERE id = parent_id
+        //orders.remove(channel)
+        //orders.insert(ix, channel)
+        //UPDATE channel_ordering SET ordering = orders WHERE id = parent_id
+        todo!();
+    }
+
     /// Returns the channel ancestors, deepest first
     pub async fn get_channel_ancestors(
         &self,
