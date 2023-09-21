@@ -1,3 +1,4 @@
+mod agents;
 pub mod assistant;
 mod assistant_settings;
 mod codegen;
