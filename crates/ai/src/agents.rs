@@ -7,7 +7,6 @@ use isahc::{http::StatusCode, Request, RequestExt};
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize, Serializer};
 use serde_json::json;
-use util::ResultExt;
 
 use crate::{RequestMessage, Role, Usage};
 
@@ -85,7 +84,7 @@ trait OpenAIFunction: erased_serde::Serialize {
 }
 serialize_trait_object!(OpenAIFunction);
 
-pub struct CodeContextRetriever {}
+pub struct CodeContextRetriever;
 impl Serialize for CodeContextRetriever {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -115,6 +114,33 @@ impl OpenAIFunction for CodeContextRetriever {
                 }
             },
             "required": ["queries"]
+        })
+    }
+}
+
+pub struct GenerateCode;
+impl Serialize for GenerateCode {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        json!({"name": self.name(),
+               "description": self.description(),
+               "parameters": self.parameters()})
+        .serialize(serializer)
+    }
+}
+impl OpenAIFunction for GenerateCode {
+    fn name(&self) -> String {
+        "retrieve_code_context_from_repository".to_string()
+    }
+    fn description(&self) -> String {
+        "Retrieve relevant code snippets from repository with natural language".to_string()
+    }
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {},
         })
     }
 }
