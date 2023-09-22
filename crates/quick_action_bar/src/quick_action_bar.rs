@@ -1,4 +1,4 @@
-use ai::{assistant::InlineAssist, AssistantPanel};
+use assistant::{assistant_panel::InlineAssist, AssistantPanel};
 use editor::Editor;
 use gpui::{
     elements::{Empty, Flex, MouseEventHandler, ParentElement, Svg},
@@ -94,7 +94,7 @@ impl View for QuickActionBar {
 
         bar.add_child(render_quick_action_bar_button(
             2,
-            "icons/radix/magic-wand.svg",
+            "icons/magic-wand.svg",
             false,
             ("Inline Assist".into(), Some(Box::new(InlineAssist))),
             cx,

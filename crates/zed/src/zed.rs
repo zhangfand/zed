@@ -5,9 +5,9 @@ pub mod only_instance;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test;
 
-use ai::AssistantPanel;
 use anyhow::Context;
 use assets::Assets;
+use assistant::AssistantPanel;
 use breadcrumbs::Breadcrumbs;
 pub use client;
 use collab_ui::CollabTitlebarItem; // TODO: Add back toggle collab ui shortcut
@@ -216,6 +216,13 @@ pub fn init(app_state: &Arc<AppState>, cx: &mut gpui::AppContext) {
     );
     cx.add_action(
         |workspace: &mut Workspace,
+         _: &collab_ui::chat_panel::ToggleFocus,
+         cx: &mut ViewContext<Workspace>| {
+            workspace.toggle_panel_focus::<collab_ui::chat_panel::ChatPanel>(cx);
+        },
+    );
+    cx.add_action(
+        |workspace: &mut Workspace,
          _: &terminal_panel::ToggleFocus,
          cx: &mut ViewContext<Workspace>| {
             workspace.toggle_panel_focus::<TerminalPanel>(cx);
@@ -338,11 +345,14 @@ pub fn initialize_workspace(
         let assistant_panel = AssistantPanel::load(workspace_handle.clone(), cx.clone());
         let channels_panel =
             collab_ui::collab_panel::CollabPanel::load(workspace_handle.clone(), cx.clone());
-        let (project_panel, terminal_panel, assistant_panel, channels_panel) = futures::try_join!(
+        let chat_panel =
+            collab_ui::chat_panel::ChatPanel::load(workspace_handle.clone(), cx.clone());
+        let (project_panel, terminal_panel, assistant_panel, channels_panel, chat_panel) = futures::try_join!(
             project_panel,
             terminal_panel,
             assistant_panel,
-            channels_panel
+            channels_panel,
+            chat_panel,
         )?;
         workspace_handle.update(&mut cx, |workspace, cx| {
             let project_panel_position = project_panel.position(cx);
@@ -362,6 +372,7 @@ pub fn initialize_workspace(
             workspace.add_panel(terminal_panel, cx);
             workspace.add_panel(assistant_panel, cx);
             workspace.add_panel(channels_panel, cx);
+            workspace.add_panel(chat_panel, cx);
 
             if !was_deserialized
                 && workspace
@@ -2407,7 +2418,7 @@ mod tests {
             pane::init(cx);
             project_panel::init((), cx);
             terminal_view::init(cx);
-            ai::init(cx);
+            assistant::init(cx);
             app_state
         })
     }

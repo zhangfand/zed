@@ -119,12 +119,6 @@ fn main() {
     app.run(move |cx| {
         cx.set_global(*RELEASE_CHANNEL);
 
-        #[cfg(debug_assertions)]
-        {
-            use feature_flags::FeatureFlagAppExt;
-            cx.set_staff(true);
-        }
-
         let mut store = SettingsStore::default();
         store
             .set_default_settings(default_settings().as_ref(), cx)
@@ -135,6 +129,7 @@ fn main() {
 
         let client = client::Client::new(http.clone(), cx);
         let mut languages = LanguageRegistry::new(login_shell_env_loaded);
+        let copilot_language_server_id = languages.next_language_server_id();
         languages.set_executor(cx.background().clone());
         languages.set_language_server_download_dir(paths::LANGUAGES_DIR.clone());
         let languages = Arc::new(languages);
@@ -165,8 +160,8 @@ fn main() {
         semantic_index::init(fs.clone(), http.clone(), languages.clone(), cx);
         vim::init(cx);
         terminal_view::init(cx);
-        copilot::init(http.clone(), node_runtime, cx);
-        ai::init(cx);
+        copilot::init(copilot_language_server_id, http.clone(), node_runtime, cx);
+        assistant::init(cx);
         component_test::init(cx);
 
         cx.spawn(|cx| watch_themes(fs.clone(), cx)).detach();

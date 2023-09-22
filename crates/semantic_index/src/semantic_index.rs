@@ -1,5 +1,4 @@
 mod db;
-mod embedding;
 mod embedding_queue;
 mod parsing;
 pub mod semantic_index_settings;
@@ -8,14 +7,15 @@ pub mod semantic_index_settings;
 mod semantic_index_tests;
 
 use crate::semantic_index_settings::SemanticIndexSettings;
+use ai::embedding::{Embedding, EmbeddingProvider, OpenAIEmbeddings};
 use anyhow::{anyhow, Result};
 use collections::{BTreeMap, HashMap, HashSet};
 use db::VectorDatabase;
-use embedding::{Embedding, EmbeddingProvider, OpenAIEmbeddings};
 use embedding_queue::{EmbeddingQueue, FileToEmbed};
 use futures::{future, FutureExt, StreamExt};
 use gpui::{AppContext, AsyncAppContext, Entity, ModelContext, ModelHandle, Task, WeakModelHandle};
 use language::{Anchor, Bias, Buffer, Language, LanguageRegistry};
+use lazy_static::lazy_static;
 use ordered_float::OrderedFloat;
 use parking_lot::Mutex;
 use parsing::{CodeContextRetriever, Span, SpanDigest, PARSEABLE_ENTIRE_FILE_TYPES};
@@ -24,6 +24,7 @@ use project::{search::PathMatcher, Fs, PathChange, Project, ProjectEntryId, Work
 use smol::channel;
 use std::{
     cmp::Reverse,
+    env,
     future::Future,
     mem,
     ops::Range,
@@ -31,17 +32,16 @@ use std::{
     sync::{Arc, Weak},
     time::{Duration, Instant, SystemTime},
 };
-use util::{
-    channel::{ReleaseChannel, RELEASE_CHANNEL, RELEASE_CHANNEL_NAME},
-    http::HttpClient,
-    paths::EMBEDDINGS_DIR,
-    ResultExt,
-};
+use util::{channel::RELEASE_CHANNEL_NAME, http::HttpClient, paths::EMBEDDINGS_DIR, ResultExt};
 use workspace::WorkspaceCreated;
 
 const SEMANTIC_INDEX_VERSION: usize = 11;
 const BACKGROUND_INDEXING_DELAY: Duration = Duration::from_secs(5 * 60);
 const EMBEDDING_QUEUE_FLUSH_TIMEOUT: Duration = Duration::from_millis(250);
+
+lazy_static! {
+    static ref OPENAI_API_KEY: Option<String> = env::var("OPENAI_API_KEY").ok();
+}
 
 pub fn init(
     fs: Arc<dyn Fs>,
@@ -54,11 +54,6 @@ pub fn init(
     let db_file_path = EMBEDDINGS_DIR
         .join(Path::new(RELEASE_CHANNEL_NAME.as_str()))
         .join("embeddings_db");
-
-    // This needs to be removed at some point before stable.
-    if *RELEASE_CHANNEL == ReleaseChannel::Stable {
-        return;
-    }
 
     cx.subscribe_global::<WorkspaceCreated, _>({
         move |event, cx| {
@@ -110,6 +105,7 @@ pub fn init(
 
 #[derive(Copy, Clone, Debug)]
 pub enum SemanticIndexStatus {
+    NotAuthenticated,
     NotIndexed,
     Indexed,
     Indexing {
@@ -282,10 +278,13 @@ impl SemanticIndex {
 
     pub fn enabled(cx: &AppContext) -> bool {
         settings::get::<SemanticIndexSettings>(cx).enabled
-            && *RELEASE_CHANNEL != ReleaseChannel::Stable
     }
 
     pub fn status(&self, project: &ModelHandle<Project>) -> SemanticIndexStatus {
+        if !self.embedding_provider.is_authenticated() {
+            return SemanticIndexStatus::NotAuthenticated;
+        }
+
         if let Some(project_state) = self.projects.get(&project.downgrade()) {
             if project_state
                 .worktrees
@@ -305,7 +304,7 @@ impl SemanticIndex {
         }
     }
 
-    async fn new(
+    pub async fn new(
         fs: Arc<dyn Fs>,
         database_path: PathBuf,
         embedding_provider: Arc<dyn EmbeddingProvider>,
@@ -705,16 +704,23 @@ impl SemanticIndex {
         let embedding_provider = self.embedding_provider.clone();
 
         cx.spawn(|this, mut cx| async move {
+            index.await?;
             let query = embedding_provider
                 .embed_batch(vec![query])
                 .await?
                 .pop()
                 .ok_or_else(|| anyhow!("could not embed query"))?;
-            index.await?;
 
             let search_start = Instant::now();
             let modified_buffer_results = this.update(&mut cx, |this, cx| {
-                this.search_modified_buffers(&project, query.clone(), limit, &excludes, cx)
+                this.search_modified_buffers(
+                    &project,
+                    query.clone(),
+                    limit,
+                    &includes,
+                    &excludes,
+                    cx,
+                )
             });
             let file_results = this.update(&mut cx, |this, cx| {
                 this.search_files(project, query, limit, includes, excludes, cx)
@@ -877,6 +883,7 @@ impl SemanticIndex {
         project: &ModelHandle<Project>,
         query: Embedding,
         limit: usize,
+        includes: &[PathMatcher],
         excludes: &[PathMatcher],
         cx: &mut ModelContext<Self>,
     ) -> Task<Result<Vec<SearchResult>>> {
@@ -890,7 +897,16 @@ impl SemanticIndex {
                 let excluded = snapshot.resolve_file_path(cx, false).map_or(false, |path| {
                     excludes.iter().any(|matcher| matcher.is_match(&path))
                 });
-                if buffer.is_dirty() && !excluded {
+
+                let included = if includes.len() == 0 {
+                    true
+                } else {
+                    snapshot.resolve_file_path(cx, false).map_or(false, |path| {
+                        includes.iter().any(|matcher| matcher.is_match(&path))
+                    })
+                };
+
+                if buffer.is_dirty() && !excluded && included {
                     Some((buffer_handle, snapshot))
                 } else {
                     None
@@ -959,9 +975,11 @@ impl SemanticIndex {
         project: ModelHandle<Project>,
         cx: &mut ModelContext<Self>,
     ) -> Task<Result<()>> {
-        if !self.projects.contains_key(&project.downgrade()) {
-            log::trace!("Registering Project for Semantic Index");
+        if !self.embedding_provider.is_authenticated() {
+            return Task::ready(Err(anyhow!("user is not authenticated")));
+        }
 
+        if !self.projects.contains_key(&project.downgrade()) {
             let subscription = cx.subscribe(&project, |this, project, event, cx| match event {
                 project::Event::WorktreeAdded | project::Event::WorktreeRemoved(_) => {
                     this.project_worktrees_changed(project.clone(), cx);

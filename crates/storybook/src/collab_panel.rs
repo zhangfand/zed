@@ -1,10 +1,10 @@
-use crate::theme::{theme, Theme};
 use gpui2::{
     elements::{div, div::ScrollState, img, svg},
     style::{StyleHelpers, Styleable},
     ArcCow, Element, IntoElement, ParentElement, ViewContext,
 };
 use std::marker::PhantomData;
+use ui::{theme, Theme};
 
 #[derive(Element)]
 pub struct CollabPanelElement<V: 'static> {
@@ -132,9 +132,9 @@ impl<V: 'static> CollabPanelElement<V> {
                 div().flex().h_full().gap_1().items_center().child(
                     svg()
                         .path(if expanded {
-                            "icons/radix/caret-down.svg"
+                            "icons/caret_down.svg"
                         } else {
-                            "icons/radix/caret-up.svg"
+                            "icons/caret_up.svg"
                         })
                         .w_3p5()
                         .h_3p5()

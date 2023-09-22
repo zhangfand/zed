@@ -90,7 +90,7 @@ pub struct BufferSearchBar {
     dismissed: bool,
     search_history: SearchHistory,
     current_mode: SearchMode,
-    replace_is_active: bool,
+    replace_enabled: bool,
 }
 
 impl Entity for BufferSearchBar {
@@ -266,7 +266,7 @@ impl View for BufferSearchBar {
             .with_max_width(theme.search.editor.max_width)
             .with_height(theme.search.search_bar_row_height)
             .flex(1., false);
-        let should_show_replace_input = self.replace_is_active && supported_options.replacement;
+        let should_show_replace_input = self.replace_enabled && supported_options.replacement;
 
         let replacement = should_show_replace_input.then(|| {
             Flex::row()
@@ -308,7 +308,7 @@ impl View for BufferSearchBar {
             Flex::row()
                 .align_children_center()
                 .with_child(super::toggle_replace_button(
-                    self.replace_is_active,
+                    self.replace_enabled,
                     theme.tooltip.clone(),
                     theme.search.option_button_component.clone(),
                 ))
@@ -447,7 +447,7 @@ impl BufferSearchBar {
             search_history: SearchHistory::default(),
             current_mode: SearchMode::default(),
             active_search: None,
-            replace_is_active: false,
+            replace_enabled: false,
         }
     }
 
@@ -774,8 +774,7 @@ impl BufferSearchBar {
                         Vec::new(),
                         Vec::new(),
                     ) {
-                        Ok(query) => query
-                            .with_replacement(Some(self.replacement(cx)).filter(|s| !s.is_empty())),
+                        Ok(query) => query.with_replacement(self.replacement(cx)),
                         Err(_) => {
                             self.query_contains_error = true;
                             cx.notify();
@@ -783,14 +782,20 @@ impl BufferSearchBar {
                         }
                     }
                 } else {
-                    SearchQuery::text(
+                    match SearchQuery::text(
                         query,
                         self.search_options.contains(SearchOptions::WHOLE_WORD),
                         self.search_options.contains(SearchOptions::CASE_SENSITIVE),
                         Vec::new(),
                         Vec::new(),
-                    )
-                    .with_replacement(Some(self.replacement(cx)).filter(|s| !s.is_empty()))
+                    ) {
+                        Ok(query) => query.with_replacement(self.replacement(cx)),
+                        Err(_) => {
+                            self.query_contains_error = true;
+                            cx.notify();
+                            return done_rx;
+                        }
+                    }
                 }
                 .into();
                 self.active_search = Some(query.clone());
@@ -886,7 +891,10 @@ impl BufferSearchBar {
     }
     fn toggle_replace(&mut self, _: &ToggleReplace, cx: &mut ViewContext<Self>) {
         if let Some(_) = &self.active_searchable_item {
-            self.replace_is_active = !self.replace_is_active;
+            self.replace_enabled = !self.replace_enabled;
+            if !self.replace_enabled {
+                cx.focus(&self.query_editor);
+            }
             cx.notify();
         }
     }
@@ -896,7 +904,13 @@ impl BufferSearchBar {
             search_bar.update(cx, |bar, cx| {
                 if let Some(_) = &bar.active_searchable_item {
                     should_propagate = false;
-                    bar.replace_is_active = !bar.replace_is_active;
+                    bar.replace_enabled = !bar.replace_enabled;
+                    if bar.dismissed {
+                        bar.show(cx);
+                    }
+                    if !bar.replace_enabled {
+                        cx.focus(&bar.query_editor);
+                    }
                     cx.notify();
                 }
             });
@@ -906,6 +920,7 @@ impl BufferSearchBar {
         }
     }
     fn replace_next(&mut self, _: &ReplaceNext, cx: &mut ViewContext<Self>) {
+        let mut should_propagate = true;
         if !self.dismissed && self.active_search.is_some() {
             if let Some(searchable_item) = self.active_searchable_item.as_ref() {
                 if let Some(query) = self.active_search.as_ref() {
@@ -914,16 +929,21 @@ impl BufferSearchBar {
                         .get(&searchable_item.downgrade())
                     {
                         if let Some(active_index) = self.active_match_index {
-                            let query = query.as_ref().clone().with_replacement(
-                                Some(self.replacement(cx)).filter(|rep| !rep.is_empty()),
-                            );
+                            let query = query
+                                .as_ref()
+                                .clone()
+                                .with_replacement(self.replacement(cx));
                             searchable_item.replace(&matches[active_index], &query, cx);
+                            self.select_next_match(&SelectNextMatch, cx);
                         }
-
+                        should_propagate = false;
                         self.focus_editor(&FocusEditor, cx);
                     }
                 }
             }
+        }
+        if should_propagate {
+            cx.propagate_action();
         }
     }
     fn replace_all(&mut self, _: &ReplaceAll, cx: &mut ViewContext<Self>) {
@@ -934,14 +954,13 @@ impl BufferSearchBar {
                         .searchable_items_with_matches
                         .get(&searchable_item.downgrade())
                     {
-                        let query = query.as_ref().clone().with_replacement(
-                            Some(self.replacement(cx)).filter(|rep| !rep.is_empty()),
-                        );
+                        let query = query
+                            .as_ref()
+                            .clone()
+                            .with_replacement(self.replacement(cx));
                         for m in matches {
                             searchable_item.replace(m, &query, cx);
                         }
-
-                        self.focus_editor(&FocusEditor, cx);
                     }
                 }
             }
