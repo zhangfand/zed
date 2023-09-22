@@ -351,7 +351,7 @@ fn strip_markdown_codeblock(
 
 #[cfg(test)]
 mod tests {
-    use crate::assistant::tests::rust_lang;
+    use crate::assistant_panel::tests::rust_lang;
 
     use super::*;
     use futures::{

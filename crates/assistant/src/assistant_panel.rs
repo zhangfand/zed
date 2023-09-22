@@ -4,9 +4,8 @@ use crate::{
     MessageId, MessageMetadata, MessageStatus, Role, SavedConversation, SavedConversationMetadata,
     SavedMessage,
 };
-use ai::completion::{
-    stream_completion, OpenAICompletionProvider, OpenAIRequest, RequestMessage, OPENAI_API_URL,
-};
+use ai::completion::{stream_completion, OpenAICompletionProvider, OpenAIRequest, OPENAI_API_URL};
+use ai::RequestMessage;
 use anyhow::{anyhow, Result};
 use chrono::{DateTime, Local};
 use client::{telemetry::AssistantKind, ClickhouseEvent, TelemetrySettings};
@@ -33,10 +32,7 @@ use gpui::{
     ModelHandle, SizeConstraint, Subscription, Task, View, ViewContext, ViewHandle, WeakViewHandle,
     WindowContext,
 };
-use language::{
-    language_settings::SoftWrap, Buffer, BufferSnapshot, LanguageRegistry, OffsetRangeExt,
-    ToOffset as _,
-};
+use language::{language_settings::SoftWrap, Buffer, LanguageRegistry, ToOffset as _};
 use search::BufferSearchBar;
 use settings::SettingsStore;
 use std::{
@@ -3005,86 +3001,12 @@ fn merge_ranges(ranges: &mut Vec<Range<Anchor>>, buffer: &MultiBufferSnapshot) {
     }
 }
 
-fn outline_for_prompt(
-    buffer: &BufferSnapshot,
-    range: Range<language::Anchor>,
-    cx: &AppContext,
-) -> Option<String> {
-    let indent = buffer
-        .language_indent_size_at(0, cx)
-        .chars()
-        .collect::<String>();
-    let outline = buffer.outline(None)?;
-    let range = range.to_offset(buffer);
-
-    let mut text = String::new();
-    let mut items = outline.items.into_iter().peekable();
-
-    let mut intersected = false;
-    let mut intersection_indent = 0;
-    let mut extended_range = range.clone();
-
-    while let Some(item) = items.next() {
-        let item_range = item.range.to_offset(buffer);
-        if item_range.end < range.start || item_range.start > range.end {
-            text.extend(iter::repeat(indent.as_str()).take(item.depth));
-            text.push_str(&item.text);
-            text.push('\n');
-        } else {
-            intersected = true;
-            let is_terminal = items
-                .peek()
-                .map_or(true, |next_item| next_item.depth <= item.depth);
-            if is_terminal {
-                if item_range.start <= extended_range.start {
-                    extended_range.start = item_range.start;
-                    intersection_indent = item.depth;
-                }
-                extended_range.end = cmp::max(extended_range.end, item_range.end);
-            } else {
-                let name_start = item_range.start + item.name_ranges.first().unwrap().start;
-                let name_end = item_range.start + item.name_ranges.last().unwrap().end;
-
-                if range.start > name_end {
-                    text.extend(iter::repeat(indent.as_str()).take(item.depth));
-                    text.push_str(&item.text);
-                    text.push('\n');
-                } else {
-                    if name_start <= extended_range.start {
-                        extended_range.start = item_range.start;
-                        intersection_indent = item.depth;
-                    }
-                    extended_range.end = cmp::max(extended_range.end, name_end);
-                }
-            }
-        }
-
-        if intersected
-            && items.peek().map_or(true, |next_item| {
-                next_item.range.start.to_offset(buffer) > range.end
-            })
-        {
-            intersected = false;
-            text.extend(iter::repeat(indent.as_str()).take(intersection_indent));
-            text.extend(buffer.text_for_range(extended_range.start..range.start));
-            text.push_str("<|");
-            text.extend(buffer.text_for_range(range.clone()));
-            text.push_str("|>");
-            text.extend(buffer.text_for_range(range.end..extended_range.end));
-            text.push('\n');
-        }
-    }
-
-    Some(text)
-}
-
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
     use crate::MessageId;
     use gpui::AppContext;
-    use indoc::indoc;
-    use language::{language_settings, tree_sitter_rust, Language, LanguageConfig, Point};
+    use language::{tree_sitter_rust, Language, LanguageConfig};
 
     #[gpui::test]
     fn test_inserting_and_removing_messages(cx: &mut AppContext) {
@@ -3449,166 +3371,6 @@ pub(crate) mod tests {
                 (message_1.id, Role::Assistant, 2..6),
                 (message_2.id, Role::System, 6..6),
             ]
-        );
-    }
-
-    #[gpui::test]
-    fn test_outline_for_prompt(cx: &mut AppContext) {
-        cx.set_global(SettingsStore::test(cx));
-        language_settings::init(cx);
-        let text = indoc! {"
-            struct X {
-                a: usize,
-                b: usize,
-            }
-
-            impl X {
-
-                fn new() -> Self {
-                    let a = 1;
-                    let b = 2;
-                    Self { a, b }
-                }
-
-                pub fn a(&self, param: bool) -> usize {
-                    self.a
-                }
-
-                pub fn b(&self) -> usize {
-                    self.b
-                }
-            }
-        "};
-        let buffer =
-            cx.add_model(|cx| Buffer::new(0, 0, text).with_language(Arc::new(rust_lang()), cx));
-        let snapshot = buffer.read(cx).snapshot();
-
-        let outline = outline_for_prompt(
-            &snapshot,
-            snapshot.anchor_before(Point::new(1, 4))..snapshot.anchor_before(Point::new(1, 4)),
-            cx,
-        );
-        assert_eq!(
-            outline.as_deref(),
-            Some(indoc! {"
-                struct X
-                    <||>a: usize
-                    b
-                impl X
-                    fn new
-                    fn a
-                    fn b
-            "})
-        );
-
-        let outline = outline_for_prompt(
-            &snapshot,
-            snapshot.anchor_before(Point::new(8, 12))..snapshot.anchor_before(Point::new(8, 14)),
-            cx,
-        );
-        assert_eq!(
-            outline.as_deref(),
-            Some(indoc! {"
-                struct X
-                    a
-                    b
-                impl X
-                    fn new() -> Self {
-                        let <|a |>= 1;
-                        let b = 2;
-                        Self { a, b }
-                    }
-                    fn a
-                    fn b
-            "})
-        );
-
-        let outline = outline_for_prompt(
-            &snapshot,
-            snapshot.anchor_before(Point::new(6, 0))..snapshot.anchor_before(Point::new(6, 0)),
-            cx,
-        );
-        assert_eq!(
-            outline.as_deref(),
-            Some(indoc! {"
-                struct X
-                    a
-                    b
-                impl X
-                <||>
-                    fn new
-                    fn a
-                    fn b
-            "})
-        );
-
-        let outline = outline_for_prompt(
-            &snapshot,
-            snapshot.anchor_before(Point::new(8, 12))..snapshot.anchor_before(Point::new(13, 9)),
-            cx,
-        );
-        assert_eq!(
-            outline.as_deref(),
-            Some(indoc! {"
-                struct X
-                    a
-                    b
-                impl X
-                    fn new() -> Self {
-                        let <|a = 1;
-                        let b = 2;
-                        Self { a, b }
-                    }
-
-                    pub f|>n a(&self, param: bool) -> usize {
-                        self.a
-                    }
-                    fn b
-            "})
-        );
-
-        let outline = outline_for_prompt(
-            &snapshot,
-            snapshot.anchor_before(Point::new(5, 6))..snapshot.anchor_before(Point::new(12, 0)),
-            cx,
-        );
-        assert_eq!(
-            outline.as_deref(),
-            Some(indoc! {"
-                struct X
-                    a
-                    b
-                impl X<| {
-
-                    fn new() -> Self {
-                        let a = 1;
-                        let b = 2;
-                        Self { a, b }
-                    }
-                |>
-                    fn a
-                    fn b
-            "})
-        );
-
-        let outline = outline_for_prompt(
-            &snapshot,
-            snapshot.anchor_before(Point::new(18, 8))..snapshot.anchor_before(Point::new(18, 8)),
-            cx,
-        );
-        assert_eq!(
-            outline.as_deref(),
-            Some(indoc! {"
-                struct X
-                    a
-                    b
-                impl X
-                    fn new
-                    fn a
-                    pub fn b(&self) -> usize {
-                        <||>self.b
-                    }
-            "})
         );
     }
 

@@ -1,9 +1,10 @@
 pub mod assistant_panel;
 mod assistant_settings;
 mod codegen;
+mod prompts;
 mod streaming_diff;
 
-use ai::completion::Role;
+use ai::Role;
 use anyhow::Result;
 pub use assistant_panel::AssistantPanel;
 use assistant_settings::OpenAIModel;

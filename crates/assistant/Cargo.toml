@@ -18,6 +18,7 @@ gpui = { path = "../gpui" }
 language = { path = "../language" }
 menu = { path = "../menu" }
 search = { path = "../search" }
+semantic_index = { path = "../semantic_index"}
 settings = { path = "../settings" }
 theme = { path = "../theme" }
 util = { path = "../util" }
