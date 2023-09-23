@@ -11,6 +11,7 @@ doctest = false
 [dependencies]
 gpui = { path = "../gpui" }
 util = { path = "../util" }
+project = { path = "../project" }
 async-trait.workspace = true
 anyhow.workspace = true
 futures.workspace = true
