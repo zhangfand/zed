@@ -22,15 +22,7 @@ use util::{
 pub struct ElixirLspAdapter;
 
 #[async_trait]
-impl LspAdapter for ElixirLspAdapter {
-    async fn name(&self) -> LanguageServerName {
-        LanguageServerName("elixir-ls".into())
-    }
-
-    fn short_name(&self) -> &'static str {
-        "elixir-ls"
-    }
-
+impl LspFetcher for ElixirLspAdapter {
     fn will_start_server(
         &self,
         delegate: &Arc<dyn LspAdapterDelegate>,
@@ -152,6 +144,17 @@ impl LspAdapter for ElixirLspAdapter {
         container_dir: PathBuf,
     ) -> Option<LanguageServerBinary> {
         get_cached_server_binary(container_dir).await
+    }
+}
+
+#[async_trait]
+impl LspAdapter for ElixirLspAdapter {
+    async fn name(&self) -> LanguageServerName {
+        LanguageServerName("elixir-ls".into())
+    }
+
+    fn short_name(&self) -> &'static str {
+        "elixir-ls"
     }
 
     async fn label_for_completion(

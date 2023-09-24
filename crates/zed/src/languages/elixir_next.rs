@@ -67,15 +67,7 @@ const NEXT_BINARY: GithubBinary<Init> = GithubBinary::new(
 pub struct NextLspAdapter;
 
 #[async_trait]
-impl LspAdapter for NextLspAdapter {
-    async fn name(&self) -> LanguageServerName {
-        LanguageServerName("next-ls".into())
-    }
-
-    fn short_name(&self) -> &'static str {
-        "next-ls"
-    }
-
+impl LspFetcher for NextLspAdapter {
     async fn fetch_latest_server_version(
         &self,
         delegate: &dyn LspAdapterDelegate,
@@ -125,6 +117,17 @@ impl LspAdapter for NextLspAdapter {
                 .with_arguments(&["--help"]),
         )
     }
+}
+
+#[async_trait]
+impl LspAdapter for NextLspAdapter {
+    async fn name(&self) -> LanguageServerName {
+        LanguageServerName("next-ls".into())
+    }
+
+    fn short_name(&self) -> &'static str {
+        "next-ls"
+    }
 
     async fn label_for_symbol(
         &self,
@@ -146,15 +149,7 @@ pub struct LocalNextLspAdapter {
 }
 
 #[async_trait]
-impl LspAdapter for LocalNextLspAdapter {
-    async fn name(&self) -> LanguageServerName {
-        LanguageServerName("local-next-ls".into())
-    }
-
-    fn short_name(&self) -> &'static str {
-        "next-ls"
-    }
-
+impl LspFetcher for LocalNextLspAdapter {
     async fn fetch_latest_server_version(
         &self,
         _: &dyn LspAdapterDelegate,
@@ -193,6 +188,17 @@ impl LspAdapter for LocalNextLspAdapter {
             path: PathBuf::from(path.deref()),
             arguments: self.arguments.iter().map(|arg| arg.into()).collect(),
         })
+    }
+}
+
+#[async_trait]
+impl LspAdapter for LocalNextLspAdapter {
+    async fn name(&self) -> LanguageServerName {
+        LanguageServerName("local-next-ls".into())
+    }
+
+    fn short_name(&self) -> &'static str {
+        "next-ls"
     }
 
     async fn label_for_symbol(

@@ -1,6 +1,6 @@
 use anyhow::Result;
 use async_trait::async_trait;
-use language::{LanguageServerName, LspAdapter, LspAdapterDelegate};
+use language::{LanguageServerName, LspAdapter, LspAdapterDelegate, LspFetcher};
 use lsp::LanguageServerBinary;
 use node_runtime::NodeRuntime;
 use smol::fs;
@@ -29,15 +29,7 @@ impl PythonLspAdapter {
 }
 
 #[async_trait]
-impl LspAdapter for PythonLspAdapter {
-    async fn name(&self) -> LanguageServerName {
-        LanguageServerName("pyright".into())
-    }
-
-    fn short_name(&self) -> &'static str {
-        "pyright"
-    }
-
+impl LspFetcher for PythonLspAdapter {
     async fn fetch_latest_server_version(
         &self,
         _: &dyn LspAdapterDelegate,
@@ -79,6 +71,17 @@ impl LspAdapter for PythonLspAdapter {
         container_dir: PathBuf,
     ) -> Option<LanguageServerBinary> {
         get_cached_server_binary(container_dir, &*self.node).await
+    }
+}
+
+#[async_trait]
+impl LspAdapter for PythonLspAdapter {
+    async fn name(&self) -> LanguageServerName {
+        LanguageServerName("pyright".into())
+    }
+
+    fn short_name(&self) -> &'static str {
+        "pyright"
     }
 
     async fn process_completion(&self, item: &mut lsp::CompletionItem) {

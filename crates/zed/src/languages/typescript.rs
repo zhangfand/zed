@@ -4,7 +4,7 @@ use async_tar::Archive;
 use async_trait::async_trait;
 use futures::{future::BoxFuture, FutureExt};
 use gpui::AppContext;
-use language::{LanguageServerName, LspAdapter, LspAdapterDelegate};
+use language::{LanguageServerName, LspAdapter, LspAdapterDelegate, LspFetcher};
 use lsp::{CodeActionKind, LanguageServerBinary};
 use node_runtime::NodeRuntime;
 use serde_json::{json, Value};
@@ -51,15 +51,7 @@ struct TypeScriptVersions {
 }
 
 #[async_trait]
-impl LspAdapter for TypeScriptLspAdapter {
-    async fn name(&self) -> LanguageServerName {
-        LanguageServerName("typescript-language-server".into())
-    }
-
-    fn short_name(&self) -> &'static str {
-        "tsserver"
-    }
-
+impl LspFetcher for TypeScriptLspAdapter {
     async fn fetch_latest_server_version(
         &self,
         _: &dyn LspAdapterDelegate,
@@ -116,6 +108,17 @@ impl LspAdapter for TypeScriptLspAdapter {
         container_dir: PathBuf,
     ) -> Option<LanguageServerBinary> {
         get_cached_ts_server_binary(container_dir, &*self.node).await
+    }
+}
+
+#[async_trait]
+impl LspAdapter for TypeScriptLspAdapter {
+    async fn name(&self) -> LanguageServerName {
+        LanguageServerName("typescript-language-server".into())
+    }
+
+    fn short_name(&self) -> &'static str {
+        "tsserver"
     }
 
     fn code_action_kinds(&self) -> Option<Vec<CodeActionKind>> {
@@ -205,27 +208,7 @@ impl EsLintLspAdapter {
 }
 
 #[async_trait]
-impl LspAdapter for EsLintLspAdapter {
-    fn workspace_configuration(&self, _: &mut AppContext) -> BoxFuture<'static, Value> {
-        future::ready(json!({
-            "": {
-                "validate": "on",
-                "rulesCustomizations": [],
-                "run": "onType",
-                "nodePath": null,
-            }
-        }))
-        .boxed()
-    }
-
-    async fn name(&self) -> LanguageServerName {
-        LanguageServerName("eslint".into())
-    }
-
-    fn short_name(&self) -> &'static str {
-        "eslint"
-    }
-
+impl LspFetcher for EsLintLspAdapter {
     async fn fetch_latest_server_version(
         &self,
         delegate: &dyn LspAdapterDelegate,
@@ -296,6 +279,29 @@ impl LspAdapter for EsLintLspAdapter {
         container_dir: PathBuf,
     ) -> Option<LanguageServerBinary> {
         get_cached_eslint_server_binary(container_dir, &*self.node).await
+    }
+}
+
+#[async_trait]
+impl LspAdapter for EsLintLspAdapter {
+    fn workspace_configuration(&self, _: &mut AppContext) -> BoxFuture<'static, Value> {
+        future::ready(json!({
+            "": {
+                "validate": "on",
+                "rulesCustomizations": [],
+                "run": "onType",
+                "nodePath": null,
+            }
+        }))
+        .boxed()
+    }
+
+    async fn name(&self) -> LanguageServerName {
+        LanguageServerName("eslint".into())
+    }
+
+    fn short_name(&self) -> &'static str {
+        "eslint"
     }
 
     async fn label_for_completion(

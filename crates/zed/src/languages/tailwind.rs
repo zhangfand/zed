@@ -6,7 +6,7 @@ use futures::{
     FutureExt, StreamExt,
 };
 use gpui::AppContext;
-use language::{LanguageServerName, LspAdapter, LspAdapterDelegate};
+use language::{LanguageServerName, LspAdapter, LspAdapterDelegate, LspFetcher};
 use lsp::LanguageServerBinary;
 use node_runtime::NodeRuntime;
 use serde_json::{json, Value};
@@ -36,15 +36,7 @@ impl TailwindLspAdapter {
 }
 
 #[async_trait]
-impl LspAdapter for TailwindLspAdapter {
-    async fn name(&self) -> LanguageServerName {
-        LanguageServerName("tailwindcss-language-server".into())
-    }
-
-    fn short_name(&self) -> &'static str {
-        "tailwind"
-    }
-
+impl LspFetcher for TailwindLspAdapter {
     async fn fetch_latest_server_version(
         &self,
         _: &dyn LspAdapterDelegate,
@@ -93,6 +85,17 @@ impl LspAdapter for TailwindLspAdapter {
         container_dir: PathBuf,
     ) -> Option<LanguageServerBinary> {
         get_cached_server_binary(container_dir, &*self.node).await
+    }
+}
+
+#[async_trait]
+impl LspAdapter for TailwindLspAdapter {
+    async fn name(&self) -> LanguageServerName {
+        LanguageServerName("tailwindcss-language-server".into())
+    }
+
+    fn short_name(&self) -> &'static str {
+        "tailwind"
     }
 
     async fn initialization_options(&self) -> Option<serde_json::Value> {

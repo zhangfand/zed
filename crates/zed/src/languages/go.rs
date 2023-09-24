@@ -32,15 +32,7 @@ lazy_static! {
 }
 
 #[async_trait]
-impl super::LspAdapter for GoLspAdapter {
-    async fn name(&self) -> LanguageServerName {
-        LanguageServerName("gopls".into())
-    }
-
-    fn short_name(&self) -> &'static str {
-        "gopls"
-    }
-
+impl LspFetcher for GoLspAdapter {
     async fn fetch_latest_server_version(
         &self,
         delegate: &dyn LspAdapterDelegate,
@@ -166,6 +158,17 @@ impl super::LspAdapter for GoLspAdapter {
                 binary.arguments = vec!["--help".into()];
                 binary
             })
+    }
+}
+
+#[async_trait]
+impl super::LspAdapter for GoLspAdapter {
+    async fn name(&self) -> LanguageServerName {
+        LanguageServerName("gopls".into())
+    }
+
+    fn short_name(&self) -> &'static str {
+        "gopls"
     }
 
     async fn label_for_completion(

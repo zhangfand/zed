@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use futures::StreamExt;
-use language::{LanguageServerName, LspAdapter, LspAdapterDelegate};
+use language::{LanguageServerName, LspAdapter, LspAdapterDelegate, LspFetcher};
 use lsp::LanguageServerBinary;
 use node_runtime::NodeRuntime;
 use serde_json::json;
@@ -32,15 +32,7 @@ impl HtmlLspAdapter {
 }
 
 #[async_trait]
-impl LspAdapter for HtmlLspAdapter {
-    async fn name(&self) -> LanguageServerName {
-        LanguageServerName("vscode-html-language-server".into())
-    }
-
-    fn short_name(&self) -> &'static str {
-        "html"
-    }
-
+impl LspFetcher for HtmlLspAdapter {
     async fn fetch_latest_server_version(
         &self,
         _: &dyn LspAdapterDelegate,
@@ -89,6 +81,17 @@ impl LspAdapter for HtmlLspAdapter {
         container_dir: PathBuf,
     ) -> Option<LanguageServerBinary> {
         get_cached_server_binary(container_dir, &*self.node).await
+    }
+}
+
+#[async_trait]
+impl LspAdapter for HtmlLspAdapter {
+    async fn name(&self) -> LanguageServerName {
+        LanguageServerName("vscode-html-language-server".into())
+    }
+
+    fn short_name(&self) -> &'static str {
+        "html"
     }
 
     async fn initialization_options(&self) -> Option<serde_json::Value> {

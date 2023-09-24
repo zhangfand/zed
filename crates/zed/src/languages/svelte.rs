@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use futures::StreamExt;
-use language::{LanguageServerName, LspAdapter, LspAdapterDelegate};
+use language::{LanguageServerName, LspAdapter, LspAdapterDelegate, LspFetcher};
 use lsp::LanguageServerBinary;
 use node_runtime::NodeRuntime;
 use serde_json::json;
@@ -31,15 +31,7 @@ impl SvelteLspAdapter {
 }
 
 #[async_trait]
-impl LspAdapter for SvelteLspAdapter {
-    async fn name(&self) -> LanguageServerName {
-        LanguageServerName("svelte-language-server".into())
-    }
-
-    fn short_name(&self) -> &'static str {
-        "svelte"
-    }
-
+impl LspFetcher for SvelteLspAdapter {
     async fn fetch_latest_server_version(
         &self,
         _: &dyn LspAdapterDelegate,
@@ -88,6 +80,17 @@ impl LspAdapter for SvelteLspAdapter {
         container_dir: PathBuf,
     ) -> Option<LanguageServerBinary> {
         get_cached_server_binary(container_dir, &*self.node).await
+    }
+}
+
+#[async_trait]
+impl LspAdapter for SvelteLspAdapter {
+    async fn name(&self) -> LanguageServerName {
+        LanguageServerName("svelte-language-server".into())
+    }
+
+    fn short_name(&self) -> &'static str {
+        "svelte"
     }
 
     async fn initialization_options(&self) -> Option<serde_json::Value> {

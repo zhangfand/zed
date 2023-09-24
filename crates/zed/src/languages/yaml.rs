@@ -4,6 +4,7 @@ use futures::{future::BoxFuture, FutureExt, StreamExt};
 use gpui::AppContext;
 use language::{
     language_settings::all_language_settings, LanguageServerName, LspAdapter, LspAdapterDelegate,
+    LspFetcher,
 };
 use lsp::LanguageServerBinary;
 use node_runtime::NodeRuntime;
@@ -35,15 +36,7 @@ impl YamlLspAdapter {
 }
 
 #[async_trait]
-impl LspAdapter for YamlLspAdapter {
-    async fn name(&self) -> LanguageServerName {
-        LanguageServerName("yaml-language-server".into())
-    }
-
-    fn short_name(&self) -> &'static str {
-        "yaml"
-    }
-
+impl LspFetcher for YamlLspAdapter {
     async fn fetch_latest_server_version(
         &self,
         _: &dyn LspAdapterDelegate,
@@ -93,6 +86,18 @@ impl LspAdapter for YamlLspAdapter {
     ) -> Option<LanguageServerBinary> {
         get_cached_server_binary(container_dir, &*self.node).await
     }
+}
+
+#[async_trait]
+impl LspAdapter for YamlLspAdapter {
+    async fn name(&self) -> LanguageServerName {
+        LanguageServerName("yaml-language-server".into())
+    }
+
+    fn short_name(&self) -> &'static str {
+        "yaml"
+    }
+
     fn workspace_configuration(&self, cx: &mut AppContext) -> BoxFuture<'static, Value> {
         let tab_size = all_language_settings(None, cx)
             .language(Some("YAML"))

@@ -17,15 +17,7 @@ use util::{
 pub struct RustLspAdapter;
 
 #[async_trait]
-impl LspAdapter for RustLspAdapter {
-    async fn name(&self) -> LanguageServerName {
-        LanguageServerName("rust-analyzer".into())
-    }
-
-    fn short_name(&self) -> &'static str {
-        "rust"
-    }
-
+impl LspFetcher for RustLspAdapter {
     async fn fetch_latest_server_version(
         &self,
         delegate: &dyn LspAdapterDelegate,
@@ -96,6 +88,17 @@ impl LspAdapter for RustLspAdapter {
                 binary.arguments = vec!["--help".into()];
                 binary
             })
+    }
+}
+
+#[async_trait]
+impl LspAdapter for RustLspAdapter {
+    async fn name(&self) -> LanguageServerName {
+        LanguageServerName("rust-analyzer".into())
+    }
+
+    fn short_name(&self) -> &'static str {
+        "rust"
     }
 
     async fn disk_based_diagnostic_sources(&self) -> Vec<String> {

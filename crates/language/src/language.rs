@@ -235,11 +235,7 @@ pub trait LspAdapterDelegate: Send + Sync {
 }
 
 #[async_trait]
-pub trait LspAdapter: 'static + Send + Sync {
-    async fn name(&self) -> LanguageServerName;
-
-    fn short_name(&self) -> &'static str;
-
+pub trait LspFetcher: 'static + Send + Sync {
     async fn fetch_latest_server_version(
         &self,
         delegate: &dyn LspAdapterDelegate,
@@ -282,6 +278,13 @@ pub trait LspAdapter: 'static + Send + Sync {
         &self,
         container_dir: PathBuf,
     ) -> Option<LanguageServerBinary>;
+}
+
+#[async_trait]
+pub trait LspAdapter: 'static + Send + Sync + LspFetcher {
+    async fn name(&self) -> LanguageServerName;
+
+    fn short_name(&self) -> &'static str;
 
     fn process_diagnostics(&self, _: &mut lsp::PublishDiagnosticsParams) {}
 
@@ -1731,15 +1734,7 @@ impl Default for FakeLspAdapter {
 
 #[cfg(any(test, feature = "test-support"))]
 #[async_trait]
-impl LspAdapter for Arc<FakeLspAdapter> {
-    async fn name(&self) -> LanguageServerName {
-        LanguageServerName(self.name.into())
-    }
-
-    fn short_name(&self) -> &'static str {
-        "FakeLspAdapter"
-    }
-
+impl LspFetcher for Arc<FakeLspAdapter> {
     async fn fetch_latest_server_version(
         &self,
         _: &dyn LspAdapterDelegate,
@@ -1766,6 +1761,18 @@ impl LspAdapter for Arc<FakeLspAdapter> {
 
     async fn installation_test_binary(&self, _: PathBuf) -> Option<LanguageServerBinary> {
         unreachable!();
+    }
+}
+
+#[cfg(any(test, feature = "test-support"))]
+#[async_trait]
+impl LspAdapter for Arc<FakeLspAdapter> {
+    async fn name(&self) -> LanguageServerName {
+        LanguageServerName(self.name.into())
+    }
+
+    fn short_name(&self) -> &'static str {
+        "FakeLspAdapter"
     }
 
     fn process_diagnostics(&self, _: &mut lsp::PublishDiagnosticsParams) {}

@@ -3,7 +3,7 @@ use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use collections::HashMap;
 
-use language::{LanguageServerName, LspAdapter, LspAdapterDelegate};
+use language::{LanguageServerName, LspAdapter, LspAdapterDelegate, LspFetcher};
 use lsp::LanguageServerBinary;
 use node_runtime::NodeRuntime;
 
@@ -36,15 +36,7 @@ impl IntelephenseLspAdapter {
 }
 
 #[async_trait]
-impl LspAdapter for IntelephenseLspAdapter {
-    async fn name(&self) -> LanguageServerName {
-        LanguageServerName("intelephense".into())
-    }
-
-    fn short_name(&self) -> &'static str {
-        "php"
-    }
-
+impl LspFetcher for IntelephenseLspAdapter {
     async fn fetch_latest_server_version(
         &self,
         _delegate: &dyn LspAdapterDelegate,
@@ -87,6 +79,17 @@ impl LspAdapter for IntelephenseLspAdapter {
         container_dir: PathBuf,
     ) -> Option<LanguageServerBinary> {
         get_cached_server_binary(container_dir, &*self.node).await
+    }
+}
+
+#[async_trait]
+impl LspAdapter for IntelephenseLspAdapter {
+    async fn name(&self) -> LanguageServerName {
+        LanguageServerName("intelephense".into())
+    }
+
+    fn short_name(&self) -> &'static str {
+        "php"
     }
 
     async fn label_for_completion(

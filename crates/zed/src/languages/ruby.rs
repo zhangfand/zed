@@ -1,21 +1,13 @@
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use language::{LanguageServerName, LspAdapter, LspAdapterDelegate};
+use language::{LanguageServerName, LspAdapter, LspAdapterDelegate, LspFetcher};
 use lsp::LanguageServerBinary;
 use std::{any::Any, path::PathBuf, sync::Arc};
 
 pub struct RubyLanguageServer;
 
 #[async_trait]
-impl LspAdapter for RubyLanguageServer {
-    async fn name(&self) -> LanguageServerName {
-        LanguageServerName("solargraph".into())
-    }
-
-    fn short_name(&self) -> &'static str {
-        "solargraph"
-    }
-
+impl LspFetcher for RubyLanguageServer {
     async fn fetch_latest_server_version(
         &self,
         _: &dyn LspAdapterDelegate,
@@ -49,6 +41,17 @@ impl LspAdapter for RubyLanguageServer {
 
     async fn installation_test_binary(&self, _: PathBuf) -> Option<LanguageServerBinary> {
         None
+    }
+}
+
+#[async_trait]
+impl LspAdapter for RubyLanguageServer {
+    async fn name(&self) -> LanguageServerName {
+        LanguageServerName("solargraph".into())
+    }
+
+    fn short_name(&self) -> &'static str {
+        "solargraph"
     }
 
     async fn label_for_completion(

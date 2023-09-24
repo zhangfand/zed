@@ -4,7 +4,7 @@ use collections::HashMap;
 use feature_flags::FeatureFlagAppExt;
 use futures::{future::BoxFuture, FutureExt, StreamExt};
 use gpui::AppContext;
-use language::{LanguageRegistry, LanguageServerName, LspAdapter, LspAdapterDelegate};
+use language::{LanguageRegistry, LanguageServerName, LspAdapter, LspAdapterDelegate, LspFetcher};
 use lsp::LanguageServerBinary;
 use node_runtime::NodeRuntime;
 use serde_json::json;
@@ -38,15 +38,7 @@ impl JsonLspAdapter {
 }
 
 #[async_trait]
-impl LspAdapter for JsonLspAdapter {
-    async fn name(&self) -> LanguageServerName {
-        LanguageServerName("json-language-server".into())
-    }
-
-    fn short_name(&self) -> &'static str {
-        "json"
-    }
-
+impl LspFetcher for JsonLspAdapter {
     async fn fetch_latest_server_version(
         &self,
         _: &dyn LspAdapterDelegate,
@@ -95,6 +87,17 @@ impl LspAdapter for JsonLspAdapter {
         container_dir: PathBuf,
     ) -> Option<LanguageServerBinary> {
         get_cached_server_binary(container_dir, &*self.node).await
+    }
+}
+
+#[async_trait]
+impl LspAdapter for JsonLspAdapter {
+    async fn name(&self) -> LanguageServerName {
+        LanguageServerName("json-language-server".into())
+    }
+
+    fn short_name(&self) -> &'static str {
+        "json"
     }
 
     async fn initialization_options(&self) -> Option<serde_json::Value> {

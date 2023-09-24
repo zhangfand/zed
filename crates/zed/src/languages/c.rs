@@ -16,6 +16,8 @@ const CLANGD_BINARY: GithubBinary<Init> = GithubBinary::new(
 
 pub struct CLspAdapter;
 
+#[async_trait]
+impl super::LspFetcher for CLspAdapter {
     async fn fetch_latest_server_version(
         &self,
         delegate: &dyn LspAdapterDelegate,
@@ -65,6 +67,17 @@ pub struct CLspAdapter;
                 .await?
                 .with_arguments(&["--help"]),
         )
+    }
+}
+
+#[async_trait]
+impl super::LspAdapter for CLspAdapter {
+    async fn name(&self) -> LanguageServerName {
+        LanguageServerName("clangd".into())
+    }
+
+    fn short_name(&self) -> &'static str {
+        "clangd"
     }
 
     async fn label_for_completion(

@@ -3,7 +3,7 @@ use async_compression::futures::bufread::GzipDecoder;
 use async_tar::Archive;
 use async_trait::async_trait;
 use futures::{io::BufReader, StreamExt};
-use language::{LanguageServerName, LspAdapterDelegate};
+use language::{LanguageServerName, LspAdapterDelegate, LspFetcher};
 use lsp::LanguageServerBinary;
 use smol::fs;
 use std::{any::Any, env::consts, path::PathBuf};
@@ -17,15 +17,7 @@ use util::{
 pub struct LuaLspAdapter;
 
 #[async_trait]
-impl super::LspAdapter for LuaLspAdapter {
-    async fn name(&self) -> LanguageServerName {
-        LanguageServerName("lua-language-server".into())
-    }
-
-    fn short_name(&self) -> &'static str {
-        "lua"
-    }
-
+impl LspFetcher for LuaLspAdapter {
     async fn fetch_latest_server_version(
         &self,
         delegate: &dyn LspAdapterDelegate,
@@ -102,6 +94,17 @@ impl super::LspAdapter for LuaLspAdapter {
                 binary.arguments = vec!["--version".into()];
                 binary
             })
+    }
+}
+
+#[async_trait]
+impl super::LspAdapter for LuaLspAdapter {
+    async fn name(&self) -> LanguageServerName {
+        LanguageServerName("lua-language-server".into())
+    }
+
+    fn short_name(&self) -> &'static str {
+        "lua"
     }
 }
 
