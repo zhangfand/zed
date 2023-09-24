@@ -174,9 +174,6 @@ impl GithubBinary<Init> {
     }
 }
 
-// TODOS:
-// 1. Need to understand the test binary system stuff that julia added
-
 impl GithubBinary<WithVersion> {
     pub async fn sync_to(
         self,
@@ -190,7 +187,11 @@ impl GithubBinary<WithVersion> {
         let version_dir =
             container_dir.join(format!("{}_{}", self.phase.zed_name, self.phase.version));
 
-        let binary_path = version_dir.join(self.phase.binary_path_in_asset);
+        let binary_path = if let Some(binary_path) = self.phase.binary_path_in_asset {
+            version_dir.join(binary_path)
+        } else {
+            version_dir.clone()
+        };
 
         if smol::fs::metadata(&binary_path).await.is_err() {
             let mut response = client

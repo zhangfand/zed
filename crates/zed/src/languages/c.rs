@@ -1,44 +1,30 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::Result;
 use async_trait::async_trait;
-use futures::StreamExt;
+use binary_manager::{AssetName, GithubBinary, Init, WithVersion};
 pub use language::*;
 use lsp::LanguageServerBinary;
-use smol::fs::{self, File};
 use std::{any::Any, path::PathBuf, sync::Arc};
-use util::{
-    fs::remove_matching,
-    github::{latest_github_release, GitHubLspBinaryVersion},
-    ResultExt,
-};
+
+use super::SyncedGithubBinaryExt;
+
+const CLANGD_BINARY: GithubBinary<Init> = GithubBinary::new(
+    "clangd",
+    "clangd/clangd",
+    AssetName::Versioned("clangd-mac-{}.zip"),
+    Some("bin/clangd"),
+);
 
 pub struct CLspAdapter;
-
-#[async_trait]
-impl super::LspAdapter for CLspAdapter {
-    async fn name(&self) -> LanguageServerName {
-        LanguageServerName("clangd".into())
-    }
-
-    fn short_name(&self) -> &'static str {
-        "clangd"
-    }
 
     async fn fetch_latest_server_version(
         &self,
         delegate: &dyn LspAdapterDelegate,
     ) -> Result<Box<dyn 'static + Send + Any>> {
-        let release = latest_github_release("clangd/clangd", false, delegate.http_client()).await?;
-        let asset_name = format!("clangd-mac-{}.zip", release.name);
-        let asset = release
-            .assets
-            .iter()
-            .find(|asset| asset.name == asset_name)
-            .ok_or_else(|| anyhow!("no asset found matching {:?}", asset_name))?;
-        let version = GitHubLspBinaryVersion {
-            name: release.name,
-            url: asset.browser_download_url.clone(),
-        };
-        Ok(Box::new(version) as Box<_>)
+        let binary = CLANGD_BINARY
+            .fetch_latest(delegate.http_client().as_ref(), |release| &release.name)
+            .await?;
+
+        Ok(Box::new(binary) as Box<_>)
     }
 
     async fn fetch_server_binary(
@@ -47,43 +33,13 @@ impl super::LspAdapter for CLspAdapter {
         container_dir: PathBuf,
         delegate: &dyn LspAdapterDelegate,
     ) -> Result<LanguageServerBinary> {
-        let version = version.downcast::<GitHubLspBinaryVersion>().unwrap();
-        let zip_path = container_dir.join(format!("clangd_{}.zip", version.name));
-        let version_dir = container_dir.join(format!("clangd_{}", version.name));
-        let binary_path = version_dir.join("bin/clangd");
+        let binary = version
+            .downcast::<GithubBinary<WithVersion>>()
+            .unwrap()
+            .sync_to(container_dir, delegate.http_client().as_ref())
+            .await?;
 
-        if fs::metadata(&binary_path).await.is_err() {
-            let mut response = delegate
-                .http_client()
-                .get(&version.url, Default::default(), true)
-                .await
-                .context("error downloading release")?;
-            let mut file = File::create(&zip_path).await?;
-            if !response.status().is_success() {
-                Err(anyhow!(
-                    "download failed with status {}",
-                    response.status().to_string()
-                ))?;
-            }
-            futures::io::copy(response.body_mut(), &mut file).await?;
-
-            let unzip_status = smol::process::Command::new("unzip")
-                .current_dir(&container_dir)
-                .arg(&zip_path)
-                .output()
-                .await?
-                .status;
-            if !unzip_status.success() {
-                Err(anyhow!("failed to unzip clangd archive"))?;
-            }
-
-            remove_matching(&container_dir, |entry| entry != version_dir).await;
-        }
-
-        Ok(LanguageServerBinary {
-            path: binary_path,
-            arguments: vec![],
-        })
+        Ok(binary.with_arguments(&[]))
     }
 
     async fn cached_server_binary(
@@ -91,19 +47,24 @@ impl super::LspAdapter for CLspAdapter {
         container_dir: PathBuf,
         _: &dyn LspAdapterDelegate,
     ) -> Option<LanguageServerBinary> {
-        get_cached_server_binary(container_dir).await
+        Some(
+            CLANGD_BINARY
+                .cached(container_dir)
+                .await?
+                .with_arguments(&[]),
+        )
     }
 
     async fn installation_test_binary(
         &self,
         container_dir: PathBuf,
     ) -> Option<LanguageServerBinary> {
-        get_cached_server_binary(container_dir)
-            .await
-            .map(|mut binary| {
-                binary.arguments = vec!["--help".into()];
-                binary
-            })
+        Some(
+            CLANGD_BINARY
+                .cached(container_dir)
+                .await?
+                .with_arguments(&["--help"]),
+        )
     }
 
     async fn label_for_completion(
@@ -241,34 +202,6 @@ impl super::LspAdapter for CLspAdapter {
             filter_range,
         })
     }
-}
-
-async fn get_cached_server_binary(container_dir: PathBuf) -> Option<LanguageServerBinary> {
-    (|| async move {
-        let mut last_clangd_dir = None;
-        let mut entries = fs::read_dir(&container_dir).await?;
-        while let Some(entry) = entries.next().await {
-            let entry = entry?;
-            if entry.file_type().await?.is_dir() {
-                last_clangd_dir = Some(entry.path());
-            }
-        }
-        let clangd_dir = last_clangd_dir.ok_or_else(|| anyhow!("no cached binary"))?;
-        let clangd_bin = clangd_dir.join("bin/clangd");
-        if clangd_bin.exists() {
-            Ok(LanguageServerBinary {
-                path: clangd_bin,
-                arguments: vec![],
-            })
-        } else {
-            Err(anyhow!(
-                "missing clangd binary in directory {:?}",
-                clangd_dir
-            ))
-        }
-    })()
-    .await
-    .log_err()
 }
 
 #[cfg(test)]
