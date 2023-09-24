@@ -18,6 +18,7 @@ members = [
     "crates/context_menu",
     "crates/copilot",
     "crates/copilot_button",
+    "crates/binary_manager",
     "crates/db",
     "crates/refineable",
     "crates/refineable/derive_refineable",

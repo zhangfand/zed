@@ -1,6 +1,8 @@
 use anyhow::Context;
+use binary_manager::{GithubBinary, Synced};
 use gpui::AppContext;
 pub use language::*;
+use lsp::LanguageServerBinary;
 use node_runtime::NodeRuntime;
 use rust_embed::RustEmbed;
 use std::{borrow::Cow, str, sync::Arc};
@@ -247,4 +249,17 @@ fn load_query(name: &str, filename_prefix: &str) -> Option<Cow<'static, str>> {
         }
     }
     result
+}
+
+trait SyncedGithubBinaryExt {
+    fn with_arguments(self, arguments: &[&'static str]) -> LanguageServerBinary;
+}
+
+impl SyncedGithubBinaryExt for GithubBinary<Synced> {
+    fn with_arguments(self, arguments: &[&'static str]) -> LanguageServerBinary {
+        LanguageServerBinary {
+            path: self.path(),
+            arguments: arguments.into_iter().map(|arg| arg.into()).collect(),
+        }
+    }
 }

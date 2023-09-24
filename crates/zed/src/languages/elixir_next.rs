@@ -1,11 +1,14 @@
 use anyhow::Result;
 use async_trait::async_trait;
+use binary_manager::{AssetName, GithubBinary, Init, WithVersion};
 pub use language::*;
 use lsp::{LanguageServerBinary, SymbolKind};
 use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
 use settings::Setting;
 use std::{any::Any, ops::Deref, path::PathBuf, sync::Arc};
+
+use super::SyncedGithubBinaryExt;
 
 #[derive(Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ElixirSettings {
@@ -45,6 +48,98 @@ impl Setting for ElixirSettings {
     }
 }
 
+#[cfg(target_arch = "x86_64")]
+const NEXT_BINARY: GithubBinary<Init> = GithubBinary::new(
+    "next-ls",
+    "elixir-tools/next-ls",
+    AssetName::Static("next_ls_darwin_amd64"),
+    None,
+);
+
+#[cfg(target_arch = "aarch64")]
+const NEXT_BINARY: GithubBinary<Init> = GithubBinary::new(
+    "next-ls",
+    "elixir-tools/next-ls",
+    AssetName::Static("next_ls_darwin_arm64"),
+    None,
+);
+
+pub struct NextLspAdapter;
+
+#[async_trait]
+impl LspAdapter for NextLspAdapter {
+    async fn name(&self) -> LanguageServerName {
+        LanguageServerName("next-ls".into())
+    }
+
+    fn short_name(&self) -> &'static str {
+        "next-ls"
+    }
+
+    async fn fetch_latest_server_version(
+        &self,
+        delegate: &dyn LspAdapterDelegate,
+    ) -> Result<Box<dyn 'static + Send + Any>> {
+        let binary = NEXT_BINARY
+            .fetch_latest(delegate.http_client().as_ref(), |release| &release.name)
+            .await?;
+        Ok(Box::new(binary) as Box<_>)
+    }
+
+    async fn fetch_server_binary(
+        &self,
+        version: Box<dyn 'static + Send + Any>,
+        container_dir: PathBuf,
+        delegate: &dyn LspAdapterDelegate,
+    ) -> Result<LanguageServerBinary> {
+        let binary = version
+            .downcast::<GithubBinary<WithVersion>>()
+            .unwrap()
+            .sync_to(container_dir, delegate.http_client().as_ref())
+            .await?;
+
+        Ok(binary.with_arguments(&["--stdio"]))
+    }
+
+    async fn cached_server_binary(
+        &self,
+        container_dir: PathBuf,
+        _: &dyn LspAdapterDelegate,
+    ) -> Option<LanguageServerBinary> {
+        Some(
+            NEXT_BINARY
+                .cached(container_dir)
+                .await?
+                .with_arguments(&["--stdio"]),
+        )
+    }
+
+    async fn installation_test_binary(
+        &self,
+        container_dir: PathBuf,
+    ) -> Option<LanguageServerBinary> {
+        Some(
+            NEXT_BINARY
+                .cached(container_dir)
+                .await?
+                .with_arguments(&["--help"]),
+        )
+    }
+
+    async fn label_for_symbol(
+        &self,
+        name: &str,
+        _: SymbolKind,
+        language: &Arc<Language>,
+    ) -> Option<CodeLabel> {
+        Some(CodeLabel {
+            runs: language.highlight_text(&name.into(), 0..name.len()),
+            text: name.to_string(),
+            filter_range: 0..name.len(),
+        })
+    }
+}
+
 pub struct LocalNextLspAdapter {
     pub path: String,
     pub arguments: Vec<String>,
@@ -53,7 +148,7 @@ pub struct LocalNextLspAdapter {
 #[async_trait]
 impl LspAdapter for LocalNextLspAdapter {
     async fn name(&self) -> LanguageServerName {
-        LanguageServerName("elixir-next-ls".into())
+        LanguageServerName("local-next-ls".into())
     }
 
     fn short_name(&self) -> &'static str {
