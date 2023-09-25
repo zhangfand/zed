@@ -86,7 +86,6 @@ pub struct WithVersion {
     url: String,
 }
 
-#[must_use]
 pub struct GithubBinary<P> {
     phase: P,
 }
@@ -116,6 +115,7 @@ impl GithubBinary<Init> {
         self
     }
 
+    #[must_use]
     pub async fn fetch_latest(
         self,
         client: &dyn HttpClient,
@@ -143,6 +143,7 @@ impl GithubBinary<Init> {
         })
     }
 
+    #[must_use]
     pub async fn cached(self, container_dir: PathBuf) -> Option<GithubBinary<Synced>> {
         (|| async move {
             let mut last_asset_dir = None;
@@ -183,6 +184,7 @@ pub enum Compression {
 }
 
 impl GithubBinary<WithVersion> {
+    #[must_use]
     pub async fn sync_to(
         self,
         container_dir: PathBuf,
