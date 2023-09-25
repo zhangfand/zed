@@ -1,6 +1,6 @@
 use anyhow::Result;
 use async_trait::async_trait;
-use binary_manager::{AssetName, GithubBinary, Init, WithVersion};
+use binary_manager::{Compression, GithubBinary, Init, ResourceName, WithVersion};
 pub use language::*;
 use lsp::LanguageServerBinary;
 use std::{any::Any, path::PathBuf, sync::Arc};
@@ -10,7 +10,7 @@ use super::SyncedGithubBinaryExt;
 const CLANGD_BINARY: GithubBinary<Init> = GithubBinary::new(
     "clangd",
     "clangd/clangd",
-    AssetName::Versioned("clangd-mac-{}.zip"),
+    ResourceName::Versioned("clangd-mac-{}.zip"),
     Some("bin/clangd"),
 );
 
@@ -23,7 +23,7 @@ impl super::LspFetcher for CLspAdapter {
         delegate: &dyn LspAdapterDelegate,
     ) -> Result<Box<dyn 'static + Send + Any>> {
         let binary = CLANGD_BINARY
-            .fetch_latest(delegate.http_client().as_ref(), |release| &release.name)
+            .fetch_latest(delegate.http_client().as_ref(), |release| Ok(&release.name))
             .await?;
 
         Ok(Box::new(binary) as Box<_>)
@@ -38,7 +38,11 @@ impl super::LspFetcher for CLspAdapter {
         let binary = version
             .downcast::<GithubBinary<WithVersion>>()
             .unwrap()
-            .sync_to(container_dir, delegate.http_client().as_ref())
+            .sync_to(
+                container_dir,
+                delegate.http_client().as_ref(),
+                Some(Compression::Zip),
+            )
             .await?;
 
         Ok(binary.with_arguments(&[]))

@@ -1,17 +1,36 @@
-use anyhow::{anyhow, bail, Result};
-use async_compression::futures::bufread::GzipDecoder;
-use async_tar::Archive;
+use anyhow::Result;
 use async_trait::async_trait;
-use futures::{io::BufReader, StreamExt};
+use binary_manager::{Compression, GithubBinary, Init, WithVersion};
 use language::{LanguageServerName, LspAdapterDelegate, LspFetcher};
 use lsp::LanguageServerBinary;
-use smol::fs;
-use std::{any::Any, env::consts, path::PathBuf};
-use util::{
-    async_iife,
-    github::{latest_github_release, GitHubLspBinaryVersion},
-    ResultExt,
-};
+use std::{any::Any, path::PathBuf};
+
+use super::SyncedGithubBinaryExt;
+
+// TODO:
+// - Figure out compression for next-ls
+// - Test:
+//   - c
+//   - elixir
+//   - elixir_next
+//   - lua
+//   - rust
+
+#[cfg(target_arch = "x86_64")]
+const LUA_LSP: GithubBinary<Init> = GithubBinary::new(
+    "lua-language-server",
+    "LuaLS/lua-language-server",
+    binary_manager::ResourceName::Formatted("lua-language-server-{}-darwin-x64.tar.gz"),
+    Some("bin/lua-language-server"),
+);
+
+#[cfg(target_arch = "aarch64")]
+const LUA_LSP: GithubBinary<Init> = GithubBinary::new(
+    "lua-language-server",
+    "LuaLS/lua-language-server",
+    binary_manager::ResourceName::Formatted("lua-language-server-{}-darwin-arm64.tar.gz"),
+    Some("bin/lua-language-server"),
+);
 
 #[derive(Copy, Clone)]
 pub struct LuaLspAdapter;
@@ -22,26 +41,11 @@ impl LspFetcher for LuaLspAdapter {
         &self,
         delegate: &dyn LspAdapterDelegate,
     ) -> Result<Box<dyn 'static + Send + Any>> {
-        let release =
-            latest_github_release("LuaLS/lua-language-server", false, delegate.http_client())
-                .await?;
-        let version = release.name.clone();
-        let platform = match consts::ARCH {
-            "x86_64" => "x64",
-            "aarch64" => "arm64",
-            other => bail!("Running on unsupported platform: {other}"),
-        };
-        let asset_name = format!("lua-language-server-{version}-darwin-{platform}.tar.gz");
-        let asset = release
-            .assets
-            .iter()
-            .find(|asset| asset.name == asset_name)
-            .ok_or_else(|| anyhow!("no asset found matching {:?}", asset_name))?;
-        let version = GitHubLspBinaryVersion {
-            name: release.name.clone(),
-            url: asset.browser_download_url.clone(),
-        };
-        Ok(Box::new(version) as Box<_>)
+        let binary = LUA_LSP
+            .fetch_latest(delegate.http_client().as_ref(), |release| Ok(&release.name))
+            .await?;
+
+        Ok(Box::new(binary) as Box<_>)
     }
 
     async fn fetch_server_binary(
@@ -50,30 +54,17 @@ impl LspFetcher for LuaLspAdapter {
         container_dir: PathBuf,
         delegate: &dyn LspAdapterDelegate,
     ) -> Result<LanguageServerBinary> {
-        let version = version.downcast::<GitHubLspBinaryVersion>().unwrap();
+        let binary = version
+            .downcast::<GithubBinary<WithVersion>>()
+            .unwrap()
+            .sync_to(
+                container_dir,
+                delegate.http_client().as_ref(),
+                Some(Compression::GZip),
+            )
+            .await?;
 
-        let binary_path = container_dir.join("bin/lua-language-server");
-
-        if fs::metadata(&binary_path).await.is_err() {
-            let mut response = delegate
-                .http_client()
-                .get(&version.url, Default::default(), true)
-                .await
-                .map_err(|err| anyhow!("error downloading release: {}", err))?;
-            let decompressed_bytes = GzipDecoder::new(BufReader::new(response.body_mut()));
-            let archive = Archive::new(decompressed_bytes);
-            archive.unpack(container_dir).await?;
-        }
-
-        fs::set_permissions(
-            &binary_path,
-            <fs::Permissions as fs::unix::PermissionsExt>::from_mode(0o755),
-        )
-        .await?;
-        Ok(LanguageServerBinary {
-            path: binary_path,
-            arguments: Vec::new(),
-        })
+        Ok(binary.with_arguments(&[]))
     }
 
     async fn cached_server_binary(
@@ -81,19 +72,19 @@ impl LspFetcher for LuaLspAdapter {
         container_dir: PathBuf,
         _: &dyn LspAdapterDelegate,
     ) -> Option<LanguageServerBinary> {
-        get_cached_server_binary(container_dir).await
+        Some(LUA_LSP.cached(container_dir).await?.with_arguments(&[]))
     }
 
     async fn installation_test_binary(
         &self,
         container_dir: PathBuf,
     ) -> Option<LanguageServerBinary> {
-        get_cached_server_binary(container_dir)
-            .await
-            .map(|mut binary| {
-                binary.arguments = vec!["--version".into()];
-                binary
-            })
+        Some(
+            LUA_LSP
+                .cached(container_dir)
+                .await?
+                .with_arguments(&["--version"]),
+        )
     }
 }
 
@@ -106,33 +97,4 @@ impl super::LspAdapter for LuaLspAdapter {
     fn short_name(&self) -> &'static str {
         "lua"
     }
-}
-
-async fn get_cached_server_binary(container_dir: PathBuf) -> Option<LanguageServerBinary> {
-    async_iife!({
-        let mut last_binary_path = None;
-        let mut entries = fs::read_dir(&container_dir).await?;
-        while let Some(entry) = entries.next().await {
-            let entry = entry?;
-            if entry.file_type().await?.is_file()
-                && entry
-                    .file_name()
-                    .to_str()
-                    .map_or(false, |name| name == "lua-language-server")
-            {
-                last_binary_path = Some(entry.path());
-            }
-        }
-
-        if let Some(path) = last_binary_path {
-            Ok(LanguageServerBinary {
-                path,
-                arguments: Vec::new(),
-            })
-        } else {
-            Err(anyhow!("no cached binary"))
-        }
-    })
-    .await
-    .log_err()
 }

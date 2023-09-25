@@ -1,10 +1,9 @@
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
-use futures::StreamExt;
+use binary_manager::{Compression, GithubBinary, Init, ResourceName, WithVersion};
 use gpui::{AsyncAppContext, Task};
 pub use language::*;
 use lsp::{CompletionItemKind, LanguageServerBinary, SymbolKind};
-use smol::fs::{self, File};
 use std::{
     any::Any,
     path::PathBuf,
@@ -13,11 +12,15 @@ use std::{
         Arc,
     },
 };
-use util::{
-    fs::remove_matching,
-    github::{latest_github_release, GitHubLspBinaryVersion},
-    ResultExt,
-};
+
+use super::SyncedGithubBinaryExt;
+
+const ELIXIR_LSP: GithubBinary<Init> = GithubBinary::new(
+    "elixir-ls",
+    "elixir-lsp/elixir-ls",
+    ResourceName::Versioned("elixir-ls-{}.zip"),
+    Some("language_server.sh"),
+);
 
 pub struct ElixirLspAdapter;
 
@@ -58,26 +61,16 @@ impl LspFetcher for ElixirLspAdapter {
         &self,
         delegate: &dyn LspAdapterDelegate,
     ) -> Result<Box<dyn 'static + Send + Any>> {
-        let http = delegate.http_client();
-        let release = latest_github_release("elixir-lsp/elixir-ls", false, http).await?;
-        let version_name = release
-            .name
-            .strip_prefix("Release ")
-            .context("Elixir-ls release name does not start with prefix")?
-            .to_owned();
+        let binary = ELIXIR_LSP
+            .fetch_latest(delegate.http_client().as_ref(), |release| {
+                release
+                    .name
+                    .strip_prefix("Release ")
+                    .context("Elixir-ls release name does not start with prefix")
+            })
+            .await?;
 
-        let asset_name = format!("elixir-ls-{}.zip", &version_name);
-        let asset = release
-            .assets
-            .iter()
-            .find(|asset| asset.name == asset_name)
-            .ok_or_else(|| anyhow!("no asset found matching {:?}", asset_name))?;
-
-        let version = GitHubLspBinaryVersion {
-            name: version_name,
-            url: asset.browser_download_url.clone(),
-        };
-        Ok(Box::new(version) as Box<_>)
+        Ok(Box::new(binary) as Box<_>)
     }
 
     async fn fetch_server_binary(
@@ -86,49 +79,17 @@ impl LspFetcher for ElixirLspAdapter {
         container_dir: PathBuf,
         delegate: &dyn LspAdapterDelegate,
     ) -> Result<LanguageServerBinary> {
-        let version = version.downcast::<GitHubLspBinaryVersion>().unwrap();
-        let zip_path = container_dir.join(format!("elixir-ls_{}.zip", version.name));
-        let version_dir = container_dir.join(format!("elixir-ls_{}", version.name));
-        let binary_path = version_dir.join("language_server.sh");
+        let binary = version
+            .downcast::<GithubBinary<WithVersion>>()
+            .unwrap()
+            .sync_to(
+                container_dir,
+                delegate.http_client().as_ref(),
+                Some(Compression::Zip),
+            )
+            .await?;
 
-        if fs::metadata(&binary_path).await.is_err() {
-            let mut response = delegate
-                .http_client()
-                .get(&version.url, Default::default(), true)
-                .await
-                .context("error downloading release")?;
-            let mut file = File::create(&zip_path)
-                .await
-                .with_context(|| format!("failed to create file {}", zip_path.display()))?;
-            if !response.status().is_success() {
-                Err(anyhow!(
-                    "download failed with status {}",
-                    response.status().to_string()
-                ))?;
-            }
-            futures::io::copy(response.body_mut(), &mut file).await?;
-
-            fs::create_dir_all(&version_dir)
-                .await
-                .with_context(|| format!("failed to create directory {}", version_dir.display()))?;
-            let unzip_status = smol::process::Command::new("unzip")
-                .arg(&zip_path)
-                .arg("-d")
-                .arg(&version_dir)
-                .output()
-                .await?
-                .status;
-            if !unzip_status.success() {
-                Err(anyhow!("failed to unzip elixir-ls archive"))?;
-            }
-
-            remove_matching(&container_dir, |entry| entry != version_dir).await;
-        }
-
-        Ok(LanguageServerBinary {
-            path: binary_path,
-            arguments: vec![],
-        })
+        Ok(binary.with_arguments(&[]))
     }
 
     async fn cached_server_binary(
@@ -136,14 +97,14 @@ impl LspFetcher for ElixirLspAdapter {
         container_dir: PathBuf,
         _: &dyn LspAdapterDelegate,
     ) -> Option<LanguageServerBinary> {
-        get_cached_server_binary(container_dir).await
+        Some(ELIXIR_LSP.cached(container_dir).await?.with_arguments(&[]))
     }
 
     async fn installation_test_binary(
         &self,
         container_dir: PathBuf,
     ) -> Option<LanguageServerBinary> {
-        get_cached_server_binary(container_dir).await
+        Some(ELIXIR_LSP.cached(container_dir).await?.with_arguments(&[]))
     }
 }
 
@@ -239,21 +200,4 @@ impl LspAdapter for ElixirLspAdapter {
             filter_range,
         })
     }
-}
-
-async fn get_cached_server_binary(container_dir: PathBuf) -> Option<LanguageServerBinary> {
-    (|| async move {
-        let mut last = None;
-        let mut entries = fs::read_dir(&container_dir).await?;
-        while let Some(entry) = entries.next().await {
-            last = Some(entry?.path());
-        }
-        last.map(|path| LanguageServerBinary {
-            path,
-            arguments: vec![],
-        })
-        .ok_or_else(|| anyhow!("no cached binary"))
-    })()
-    .await
-    .log_err()
 }

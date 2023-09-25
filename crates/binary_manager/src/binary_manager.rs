@@ -1,4 +1,4 @@
-use std::{borrow::Cow, path::Path};
+use std::{borrow::Cow, env::consts, path::Path};
 
 use smol::{
     fs::{self, DirEntry},
@@ -11,16 +11,25 @@ mod github;
 pub use github::*;
 
 #[derive(Debug)]
-pub enum AssetName {
+pub enum ResourceName {
     Static(&'static str),
+    /// Replaces {} in the asset name with a passed in version
     Versioned(&'static str),
+    /// Allows resources with {version} and {arch} to be replaced by a passed in version
+    /// and consts::ARCH
+    Formatted(&'static str),
 }
 
-impl AssetName {
+impl ResourceName {
     pub fn to_string(&self, version: &str) -> Cow<'static, str> {
         match self {
-            AssetName::Static(value) => Cow::Borrowed(value),
-            AssetName::Versioned(value) => Cow::Owned(value.replace("{}", version)),
+            ResourceName::Static(value) => Cow::Borrowed(value),
+            ResourceName::Versioned(value) => Cow::Owned(value.replace("{}", version)),
+            ResourceName::Formatted(value) => Cow::Owned(
+                value
+                    .replace("{version}", version)
+                    .replace("{arch}", consts::ARCH),
+            ),
         }
     }
 }

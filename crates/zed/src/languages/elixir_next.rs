@@ -1,6 +1,6 @@
 use anyhow::Result;
 use async_trait::async_trait;
-use binary_manager::{AssetName, GithubBinary, Init, WithVersion};
+use binary_manager::{GithubBinary, Init, ResourceName, WithVersion};
 pub use language::*;
 use lsp::{LanguageServerBinary, SymbolKind};
 use schemars::JsonSchema;
@@ -52,7 +52,7 @@ impl Setting for ElixirSettings {
 const NEXT_BINARY: GithubBinary<Init> = GithubBinary::new(
     "next-ls",
     "elixir-tools/next-ls",
-    AssetName::Static("next_ls_darwin_amd64"),
+    ResourceName::Static("next_ls_darwin_amd64"),
     None,
 );
 
@@ -60,7 +60,7 @@ const NEXT_BINARY: GithubBinary<Init> = GithubBinary::new(
 const NEXT_BINARY: GithubBinary<Init> = GithubBinary::new(
     "next-ls",
     "elixir-tools/next-ls",
-    AssetName::Static("next_ls_darwin_arm64"),
+    ResourceName::Static("next_ls_darwin_arm64"),
     None,
 );
 
@@ -73,7 +73,7 @@ impl LspFetcher for NextLspAdapter {
         delegate: &dyn LspAdapterDelegate,
     ) -> Result<Box<dyn 'static + Send + Any>> {
         let binary = NEXT_BINARY
-            .fetch_latest(delegate.http_client().as_ref(), |release| &release.name)
+            .fetch_latest(delegate.http_client().as_ref(), |release| Ok(&release.name))
             .await?;
         Ok(Box::new(binary) as Box<_>)
     }
@@ -87,7 +87,7 @@ impl LspFetcher for NextLspAdapter {
         let binary = version
             .downcast::<GithubBinary<WithVersion>>()
             .unwrap()
-            .sync_to(container_dir, delegate.http_client().as_ref())
+            .sync_to(container_dir, delegate.http_client().as_ref(), None)
             .await?;
 
         Ok(binary.with_arguments(&["--stdio"]))

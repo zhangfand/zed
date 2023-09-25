@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 
 use anyhow::{anyhow, Context, Result};
+use async_compression::futures::bufread::GzipDecoder;
+use futures::io::BufReader;
 use serde_derive::Deserialize;
 use smol::{
     fs::{self, File},
@@ -9,7 +11,7 @@ use smol::{
 };
 use util::{http::HttpClient, ResultExt};
 
-use crate::{retain_dir_entries, AssetName};
+use crate::{retain_dir_entries, ResourceName};
 
 #[derive(Deserialize, Debug)]
 pub struct GithubRelease {
@@ -74,7 +76,7 @@ pub struct Init {
     repo: &'static str,
     binary_path_in_asset: Option<&'static str>,
     preview: bool,
-    asset_name: AssetName,
+    asset_name: ResourceName,
 }
 
 pub struct WithVersion {
@@ -84,6 +86,7 @@ pub struct WithVersion {
     url: String,
 }
 
+#[must_use]
 pub struct GithubBinary<P> {
     phase: P,
 }
@@ -92,7 +95,7 @@ impl GithubBinary<()> {
     pub const fn new(
         name: &'static str,
         repo: &'static str,
-        asset: AssetName,
+        asset: ResourceName,
         binary_path_in_asset: Option<&'static str>,
     ) -> GithubBinary<Init> {
         GithubBinary {
@@ -108,7 +111,7 @@ impl GithubBinary<()> {
 }
 
 impl GithubBinary<Init> {
-    pub fn preview(mut self) -> Self {
+    pub const fn preview(mut self) -> Self {
         self.phase.preview = true;
         self
     }
@@ -116,11 +119,11 @@ impl GithubBinary<Init> {
     pub async fn fetch_latest(
         self,
         client: &dyn HttpClient,
-        version: impl FnOnce(&GithubRelease) -> &str,
+        version: impl FnOnce(&GithubRelease) -> Result<&str>,
     ) -> Result<GithubBinary<WithVersion>> {
         let release = latest_github_release(self.phase.repo, false, client).await?;
 
-        let version = version(&release).to_string();
+        let version = version(&release)?.to_string();
 
         let asset_name = self.phase.asset_name.to_string(&version);
 
@@ -174,16 +177,18 @@ impl GithubBinary<Init> {
     }
 }
 
+pub enum Compression {
+    Zip,
+    GZip,
+}
+
 impl GithubBinary<WithVersion> {
     pub async fn sync_to(
         self,
         container_dir: PathBuf,
         client: &dyn HttpClient,
+        compression: Option<Compression>,
     ) -> Result<GithubBinary<Synced>> {
-        let zip_path = container_dir.join(format!(
-            "{}_{}.zip",
-            self.phase.zed_name, self.phase.version
-        ));
         let version_dir =
             container_dir.join(format!("{}_{}", self.phase.zed_name, self.phase.version));
 
@@ -198,23 +203,45 @@ impl GithubBinary<WithVersion> {
                 .get(&self.phase.url, Default::default(), true)
                 .await
                 .context("error downloading release")?;
-            let mut file = File::create(&zip_path).await?;
-            if !response.status().is_success() {
-                Err(anyhow!(
-                    "download failed with status {}",
-                    response.status().to_string()
-                ))?;
-            }
-            futures::io::copy(response.body_mut(), &mut file).await?;
 
-            let unzip_status = smol::process::Command::new("unzip")
-                .current_dir(&container_dir)
-                .arg(&zip_path)
-                .output()
-                .await?
-                .status;
-            if !unzip_status.success() {
-                Err(anyhow!("failed to unzip ????clangd archive"))?;
+            match compression {
+                Some(Compression::Zip) => {
+                    let zip_path = container_dir.join(format!(
+                        "{}_{}.zip",
+                        self.phase.zed_name, self.phase.version
+                    ));
+
+                    let mut file = File::create(&zip_path).await?;
+                    if !response.status().is_success() {
+                        Err(anyhow!(
+                            "download failed with status {}",
+                            response.status().to_string()
+                        ))?;
+                    }
+                    futures::io::copy(response.body_mut(), &mut file).await?;
+
+                    let unzip_status = smol::process::Command::new("unzip")
+                        .current_dir(&container_dir)
+                        .arg(&zip_path)
+                        .output()
+                        .await?
+                        .status;
+                    if !unzip_status.success() {
+                        Err(anyhow!("failed to unzip {} archive", self.phase.zed_name))?;
+                    }
+                }
+                Some(Compression::GZip) => {
+                    let decompressed_bytes = GzipDecoder::new(BufReader::new(response.body_mut()));
+                    let mut file = File::create(&version_dir).await?; // Used to be destination_path
+                    futures::io::copy(decompressed_bytes, &mut file).await?;
+                    fs::set_permissions(
+                        &version_dir, // Used to be destination_path
+                        <fs::Permissions as fs::unix::PermissionsExt>::from_mode(0o755),
+                    )
+                    .await?;
+                }
+
+                None => todo!(),
             }
 
             retain_dir_entries(&container_dir, |entry| entry.path() == version_dir).await;
