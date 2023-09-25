@@ -2,7 +2,9 @@ use crate::{OpenAIUsage, RequestMessage, Role};
 use anyhow::anyhow;
 use erased_serde::serialize_trait_object;
 use futures::AsyncReadExt;
+use gpui::{AppContext, ModelHandle};
 use isahc::{http::StatusCode, Request, RequestExt};
+use project::Project;
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 
@@ -13,6 +15,12 @@ pub trait OpenAIFunction: erased_serde::Serialize {
     fn description(&self) -> String;
     fn system_prompt(&self) -> String;
     fn parameters(&self) -> serde_json::Value;
+    fn complete(
+        &self,
+        arguments: serde_json::Value,
+        _cx: &mut AppContext,
+        project: ModelHandle<Project>,
+    ) -> anyhow::Result<String>;
 }
 serialize_trait_object!(OpenAIFunction);
 
@@ -78,9 +86,9 @@ impl OpenAIFunctionCallingResponse {
 
 #[derive(Debug)]
 pub struct FunctionCallDetails {
-    name: String,                 // name of function to call
-    message: Option<String>,      // message if provided
-    arguments: serde_json::Value, // json object respresenting provided arguments
+    pub name: String,                 // name of function to call
+    pub message: Option<String>,      // message if provided
+    pub arguments: serde_json::Value, // json object respresenting provided arguments
 }
 
 pub struct OpenAIFunctionCallingProvider {

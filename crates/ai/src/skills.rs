@@ -1,4 +1,6 @@
 use crate::function_calling::OpenAIFunction;
+use gpui::{AppContext, ModelHandle};
+use project::Project;
 use serde::{Serialize, Serializer};
 use serde_json::json;
 
@@ -35,5 +37,13 @@ impl OpenAIFunction for RewritePrompt {
                 "prompt": {}
             }
         })
+    }
+    fn complete(
+        &self,
+        arguments: serde_json::Value,
+        _cx: &mut AppContext,
+        project: ModelHandle<Project>,
+    ) -> anyhow::Result<String> {
+        async move { Ok(arguments.get("prompt").unwrap().to_string()) }
     }
 }

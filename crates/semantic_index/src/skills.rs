@@ -1,6 +1,11 @@
 use ai::function_calling::OpenAIFunction;
+use gpui::{AppContext, ModelHandle};
+use project::Project;
 use serde::{Serialize, Serializer};
 use serde_json::json;
+use std::fmt::Write;
+
+use crate::SemanticIndex;
 
 pub struct RepositoryContextRetriever;
 
@@ -30,6 +35,49 @@ impl OpenAIFunction for RepositoryContextRetriever {
             },
             "required": ["queries"]
         })
+    }
+    fn complete(
+        &self,
+        arguments: serde_json::Value,
+        _cx: &mut AppContext,
+        project: ModelHandle<Project>,
+    ) -> anyhow::Result<String> {
+        let queries = arguments.get("queries").unwrap().as_array().unwrap();
+        let mut prompt = String::new();
+        if let Some(index) = SemanticIndex::global(_cx) {
+            let query = queries
+                .iter()
+                .map(|query| query.to_string())
+                .collect::<Vec<String>>()
+                .join(";");
+            let search_task = index.update(_cx, |this, cx| {
+                this.search_project(project, query, 10, vec![], vec![], cx)
+            });
+
+            // TODO: We need to get rid of this smol call
+            // and probably just make this entire function async
+            let results = smol::future::block_on(search_task)?;
+            for result in results {
+                let buffer = result.buffer.read(_cx);
+                let text = buffer.text_for_range(result.range).collect::<String>();
+                let file_path = buffer.file().unwrap().path().to_string_lossy();
+                let language = buffer.language();
+
+                writeln!(
+                    prompt,
+                    "The following is a relevant snippet from file ({}):",
+                    file_path
+                )
+                .unwrap();
+                if let Some(language) = language {
+                    writeln!(prompt, "```{}\n{text}\n```", language.name().to_lowercase()).unwrap();
+                } else {
+                    writeln!(prompt, "```\n{text}\n```").unwrap();
+                }
+            }
+        }
+
+        Ok(prompt)
     }
 }
 impl Serialize for RepositoryContextRetriever {
