@@ -252,21 +252,33 @@ impl AssistantPanel {
             return;
         };
 
-        let active_editor = if let Some(active_editor) = workspace
-            .active_item(cx)
-            .and_then(|item| item.act_as::<Editor>(cx))
-        {
-            active_editor
+        let mut active_editor = None;
+        let can_include_conversation;
+        if this.read(cx).has_focus {
+            if let Some(editor) = this.read(cx).active_editor() {
+                active_editor = Some(editor.read(cx).editor.clone());
+            }
+            can_include_conversation = false;
         } else {
-            return;
-        };
+            active_editor = workspace
+                .active_item(cx)
+                .and_then(|item| item.act_as::<Editor>(cx));
+            can_include_conversation = true;
+        }
 
-        this.update(cx, |assistant, cx| {
-            assistant.new_inline_assist(&active_editor, cx)
-        });
+        if let Some(active_editor) = active_editor {
+            this.update(cx, |assistant, cx| {
+                assistant.new_inline_assist(&active_editor, can_include_conversation, cx)
+            });
+        }
     }
 
-    fn new_inline_assist(&mut self, editor: &ViewHandle<Editor>, cx: &mut ViewContext<Self>) {
+    fn new_inline_assist(
+        &mut self,
+        editor: &ViewHandle<Editor>,
+        can_include_conversation: bool,
+        cx: &mut ViewContext<Self>,
+    ) {
         let api_key = if let Some(api_key) = self.api_key.borrow().clone() {
             api_key
         } else {
@@ -298,6 +310,7 @@ impl AssistantPanel {
             let assistant = InlineAssistant::new(
                 inline_assist_id,
                 measurements.clone(),
+                can_include_conversation,
                 self.include_conversation_in_next_inline_assist,
                 self.inline_prompt_history.clone(),
                 codegen.clone(),
@@ -2696,6 +2709,7 @@ struct InlineAssistant {
     workspace: WeakViewHandle<Workspace>,
     confirmed: bool,
     has_focus: bool,
+    can_include_conversation: bool,
     include_conversation: bool,
     measurements: Rc<Cell<BlockMeasurements>>,
     prompt_history: VecDeque<String>,
@@ -2721,16 +2735,20 @@ impl View for InlineAssistant {
         Flex::row()
             .with_child(
                 Flex::row()
-                    .with_child(
-                        Button::action(ToggleIncludeConversation)
-                            .with_tooltip("Include Conversation", theme.tooltip.clone())
-                            .with_id(self.id)
-                            .with_contents(theme::components::svg::Svg::new("icons/ai.svg"))
-                            .toggleable(self.include_conversation)
-                            .with_style(theme.assistant.inline.include_conversation.clone())
-                            .element()
-                            .aligned(),
-                    )
+                    .with_children(if self.can_include_conversation {
+                        Some(
+                            Button::action(ToggleIncludeConversation)
+                                .with_tooltip("Include Conversation", theme.tooltip.clone())
+                                .with_id(self.id)
+                                .with_contents(theme::components::svg::Svg::new("icons/ai.svg"))
+                                .toggleable(self.include_conversation)
+                                .with_style(theme.assistant.inline.include_conversation.clone())
+                                .element()
+                                .aligned(),
+                        )
+                    } else {
+                        None
+                    })
                     .with_children(if let Some(error) = self.codegen.read(cx).error() {
                         Some(
                             Svg::new("icons/error.svg")
@@ -2806,6 +2824,7 @@ impl InlineAssistant {
     fn new(
         id: usize,
         measurements: Rc<Cell<BlockMeasurements>>,
+        can_include_conversation: bool,
         include_conversation: bool,
         prompt_history: VecDeque<String>,
         codegen: ModelHandle<Codegen>,
@@ -2834,6 +2853,7 @@ impl InlineAssistant {
             workspace,
             confirmed: false,
             has_focus: false,
+            can_include_conversation,
             include_conversation,
             measurements,
             prompt_history,
