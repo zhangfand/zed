@@ -1706,9 +1706,13 @@ impl AppContext {
                             };
 
                             if let Some(invalidation) = invalidation {
+                                println!("flush_effects: window invalidation: {invalidation:?}");
                                 let appearance = cx.window.platform_window.appearance();
                                 cx.invalidate(invalidation, appearance);
-                                if let Some(old_parents) = cx.layout(refreshing).log_err() {
+                                println!("flush_effects: Performing layout");
+                                let layout_result = cx.layout(refreshing).log_err();
+                                println!("flush_effects: Finished performing layout");
+                                if let Some(old_parents) = layout_result {
                                     updated_windows.insert(window);
 
                                     if let Some(focused_view_id) = cx.focused_view_id() {
