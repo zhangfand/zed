@@ -1403,8 +1403,23 @@ impl LayoutEngine {
         Ok(count)
     }
 
+    fn max_depth(&self, depth: u32, parent: taffy::tree::NodeId) -> Result<u32> {
+        let mut depth = depth;
+
+        println!(
+            "{parent:?} at depth {depth} has {} children",
+            self.0.child_count(parent)?
+        );
+        for child in self.0.children(parent)? {
+            depth = std::cmp::max(depth, self.max_depth(depth + 1, child)?);
+        }
+
+        Ok(depth)
+    }
+
     pub fn compute_layout(&mut self, root: LayoutId, available_space: Vector2F) -> Result<()> {
         println!("Laying out {} children", self.count_all_children(root)?);
+        println!("Max layout depth: {}", self.max_depth(0, root)?);
 
         self.0.compute_layout(
             root,
