@@ -1393,7 +1393,9 @@ impl AppContext {
 
         let mut window = Window::new(handle, platform_window, self, build_root_view);
         let mut cx = WindowContext::mutable(self, &mut window, handle);
+        println!("Performing initial layout");
         cx.layout(false).expect("initial layout should not error");
+        println!("Finished initial layout");
         let scene = cx.paint().expect("initial paint should not error");
         window.platform_window.present_scene(scene);
         window
