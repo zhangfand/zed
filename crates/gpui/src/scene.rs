@@ -395,7 +395,7 @@ impl StackingContext {
                     .intersection(parent_clip_bounds.unwrap_or(clip_bounds))
                     .unwrap_or_else(|| {
                         if !clip_bounds.is_empty() {
-                            log::warn!("specified clip bounds are disjoint from parent layer");
+                            // log::warn!("specified clip bounds are disjoint from parent layer");
                         }
                         RectF::default()
                     })
