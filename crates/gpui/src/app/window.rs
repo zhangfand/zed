@@ -1404,22 +1404,42 @@ impl LayoutEngine {
     }
 
     fn max_depth(&self, depth: u32, parent: taffy::tree::NodeId) -> Result<u32> {
-        let mut depth = depth;
-
         println!(
             "{parent:?} at depth {depth} has {} children",
             self.0.child_count(parent)?
         );
+
+        let mut max_child_depth = 0;
+
         for child in self.0.children(parent)? {
-            depth = std::cmp::max(depth, self.max_depth(depth + 1, child)?);
+            max_child_depth = std::cmp::max(max_child_depth, self.max_depth(0, child)?);
         }
 
-        Ok(depth)
+        Ok(depth + 1 + max_child_depth)
+    }
+
+    fn get_edges(&self, parent: LayoutId) -> Result<Vec<(LayoutId, LayoutId)>> {
+        let mut edges = Vec::new();
+
+        for child in self.0.children(parent)? {
+            edges.push((parent, child));
+
+            edges.extend(self.get_edges(child)?);
+        }
+
+        Ok(edges)
     }
 
     pub fn compute_layout(&mut self, root: LayoutId, available_space: Vector2F) -> Result<()> {
         println!("Laying out {} children", self.count_all_children(root)?);
         println!("Max layout depth: {}", self.max_depth(0, root)?);
+
+        // Output the edges (branches) of the tree in Mermaid format for visualization.
+        println!("Edges:");
+        for (a, b) in self.get_edges(root)? {
+            println!("N{} --> N{}", u64::from(a), u64::from(b));
+        }
+        println!("");
 
         self.0.compute_layout(
             root,
