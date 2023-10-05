@@ -20,10 +20,12 @@ impl<V: 'static> gpui::Element<V> for AdapterElement<V> {
         let mut cx = ViewContext::new(cx);
         let layout_id = self.0.layout(view, &mut cx).log_err();
         if let Some(layout_id) = layout_id {
+            let started_at = std::time::Instant::now();
             cx.layout_engine()
                 .unwrap()
                 .compute_layout(layout_id, constraint.max)
                 .log_err();
+            println!("compute_layout took {:?}", started_at.elapsed());
         }
 
         let layout_engine = cx.pop_layout_engine();
