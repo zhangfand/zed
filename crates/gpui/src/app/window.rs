@@ -1389,7 +1389,23 @@ impl LayoutEngine {
             .new_leaf_with_measure(style, MeasureFunc::Boxed(Box::new(MeasureFn(measure))))?)
     }
 
+    fn count_all_children(&self, parent: taffy::tree::NodeId) -> Result<u32> {
+        let mut count = 0;
+
+        for child in self.0.children(parent)? {
+            // Count this child.
+            count += 1;
+
+            // Count all of this child's children.
+            count += self.count_all_children(child)?
+        }
+
+        Ok(count)
+    }
+
     pub fn compute_layout(&mut self, root: LayoutId, available_space: Vector2F) -> Result<()> {
+        println!("Laying out {} children", self.count_all_children(root)?);
+
         self.0.compute_layout(
             root,
             taffy::geometry::Size {
