@@ -15,6 +15,7 @@ smallvec.workspace = true
 strum = { version = "0.25.0", features = ["derive"] }
 theme = { path = "../theme" }
 rand = "0.8"
+palette = "0.5.0"
 
 [features]
 default = ["stories"]

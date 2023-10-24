@@ -29,6 +29,7 @@ pub mod prelude;
 pub mod settings;
 mod static_data;
 mod theme;
+mod theme_system;
 
 pub use components::*;
 pub use element_ext::*;
