@@ -74,7 +74,7 @@ pub fn palette_hsla_to_hsla(palette_hsla: PaletteHsla) -> Hsla {
     hsla(hue as f32, saturation as f32, lightness as f32, alpha as f32)
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum ColorScale {
     Gray,
     Mauve,
@@ -109,10 +109,11 @@ pub enum ColorScale {
     Sky,
     Black,
     White,
+    Custom(String),
 }
 
 impl ColorScale {
-    fn name(&self) -> SharedString {
+    fn name(&self) -> String {
         let label = match *self {
             ColorScale::Gray => "Gray",
             ColorScale::Mauve => "Mauve",
@@ -147,6 +148,7 @@ impl ColorScale {
             ColorScale::Sky => "Sky",
             ColorScale::Black => "Black",
             ColorScale::White => "White",
+            ColorScale::Custom(ref name) => name
         };
         label.into()
     }
@@ -178,7 +180,7 @@ impl Color {
     }
 
     pub fn scale(&self) -> ColorScale {
-        self.scale
+        self.scale.clone()
     }
 }
 
@@ -193,8 +195,8 @@ impl Scale {
         let steps = hues.iter().enumerate().map(|(i, &hue)| {
             let step = i + 1;
             let color_name = format!("{:?} {}", name, step);
-            let scale = name;
-            Color::new(&color_name, hue, scale)
+            let scale = name.clone();
+            Color::new(color_name, hue, scale)
         }).collect::<Vec<Color>>();
 
         Self {
@@ -212,10 +214,66 @@ impl Scale {
 }
 
 #[derive(Debug, Clone)]
+pub struct CustomScale {
+    pub name: String,
+    pub steps: [Color; 12],
+}
+
+impl CustomScale {
+    pub fn builder(name: &str) -> CustomScaleBuilder {
+        CustomScaleBuilder::new(name)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct CustomScaleBuilder {
+    pub name: String,
+    pub hues: Option<[PaletteHsla; 12]>,
+}
+
+impl CustomScaleBuilder {
+    pub fn new(name: &str) -> Self {
+        Self {
+            name: name.to_string(),
+            hues: None,
+        }
+    }
+
+    pub fn hues(mut self, hues: [PaletteHsla; 12]) -> Self {
+        self.hues = Some(hues);
+        self
+    }
+
+    pub fn build(self) -> CustomScale {
+        let hues = self.hues.expect("Hues not set");
+
+        let steps = hues.iter().enumerate().map(|(i, &hue)| {
+            let step = i + 1;
+            let color_name = format!("{} {}", self.name, step);
+            let scale = ColorScale::Custom(self.name.clone());
+            Color::new(color_name, hue, scale)
+        }).collect::<Vec<Color>>();
+
+        CustomScale {
+            name: self.name,
+            steps: match steps.try_into() {
+                Ok(array) => array,
+                Err(vec) => panic!("Expected a Vec of length 12, but it was {}", vec.len()),
+            },
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum ScaleEnum {
+    Standard(Scale),
+    Custom(CustomScale),
+}
+
+#[derive(Debug, Clone)]
 pub struct ThemeScales {
     pub name: String,
-    pub colors: [Color; 12],
-    pub scale: Scale,
+    pub scale_enums: Vec<ScaleEnum>,
 }
 
 impl ThemeScales {
@@ -227,37 +285,31 @@ impl ThemeScales {
 #[derive(Debug, Clone)]
 pub struct ThemeScalesBuilder {
     pub name: String,
-    pub colors: Option<[Color; 12]>,
-    pub scale: Option<Scale>,
+    pub scales: Vec<ScaleEnum>,
 }
 
 impl ThemeScalesBuilder {
     pub fn new(name: &str) -> Self {
         Self {
             name: name.to_string(),
-            colors: None,
-            scale: None,
+            scales: Vec::new(),
         }
     }
 
-    pub fn colors(mut self, colors: [Color; 12]) -> Self {
-        self.colors = Some(colors);
+    pub fn add_scale(mut self, scale: Scale) -> Self {
+        self.scales.push(ScaleEnum::Standard(scale));
         self
     }
 
-    pub fn scale(mut self, scale: Scale) -> Self {
-        self.scale = Some(scale);
+    pub fn add_custom_scale(mut self, custom_scale: CustomScale) -> Self {
+        self.scales.push(ScaleEnum::Custom(custom_scale));
         self
     }
 
     pub fn build(self) -> ThemeScales {
-        let scale = self.scale.expect("Scale not set");
-        let colors = self.colors.expect("Colors not set");
-
         ThemeScales {
             name: self.name,
-            colors,
-            scale,
+            scale_enums: self.scales,
         }
     }
 }
