@@ -36,6 +36,7 @@ pub use element_ext::*;
 pub use elements::*;
 pub use prelude::*;
 pub use static_data::*;
+pub use theme_system::*;
 
 // This needs to be fully qualified with `crate::` otherwise we get a panic
 // at:

@@ -1,0 +1,29 @@
+use gpui2::{div, view, white, Context, ParentElement, Styled, View, WindowContext, hsla};
+use ui::{h_stack, NewCustomScale};
+
+pub struct ColorScaleStory {
+    text: View<()>,
+}
+
+impl ColorScaleStory {
+    pub fn view(cx: &mut WindowContext) -> View<()> {
+        let custom_color_scale = NewCustomScale::new_from_hsla(Some("Custom Test".into()), hsla(0.6305555556, 0.75, 0.52, 1.));
+
+        let steps = custom_color_scale.steps.clone();
+
+        view(cx.entity(|cx| ()), move |_, cx| {
+            div()
+                .size_full()
+                .bg(white())
+                .child(
+                    h_stack().gap_1().children(
+                        steps.iter().map(|color| {
+                            div()
+                                .size_8()
+                                .bg(color.value.clone())
+                        })
+                    )
+                )
+        })
+    }
+}

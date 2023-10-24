@@ -14,6 +14,7 @@ use ui::prelude::*;
 pub enum ElementStory {
     Avatar,
     Button,
+    ColorScale,
     Details,
     Focus,
     Icon,
@@ -32,6 +33,9 @@ impl ElementStory {
             }
             Self::Button => {
                 view(cx.entity(|cx| ()), |_, _| ui::ButtonStory::new().into_any()).into_any()
+            }
+            Self::ColorScale => {
+                ColorScaleStory::view(cx).into_any()
             }
             Self::Details => view(cx.entity(|cx| ()), |_, _| {
                 ui::DetailsStory::new().into_any()

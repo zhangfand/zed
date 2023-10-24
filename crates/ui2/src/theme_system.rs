@@ -1,8 +1,9 @@
 // https://www.figma.com/community/plugin/1105513882835626049
 
 use gpui2::{SharedString, Hsla, hsla};
+use strum::EnumIter;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, EnumIter, PartialEq, Eq, Hash)]
 pub enum ColorScale {
     Gray,
     Mauve,
