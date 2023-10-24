@@ -1,65 +1,4 @@
 // https://www.figma.com/community/plugin/1105513882835626049
-//
-// use gpui2::{Hsla, hsla};
-
-// pub enum ThemeAppearance {
-//     Light,
-//     Dark,
-// }
-
-// pub struct ThemeScales {
-//     pub appearance: ThemeAppearance,
-//     pub red: ThemeScale,
-// }
-
-// pub struct ThemeScale {
-//     pub value: [Hsla; 12],
-// }
-
-// impl Default for ThemeScale {
-//     fn default() -> Self {
-//         Self {
-//             value: [
-//                 hsla(0.0, 1.00, 0.99, 1.0),
-//                 hsla(0.0, 1.00, 0.98, 1.0),
-//                 hsla(0.0, 0.90, 0.96, 1.0),
-//                 hsla(0.0, 1.00, 0.93, 1.0),
-//                 hsla(0.0, 1.00, 0.90, 1.0),
-//                 hsla(0.0, 0.94, 0.87, 1.0),
-//                 hsla(0.0, 0.77, 0.81, 1.0),
-//                 hsla(0.0, 0.70, 0.74, 1.0),
-//                 hsla(0.0, 0.75, 0.59, 1.0),
-//                 hsla(0.0, 0.69, 0.55, 1.0),
-//                 hsla(0.0, 0.65, 0.49, 1.0),
-//                 hsla(0.0, 0.63, 0.24, 1.0),
-//             ],
-//         }
-//     }
-// }
-
-// impl ThemeScale {
-//     pub fn new(values: [Hsla; 12]) -> Self {
-//         Self {
-//             value: values,
-//         }
-//     }
-
-//     pub fn value(&mut self, ix: usize, value: Hsla) -> &mut Self {
-//         self.value[ix] = value;
-//         self
-//     }
-
-//     pub fn closest_value(value: Hsla) -> usize {
-//         // We want to find the closest value in the scale to the input value.
-//         // We can ignore the hue and alpha values. We want to compare the input value's saturation and lightness values to the scale's saturation and lightness values.
-//         // Find the closest of each, then weight the results 3:2 in favor of the lightness value.
-//     }
-
-//     pub fn build_values_from_hsla(&mut self, value: Hsla) -> Self {
-//         let closest = self.closest_value(value);
-//         self
-//     }
-// }
 
 use gpui2::{SharedString, Hsla, hsla};
 use palette::{Hsla as PaletteHsla};
@@ -72,6 +11,15 @@ pub fn palette_hsla_to_hsla(palette_hsla: PaletteHsla) -> Hsla {
     let alpha = palette_hsla.alpha;
 
     hsla(hue as f32, saturation as f32, lightness as f32, alpha as f32)
+}
+
+pub fn hsla_to_palette_hsla(hsla: Hsla) -> PaletteHsla {
+    let hue = hsla.h * 360.0;
+    let saturation = hsla.s as f32;
+    let lightness = hsla.l as f32;
+    let alpha = hsla.a as f32;
+
+    PaletteHsla::new(hue, saturation, lightness, alpha)
 }
 
 #[derive(Debug, Clone)]
@@ -222,6 +170,46 @@ pub struct CustomScale {
 impl CustomScale {
     pub fn builder(name: &str) -> CustomScaleBuilder {
         CustomScaleBuilder::new(name)
+    }
+
+    pub fn closest_scale_index(hsla_color: PaletteHsla) -> usize {
+       let default_scale = CustomScale::default();
+       let mut best_match = 0;
+       let mut best_score = f32::MIN;
+
+       for (index, scale_color) in default_scale.steps.iter().enumerate() {
+          let lum_diff = (hsla_color.color.lightness - scale_color.hsla.color.lightness).abs();
+          let sat_diff = (hsla_color.color.saturation - scale_color.hsla.color.saturation).abs();
+          // Essentially magic numbers, Luminoisty is more visually important to the scale
+          // than saturation so we weight it higher
+          let score = (5.0 * lum_diff) + (3.0 * sat_diff);
+
+          if score > best_score {
+              best_score = score;
+              best_match = index;
+          }
+       }
+       best_match
+    }
+}
+
+impl Default for CustomScale {
+    fn default() -> Self {
+        let hues: [PaletteHsla; 12] = [
+            hsla_to_palette_hsla(hsla(0.0, 1.00, 0.99, 1.0)),
+            hsla_to_palette_hsla(hsla(0.0, 1.00, 0.98, 1.0)),
+            hsla_to_palette_hsla(hsla(0.0, 0.90, 0.96, 1.0)),
+            hsla_to_palette_hsla(hsla(0.0, 1.00, 0.93, 1.0)),
+            hsla_to_palette_hsla(hsla(0.0, 1.00, 0.90, 1.0)),
+            hsla_to_palette_hsla(hsla(0.0, 0.94, 0.87, 1.0)),
+            hsla_to_palette_hsla(hsla(0.0, 0.77, 0.81, 1.0)),
+            hsla_to_palette_hsla(hsla(0.0, 0.70, 0.74, 1.0)),
+            hsla_to_palette_hsla(hsla(0.0, 0.75, 0.59, 1.0)),
+            hsla_to_palette_hsla(hsla(0.0, 0.69, 0.55, 1.0)),
+            hsla_to_palette_hsla(hsla(0.0, 0.65, 0.49, 1.0)),
+            hsla_to_palette_hsla(hsla(0.0, 0.63, 0.24, 1.0)),
+        ];
+        Self::builder("Untitled Custom Scale").hues(hues).build()
     }
 }
 
