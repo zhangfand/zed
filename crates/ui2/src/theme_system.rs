@@ -221,7 +221,7 @@ impl NewCustomScale {
         );
 
         CustomScale {
-            name,
+            name: name.clone(),
             steps: Self::step_arr_to_colors(steps_arr, name.clone()),
         }
     }
@@ -231,7 +231,7 @@ impl NewCustomScale {
         let name = input_name.unwrap_or(default.name.unwrap());
 
         CustomScale {
-            name,
+            name: name.clone(),
             steps: Self::step_arr_to_colors(input_steps, name.clone()),
         }
     }
@@ -244,21 +244,21 @@ impl NewCustomScale {
         let input_step_name = Color::new_name_from_index(index, input_hsla, ColorScale::Custom(name.clone()));
         let input_step = Color::new(input_step_name, input_hsla, ColorScale::Custom(name.clone()));
 
-        let mut steps_arr = NewCustomScale::default().steps.expect("Somehow the default scale doesn't have any steps")");
+        let mut steps_arr = NewCustomScale::default().steps.expect("Somehow the default scale doesn't have any steps");
 
-        steps_arr[index] = input_step;
+        steps_arr[index] = input_hsla;
 
         if index > 0 {
-            steps_arr[index - 1].value.h = steps_arr[index].value.h;
+            steps_arr[index - 1].h = steps_arr[index].h;
         }
         if index < 11 {
-            steps_arr[index + 1].value.h = steps_arr[index].value.h;
+            steps_arr[index + 1].h = steps_arr[index].h;
         }
 
         let mut steps_hsla: [Hsla; 12] = [hsla(0.0, 0.0, 0.0, 0.0); 12]; // Initialize with a neutral value.
 
         for (i, color) in steps_arr.iter().enumerate() {
-            steps_hsla[i] = color.value;
+            steps_hsla[i] = color.clone();
         }
 
         steps_hsla
