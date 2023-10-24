@@ -2,25 +2,6 @@
 
 use gpui2::{SharedString, Hsla, hsla};
 
-
-// pub fn palette_hsla_to_hsla(palette_hsla: PaletteHsla) -> Hsla {
-//     let hue = palette_hsla.color.hue.to_positive_degrees() / 360.0;
-//     let saturation = palette_hsla.color.saturation;
-//     let lightness = palette_hsla.color.lightness;
-//     let alpha = palette_hsla.alpha;
-
-//     hsla(hue as f32, saturation as f32, lightness as f32, alpha as f32)
-// }
-
-// pub fn hsla_to_palette_hsla(hsla: Hsla) -> PaletteHsla {
-//     let hue = hsla.h * 360.0;
-//     let saturation = hsla.s as f32;
-//     let lightness = hsla.l as f32;
-//     let alpha = hsla.a as f32;
-
-//     PaletteHsla::new(hue, saturation, lightness, alpha)
-// }
-
 #[derive(Debug, Clone)]
 pub enum ColorScale {
     Gray,
@@ -105,15 +86,25 @@ impl ColorScale {
 #[derive(Debug, Clone)]
 pub struct Color {
     pub name: String,
-    pub hsla: Hsla,
+    pub value: Hsla,
     pub scale: ColorScale,
+}
+
+impl Default for Color {
+    fn default() -> Self {
+        Self {
+            name: "Untitled Color".into(),
+            value: hsla(0., 0., 0., 0.),
+            scale: ColorScale::Custom("Untitled Color Scale".into()),
+        }
+    }
 }
 
 impl Color {
     pub fn new<S: Into<String>>(name: S, hsla: Hsla, scale: ColorScale) -> Self {
         Self {
             name: name.into(),
-            hsla,
+            value: hsla,
             scale,
         }
     }
@@ -123,7 +114,7 @@ impl Color {
     }
 
     pub fn hsla(&self) -> Hsla {
-        self.hsla
+        self.value
     }
 
     pub fn scale(&self) -> ColorScale {
@@ -158,87 +149,30 @@ impl Scale {
     pub fn by_step(&self, step: usize) -> Option<Color> {
         self.steps.get(step - 1).cloned()
     }
-}
 
-#[derive(Debug, Clone)]
-pub struct CustomScale {
-    pub name: String,
-    pub steps: [Color; 12],
-}
+    pub fn steps_arr_to_vec(steps: [Color; 12]) -> Vec<Color> {
+        steps.iter().cloned().collect::<Vec<Color>>()
+    }
 
-#[derive(Debug, Clone)]
-pub struct NewCustomScale {
-    pub name: String,
-    pub steps: [Hsla; 12],
-}
-
-impl NewCustomScale {
-    pub fn new(steps: [Hsla; 12], name: String) -> Self {
-        Self {
-            name,
-            steps,
+    pub fn hsla_vec_to_arr(steps: Vec<Hsla>) -> [Hsla; 12] {
+        if steps.len() != 12 {
+            panic!("Expected a Vec of length 12, but it was {}", steps.len());
         }
-    }
 
-    pub fn name<S: Into<String>>(mut self, name: S) -> Self {
-        self.name = name.into();
-        self
-    }
-
-    pub fn build(self) -> CustomScale {
-        let steps = self.steps.iter().enumerate().map(|(i, hue)| {
-            let step = i + 1;
-            let color_name = format!("{} {}", self.name.clone(), step);
-            let scale = ColorScale::Custom(self.name.clone());
-            Color::new(color_name, *hue, scale)
-        })
-        .collect::<Vec<_>>();
-
-        CustomScale {
-            name: self.name,
-            steps: match steps.try_into() {
-                Ok(array) => array,
-                Err(vec) => {
-                    panic!("Expected a Vec of length 12, but it was {}", vec.len())
-                }
-            },
+        let mut arr = [hsla(0.0, 0.0, 0.0, 0.0); 12];
+        for (i, step) in steps.iter().enumerate() {
+            arr[i] = *step;
         }
-    }
-}
-
-impl Default for NewCustomScale {
-    fn default() -> Self {
-        let hues: [Hsla; 12] = [
-            hsla(0.0, 1.00, 0.99, 1.0),
-            hsla(0.0, 1.00, 0.98, 1.0),
-            hsla(0.0, 0.90, 0.96, 1.0),
-            hsla(0.0, 1.00, 0.93, 1.0),
-            hsla(0.0, 1.00, 0.90, 1.0),
-            hsla(0.0, 0.94, 0.87, 1.0),
-            hsla(0.0, 0.77, 0.81, 1.0),
-            hsla(0.0, 0.70, 0.74, 1.0),
-            hsla(0.0, 0.75, 0.59, 1.0),
-            hsla(0.0, 0.69, 0.55, 1.0),
-            hsla(0.0, 0.65, 0.49, 1.0),
-            hsla(0.0, 0.63, 0.24, 1.0),
-        ];
-        Self::new(hues, "Untitled Custom Scale".into())
-    }
-}
-
-impl CustomScale {
-    pub fn new(name: Option<String>) -> Self {
-        NewCustomScale::default().name(name.unwrap_or("Untitled Custom Scale".into())).build()
+        arr
     }
 
-    pub fn closest_scale_index(hsla_color: Hsla) -> usize {
-       let default_scale = CustomScale::default();
+    pub fn closest_scale_index(scale_colors: [Hsla; 12], hsla_color: Hsla) -> usize {
        let mut best_match = 0;
        let mut best_score = f32::MIN;
 
-       for (index, scale_color) in default_scale.steps.iter().enumerate() {
-          let lum_diff = (hsla_color.l - scale_color.hsla.l).abs();
-          let sat_diff = (hsla_color.s - scale_color.hsla.s).abs();
+       for (index, scale_color) in scale_colors.iter().enumerate() {
+          let lum_diff = (hsla_color.l - scale_color.l).abs();
+          let sat_diff = (hsla_color.s - scale_color.s).abs();
           // Essentially magic numbers, Luminoisty is more visually important to the scale
           // than saturation so we weight it higher
           let score = (5.0 * lum_diff) + (3.0 * sat_diff);
@@ -250,89 +184,125 @@ impl CustomScale {
        }
        best_match
     }
+}
 
-    pub fn custom_scale_from_hsla(name: String, hsla: Hsla) -> CustomScale {
-        let index = CustomScale::closest_scale_index(hsla);
-        let input_step_name = Color::new_name_from_index(index, hsla, ColorScale::Custom(name.clone()));
-        let input_step = Color::new(input_step_name, hsla, ColorScale::Custom(name.clone()));
+#[derive(Debug, Clone)]
+pub struct NewCustomScale {
+    pub name: Option<String>,
+    pub steps: Option<Vec<Hsla>>,
+}
 
-        let mut steps = CustomScale::default().steps.clone();
+impl NewCustomScale {
+    pub fn step_arr_to_colors(steps: [Hsla; 12], name: String) -> [Color; 12] {
+        let mut colors_vec = Vec::new();
 
-            steps[index] = input_step;
+        for (i, step) in steps.iter().enumerate() {
+            let step_name = Color::new_name_from_index(i, *step, ColorScale::Custom(name.clone()));
+            let color = Color::new(step_name, *step, ColorScale::Custom(name.clone()));
+            colors_vec.push(color);
+        }
+
+        let colors: [Color; 12] = match colors_vec.try_into() {
+            Ok(array) => array,
+            Err(vec) => panic!("Unexpected vector length {}", vec.len()),
+        };
+
+        colors
+    }
+
+    pub fn new_from_hsla(input_name: Option<String>, input_hsla: Hsla) -> CustomScale {
+        let default = NewCustomScale::default();
+        let name = input_name.unwrap_or(default.name.unwrap());
+
+        let steps_arr = Self::steps_from_hsla(
+            default.steps,
+            name.clone(),
+            input_hsla
+        );
+
+        CustomScale {
+            name,
+            steps: Self::step_arr_to_colors(steps_arr, name.clone()),
+        }
+    }
+
+    pub fn new_from_steps(input_name: Option<String>, input_steps: [Hsla; 12]) -> CustomScale {
+        let default = NewCustomScale::default();
+        let name = input_name.unwrap_or(default.name.unwrap());
+
+        CustomScale {
+            name,
+            steps: Self::step_arr_to_colors(input_steps, name.clone()),
+        }
+    }
+
+    fn steps_from_hsla(scales: Option<Vec<Hsla>>, name: String, input_hsla: Hsla) -> [Hsla; 12] {
+        let original_hues = scales.expect("Scale doesn't have any hues");
+        let original_steps = Scale::hsla_vec_to_arr(original_hues);
+        let index = Scale::closest_scale_index(original_steps, input_hsla);
+
+        let input_step_name = Color::new_name_from_index(index, input_hsla, ColorScale::Custom(name.clone()));
+        let input_step = Color::new(input_step_name, input_hsla, ColorScale::Custom(name.clone()));
+
+        let mut steps_arr = NewCustomScale::default().steps.expect("Somehow the default scale doesn't have any steps")");
+
+        steps_arr[index] = input_step;
 
         if index > 0 {
-            steps[index - 1].hsla.h = steps[index].hsla.h;
+            steps_arr[index - 1].value.h = steps_arr[index].value.h;
         }
         if index < 11 {
-            steps[index + 1].hsla.h = steps[index].hsla.h;
+            steps_arr[index + 1].value.h = steps_arr[index].value.h;
         }
 
-        let hsla_steps: [Hsla; 12] = steps.map(|color| color.hsla).collect();
-        let custom_scale = CustomScale::builder(&name)
-                    .hues(hsla_steps)
-                    .build();
+        let mut steps_hsla: [Hsla; 12] = [hsla(0.0, 0.0, 0.0, 0.0); 12]; // Initialize with a neutral value.
 
-        custom_scale
+        for (i, color) in steps_arr.iter().enumerate() {
+            steps_hsla[i] = color.value;
+        }
+
+        steps_hsla
+    }
+
+    pub fn name(mut self, name: String) -> Self {
+        self.name = Some(name);
+        self
+    }
+
+    pub fn hues(mut self, hues: Vec<Hsla>) -> Self {
+        assert_eq!(hues.len(), 12);
+        self.steps = Some(hues);
+        self
     }
 }
 
-impl Default for CustomScale {
+
+impl Default for NewCustomScale {
     fn default() -> Self {
-        let hues: [Hsla; 12] = [
-            hsla(0.0, 1.00, 0.99, 1.0),
-            hsla(0.0, 1.00, 0.98, 1.0),
-            hsla(0.0, 0.90, 0.96, 1.0),
-            hsla(0.0, 1.00, 0.93, 1.0),
-            hsla(0.0, 1.00, 0.90, 1.0),
-            hsla(0.0, 0.94, 0.87, 1.0),
-            hsla(0.0, 0.77, 0.81, 1.0),
-            hsla(0.0, 0.70, 0.74, 1.0),
-            hsla(0.0, 0.75, 0.59, 1.0),
-            hsla(0.0, 0.69, 0.55, 1.0),
-            hsla(0.0, 0.65, 0.49, 1.0),
-            hsla(0.0, 0.63, 0.24, 1.0),
-        ];
-        Self::builder("Untitled Custom Scale").hues(hues).build()
+        Self {
+            name: Some("Untitled Custom Scale".into()),
+            steps: Some(vec![
+                hsla(0.0, 1.00, 0.99, 1.0),
+                hsla(0.0, 1.00, 0.98, 1.0),
+                hsla(0.0, 0.90, 0.96, 1.0),
+                hsla(0.0, 1.00, 0.93, 1.0),
+                hsla(0.0, 1.00, 0.90, 1.0),
+                hsla(0.0, 0.94, 0.87, 1.0),
+                hsla(0.0, 0.77, 0.81, 1.0),
+                hsla(0.0, 0.70, 0.74, 1.0),
+                hsla(0.0, 0.75, 0.59, 1.0),
+                hsla(0.0, 0.69, 0.55, 1.0),
+                hsla(0.0, 0.65, 0.49, 1.0),
+                hsla(0.0, 0.63, 0.24, 1.0),
+            ])
+        }
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct CustomScaleBuilder {
+pub struct CustomScale {
     pub name: String,
-    pub hues: Option<[Hsla; 12]>,
-}
-
-impl CustomScaleBuilder {
-    pub fn new(name: &str) -> Self {
-        Self {
-            name: name.to_string(),
-            hues: None,
-        }
-    }
-
-    pub fn hues(mut self, hues: [Hsla; 12]) -> Self {
-        self.hues = Some(hues);
-        self
-    }
-
-    pub fn build(self) -> CustomScale {
-        let hues = self.hues.expect("Hues not set");
-
-        let steps = hues.iter().enumerate().map(|(i, &hue)| {
-            let step = i + 1;
-            let color_name = format!("{} {}", self.name, step);
-            let scale = ColorScale::Custom(self.name.clone());
-            Color::new(color_name, hue, scale)
-        }).collect::<Vec<Color>>();
-
-        CustomScale {
-            name: self.name,
-            steps: match steps.try_into() {
-                Ok(array) => array,
-                Err(vec) => panic!("Expected a Vec of length 12, but it was {}", vec.len()),
-            },
-        }
-    }
+    pub steps: [Color; 12],
 }
 
 #[derive(Debug, Clone)]
