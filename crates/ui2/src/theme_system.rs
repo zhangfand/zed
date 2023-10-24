@@ -315,7 +315,7 @@ pub enum ScaleEnum {
 #[derive(Debug, Clone)]
 pub struct ThemeScales {
     pub name: String,
-    pub scale_enums: Vec<ScaleEnum>,
+    pub scales: Vec<ScaleEnum>,
 }
 
 impl ThemeScales {
@@ -351,7 +351,7 @@ impl ThemeScalesBuilder {
     pub fn build(self) -> ThemeScales {
         ThemeScales {
             name: self.name,
-            scale_enums: self.scales,
+            scales: self.scales,
         }
     }
 }
