@@ -166,9 +166,69 @@ pub struct CustomScale {
     pub steps: [Color; 12],
 }
 
+#[derive(Debug, Clone)]
+pub struct NewCustomScale {
+    pub name: String,
+    pub steps: [Hsla; 12],
+}
+
+impl NewCustomScale {
+    pub fn new(steps: [Hsla; 12], name: String) -> Self {
+        Self {
+            name,
+            steps,
+        }
+    }
+
+    pub fn name<S: Into<String>>(mut self, name: S) -> Self {
+        self.name = name.into();
+        self
+    }
+
+    pub fn build(self) -> CustomScale {
+        let steps = self.steps.iter().enumerate().map(|(i, hue)| {
+            let step = i + 1;
+            let color_name = format!("{} {}", self.name.clone(), step);
+            let scale = ColorScale::Custom(self.name.clone());
+            Color::new(color_name, *hue, scale)
+        })
+        .collect::<Vec<_>>();
+
+        CustomScale {
+            name: self.name,
+            steps: match steps.try_into() {
+                Ok(array) => array,
+                Err(vec) => {
+                    panic!("Expected a Vec of length 12, but it was {}", vec.len())
+                }
+            },
+        }
+    }
+}
+
+impl Default for NewCustomScale {
+    fn default() -> Self {
+        let hues: [Hsla; 12] = [
+            hsla(0.0, 1.00, 0.99, 1.0),
+            hsla(0.0, 1.00, 0.98, 1.0),
+            hsla(0.0, 0.90, 0.96, 1.0),
+            hsla(0.0, 1.00, 0.93, 1.0),
+            hsla(0.0, 1.00, 0.90, 1.0),
+            hsla(0.0, 0.94, 0.87, 1.0),
+            hsla(0.0, 0.77, 0.81, 1.0),
+            hsla(0.0, 0.70, 0.74, 1.0),
+            hsla(0.0, 0.75, 0.59, 1.0),
+            hsla(0.0, 0.69, 0.55, 1.0),
+            hsla(0.0, 0.65, 0.49, 1.0),
+            hsla(0.0, 0.63, 0.24, 1.0),
+        ];
+        Self::new(hues, "Untitled Custom Scale".into())
+    }
+}
+
 impl CustomScale {
-    pub fn builder(name: &str) -> CustomScaleBuilder {
-        CustomScaleBuilder::new(name)
+    pub fn new(name: Option<String>) -> Self {
+        NewCustomScale::default().name(name.unwrap_or("Untitled Custom Scale".into())).build()
     }
 
     pub fn closest_scale_index(hsla_color: Hsla) -> usize {
