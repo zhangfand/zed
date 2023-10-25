@@ -27,6 +27,7 @@ impl PlayerThemeColors {
     }
 }
 
+// TODO: Why is there both SyntaxColor and HighlightColor?
 #[derive(Clone, Copy)]
 pub struct SyntaxColor {
     pub comment: Hsla,
@@ -36,30 +37,14 @@ pub struct SyntaxColor {
 }
 
 impl SyntaxColor {
-    pub fn new(cx: &WindowContext) -> Self {
-        let theme = theme(cx);
+    pub fn new() -> Self {
+        let color = ThemeColor::new();
 
         Self {
-            comment: theme
-                .syntax
-                .get("comment")
-                .cloned()
-                .unwrap_or_else(|| rgb::<Hsla>(0xff00ff)),
-            string: theme
-                .syntax
-                .get("string")
-                .cloned()
-                .unwrap_or_else(|| rgb::<Hsla>(0xff00ff)),
-            function: theme
-                .syntax
-                .get("function")
-                .cloned()
-                .unwrap_or_else(|| rgb::<Hsla>(0xff00ff)),
-            keyword: theme
-                .syntax
-                .get("keyword")
-                .cloned()
-                .unwrap_or_else(|| rgb::<Hsla>(0xff00ff)),
+            comment: color.syntax.comment,
+            string: color.syntax.string,
+            function: color.syntax.function,
+            keyword: color.syntax.keyword,
         }
     }
 }
@@ -284,33 +269,15 @@ pub enum HighlightColor {
 }
 
 impl HighlightColor {
-    pub fn hsla(&self, theme: &Theme) -> Hsla {
+    pub fn hsla(&self) -> Hsla {
+        let color = ThemeColor::new();
+
         match self {
-            Self::Default => theme
-                .syntax
-                .get("primary")
-                .cloned()
-                .expect("Couldn't find `primary` in theme.syntax"),
-            Self::Comment => theme
-                .syntax
-                .get("comment")
-                .cloned()
-                .expect("Couldn't find `comment` in theme.syntax"),
-            Self::String => theme
-                .syntax
-                .get("string")
-                .cloned()
-                .expect("Couldn't find `string` in theme.syntax"),
-            Self::Function => theme
-                .syntax
-                .get("function")
-                .cloned()
-                .expect("Couldn't find `function` in theme.syntax"),
-            Self::Keyword => theme
-                .syntax
-                .get("keyword")
-                .cloned()
-                .expect("Couldn't find `keyword` in theme.syntax"),
+            Self::Default => color.text,
+            Self::Comment => color.syntax.comment,
+            Self::String => color.syntax.string,
+            Self::Function => color.syntax.function,
+            Self::Keyword => color.syntax.keyword,
         }
     }
 }

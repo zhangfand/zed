@@ -509,7 +509,7 @@ impl<S: 'static + Send + Sync> ListDetailsEntry<S> {
             .group("")
             .bg(item_bg)
             .px_1()
-            .py_1_5()
+            .py_1p5()
             .w_full()
             .line_height(relative(1.2))
             .child(Label::new(self.label.clone()).color(label_color))
