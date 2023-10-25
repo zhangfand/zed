@@ -1,9 +1,9 @@
-use crate::{ThemeScales, ScaleEnum, ColorScale};
 pub use crate::{theme, ButtonVariant, ElementExt, Theme};
+use crate::{ColorScale, ScaleType, ThemeScales};
 use gpui2::{hsla, rgb, Hsla, WindowContext};
 use strum::EnumIter;
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct PlayerThemeColors {
     pub cursor: Hsla,
     pub selection: Hsla,
@@ -28,7 +28,7 @@ impl PlayerThemeColors {
 }
 
 // TODO: Why is there both SyntaxColor and HighlightColor?
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct SyntaxColor {
     pub comment: Hsla,
     pub string: Hsla,
@@ -54,7 +54,7 @@ impl SyntaxColor {
 /// It is a mapping layer between semantic theme colors and colors from the reference library.
 ///
 /// While we are between zed and zed2 we use this to map semantic colors to the old theme.
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct ThemeColor {
     pub transparent: Hsla,
     pub mac_os_traffic_light_red: Hsla,
@@ -230,7 +230,7 @@ impl ThemeColor {
             status_bar: background.clone(),
             title_bar: background.clone(),
             toolbar: editor.clone(),
-            tab_bar:surface.clone(),
+            tab_bar: surface.clone(),
             editor: editor.clone(),
             editor_subheader: surface.clone(),
             terminal: editor.clone(),
@@ -294,38 +294,38 @@ pub fn default_colors() -> ThemeScales {
     ThemeScales {
         name: "Default Scales".into(),
         scales: vec![
-            ScaleEnum::Standard(ColorScale::Gray.into()),
-            ScaleEnum::Standard(ColorScale::Mauve.into()),
-            ScaleEnum::Standard(ColorScale::Slate.into()),
-            ScaleEnum::Standard(ColorScale::Sage.into()),
-            ScaleEnum::Standard(ColorScale::Olive.into()),
-            ScaleEnum::Standard(ColorScale::Sand.into()),
-            ScaleEnum::Standard(ColorScale::Gold.into()),
-            ScaleEnum::Standard(ColorScale::Bronze.into()),
-            ScaleEnum::Standard(ColorScale::Brown.into()),
-            ScaleEnum::Standard(ColorScale::Yellow.into()),
-            ScaleEnum::Standard(ColorScale::Amber.into()),
-            ScaleEnum::Standard(ColorScale::Orange.into()),
-            ScaleEnum::Standard(ColorScale::Tomato.into()),
-            ScaleEnum::Standard(ColorScale::Red.into()),
-            ScaleEnum::Standard(ColorScale::Crimson.into()),
-            ScaleEnum::Standard(ColorScale::Pink.into()),
-            ScaleEnum::Standard(ColorScale::Plum.into()),
-            ScaleEnum::Standard(ColorScale::Purple.into()),
-            ScaleEnum::Standard(ColorScale::Violet.into()),
-            ScaleEnum::Standard(ColorScale::Iris.into()),
-            ScaleEnum::Standard(ColorScale::Indigo.into()),
-            ScaleEnum::Standard(ColorScale::Blue.into()),
-            ScaleEnum::Standard(ColorScale::Cyan.into()),
-            ScaleEnum::Standard(ColorScale::Teal.into()),
-            ScaleEnum::Standard(ColorScale::Jade.into()),
-            ScaleEnum::Standard(ColorScale::Green.into()),
-            ScaleEnum::Standard(ColorScale::Grass.into()),
-            ScaleEnum::Standard(ColorScale::Lime.into()),
-            ScaleEnum::Standard(ColorScale::Mint.into()),
-            ScaleEnum::Standard(ColorScale::Sky.into()),
+            ScaleType::Standard(ColorScale::Gray.into()),
+            ScaleType::Standard(ColorScale::Mauve.into()),
+            ScaleType::Standard(ColorScale::Slate.into()),
+            ScaleType::Standard(ColorScale::Sage.into()),
+            ScaleType::Standard(ColorScale::Olive.into()),
+            ScaleType::Standard(ColorScale::Sand.into()),
+            ScaleType::Standard(ColorScale::Gold.into()),
+            ScaleType::Standard(ColorScale::Bronze.into()),
+            ScaleType::Standard(ColorScale::Brown.into()),
+            ScaleType::Standard(ColorScale::Yellow.into()),
+            ScaleType::Standard(ColorScale::Amber.into()),
+            ScaleType::Standard(ColorScale::Orange.into()),
+            ScaleType::Standard(ColorScale::Tomato.into()),
+            ScaleType::Standard(ColorScale::Red.into()),
+            ScaleType::Standard(ColorScale::Crimson.into()),
+            ScaleType::Standard(ColorScale::Pink.into()),
+            ScaleType::Standard(ColorScale::Plum.into()),
+            ScaleType::Standard(ColorScale::Purple.into()),
+            ScaleType::Standard(ColorScale::Violet.into()),
+            ScaleType::Standard(ColorScale::Iris.into()),
+            ScaleType::Standard(ColorScale::Indigo.into()),
+            ScaleType::Standard(ColorScale::Blue.into()),
+            ScaleType::Standard(ColorScale::Cyan.into()),
+            ScaleType::Standard(ColorScale::Teal.into()),
+            ScaleType::Standard(ColorScale::Jade.into()),
+            ScaleType::Standard(ColorScale::Green.into()),
+            ScaleType::Standard(ColorScale::Grass.into()),
+            ScaleType::Standard(ColorScale::Lime.into()),
+            ScaleType::Standard(ColorScale::Mint.into()),
+            ScaleType::Standard(ColorScale::Sky.into()),
             // ScaleEnum::Standard(ColorScale::Black.into()),
             // ScaleEnum::Standard(ColorScale::White.into()),
-        ]
+        ],
     }
 }

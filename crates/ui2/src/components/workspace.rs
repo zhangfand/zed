@@ -5,10 +5,10 @@ use gpui2::{px, relative, rems, view, Context, Size, View};
 
 use crate::{prelude::*, NotificationsPanel};
 use crate::{
-    static_livestream, user_settings_mut, v_stack, AssistantPanel, Button, ChatMessage,
-    ChatPanel, CollabPanel, EditorPane, FakeSettings, Label, LanguageSelector, Pane, PaneGroup,
-    Panel, PanelAllowedSides, PanelSide, ProjectPanel, SettingValue, SplitDirection, StatusBar,
-    Terminal, TitleBar, Toast, ToastOrigin,
+    static_livestream, user_settings_mut, v_stack, AssistantPanel, Button, ChatMessage, ChatPanel,
+    CollabPanel, EditorPane, FakeSettings, Label, LanguageSelector, Pane, PaneGroup, Panel,
+    PanelAllowedSides, PanelSide, ProjectPanel, SettingValue, SplitDirection, StatusBar, Terminal,
+    TitleBar, Toast, ToastOrigin,
 };
 
 #[derive(Clone)]
@@ -181,13 +181,14 @@ impl Workspace {
             .w_40()
             .gap_2()
             .when(self.show_debug, |this| {
-                this.child(Button::<Workspace>::new("Toggle User Settings").on_click(
-                    Arc::new(|workspace, cx| workspace.debug_toggle_user_settings(cx)),
-                ))
-                .child(
-                    Button::<Workspace>::new("Toggle Toasts").on_click(Arc::new(
-                        |workspace, cx| workspace.debug_toggle_toast(cx),
+                this.child(
+                    Button::<Workspace>::new("Toggle User Settings").on_click(Arc::new(
+                        |workspace, cx| workspace.debug_toggle_user_settings(cx),
                     )),
+                )
+                .child(
+                    Button::<Workspace>::new("Toggle Toasts")
+                        .on_click(Arc::new(|workspace, cx| workspace.debug_toggle_toast(cx))),
                 )
                 .child(
                     Button::<Workspace>::new("Toggle Livestream").on_click(Arc::new(
@@ -198,7 +199,7 @@ impl Workspace {
             .child(
                 Button::<Workspace>::new("Toggle Debug")
                     .on_click(Arc::new(|workspace, cx| workspace.toggle_debug(cx))),
-        )
+            )
     }
 
     pub fn view(cx: &mut WindowContext) -> View<Self> {
@@ -343,9 +344,7 @@ impl Workspace {
             )
             .z_index(8)
             // Debug
-            .child(
-                self.render_debug(cx)
-            )
+            .child(self.render_debug(cx))
     }
 }
 

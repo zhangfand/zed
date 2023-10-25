@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::{prelude::*, h_stack};
+use crate::{h_stack, prelude::*};
 use crate::{Button, Icon, IconButton, IconColor, ToolDivider, Workspace};
 
 #[derive(Default, PartialEq)]

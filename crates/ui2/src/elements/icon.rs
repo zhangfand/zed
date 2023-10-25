@@ -4,7 +4,6 @@ use gpui2::{svg, Hsla};
 use strum::EnumIter;
 
 use crate::prelude::*;
-use crate::theme::theme;
 
 #[derive(Default, PartialEq, Copy, Clone)]
 pub enum IconSize {
