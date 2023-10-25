@@ -156,42 +156,47 @@ impl ThemeColor {
     pub fn new() -> Self {
         let scales = default_colors();
         let transparent = hsla(0.0, 0.0, 0.0, 0.0);
+
         let neutral = ColorScale::Slate;
         let focus_color = ColorScale::Indigo;
         let accent_color = ColorScale::Blue;
 
+        let background = neutral.clone().value(3);
+        let surface = neutral.clone().value(2);
+        let editor = neutral.clone().value(1);
+
         let players = [
             PlayerThemeColors {
                 cursor: ColorScale::Blue.value(9),
-                selection: ColorScale::Blue.value(2),
+                selection: ColorScale::Blue.value(4),
             },
             PlayerThemeColors {
                 cursor: ColorScale::Green.value(9),
-                selection: ColorScale::Green.value(2),
+                selection: ColorScale::Green.value(4),
             },
             PlayerThemeColors {
                 cursor: ColorScale::Red.value(9),
-                selection: ColorScale::Red.value(2),
+                selection: ColorScale::Red.value(4),
             },
             PlayerThemeColors {
                 cursor: ColorScale::Yellow.value(9),
-                selection: ColorScale::Yellow.value(2),
+                selection: ColorScale::Yellow.value(4),
             },
             PlayerThemeColors {
                 cursor: ColorScale::Purple.value(9),
-                selection: ColorScale::Purple.value(2),
+                selection: ColorScale::Purple.value(4),
             },
             PlayerThemeColors {
                 cursor: ColorScale::Cyan.value(9),
-                selection: ColorScale::Cyan.value(2),
+                selection: ColorScale::Cyan.value(4),
             },
             PlayerThemeColors {
                 cursor: ColorScale::Orange.value(9),
-                selection: ColorScale::Orange.value(2),
+                selection: ColorScale::Orange.value(4),
             },
             PlayerThemeColors {
                 cursor: ColorScale::Pink.value(9),
-                selection: ColorScale::Pink.value(2),
+                selection: ColorScale::Pink.value(4),
             },
         ];
 
@@ -200,13 +205,13 @@ impl ThemeColor {
             mac_os_traffic_light_red: rgb::<Hsla>(0xEC695E),
             mac_os_traffic_light_yellow: rgb::<Hsla>(0xF4BF4F),
             mac_os_traffic_light_green: rgb::<Hsla>(0x62C554),
-            border: neutral.clone().value(6),
-            border_variant: neutral.clone().value(5),
+            border: neutral.clone().value(5),
+            border_variant: neutral.clone().value(4),
             border_focused: focus_color.clone().value(6),
             border_transparent: transparent,
-            elevated_surface: neutral.clone().value(3),
-            surface: neutral.clone().value(2),
-            background: neutral.clone().value(1),
+            elevated_surface: neutral.clone().value(1),
+            surface: surface.clone(),
+            background: background.clone(),
             filled_element: neutral.clone().value(3),
             filled_element_hover: neutral.clone().value(4),
             filled_element_active: neutral.clone().value(5),
@@ -233,14 +238,15 @@ impl ThemeColor {
                 string: ColorScale::Lime.clone().value(12),
                 function: ColorScale::Amber.clone().value(1),
             },
-            status_bar: neutral.clone().value(1),
-            title_bar: neutral.clone().value(1),
-            toolbar: neutral.clone().value(1),
-            tab_bar: neutral.clone().value(1),
-            editor: neutral.clone().value(2),
-            editor_subheader: neutral.clone().value(1),
-            terminal: neutral.clone().value(2),
+            status_bar: background.clone(),
+            title_bar: background.clone(),
+            toolbar: editor.clone(),
+            tab_bar:surface.clone(),
+            editor: editor.clone(),
+            editor_subheader: surface.clone(),
+            terminal: editor.clone(),
             editor_active_line: neutral.clone().value(3),
+
             image_fallback_background: neutral.clone().value(1),
 
             created: ColorScale::Green.clone().value(11),
