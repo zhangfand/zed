@@ -22,13 +22,13 @@ impl BufferSearch {
     }
 
     pub fn view(cx: &mut WindowContext) -> View<Self> {
-        let color = ThemeColor::new(cx);
+        let color = ThemeColor::new();
 
         view(cx.entity(|cx| Self::new()), Self::render)
     }
 
     fn render(&mut self, cx: &mut ViewContext<Self>) -> impl Element<ViewState = Self> {
-        let color = ThemeColor::new(cx);
+        let color = ThemeColor::new();
 
         h_stack().bg(color.toolbar).p_2().child(
             h_stack().child(Input::new("Search")).child(

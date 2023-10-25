@@ -22,20 +22,20 @@ pub enum LabelColor {
 
 impl LabelColor {
     pub fn hsla(&self, cx: &WindowContext) -> Hsla {
-        let color = ThemeColor::new(cx);
+        let color = ThemeColor::new();
         // TODO: Remove
         let theme = theme(cx);
 
         match self {
             Self::Default => color.text,
             Self::Muted => color.text_muted,
-            Self::Created => theme.middle.positive.default.foreground,
-            Self::Modified => theme.middle.warning.default.foreground,
-            Self::Deleted => theme.middle.negative.default.foreground,
+            Self::Created => color.created,
+            Self::Modified => color.modified,
+            Self::Deleted => color.deleted,
             Self::Disabled => color.text_disabled,
-            Self::Hidden => theme.middle.variant.default.foreground,
+            Self::Hidden => color.hidden,
             Self::Placeholder => color.text_placeholder,
-            Self::Accent => theme.middle.accent.default.foreground,
+            Self::Accent => color.text_accent,
         }
     }
 }
@@ -84,7 +84,7 @@ impl<S: 'static + Send + Sync> Label<S> {
     }
 
     fn render(&mut self, _view: &mut S, cx: &mut ViewContext<S>) -> impl Element<ViewState = S> {
-        let color = ThemeColor::new(cx);
+        let color = ThemeColor::new();
 
         div()
             .when(self.strikethrough, |this| {
@@ -138,7 +138,7 @@ impl<S: 'static + Send + Sync> HighlightedLabel<S> {
     }
 
     fn render(&mut self, _view: &mut S, cx: &mut ViewContext<S>) -> impl Element<ViewState = S> {
-        let color = ThemeColor::new(cx);
+        let color = ThemeColor::new();
 
         let highlight_color = color.text_accent;
 

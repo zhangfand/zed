@@ -159,7 +159,7 @@ impl<S: 'static + Send + Sync + Clone> Buffer<S> {
     }
 
     fn render_row(row: BufferRow, cx: &WindowContext) -> impl Element<ViewState = S> {
-        let color = ThemeColor::new(cx);
+        let color = ThemeColor::new();
 
         let line_background = if row.current {
             color.editor_active_line
@@ -220,7 +220,7 @@ impl<S: 'static + Send + Sync + Clone> Buffer<S> {
     }
 
     fn render(&mut self, _view: &mut S, cx: &mut ViewContext<S>) -> impl Element<ViewState = S> {
-        let color = ThemeColor::new(cx);
+        let color = ThemeColor::new();
         let rows = self.render_rows(cx);
 
         v_stack()
@@ -263,7 +263,7 @@ mod stories {
             _view: &mut S,
             cx: &mut ViewContext<S>,
         ) -> impl Element<ViewState = S> {
-            let color = ThemeColor::new(cx);
+            let color = ThemeColor::new();
 
             Story::container(cx)
                 .child(Story::title_for::<_, Buffer<S>>(cx))

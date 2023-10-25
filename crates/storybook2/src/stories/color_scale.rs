@@ -14,14 +14,14 @@ impl ColorScaleStory {
                 .size_full()
                 .bg(white())
                 .child(
-                    v_stack().gap_1().p_2().children(
+                    v_stack().gap_0p5().p_2().children(
                         default_scales.scales.iter().map(move |scale_enum| {
                             let scale_steps = match scale_enum {
                                 ScaleEnum::Standard(scale) => &scale.steps,
                                 ScaleEnum::Custom(custom_scale) => &custom_scale.steps,
                             };
-                            move || h_stack().gap_1().children(
-                                scale_steps.iter().map(|color| div().size_8().bg(color.value.clone())),
+                            move || h_stack().gap_0p5().children(
+                                scale_steps.iter().map(|color| div().w_8().h_4().bg(color.value.clone())),
                             )
                         }).map(|f| f())
                     )
@@ -29,12 +29,3 @@ impl ColorScaleStory {
         })
     }
 }
-
-// let gray_scale = build_default_scale(ui::ColorScale::Gray);
-// let ruby_scale = build_default_scale(ui::ColorScale::Ruby);
-// let custom_color_scale = NewCustomScale::new_from_hsla(Some("Custom Test".into()), to_gpui_hsla(359., 94., 87., 1.));
-// let custom_color_scale = NewCustomScale::new_from_hsla(Some("Custom Test".into()), to_gpui_hsla(119., 77., 81., 1.));
-// let custom_color_scale = NewCustomScale::new_from_hsla(Some("Custom Test".into()), hsla(0.6305555556, 0.75, 0.52, 1.));
-
-// let gray_steps = gray_scale.steps.clone();
-// let ruby_steps = ruby_scale.steps.clone();

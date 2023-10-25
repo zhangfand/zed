@@ -177,7 +177,7 @@ impl<S: 'static + Send + Sync> IconElement<S> {
     }
 
     fn render(&mut self, _view: &mut S, cx: &mut ViewContext<S>) -> impl Element<ViewState = S> {
-        let color = ThemeColor::new(cx);
+        let color = ThemeColor::new();
         let fill = self.color.color(cx);
         let svg_size = match self.size {
             IconSize::Small => ui_size(cx, 12. / 14.),

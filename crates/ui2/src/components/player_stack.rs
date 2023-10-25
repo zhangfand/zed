@@ -18,7 +18,7 @@ impl<S: 'static + Send + Sync> PlayerStack<S> {
     }
 
     fn render(&mut self, _view: &mut S, cx: &mut ViewContext<S>) -> impl Element<ViewState = S> {
-        let color = ThemeColor::new(cx);
+        let color = ThemeColor::new();
         let player = self.player_with_call_status.get_player();
         self.player_with_call_status.get_call_status();
 

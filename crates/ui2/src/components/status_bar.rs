@@ -87,7 +87,7 @@ impl StatusBar {
         view: &mut Workspace,
         cx: &mut ViewContext<Workspace>,
     ) -> impl Element<ViewState = Workspace> {
-        let color = ThemeColor::new(cx);
+        let color = ThemeColor::new();
 
         div()
             .py_0p5()
@@ -106,7 +106,7 @@ impl StatusBar {
         workspace: &mut Workspace,
         cx: &WindowContext,
     ) -> impl Element<ViewState = Workspace> {
-        let color = ThemeColor::new(cx);
+        let color = ThemeColor::new();
 
         div()
             .flex()
@@ -139,7 +139,7 @@ impl StatusBar {
         workspace: &mut Workspace,
         cx: &WindowContext,
     ) -> impl Element<ViewState = Workspace> {
-        let color = ThemeColor::new(cx);
+        let color = ThemeColor::new();
 
         div()
             .flex()

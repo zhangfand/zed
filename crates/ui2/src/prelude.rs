@@ -61,7 +61,7 @@ impl GitStatus {
     }
 
     pub fn hsla(&self, cx: &WindowContext) -> Hsla {
-        let color = ThemeColor::new(cx);
+        let color = ThemeColor::new();
 
         match self {
             Self::None => color.transparent,

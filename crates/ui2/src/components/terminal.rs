@@ -18,7 +18,7 @@ impl<S: 'static + Send + Sync + Clone> Terminal<S> {
     }
 
     fn render(&mut self, _view: &mut S, cx: &mut ViewContext<S>) -> impl Element<ViewState = S> {
-        let color = ThemeColor::new(cx);
+        let color = ThemeColor::new();
 
         let can_navigate_back = true;
         let can_navigate_forward = false;

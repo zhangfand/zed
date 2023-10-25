@@ -28,7 +28,7 @@ impl<S: 'static + Send + Sync + Clone> TabBar<S> {
     }
 
     fn render(&mut self, _view: &mut S, cx: &mut ViewContext<S>) -> impl Element<ViewState = S> {
-        let color = ThemeColor::new(cx);
+        let color = ThemeColor::new();
 
         let (can_navigate_back, can_navigate_forward) = self.can_navigate;
 

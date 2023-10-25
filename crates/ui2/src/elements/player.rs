@@ -139,13 +139,13 @@ impl Player {
     }
 
     pub fn cursor_color<S: 'static>(&self, cx: &mut ViewContext<S>) -> Hsla {
-        let color = ThemeColor::new(cx);
+        let color = ThemeColor::new();
         let index = self.index % 8;
         color.player[self.index].cursor
     }
 
     pub fn selection_color<S: 'static>(&self, cx: &mut ViewContext<S>) -> Hsla {
-        let color = ThemeColor::new(cx);
+        let color = ThemeColor::new();
         let index = self.index % 8;
         color.player[self.index].selection
     }

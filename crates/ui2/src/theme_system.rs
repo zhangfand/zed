@@ -1,5 +1,3 @@
-// https://www.figma.com/community/plugin/1105513882835626049
-
 use gpui2::{Hsla, hsla, rgb};
 use strum::EnumIter;
 
@@ -627,6 +625,15 @@ impl ColorScale {
         };
 
         Scale::new(scale, scale_steps)
+    }
+
+    /// Returns the One-based value of the given step in the scale.
+    ///
+    /// We usally reference steps as 1-12 instead of 0-11, so we
+    /// automatically subtract 1 from the index.
+    pub fn value(self, index: usize) -> Hsla {
+        let color_scale = ColorScale::new(self);
+        color_scale.steps[index - 1].value
     }
 }
 

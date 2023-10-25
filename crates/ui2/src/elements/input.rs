@@ -61,7 +61,7 @@ impl<S: 'static + Send + Sync> Input<S> {
     }
 
     fn render(&mut self, _view: &mut S, cx: &mut ViewContext<S>) -> impl Element<ViewState = S> {
-        let color = ThemeColor::new(cx);
+        let color = ThemeColor::new();
 
         let (input_bg, input_hover_bg, input_active_bg) = match self.variant {
             InputVariant::Ghost => (

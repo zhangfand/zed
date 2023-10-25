@@ -55,7 +55,7 @@ impl<S: 'static + Send + Sync> Toolbar<S> {
     }
 
     fn render(&mut self, _view: &mut S, cx: &mut ViewContext<S>) -> impl Element<ViewState = S> {
-        let color = ThemeColor::new(cx);
+        let color = ThemeColor::new();
 
         div()
             .bg(color.toolbar)
@@ -97,7 +97,7 @@ mod stories {
             _view: &mut S,
             cx: &mut ViewContext<S>,
         ) -> impl Element<ViewState = S> {
-            let color = ThemeColor::new(cx);
+            let color = ThemeColor::new();
 
             Story::container(cx)
                 .child(Story::title_for::<_, Toolbar<S>>(cx))

@@ -29,7 +29,7 @@ impl<S: 'static + Send + Sync + Clone> NotificationToast<S> {
     }
 
     fn render(&mut self, _view: &mut S, cx: &mut ViewContext<S>) -> impl Element<ViewState = S> {
-        let color = ThemeColor::new(cx);
+        let color = ThemeColor::new();
 
         h_stack()
             .z_index(5)

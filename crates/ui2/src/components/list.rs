@@ -93,7 +93,7 @@ impl<S: 'static + Send + Sync> ListHeader<S> {
     }
 
     fn render(&mut self, _view: &mut S, cx: &mut ViewContext<S>) -> impl Element<ViewState = S> {
-        let color = ThemeColor::new(cx);
+        let color = ThemeColor::new();
 
         let is_toggleable = self.toggleable != Toggleable::NotToggleable;
         let is_toggled = self.toggleable.is_toggled();
@@ -158,7 +158,7 @@ impl<S: 'static + Send + Sync> ListSubHeader<S> {
     }
 
     fn render(&mut self, _view: &mut S, cx: &mut ViewContext<S>) -> impl Element<ViewState = S> {
-        let color = ThemeColor::new(cx);
+        let color = ThemeColor::new();
 
         h_stack().flex_1().w_full().relative().py_1().child(
             div()
@@ -350,7 +350,7 @@ impl<S: 'static + Send + Sync> ListEntry<S> {
         &mut self,
         cx: &mut ViewContext<S>,
     ) -> Option<impl Element<ViewState = S>> {
-        let color = ThemeColor::new(cx);
+        let color = ThemeColor::new();
 
         let disclosure_control_icon = if let Some(ToggleState::Toggled) = self.toggle {
             IconElement::new(Icon::ChevronDown)
@@ -372,8 +372,8 @@ impl<S: 'static + Send + Sync> ListEntry<S> {
     }
 
     fn render(&mut self, _view: &mut S, cx: &mut ViewContext<S>) -> impl Element<ViewState = S> {
-        let color = ThemeColor::new(cx);
-        let color = ThemeColor::new(cx);
+        let color = ThemeColor::new();
+        let color = ThemeColor::new();
         let settings = user_settings(cx);
 
         let left_content = match self.left_content.clone() {
@@ -483,7 +483,7 @@ impl<S: 'static + Send + Sync> ListDetailsEntry<S> {
     }
 
     fn render(&mut self, _view: &mut S, cx: &mut ViewContext<S>) -> impl Element<ViewState = S> {
-        let color = ThemeColor::new(cx);
+        let color = ThemeColor::new();
         let settings = user_settings(cx);
 
         let (item_bg, item_bg_hover, item_bg_active) = match self.seen {
@@ -540,7 +540,7 @@ impl<S: 'static + Send + Sync> ListSeparator<S> {
     }
 
     fn render(&mut self, _view: &mut S, cx: &mut ViewContext<S>) -> impl Element<ViewState = S> {
-        let color = ThemeColor::new(cx);
+        let color = ThemeColor::new();
 
         div().h_px().w_full().bg(color.border)
     }
@@ -580,7 +580,7 @@ impl<S: 'static + Send + Sync> List<S> {
     }
 
     fn render(&mut self, _view: &mut S, cx: &mut ViewContext<S>) -> impl Element<ViewState = S> {
-        let color = ThemeColor::new(cx);
+        let color = ThemeColor::new();
         let is_toggleable = self.toggleable != Toggleable::NotToggleable;
         let is_toggled = Toggleable::is_toggled(&self.toggleable);
 

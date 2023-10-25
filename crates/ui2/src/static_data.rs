@@ -642,7 +642,7 @@ pub fn empty_buffer_example<S: 'static + Send + Sync + Clone>() -> Buffer<S> {
 }
 
 pub fn hello_world_rust_editor_example(cx: &mut WindowContext) -> EditorPane {
-    let color = ThemeColor::new(cx);
+    let color = ThemeColor::new();
 
     EditorPane::new(
         cx,
@@ -783,7 +783,7 @@ pub fn hello_world_rust_buffer_rows(color: &ThemeColor) -> Vec<BufferRow> {
 }
 
 pub fn hello_world_rust_editor_with_status_example(cx: &mut WindowContext) -> EditorPane {
-    let color = ThemeColor::new(cx);
+    let color = ThemeColor::new();
 
     EditorPane::new(
         cx,

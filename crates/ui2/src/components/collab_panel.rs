@@ -21,7 +21,7 @@ impl<S: 'static + Send + Sync> CollabPanel<S> {
     }
 
     fn render(&mut self, _view: &mut S, cx: &mut ViewContext<S>) -> impl Element<ViewState = S> {
-        let color = ThemeColor::new(cx);
+        let color = ThemeColor::new();
 
         v_stack()
             .id(self.id.clone())
@@ -95,7 +95,7 @@ impl<S: 'static + Send + Sync> CollabPanel<S> {
         expanded: bool,
         cx: &WindowContext,
     ) -> impl Element<ViewState = S> {
-        let color = ThemeColor::new(cx);
+        let color = ThemeColor::new();
         div()
             .h_7()
             .px_2()
@@ -124,7 +124,7 @@ impl<S: 'static + Send + Sync> CollabPanel<S> {
         label: impl Into<SharedString>,
         cx: &WindowContext,
     ) -> impl Element<ViewState = S> {
-        let color = ThemeColor::new(cx);
+        let color = ThemeColor::new();
 
         div()
             .id("list_item")

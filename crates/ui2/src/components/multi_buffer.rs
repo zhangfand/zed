@@ -18,7 +18,7 @@ impl<S: 'static + Send + Sync + Clone> MultiBuffer<S> {
     }
 
     fn render(&mut self, _view: &mut S, cx: &mut ViewContext<S>) -> impl Element<ViewState = S> {
-        let color = ThemeColor::new(cx);
+        let color = ThemeColor::new();
 
         v_stack()
             .w_full()
@@ -67,7 +67,7 @@ mod stories {
             _view: &mut S,
             cx: &mut ViewContext<S>,
         ) -> impl Element<ViewState = S> {
-            let color = ThemeColor::new(cx);
+            let color = ThemeColor::new();
 
             Story::container(cx)
                 .child(Story::title_for::<_, MultiBuffer<S>>(cx))

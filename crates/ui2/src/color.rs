@@ -1,4 +1,4 @@
-use crate::{Scale, ThemeScales, ScaleEnum, ColorScale};
+use crate::{ThemeScales, ScaleEnum, ColorScale};
 pub use crate::{theme, ButtonVariant, ElementExt, Theme};
 use gpui2::{hsla, rgb, Hsla, WindowContext};
 use strum::EnumIter;
@@ -114,7 +114,13 @@ pub struct ThemeColor {
     pub text_placeholder: Hsla,
     pub text_disabled: Hsla,
     pub text_accent: Hsla,
+
+    pub icon: Hsla,
     pub icon_muted: Hsla,
+    pub icon_disabled: Hsla,
+    pub icon_placeholder: Hsla,
+    pub icon_accent: Hsla,
+
     pub syntax: SyntaxColor,
 
     pub status_bar: Hsla,
@@ -128,6 +134,14 @@ pub struct ThemeColor {
     pub terminal: Hsla,
     pub image_fallback_background: Hsla,
 
+    pub created: Hsla,
+    pub modified: Hsla,
+    pub deleted: Hsla,
+    pub conflict: Hsla,
+    pub hidden: Hsla,
+    pub ignored: Hsla,
+    pub renamed: Hsla,
+
     pub git_created: Hsla,
     pub git_modified: Hsla,
     pub git_deleted: Hsla,
@@ -139,19 +153,46 @@ pub struct ThemeColor {
 }
 
 impl ThemeColor {
-    pub fn new(cx: &WindowContext) -> Self {
-        let theme = theme(cx);
+    pub fn new() -> Self {
+        let scales = default_colors();
         let transparent = hsla(0.0, 0.0, 0.0, 0.0);
+        let neutral = ColorScale::Slate;
+        let focus_color = ColorScale::Indigo;
+        let accent_color = ColorScale::Blue;
 
         let players = [
-            PlayerThemeColors::new(cx, 0),
-            PlayerThemeColors::new(cx, 1),
-            PlayerThemeColors::new(cx, 2),
-            PlayerThemeColors::new(cx, 3),
-            PlayerThemeColors::new(cx, 4),
-            PlayerThemeColors::new(cx, 5),
-            PlayerThemeColors::new(cx, 6),
-            PlayerThemeColors::new(cx, 7),
+            PlayerThemeColors {
+                cursor: ColorScale::Blue.value(9),
+                selection: ColorScale::Blue.value(2),
+            },
+            PlayerThemeColors {
+                cursor: ColorScale::Green.value(9),
+                selection: ColorScale::Green.value(2),
+            },
+            PlayerThemeColors {
+                cursor: ColorScale::Red.value(9),
+                selection: ColorScale::Red.value(2),
+            },
+            PlayerThemeColors {
+                cursor: ColorScale::Yellow.value(9),
+                selection: ColorScale::Yellow.value(2),
+            },
+            PlayerThemeColors {
+                cursor: ColorScale::Purple.value(9),
+                selection: ColorScale::Purple.value(2),
+            },
+            PlayerThemeColors {
+                cursor: ColorScale::Cyan.value(9),
+                selection: ColorScale::Cyan.value(2),
+            },
+            PlayerThemeColors {
+                cursor: ColorScale::Orange.value(9),
+                selection: ColorScale::Orange.value(2),
+            },
+            PlayerThemeColors {
+                cursor: ColorScale::Pink.value(9),
+                selection: ColorScale::Pink.value(2),
+            },
         ];
 
         Self {
@@ -159,48 +200,63 @@ impl ThemeColor {
             mac_os_traffic_light_red: rgb::<Hsla>(0xEC695E),
             mac_os_traffic_light_yellow: rgb::<Hsla>(0xF4BF4F),
             mac_os_traffic_light_green: rgb::<Hsla>(0x62C554),
-            border: theme.lowest.base.default.border,
-            border_variant: theme.lowest.variant.default.border,
-            border_focused: theme.lowest.accent.default.border,
+            border: neutral.clone().value(6),
+            border_variant: neutral.clone().value(5),
+            border_focused: focus_color.clone().value(6),
             border_transparent: transparent,
-            elevated_surface: theme.lowest.base.default.background,
-            surface: theme.middle.base.default.background,
-            background: theme.lowest.base.default.background,
-            filled_element: theme.lowest.base.default.background,
-            filled_element_hover: hsla(0.0, 0.0, 100.0, 0.12),
-            filled_element_active: hsla(0.0, 0.0, 100.0, 0.16),
-            filled_element_selected: theme.lowest.accent.default.background,
+            elevated_surface: neutral.clone().value(3),
+            surface: neutral.clone().value(2),
+            background: neutral.clone().value(1),
+            filled_element: neutral.clone().value(3),
+            filled_element_hover: neutral.clone().value(4),
+            filled_element_active: neutral.clone().value(5),
+            filled_element_selected: neutral.clone().value(5),
             filled_element_disabled: transparent,
             ghost_element: transparent,
-            ghost_element_hover: hsla(0.0, 0.0, 100.0, 0.08),
-            ghost_element_active: hsla(0.0, 0.0, 100.0, 0.12),
-            ghost_element_selected: theme.lowest.accent.default.background,
+            ghost_element_hover: neutral.clone().value(4),
+            ghost_element_active: neutral.clone().value(5),
+            ghost_element_selected: neutral.clone().value(5),
             ghost_element_disabled: transparent,
-            text: theme.lowest.base.default.foreground,
-            text_muted: theme.lowest.variant.default.foreground,
-            /// TODO: map this to a real value
-            text_placeholder: theme.lowest.negative.default.foreground,
-            text_disabled: theme.lowest.base.disabled.foreground,
-            text_accent: theme.lowest.accent.default.foreground,
-            icon_muted: theme.lowest.variant.default.foreground,
-            syntax: SyntaxColor::new(cx),
+            text: neutral.clone().value(12),
+            text_muted: neutral.clone().value(11),
+            text_placeholder: neutral.clone().value(11),
+            text_disabled: neutral.clone().value(10),
+            text_accent: accent_color.clone().value(12),
+            icon: neutral.clone().value(12),
+            icon_muted: neutral.clone().value(11),
+            icon_placeholder: neutral.clone().value(11),
+            icon_disabled: neutral.clone().value(10),
+            icon_accent: accent_color.clone().value(12),
+            syntax: SyntaxColor {
+                comment: neutral.clone().value(11),
+                keyword: ColorScale::Orange.clone().value(12),
+                string: ColorScale::Lime.clone().value(12),
+                function: ColorScale::Amber.clone().value(1),
+            },
+            status_bar: neutral.clone().value(1),
+            title_bar: neutral.clone().value(1),
+            toolbar: neutral.clone().value(1),
+            tab_bar: neutral.clone().value(1),
+            editor: neutral.clone().value(2),
+            editor_subheader: neutral.clone().value(1),
+            terminal: neutral.clone().value(2),
+            editor_active_line: neutral.clone().value(3),
+            image_fallback_background: neutral.clone().value(1),
 
-            status_bar: theme.lowest.base.default.background,
-            title_bar: theme.lowest.base.default.background,
-            toolbar: theme.highest.base.default.background,
-            tab_bar: theme.middle.base.default.background,
-            editor: theme.highest.base.default.background,
-            editor_subheader: theme.middle.base.default.background,
-            terminal: theme.highest.base.default.background,
-            editor_active_line: theme.highest.on.default.background,
-            image_fallback_background: theme.lowest.base.default.background,
+            created: ColorScale::Green.clone().value(11),
+            modified: ColorScale::Amber.clone().value(11),
+            deleted: ColorScale::Red.clone().value(11),
+            conflict: ColorScale::Red.clone().value(11),
+            hidden: neutral.clone().value(11),
+            ignored: neutral.clone().value(11),
+            renamed: ColorScale::Iris.clone().value(11),
 
-            git_created: theme.lowest.positive.default.foreground,
-            git_modified: theme.lowest.accent.default.foreground,
-            git_deleted: theme.lowest.negative.default.foreground,
-            git_conflict: theme.lowest.warning.default.foreground,
-            git_ignored: theme.lowest.base.disabled.foreground,
-            git_renamed: theme.lowest.warning.default.foreground,
+            git_created: ColorScale::Green.clone().value(11),
+            git_modified: ColorScale::Amber.clone().value(11),
+            git_deleted: ColorScale::Red.clone().value(11),
+            git_conflict: ColorScale::Red.clone().value(11),
+            git_ignored: neutral.clone().value(11),
+            git_renamed: ColorScale::Iris.clone().value(11),
 
             player: players,
         }

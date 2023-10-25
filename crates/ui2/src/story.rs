@@ -6,7 +6,7 @@ pub struct Story {}
 
 impl Story {
     pub fn container<S: 'static + Send + Sync>(cx: &mut ViewContext<S>) -> Div<S> {
-        let color = ThemeColor::new(cx);
+        let color = ThemeColor::new();
 
         div()
             .size_full()
@@ -22,7 +22,7 @@ impl Story {
         cx: &mut ViewContext<S>,
         title: &str,
     ) -> impl Element<ViewState = S> {
-        let color = ThemeColor::new(cx);
+        let color = ThemeColor::new();
 
         div()
             .text_xl()
@@ -40,7 +40,7 @@ impl Story {
         cx: &mut ViewContext<S>,
         label: &str,
     ) -> impl Element<ViewState = S> {
-        let color = ThemeColor::new(cx);
+        let color = ThemeColor::new();
 
         div()
             .mt_4()

@@ -23,7 +23,7 @@ pub enum ButtonVariant {
 
 impl ButtonVariant {
     pub fn bg_color(&self, cx: &mut WindowContext) -> Hsla {
-        let color = ThemeColor::new(cx);
+        let color = ThemeColor::new();
 
         match self {
             ButtonVariant::Ghost => color.ghost_element,
@@ -32,7 +32,7 @@ impl ButtonVariant {
     }
 
     pub fn bg_color_hover(&self, cx: &mut WindowContext) -> Hsla {
-        let color = ThemeColor::new(cx);
+        let color = ThemeColor::new();
 
         match self {
             ButtonVariant::Ghost => color.ghost_element_hover,
@@ -41,7 +41,7 @@ impl ButtonVariant {
     }
 
     pub fn bg_color_active(&self, cx: &mut WindowContext) -> Hsla {
-        let color = ThemeColor::new(cx);
+        let color = ThemeColor::new();
 
         match self {
             ButtonVariant::Ghost => color.ghost_element_active,
@@ -156,7 +156,7 @@ impl<S: 'static + Send + Sync> Button<S> {
         _view: &mut S,
         cx: &mut ViewContext<S>,
     ) -> impl Element<ViewState = S> {
-        let color = ThemeColor::new(cx);
+        let color = ThemeColor::new();
         let settings = user_settings(cx);
         let icon_color = self.icon_color();
 

@@ -41,7 +41,7 @@ impl<S: 'static + Send + Sync> Pane<S> {
     }
 
     fn render(&mut self, view: &mut S, cx: &mut ViewContext<S>) -> impl Element<ViewState = S> {
-        let color = ThemeColor::new(cx);
+        let color = ThemeColor::new();
 
         div()
             .id(self.id.clone())
@@ -89,7 +89,7 @@ impl<S: 'static + Send + Sync> PaneGroup<S> {
     }
 
     fn render(&mut self, view: &mut S, cx: &mut ViewContext<S>) -> impl Element<ViewState = S> {
-        let color = ThemeColor::new(cx);
+        let color = ThemeColor::new();
 
         if !self.panes.is_empty() {
             let el = div()

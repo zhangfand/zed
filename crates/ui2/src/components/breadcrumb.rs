@@ -26,7 +26,7 @@ impl<S: 'static + Send + Sync> Breadcrumb<S> {
     }
 
     fn render_separator(&self, cx: &WindowContext) -> Div<S> {
-        let color = ThemeColor::new(cx);
+        let color = ThemeColor::new();
         div().child(" › ").text_color(color.text_muted)
     }
 
@@ -35,7 +35,7 @@ impl<S: 'static + Send + Sync> Breadcrumb<S> {
         view_state: &mut S,
         cx: &mut ViewContext<S>,
     ) -> impl Element<ViewState = S> {
-        let color = ThemeColor::new(cx);
+        let color = ThemeColor::new();
 
         let symbols_len = self.symbols.len();
 
@@ -106,7 +106,7 @@ mod stories {
             view_state: &mut S,
             cx: &mut ViewContext<S>,
         ) -> impl Element<ViewState = S> {
-            let color = ThemeColor::new(cx);
+            let color = ThemeColor::new();
 
             Story::container(cx)
                 .child(Story::title_for::<_, Breadcrumb<S>>(cx))
