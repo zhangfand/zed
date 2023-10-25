@@ -105,12 +105,12 @@ impl<S: 'static + Send + Sync + Clone> Tab<S> {
 
         let (tab_bg, tab_hover_bg, tab_active_bg) = match self.current {
             true => (
-                color.ghost_element,
+                color.editor,
                 color.ghost_element_hover,
                 color.ghost_element_active,
             ),
             false => (
-                color.filled_element,
+                color.surface,
                 color.filled_element_hover,
                 color.filled_element_active,
             ),

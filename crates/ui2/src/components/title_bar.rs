@@ -106,6 +106,8 @@ impl TitleBar {
             .justify_between()
             .w_full()
             .bg(color.background)
+            .border_color(color.border)
+            .border_b()
             .py_1()
             .child(
                 div()

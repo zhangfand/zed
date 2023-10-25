@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::prelude::*;
+use crate::{prelude::*, h_stack};
 use crate::{Button, Icon, IconButton, IconColor, ToolDivider, Workspace};
 
 #[derive(Default, PartialEq)]
@@ -89,11 +89,11 @@ impl StatusBar {
     ) -> impl Element<ViewState = Workspace> {
         let color = ThemeColor::new();
 
-        div()
-            .py_0p5()
-            .px_1()
-            .flex()
-            .items_center()
+        h_stack()
+            .mb_px()
+            .p_1()
+            .border_color(color.border)
+            .border_t()
             .justify_between()
             .w_full()
             .bg(color.status_bar)
