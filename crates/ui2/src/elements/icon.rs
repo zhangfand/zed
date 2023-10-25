@@ -29,17 +29,17 @@ pub enum IconColor {
 
 impl IconColor {
     pub fn color(self, cx: &WindowContext) -> Hsla {
-        let theme = theme(cx);
+        let color = ThemeColor::new();
         match self {
-            IconColor::Default => theme.lowest.base.default.foreground,
-            IconColor::Muted => theme.lowest.variant.default.foreground,
-            IconColor::Disabled => theme.lowest.base.disabled.foreground,
-            IconColor::Placeholder => theme.lowest.base.disabled.foreground,
-            IconColor::Accent => theme.lowest.accent.default.foreground,
-            IconColor::Error => theme.lowest.negative.default.foreground,
-            IconColor::Warning => theme.lowest.warning.default.foreground,
-            IconColor::Success => theme.lowest.positive.default.foreground,
-            IconColor::Info => theme.lowest.accent.default.foreground,
+            IconColor::Default => color.icon,
+            IconColor::Muted => color.icon_muted,
+            IconColor::Disabled => color.icon_disabled,
+            IconColor::Placeholder => color.icon_placeholder,
+            IconColor::Accent => color.icon_accent,
+            IconColor::Error => color.error,
+            IconColor::Warning => color.warning,
+            IconColor::Success => color.success,
+            IconColor::Info => color.info,
         }
     }
 }
