@@ -449,6 +449,151 @@ async fn get_cached_server_binary_next(container_dir: PathBuf) -> Option<Languag
     .log_err()
 }
 
+pub struct LexicalLspAdapter;
+
+#[async_trait]
+impl LspAdapter for LexicalLspAdapter {
+    async fn name(&self) -> LanguageServerName {
+        LanguageServerName("lexical".into())
+    }
+
+    fn short_name(&self) -> &'static str {
+        "lexical"
+    }
+
+    async fn fetch_latest_server_version(
+        &self,
+        delegate: &dyn LspAdapterDelegate,
+    ) -> Result<Box<dyn 'static + Send + Any>> {
+        let release =
+            latest_github_release("lexical-lsp/lexical", false, delegate.http_client()).await?;
+        let version = release.name.clone();
+        let asset_name = "lexical.zip";
+        let asset = release
+            .assets
+            .iter()
+            .find(|asset| asset.name == asset_name)
+            .ok_or_else(|| anyhow!("no asset found matching {:?}", asset_name))?;
+        let version = GitHubLspBinaryVersion {
+            name: version,
+            url: asset.browser_download_url.clone(),
+        };
+        Ok(Box::new(version) as Box<_>)
+    }
+
+    async fn fetch_server_binary(
+        &self,
+        version: Box<dyn 'static + Send + Any>,
+        container_dir: PathBuf,
+        delegate: &dyn LspAdapterDelegate,
+    ) -> Result<LanguageServerBinary> {
+        let version = version.downcast::<GitHubLspBinaryVersion>().unwrap();
+
+        let binary_path = container_dir.join("lexical/bin/start_lexical.sh");
+
+        if fs::metadata(&binary_path).await.is_err() {
+            let mut response = delegate
+                .http_client()
+                .get(&version.url, Default::default(), true)
+                .await
+                .map_err(|err| anyhow!("error downloading release: {}", err))?;
+
+            let mut file = smol::fs::File::create(&binary_path).await?;
+            if !response.status().is_success() {
+                Err(anyhow!(
+                    "download failed with status {}",
+                    response.status().to_string()
+                ))?;
+            }
+            futures::io::copy(response.body_mut(), &mut file).await?;
+
+            // TODO Unzip here
+
+            fs::set_permissions(
+                &binary_path,
+                <fs::Permissions as fs::unix::PermissionsExt>::from_mode(0o755),
+            )
+            .await?;
+        }
+
+        Ok(LanguageServerBinary {
+            path: binary_path,
+            arguments: vec!["--stdio".into()],
+        })
+    }
+
+    async fn cached_server_binary(
+        &self,
+        container_dir: PathBuf,
+        _: &dyn LspAdapterDelegate,
+    ) -> Option<LanguageServerBinary> {
+        get_cached_server_binary_next(container_dir)
+            .await
+            .map(|mut binary| {
+                binary.arguments = vec!["--stdio".into()];
+                binary
+            })
+    }
+
+    async fn installation_test_binary(
+        &self,
+        container_dir: PathBuf,
+    ) -> Option<LanguageServerBinary> {
+        get_cached_server_binary_next(container_dir)
+            .await
+            .map(|mut binary| {
+                binary.arguments = vec!["--help".into()];
+                binary
+            })
+    }
+
+    async fn label_for_completion(
+        &self,
+        completion: &lsp::CompletionItem,
+        language: &Arc<Language>,
+    ) -> Option<CodeLabel> {
+        label_for_completion_elixir(completion, language)
+    }
+
+    async fn label_for_symbol(
+        &self,
+        name: &str,
+        symbol_kind: SymbolKind,
+        language: &Arc<Language>,
+    ) -> Option<CodeLabel> {
+        label_for_symbol_elixir(name, symbol_kind, language)
+    }
+}
+
+async fn get_cached_server_binary_next(container_dir: PathBuf) -> Option<LanguageServerBinary> {
+    async_iife!({
+        let mut last_binary_path = None;
+        let mut entries = fs::read_dir(&container_dir).await?;
+        while let Some(entry) = entries.next().await {
+            let entry = entry?;
+            if entry.file_type().await?.is_file()
+                && entry
+                    .file_name()
+                    .to_str()
+                    .map_or(false, |name| name == "next-ls")
+            {
+                last_binary_path = Some(entry.path());
+            }
+        }
+
+        if let Some(path) = last_binary_path {
+            Ok(LanguageServerBinary {
+                path,
+                arguments: Vec::new(),
+            })
+        } else {
+            Err(anyhow!("no cached binary"))
+        }
+    })
+    .await
+    .log_err()
+}
+
 pub struct LocalLspAdapter {
     pub path: String,
     pub arguments: Vec<String>,
