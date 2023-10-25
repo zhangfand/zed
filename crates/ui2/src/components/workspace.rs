@@ -170,12 +170,43 @@ impl Workspace {
         cx.notify();
     }
 
+    fn render_debug(&mut self, cx: &mut ViewContext<Self>) -> impl Element<ViewState = Self> {
+        let color = ThemeColor::new();
+
+        v_stack()
+            .z_index(9)
+            .absolute()
+            .bottom_10()
+            .left_1_4()
+            .w_40()
+            .gap_2()
+            .when(self.show_debug, |this| {
+                this.child(Button::<Workspace>::new("Toggle User Settings").on_click(
+                    Arc::new(|workspace, cx| workspace.debug_toggle_user_settings(cx)),
+                ))
+                .child(
+                    Button::<Workspace>::new("Toggle Toasts").on_click(Arc::new(
+                        |workspace, cx| workspace.debug_toggle_toast(cx),
+                    )),
+                )
+                .child(
+                    Button::<Workspace>::new("Toggle Livestream").on_click(Arc::new(
+                        |workspace, cx| workspace.debug_toggle_livestream(cx),
+                    )),
+                )
+            })
+            .child(
+                Button::<Workspace>::new("Toggle Debug")
+                    .on_click(Arc::new(|workspace, cx| workspace.toggle_debug(cx))),
+        )
+    }
+
     pub fn view(cx: &mut WindowContext) -> View<Self> {
         view(cx.entity(|cx| Self::new(cx)), Self::render)
     }
 
     pub fn render(&mut self, cx: &mut ViewContext<Self>) -> impl Element<ViewState = Self> {
-        let theme = theme(cx).clone();
+        let color = ThemeColor::new();
 
         // HACK: This should happen inside of `debug_toggle_user_settings`, but
         // we don't have `cx.global::<FakeSettings>()` in event handlers at the moment.
@@ -212,8 +243,8 @@ impl Workspace {
             .gap_0()
             .justify_start()
             .items_start()
-            .text_color(theme.lowest.base.default.foreground)
-            .bg(theme.lowest.base.default.background)
+            .text_color(color.text)
+            .bg(color.background)
             .child(self.title_bar.clone())
             .child(
                 div()
@@ -222,9 +253,6 @@ impl Workspace {
                     .flex()
                     .flex_row()
                     .overflow_hidden()
-                    .border_t()
-                    .border_b()
-                    .border_color(theme.lowest.base.default.border)
                     .children(
                         Some(
                             Panel::new("project-panel-outer", cx)
@@ -316,32 +344,7 @@ impl Workspace {
             .z_index(8)
             // Debug
             .child(
-                v_stack()
-                    .z_index(9)
-                    .absolute()
-                    .bottom_10()
-                    .left_1_4()
-                    .w_40()
-                    .gap_2()
-                    .when(self.show_debug, |this| {
-                        this.child(Button::<Workspace>::new("Toggle User Settings").on_click(
-                            Arc::new(|workspace, cx| workspace.debug_toggle_user_settings(cx)),
-                        ))
-                        .child(
-                            Button::<Workspace>::new("Toggle Toasts").on_click(Arc::new(
-                                |workspace, cx| workspace.debug_toggle_toast(cx),
-                            )),
-                        )
-                        .child(
-                            Button::<Workspace>::new("Toggle Livestream").on_click(Arc::new(
-                                |workspace, cx| workspace.debug_toggle_livestream(cx),
-                            )),
-                        )
-                    })
-                    .child(
-                        Button::<Workspace>::new("Toggle Debug")
-                            .on_click(Arc::new(|workspace, cx| workspace.toggle_debug(cx))),
-                    ),
+                self.render_debug(cx)
             )
     }
 }
