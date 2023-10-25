@@ -27,10 +27,10 @@ mod elements;
 mod elevation;
 pub mod prelude;
 pub mod settings;
-mod solarized;
+pub mod solarized;
 mod static_data;
 mod theme;
-mod theme2;
+pub mod theme2;
 mod theme_system;
 
 pub use components::*;

@@ -1,4 +1,5 @@
 mod color_scale;
+mod custom_theme;
 mod focus;
 mod kitchen_sink;
 mod scroll;
@@ -6,6 +7,7 @@ mod text;
 mod z_index;
 
 pub use color_scale::*;
+pub use custom_theme::*;
 pub use focus::*;
 pub use kitchen_sink::*;
 pub use scroll::*;

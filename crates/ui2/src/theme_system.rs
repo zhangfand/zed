@@ -52,7 +52,7 @@ pub enum ColorScale {
 }
 
 impl ColorScale {
-    fn name(&self) -> String {
+    pub fn label(&self) -> String {
         let label = match *self {
             ColorScale::Gray => "Gray",
             ColorScale::Mauve => "Mauve",
@@ -280,7 +280,7 @@ impl Color {
     }
 
     pub fn new_name_from_index(index: usize, hsla: Hsla, scale: ColorScale) -> String {
-        format!("{} {}", scale.name(), index)
+        format!("{} {}", scale.label(), index)
     }
 
     pub fn hsla(&self) -> Hsla {
