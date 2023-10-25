@@ -4,7 +4,6 @@ use gpui2::{relative, Hsla, WindowContext};
 use smallvec::SmallVec;
 
 use crate::prelude::*;
-use crate::theme::theme;
 
 #[derive(Default, PartialEq, Copy, Clone)]
 pub enum LabelColor {
@@ -21,10 +20,8 @@ pub enum LabelColor {
 }
 
 impl LabelColor {
-    pub fn hsla(&self, cx: &WindowContext) -> Hsla {
+    pub fn hsla(&self) -> Hsla {
         let color = ThemeColor::new();
-        // TODO: Remove
-        let theme = theme(cx);
 
         match self {
             Self::Default => color.text,
@@ -95,14 +92,14 @@ impl<S: 'static + Send + Sync> Label<S> {
                         .my_auto()
                         .w_full()
                         .h_px()
-                        .bg(LabelColor::Hidden.hsla(cx)),
+                        .bg(LabelColor::Hidden.hsla()),
                 )
             })
             .text_size(ui_size(cx, 1.))
             .when(self.line_height_style == LineHeightStyle::UILabel, |this| {
                 this.line_height(relative(1.))
             })
-            .text_color(self.color.hsla(cx))
+            .text_color(self.color.hsla())
             .child(self.label.clone())
     }
 }
@@ -147,7 +144,7 @@ impl<S: 'static + Send + Sync> HighlightedLabel<S> {
         let mut runs: SmallVec<[Run; 8]> = SmallVec::new();
 
         for (char_ix, char) in self.label.char_indices() {
-            let mut color = self.color.hsla(cx);
+            let mut color = self.color.hsla();
 
             if let Some(highlight_ix) = highlight_indices.peek() {
                 if char_ix == *highlight_ix {
@@ -188,7 +185,7 @@ impl<S: 'static + Send + Sync> HighlightedLabel<S> {
                         .my_auto()
                         .w_full()
                         .h_px()
-                        .bg(LabelColor::Hidden.hsla(cx)),
+                        .bg(LabelColor::Hidden.hsla()),
                 )
             })
             .children(

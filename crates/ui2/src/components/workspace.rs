@@ -5,7 +5,7 @@ use gpui2::{px, relative, rems, view, Context, Size, View};
 
 use crate::{prelude::*, NotificationsPanel};
 use crate::{
-    static_livestream, theme, user_settings_mut, v_stack, AssistantPanel, Button, ChatMessage,
+    static_livestream, user_settings_mut, v_stack, AssistantPanel, Button, ChatMessage,
     ChatPanel, CollabPanel, EditorPane, FakeSettings, Label, LanguageSelector, Pane, PaneGroup,
     Panel, PanelAllowedSides, PanelSide, ProjectPanel, SettingValue, SplitDirection, StatusBar,
     Terminal, TitleBar, Toast, ToastOrigin,
