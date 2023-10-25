@@ -392,6 +392,12 @@ impl NewCustomScale {
         }
     }
 
+    pub fn from_hex(input_name: impl Into<String>, hex: &str) -> CustomScale {
+        // TODO: gpui probably has better utilities for doing this conversion already.
+        let hsla = ColorScale::hex_to_hsla(hex).expect("Bad hex value input");
+        NewCustomScale::from_hsla(Some(input_name.into()), hsla)
+    }
+
     pub fn from_steps(input_name: Option<String>, input_steps: [Hsla; 12]) -> CustomScale {
         let default = NewCustomScale::default();
         let name = input_name.unwrap_or(default.name.unwrap());
@@ -400,6 +406,28 @@ impl NewCustomScale {
             name: name.clone(),
             steps: Self::step_arr_to_colors(input_steps, name.clone()),
         }
+    }
+
+    /// Converts an 8-value hex array into a custom scale.
+    ///
+    /// This is a common format for defining neutral scales
+    /// used in base16 themes and other theme formats
+    pub fn from_8_hex(name: impl Into<String>, values: [&str; 8]) -> CustomScale {
+        // TODO: Actually make this work
+        // For the moment we will just repeat values
+
+        let extended_hex_colors = [
+            values[0], values[0], // Duplicate the first color
+            values[1], values[2],
+            values[3], values[3], // Duplicate the fourth color
+            values[4], values[5],
+            values[6], values[6], // Duplicate the seventh color
+            values[7], values[7], // Duplicate the eighth color
+        ];
+
+        let colors = ColorScale::hex_arr_to_hsla(extended_hex_colors);
+
+        Self::from_steps(Some(name.into()), colors)
     }
 
     fn steps_from_hsla(scales: Option<Vec<Hsla>>, name: String, input_hsla: Hsla) -> [Hsla; 12] {
@@ -490,15 +518,6 @@ impl From<ColorScale> for Scale {
 
 impl From<Hsla> for CustomScale {
     fn from(hsla: Hsla) -> CustomScale {
-        NewCustomScale::from_hsla(None, hsla)
-    }
-}
-
-impl From<&str> for CustomScale {
-    /// Try to create a CustomScale from a hex string.
-    fn from(hex: &str) -> CustomScale {
-        // TODO: gpui probably has better utilities for doing this conversion already.
-        let hsla = ColorScale::hex_to_hsla(hex).expect("Bad hex value input");
         NewCustomScale::from_hsla(None, hsla)
     }
 }

@@ -1,57 +1,61 @@
 // A example theme for building out theme2
 
-use crate::{theme2::{Theme, ThemeAppearance, AppearanceMode, RequiredScales}, ScaleType, ThemeColor, NewCustomScale};
+use crate::{theme2::{Theme, ThemeAppearance, AppearanceMode, RequiredScales}, ScaleType, ThemeColor, NewCustomScale, CustomScale};
 
-pub fn solarized_scales() -> Vec<ScaleType> {
-    // let neutral_scale = NewCustomScale::from_8_hex(
-    //     "#fdf6e3",
-    //     "#eee8d5",
-    //     "#93a1a1",
-    //     "#839496",
-    //     "#657b83",
-    //     "#586e75",
-    //     "#073642",
-    //     "#002b36",
-    // );
-
-    let neutral = ScaleType::Custom("#b58900".into());
-    let yellow = ScaleType::Custom("#b58900".into());
-    let orange = ScaleType::Custom("#cb4b16".into());
-    let red = ScaleType::Custom("#dc322f".into());
-    let magenta = ScaleType::Custom("#d33682".into());
-    let violet = ScaleType::Custom("#6c71c4".into());
-    let blue = ScaleType::Custom("#268bd2".into());
-    let cyan = ScaleType::Custom("#2aa198".into());
-    let green = ScaleType::Custom("#859900".into());
-
-    vec![
-        neutral,
-        yellow,
-        orange,
-        red,
-        magenta,
-        violet,
-        blue,
-        cyan,
-        green,
-    ]
+struct SolarizedScale {
+    pub neutral: CustomScale,
+    pub neutral_dark: CustomScale,
+    pub yellow: CustomScale,
+    pub orange: CustomScale,
+    pub red: CustomScale,
+    pub magenta: CustomScale,
+    pub violet: CustomScale,
+    pub blue: CustomScale,
+    pub cyan: CustomScale,
+    pub green: CustomScale,
 }
 
 pub fn solarized() -> Theme {
-    let solarized_scales = solarized_scales();
+    let scale = SolarizedScale {
+        neutral: NewCustomScale::from_8_hex(
+            "Neutral",
+            ["#fdf6e3","#eee8d5","#93a1a1","#839496","#657b83","#586e75","#073642","#002b36",
+        ]),
+        neutral_dark: NewCustomScale::from_8_hex(
+            "Neutral",
+            [
+                "#002b36",
+                "#073642",
+                "#586e75",
+                "#657b83",
+                "#839496",
+                "#93a1a1",
+                "#eee8d5",
+                "#fdf6e3",
+            ]
+        ),
+        yellow: NewCustomScale::from_hex("Yellow", "#b58900"),
+        orange: NewCustomScale::from_hex("Orange", "#cb4b16"),
+        red: NewCustomScale::from_hex("Red", "#dc322f"),
+        magenta: NewCustomScale::from_hex("Magenta", "#d33682"),
+        violet: NewCustomScale::from_hex("Violet", "#6c71c4"),
+        blue: NewCustomScale::from_hex("Blue", "#268bd2"),
+        cyan: NewCustomScale::from_hex("Cyan", "#2aa198"),
+        green: NewCustomScale::from_hex("Green", "#859900")
+    };
 
      let solarized_light = ThemeAppearance {
         id: 0,
         name: "Solarized Light".into(),
         appearance: AppearanceMode::Light,
         scales: (
-            RequiredScales::new(
-                solarized_scales[0].clone(),
-                solarized_scales[0].clone(),
-                solarized_scales[0].clone(),
-                solarized_scales[0].clone(),
-                solarized_scales[0].clone(),
-            ),
+            RequiredScales {
+                neutral: ScaleType::Custom(scale.neutral.clone()),
+                accent: ScaleType::Custom(scale.blue.clone()),
+                positive: ScaleType::Custom(scale.green.clone()),
+                negative: ScaleType::Custom(scale.red.clone()),
+                caution: ScaleType::Custom(scale.orange.clone()),
+            },
             vec![],
         ),
         // TODO: Populate this using RequiredScales
@@ -63,14 +67,14 @@ pub fn solarized() -> Theme {
         name: "Solarized Dark".into(),
         appearance: AppearanceMode::Dark,
         scales: (
-            RequiredScales::new(
-                solarized_scales[0].clone(),
-                solarized_scales[0].clone(),
-                solarized_scales[0].clone(),
-                solarized_scales[0].clone(),
-                solarized_scales[0].clone(),
-            ),
-            vec![],
+            RequiredScales {
+                neutral: ScaleType::Custom(scale.neutral_dark.clone()),
+                accent: ScaleType::Custom(scale.blue.clone()),
+                positive: ScaleType::Custom(scale.green.clone()),
+                negative: ScaleType::Custom(scale.red.clone()),
+                caution: ScaleType::Custom(scale.orange.clone()),
+            },
+            vec![]
         ),
         // TODO: Populate this using RequiredScales
         color: ThemeColor::new()

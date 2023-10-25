@@ -73,11 +73,11 @@ impl Default for Theme {
 
 #[derive(Debug, Clone)]
 pub struct RequiredScales {
-    neutral: ScaleType,
-    accent: ScaleType,
-    positive: ScaleType,
-    negative: ScaleType,
-    caution: ScaleType,
+    pub neutral: ScaleType,
+    pub accent: ScaleType,
+    pub positive: ScaleType,
+    pub negative: ScaleType,
+    pub caution: ScaleType,
 }
 
 impl RequiredScales {
