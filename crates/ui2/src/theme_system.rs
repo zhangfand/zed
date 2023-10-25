@@ -1,4 +1,4 @@
-use gpui2::{hsla, rgb, Hsla};
+use gpui2::{hsla, rgb, Hsla, Rgba};
 use strum::EnumIter;
 
 pub fn to_gpui_hsla(h: f32, s: f32, l: f32, a: f32) -> Hsla {
@@ -380,7 +380,7 @@ impl NewCustomScale {
         colors
     }
 
-    pub fn new_from_hsla(input_name: Option<String>, input_hsla: Hsla) -> CustomScale {
+    pub fn from_hsla(input_name: Option<String>, input_hsla: Hsla) -> CustomScale {
         let default = NewCustomScale::default();
         let name = input_name.unwrap_or(default.name.unwrap());
 
@@ -392,7 +392,7 @@ impl NewCustomScale {
         }
     }
 
-    pub fn new_from_steps(input_name: Option<String>, input_steps: [Hsla; 12]) -> CustomScale {
+    pub fn from_steps(input_name: Option<String>, input_steps: [Hsla; 12]) -> CustomScale {
         let default = NewCustomScale::default();
         let name = input_name.unwrap_or(default.name.unwrap());
 
@@ -485,6 +485,21 @@ pub enum ScaleType {
 impl From<ColorScale> for Scale {
     fn from(scale: ColorScale) -> Scale {
         ColorScale::new(scale)
+    }
+}
+
+impl From<Hsla> for CustomScale {
+    fn from(hsla: Hsla) -> CustomScale {
+        NewCustomScale::from_hsla(None, hsla)
+    }
+}
+
+impl From<&str> for CustomScale {
+    /// Try to create a CustomScale from a hex string.
+    fn from(hex: &str) -> CustomScale {
+        // TODO: gpui probably has better utilities for doing this conversion already.
+        let hsla = ColorScale::hex_to_hsla(hex).expect("Bad hex value input");
+        NewCustomScale::from_hsla(None, hsla)
     }
 }
 

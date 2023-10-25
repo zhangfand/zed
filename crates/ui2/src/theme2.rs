@@ -72,10 +72,39 @@ impl Default for Theme {
 }
 
 #[derive(Debug, Clone)]
+pub struct RequiredScales {
+    neutral: ScaleType,
+    accent: ScaleType,
+    positive: ScaleType,
+    negative: ScaleType,
+    caution: ScaleType,
+}
+
+impl RequiredScales {
+    pub fn new(
+        neutral: ScaleType,
+        accent: ScaleType,
+        positive: ScaleType,
+        negative: ScaleType,
+        caution: ScaleType,
+    ) -> Self {
+        Self {
+            neutral,
+            accent,
+            positive,
+            negative,
+            caution,
+        }
+    }
+}
+
+type OptionalScales = Vec<ScaleType>;
+
+#[derive(Debug, Clone)]
 pub struct ThemeAppearance {
     pub id: usize,
     pub name: String,
-    pub appearance: Vec<AppearanceMode>,
-    pub scales: Vec<ScaleType>,
+    pub appearance: AppearanceMode,
+    pub scales: (RequiredScales, OptionalScales),
     pub color: ThemeColor,
 }
