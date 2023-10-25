@@ -15,45 +15,6 @@ pub fn from_gpui_hue(h: f32) -> f32 {
     h*360.0
 }
 
-pub fn build_default_scale(scale: ColorScale) -> Scale {
-    let scale_steps = match scale {
-        ColorScale::Gray => {
-            ColorScale::hex_arr_to_hsla([
-                "#111111",
-                "#191919",
-                "#222222",
-                "#2a2a2a",
-                "#313131",
-                "#3a3a3a",
-                "#484848",
-                "#606060",
-                "#6e6e6e",
-                "#7b7b7b",
-                "#b4b4b4",
-                "#eeeeee"
-            ])
-        },
-        _ => {
-            ColorScale::hex_arr_to_hsla([
-                "#000000",
-                "#000000",
-                "#000000",
-                "#000000",
-                "#000000",
-                "#000000",
-                "#000000",
-                "#000000",
-                "#000000",
-                "#000000",
-                "#000000",
-                "#000000"
-            ])
-        }
-    };
-
-    Scale::new(scale, scale_steps)
-}
-
 #[derive(Debug, Clone, EnumIter, PartialEq, Eq, Hash)]
 pub enum ColorScale {
     Gray,
@@ -147,6 +108,61 @@ impl ColorScale {
             hslas[i] = ColorScale::hex_to_hsla(hex).unwrap_or(hsla(0., 0., 0., 0.));
         }
         hslas
+    }
+
+    pub fn new(scale: ColorScale) -> Scale {
+        let scale_steps = match scale {
+            ColorScale::Gray => {
+                ColorScale::hex_arr_to_hsla([
+                    "#111111",
+                    "#191919",
+                    "#222222",
+                    "#2a2a2a",
+                    "#313131",
+                    "#3a3a3a",
+                    "#484848",
+                    "#606060",
+                    "#6e6e6e",
+                    "#7b7b7b",
+                    "#b4b4b4",
+                    "#eeeeee"
+                ])
+            },
+            ColorScale::Ruby => {
+                ColorScale::hex_arr_to_hsla([
+                    "#191113",
+                    "#1e1517",
+                    "#3a141e",
+                    "#4e1325",
+                    "#5e1a2e",
+                    "#6f2539",
+                    "#883447",
+                    "#b3445a",
+                    "#e54666",
+                    "#ec5a72",
+                    "#ff949d",
+                    "#fed2e1"
+                ])
+            }
+            _ => {
+                ColorScale::hex_arr_to_hsla([
+                    "#000000",
+                    "#000000",
+                    "#000000",
+                    "#000000",
+                    "#000000",
+                    "#000000",
+                    "#000000",
+                    "#000000",
+                    "#000000",
+                    "#000000",
+                    "#000000",
+                    "#000000"
+                ])
+            }
+        };
+
+        Scale::new(scale, scale_steps)
     }
 }
 
@@ -375,6 +391,12 @@ pub enum ScaleEnum {
     Custom(CustomScale),
 }
 
+impl From<ColorScale> for Scale {
+    fn from(scale: ColorScale) -> Scale {
+        ColorScale::new(scale)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ThemeScales {
     pub name: String,
@@ -384,6 +406,10 @@ pub struct ThemeScales {
 impl ThemeScales {
     pub fn builder(name: &str) -> ThemeScalesBuilder {
         ThemeScalesBuilder::new(name)
+    }
+
+    pub fn iter(&self) -> std::slice::Iter<ScaleEnum> {
+        self.scales.iter()
     }
 }
 

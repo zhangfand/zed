@@ -1,3 +1,4 @@
+use crate::{Scale, ThemeScales, ScaleEnum, ColorScale};
 pub use crate::{theme, ButtonVariant, ElementExt, Theme};
 use gpui2::{hsla, rgb, Hsla, WindowContext};
 use strum::EnumIter;
@@ -249,5 +250,16 @@ impl HighlightColor {
                 .cloned()
                 .expect("Couldn't find `keyword` in theme.syntax"),
         }
+    }
+}
+
+pub fn default_colors() -> ThemeScales {
+    ThemeScales {
+        name: "Default Scales".into(),
+        scales: vec![
+            ScaleEnum::Standard(ColorScale::Gray.into()),
+            ScaleEnum::Standard(ColorScale::Ruby.into()),
+
+        ]
     }
 }
