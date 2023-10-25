@@ -1,4 +1,4 @@
-use gpui2::{hsla, rgb, Hsla, Rgba};
+use gpui2::{hsla, rgb, Hsla};
 use strum::EnumIter;
 
 pub fn to_gpui_hsla(h: f32, s: f32, l: f32, a: f32) -> Hsla {

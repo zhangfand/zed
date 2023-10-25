@@ -1,5 +1,5 @@
 use gpui2::{div, view, white, Context, ParentElement, Styled, View, WindowContext, Element};
-use ui::{default_colors, h_stack, v_stack, ScaleType, Label};
+use ui::{h_stack, v_stack, ScaleType, Label};
 
 pub struct CustomThemeStory {
     text: View<()>,
@@ -55,21 +55,34 @@ impl CustomThemeStory {
         let theme_apperances_cloned = theme_apperances.clone();
         let theme_default_appearance = theme_apperances_cloned.get(theme.default_appearance).expect("Default appearance index out of bounds");
 
-        v_stack().w_full().gap_1()
+        v_stack().w_full().p_8()
             .child(div().text_2xl().child(theme_family))
-            .child(div().text_lg().child(theme_author))
-            .child(div().text_base().child(theme_url))
+            .child(div().text_sm().child(
+                format!("Author: {}", theme_author)
+            ))
+            .child(div().text_sm().child(
+                format!("Theme Link: {}", theme_url)
+            ))
             .child(
-                h_stack().text_base()
+                h_stack().gap_0p5().text_sm()
                     .child("Appearances: ")
                     .children(
-                theme_apperances.iter().enumerate().map(|(i, appearance)| {
-                    div().text_base().child(appearance.name.clone())
-                        .child(
-                            format!("Default {}", theme_default_appearance.name)
-                        )
-                })
-            ))
+                        theme_apperances.iter().enumerate().map(|(i, appearance)| {
+                            div().text_sm().child(
+                                if i != theme_apperances.len() - 1 {
+                                    format!("{}, ", appearance.name.clone())
+                                } else {
+                                    appearance.name.clone()
+                                }
+                            )
+                        }))
+                    .child(
+                        div().text_sm().child(" – ")
+                    )
+                    .child(
+                        div().text_sm().child(format!("(Default: {})", theme_default_appearance.name))
+                    )
+            )
     }
 
     pub fn view(cx: &mut WindowContext) -> View<()> {
