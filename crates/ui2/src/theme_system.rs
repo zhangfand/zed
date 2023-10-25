@@ -1,6 +1,6 @@
 // https://www.figma.com/community/plugin/1105513882835626049
 
-use gpui2::{SharedString, Hsla, hsla};
+use gpui2::{Hsla, hsla, rgb};
 use strum::EnumIter;
 
 pub fn to_gpui_hsla(h: f32, s: f32, l: f32, a: f32) -> Hsla {
@@ -13,6 +13,45 @@ pub fn to_gpui_hue(h: f32) -> f32 {
 
 pub fn from_gpui_hue(h: f32) -> f32 {
     h*360.0
+}
+
+pub fn build_default_scale(scale: ColorScale) -> Scale {
+    let scale_steps = match scale {
+        ColorScale::Gray => {
+            ColorScale::hex_arr_to_hsla([
+                "#111111",
+                "#191919",
+                "#222222",
+                "#2a2a2a",
+                "#313131",
+                "#3a3a3a",
+                "#484848",
+                "#606060",
+                "#6e6e6e",
+                "#7b7b7b",
+                "#b4b4b4",
+                "#eeeeee"
+            ])
+        },
+        _ => {
+            ColorScale::hex_arr_to_hsla([
+                "#000000",
+                "#000000",
+                "#000000",
+                "#000000",
+                "#000000",
+                "#000000",
+                "#000000",
+                "#000000",
+                "#000000",
+                "#000000",
+                "#000000",
+                "#000000"
+            ])
+        }
+    };
+
+    Scale::new(scale, scale_steps)
 }
 
 #[derive(Debug, Clone, EnumIter, PartialEq, Eq, Hash)]
@@ -94,6 +133,21 @@ impl ColorScale {
         label.into()
     }
 
+    pub fn hex_to_u32(hex: &str) -> Result<u32, std::num::ParseIntError> {
+        u32::from_str_radix(&hex.trim_start_matches('#'), 16)
+    }
+
+    pub fn hex_to_hsla(hex: &str) -> Result<Hsla, std::num::ParseIntError> {
+        ColorScale::hex_to_u32(hex).map(|color| rgb::<Hsla>(color))
+    }
+
+    pub fn hex_arr_to_hsla(hex: [&str; 12]) -> [Hsla; 12] {
+        let mut hslas = [hsla(0., 0., 0., 0.); 12];
+        for (i, hex) in hex.iter().enumerate() {
+            hslas[i] = ColorScale::hex_to_hsla(hex).unwrap_or(hsla(0., 0., 0., 0.));
+        }
+        hslas
+    }
 }
 
 #[derive(Debug, Clone)]

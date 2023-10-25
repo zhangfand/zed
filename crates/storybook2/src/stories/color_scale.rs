@@ -1,5 +1,5 @@
-use gpui2::{div, view, white, Context, ParentElement, Styled, View, WindowContext, hsla};
-use ui::{h_stack, NewCustomScale, to_gpui_hue, to_gpui_hsla};
+use gpui2::{div, view, white, Context, ParentElement, Styled, View, WindowContext};
+use ui::{h_stack, NewCustomScale, to_gpui_hsla};
 
 pub struct ColorScaleStory {
     text: View<()>,
