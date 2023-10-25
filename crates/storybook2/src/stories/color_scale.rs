@@ -7,7 +7,8 @@ pub struct ColorScaleStory {
 
 impl ColorScaleStory {
     pub fn view(cx: &mut WindowContext) -> View<()> {
-        let custom_color_scale = NewCustomScale::new_from_hsla(Some("Custom Test".into()), to_gpui_hsla(119., 77., 81., 1.));
+        let custom_color_scale = NewCustomScale::new_from_hsla(Some("Custom Test".into()), to_gpui_hsla(359., 94., 87., 1.));
+        // let custom_color_scale = NewCustomScale::new_from_hsla(Some("Custom Test".into()), to_gpui_hsla(119., 77., 81., 1.));
         // let custom_color_scale = NewCustomScale::new_from_hsla(Some("Custom Test".into()), hsla(0.6305555556, 0.75, 0.52, 1.));
 
         let steps = custom_color_scale.steps.clone();
