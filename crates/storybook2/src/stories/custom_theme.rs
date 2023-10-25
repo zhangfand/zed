@@ -7,7 +7,14 @@ pub struct CustomThemeStory {
 
 impl CustomThemeStory {
     pub fn render_scales(scales: Vec<ScaleType>) -> impl Element<ViewState = ()> {
-        v_stack().w_full().gap_1().children(
+        let neutral_colors = match scales[0].clone() {
+            ScaleType::Standard(scale) => scale.steps,
+            ScaleType::Custom(custom_scale) => custom_scale.steps,
+        };
+
+        let neutral_border = neutral_colors[2].clone().value;
+
+        v_stack().w_full().gap_0p5().children(
             scales
                 .iter()
                 .map(move |scale_enum| {
@@ -21,14 +28,14 @@ impl CustomThemeStory {
                             ScaleType::Custom(custom_scale) => custom_scale.name.clone(),
                         };
 
-                        v_stack()
-                            .gap_0p5()
-                            .child(div().text_sm().child(scale_name))
+                        h_stack()
+                            .gap_2()
+                            .child(h_stack().w_32().justify_end().text_sm().child(scale_name))
                             .child(
-                                h_stack().gap_1().children(
+                                h_stack().gap_0p5().children(
                                     scale_steps
                                         .iter()
-                                        .map(|color| div().size_8().flex_1().bg(color.value.clone())),
+                                        .map(|color| div().size_8().border().border_color(neutral_border.clone()).flex_1().bg(color.value.clone())),
                                 ))
                     }
                 })
@@ -57,7 +64,9 @@ impl CustomThemeStory {
             ScaleType::Custom(custom_scale) => custom_scale.into(),
         };
 
-        v_stack().w_full().mx_4().px_4().py_4().rounded_xl().bg(neutral.step_hsla(1).clone()).text_color(neutral.step_hsla(12).clone())
+        v_stack().my_2().mx_4().px_4().py_4()
+            .bg(neutral.steps[0].value.clone())
+            .text_color(neutral.steps[11].value.clone())
             .child(div().text_2xl().child(appearance_name))
             .child(Self::render_scales(appearance_scales))
     }
