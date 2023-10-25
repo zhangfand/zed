@@ -295,6 +295,9 @@ impl Color {
 #[derive(Debug, Clone)]
 pub struct Scale {
     pub name: ColorScale,
+    /// Prefer ColorScale::value() to using this directly.
+    ///
+    /// If used directly remember to add 1 to get the correct value.
     pub steps: [Color; 12],
 }
 
@@ -320,8 +323,14 @@ impl Scale {
         }
     }
 
-    pub fn by_step(&self, step: usize) -> Option<Color> {
-        self.steps.get(step - 1).cloned()
+    pub fn step_hsla(&self, step: usize) -> Hsla {
+        if step < 1 || step > 12 {
+            panic!("Step must be between 1 and 12, but it was {}", step);
+        }
+
+        let color_scale = self.name.clone();
+
+        ColorScale::value(color_scale, step)
     }
 
     pub fn steps_arr_to_vec(steps: [Color; 12]) -> Vec<Color> {
@@ -353,6 +362,15 @@ impl Scale {
             }
         }
         best_match
+    }
+}
+
+impl From<CustomScale> for Scale {
+ fn from(custom_scale: CustomScale) -> Self {
+        Self {
+            name: ColorScale::Custom(custom_scale.name),
+            steps: custom_scale.steps,
+        }
     }
 }
 
