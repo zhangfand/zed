@@ -56,7 +56,12 @@ pub fn solarized() -> Theme {
                 negative: ScaleType::Custom(scale.red.clone()),
                 caution: ScaleType::Custom(scale.orange.clone()),
             },
-            vec![],
+            vec![
+                ScaleType::Custom(scale.yellow.clone()),
+                ScaleType::Custom(scale.magenta.clone()),
+                ScaleType::Custom(scale.violet.clone()),
+                ScaleType::Custom(scale.cyan.clone()),
+            ],
         ),
         // TODO: Populate this using RequiredScales
         color: ThemeColor::new()
@@ -74,7 +79,12 @@ pub fn solarized() -> Theme {
                 negative: ScaleType::Custom(scale.red.clone()),
                 caution: ScaleType::Custom(scale.orange.clone()),
             },
-            vec![]
+            vec![
+                ScaleType::Custom(scale.yellow.clone()),
+                ScaleType::Custom(scale.magenta.clone()),
+                ScaleType::Custom(scale.violet.clone()),
+                ScaleType::Custom(scale.cyan.clone()),
+            ]
         ),
         // TODO: Populate this using RequiredScales
         color: ThemeColor::new()
