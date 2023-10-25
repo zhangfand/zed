@@ -3,6 +3,18 @@
 use gpui2::{SharedString, Hsla, hsla};
 use strum::EnumIter;
 
+pub fn to_gpui_hsla(h: f32, s: f32, l: f32, a: f32) -> Hsla {
+    hsla(h/360.0, s/100.0, l/100.0, a)
+}
+
+pub fn to_gpui_hue(h: f32) -> f32 {
+    h/360.0
+}
+
+pub fn from_gpui_hue(h: f32) -> f32 {
+    h*360.0
+}
+
 #[derive(Debug, Clone, EnumIter, PartialEq, Eq, Hash)]
 pub enum ColorScale {
     Gray,
@@ -168,22 +180,18 @@ impl Scale {
     }
 
     pub fn closest_scale_index(scale_colors: [Hsla; 12], hsla_color: Hsla) -> usize {
-       let mut best_match = 0;
-       let mut best_score = f32::MIN;
+        let mut best_match = 0;
+        let mut smallest_lum_diff = f32::MAX;
 
-       for (index, scale_color) in scale_colors.iter().enumerate() {
-          let lum_diff = (hsla_color.l - scale_color.l).abs();
-          let sat_diff = (hsla_color.s - scale_color.s).abs();
-          // Essentially magic numbers, Luminoisty is more visually important to the scale
-          // than saturation so we weight it higher
-          let score = (5.0 * lum_diff) + (3.0 * sat_diff);
+        for (index, scale_color) in scale_colors.iter().enumerate() {
+            let lum_diff = (hsla_color.l - scale_color.l).abs();
 
-          if score > best_score {
-              best_score = score;
-              best_match = index;
-          }
-       }
-       best_match
+            if lum_diff < smallest_lum_diff {
+                smallest_lum_diff = lum_diff;
+                best_match = index;
+            }
+        }
+        best_match
     }
 }
 
@@ -240,27 +248,28 @@ impl NewCustomScale {
     fn steps_from_hsla(scales: Option<Vec<Hsla>>, name: String, input_hsla: Hsla) -> [Hsla; 12] {
         let original_hues = scales.expect("Scale doesn't have any hues");
         let original_steps = Scale::hsla_vec_to_arr(original_hues);
+
+        // Find the index of the closest matching color from the original scale
         let index = Scale::closest_scale_index(original_steps, input_hsla);
 
         let input_step_name = Color::new_name_from_index(index, input_hsla, ColorScale::Custom(name.clone()));
         let input_step = Color::new(input_step_name, input_hsla, ColorScale::Custom(name.clone()));
 
-        let mut steps_arr = NewCustomScale::default().steps.expect("Somehow the default scale doesn't have any steps");
+        // Initialize array with existing scales
+        let mut steps_arr = original_steps.to_vec();
 
+        // Replace the closest color with the input color
         steps_arr[index] = input_hsla;
 
-        if index > 0 {
-            steps_arr[index - 1].h = steps_arr[index].h;
-        }
-        if index < 11 {
-            steps_arr[index + 1].h = steps_arr[index].h;
+        // Update the hue of all other colors in the scale to match the input
+        for i in 0..12 {
+            if i != index {
+                steps_arr[i].h = input_hsla.h;
+            }
         }
 
-        let mut steps_hsla: [Hsla; 12] = [hsla(0.0, 0.0, 0.0, 0.0); 12]; // Initialize with a neutral value.
-
-        for (i, color) in steps_arr.iter().enumerate() {
-            steps_hsla[i] = color.clone();
-        }
+        // Convert to array
+        let steps_hsla: [Hsla; 12] = steps_arr.try_into().expect("hue array wrong size");
 
         steps_hsla
     }
