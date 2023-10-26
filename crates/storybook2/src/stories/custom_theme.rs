@@ -43,7 +43,7 @@ impl CustomThemeStory {
         )
     }
 
-    pub fn appearance_scales_to_vec(theme_appearance: ui::theme2::ThemeAppearance) -> Vec<ScaleType> {
+    pub fn appearance_scales_to_vec(theme_appearance: ui::theme2::ThemeVariant) -> Vec<ScaleType> {
         vec![
             theme_appearance.scales.0.neutral.clone(),
             theme_appearance.scales.0.accent.clone(),
@@ -53,7 +53,7 @@ impl CustomThemeStory {
         ].into_iter().chain(theme_appearance.scales.1.clone().into_iter()).collect::<Vec<_>>()
     }
 
-    pub fn render_theme_appearance(theme_appearance: ui::theme2::ThemeAppearance) -> impl Element<ViewState = ()> {
+    pub fn render_theme_appearance(theme_appearance: ui::theme2::ThemeVariant) -> impl Element<ViewState = ()> {
         let appearance = theme_appearance.clone();
         let appearance_name = appearance.name.clone();
         let appearance_scales = Self::appearance_scales_to_vec(appearance.clone());

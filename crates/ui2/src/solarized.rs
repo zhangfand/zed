@@ -1,6 +1,6 @@
 // A example theme for building out theme2
 
-use crate::{theme2::{Theme, ThemeAppearance, AppearanceMode, RequiredScales}, ScaleType, ThemeColor, NewCustomScale, CustomScale};
+use crate::{theme2::{Theme, ThemeVariant, Appearance, RequiredScales}, ScaleType, ThemeColor, NewCustomScale, CustomScale};
 
 struct SolarizedScale {
     pub neutral: CustomScale,
@@ -44,10 +44,10 @@ pub fn solarized() -> Theme {
         green: NewCustomScale::from_hex("Green", "#859900")
     };
 
-     let solarized_light = ThemeAppearance {
+     let solarized_light = ThemeVariant {
         id: 0,
         name: "Solarized Light".into(),
-        appearance: AppearanceMode::Light,
+        appearance: Appearance::Light,
         scales: (
             RequiredScales {
                 neutral: ScaleType::Custom(scale.neutral.clone()),
@@ -67,10 +67,10 @@ pub fn solarized() -> Theme {
         color: ThemeColor::new()
     };
 
-     let solarized_dark = ThemeAppearance {
+     let solarized_dark = ThemeVariant {
         id: 1,
         name: "Solarized Dark".into(),
-        appearance: AppearanceMode::Dark,
+        appearance: Appearance::Dark,
         scales: (
             RequiredScales {
                 neutral: ScaleType::Custom(scale.neutral_dark.clone()),
