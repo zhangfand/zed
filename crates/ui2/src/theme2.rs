@@ -1,6 +1,81 @@
 use gpui2::{hsla, rgb, Hsla};
 use strum::EnumIter;
 
+pub enum DefaultColor {
+    Gray,
+    Mauve,
+    Slate,
+    Sage,
+    Olive,
+    Sand,
+    Gold,
+    Bronze,
+    Brown,
+    Yellow,
+    Amber,
+    Orange,
+    Tomato,
+    Red,
+    Ruby,
+    Crimson,
+    Pink,
+    Plum,
+    Purple,
+    Violet,
+    Iris,
+    Indigo,
+    Blue,
+    Cyan,
+    Teal,
+    Jade,
+    Green,
+    Grass,
+    Lime,
+    Mint,
+    Sky,
+    Black,
+    White,
+}
+
+impl DefaultColor {
+    pub fn value(&self, index: usize) -> Hsla {
+        match self {
+            DefaultColor::Gray => ColorScale::from_default(ColorScaleName::Gray).value(index),
+            DefaultColor::Mauve => ColorScale::from_default(ColorScaleName::Mauve).value(index),
+            DefaultColor::Slate => ColorScale::from_default(ColorScaleName::Slate).value(index),
+            DefaultColor::Sage => ColorScale::from_default(ColorScaleName::Sage).value(index),
+            DefaultColor::Olive => ColorScale::from_default(ColorScaleName::Olive).value(index),
+            DefaultColor::Sand => ColorScale::from_default(ColorScaleName::Sand).value(index),
+            DefaultColor::Gold => ColorScale::from_default(ColorScaleName::Gold).value(index),
+            DefaultColor::Bronze => ColorScale::from_default(ColorScaleName::Bronze).value(index),
+            DefaultColor::Brown => ColorScale::from_default(ColorScaleName::Brown).value(index),
+            DefaultColor::Yellow => ColorScale::from_default(ColorScaleName::Yellow).value(index),
+            DefaultColor::Amber => ColorScale::from_default(ColorScaleName::Amber).value(index),
+            DefaultColor::Orange => ColorScale::from_default(ColorScaleName::Orange).value(index),
+            DefaultColor::Tomato => ColorScale::from_default(ColorScaleName::Tomato).value(index),
+            DefaultColor::Red => ColorScale::from_default(ColorScaleName::Red).value(index),
+            DefaultColor::Ruby => ColorScale::from_default(ColorScaleName::Ruby).value(index),
+            DefaultColor::Crimson => ColorScale::from_default(ColorScaleName::Crimson).value(index),
+            DefaultColor::Pink => ColorScale::from_default(ColorScaleName::Pink).value(index),
+            DefaultColor::Plum => ColorScale::from_default(ColorScaleName::Plum).value(index),
+            DefaultColor::Purple => ColorScale::from_default(ColorScaleName::Purple).value(index),
+            DefaultColor::Violet => ColorScale::from_default(ColorScaleName::Violet).value(index),
+            DefaultColor::Iris => ColorScale::from_default(ColorScaleName::Iris).value(index),
+            DefaultColor::Indigo => ColorScale::from_default(ColorScaleName::Indigo).value(index),
+            DefaultColor::Blue => ColorScale::from_default(ColorScaleName::Blue).value(index),
+            DefaultColor::Cyan => ColorScale::from_default(ColorScaleName::Cyan).value(index),
+            DefaultColor::Teal => ColorScale::from_default(ColorScaleName::Teal).value(index),
+            DefaultColor::Jade => ColorScale::from_default(ColorScaleName::Jade).value(index),
+            DefaultColor::Green => ColorScale::from_default(ColorScaleName::Green).value(index),
+            DefaultColor::Grass => ColorScale::from_default(ColorScaleName::Grass).value(index),
+            DefaultColor::Lime => ColorScale::from_default(ColorScaleName::Lime).value(index),
+            DefaultColor::Mint => ColorScale::from_default(ColorScaleName::Mint).value(index),
+            DefaultColor::Sky => ColorScale::from_default(ColorScaleName::Sky).value(index),
+            DefaultColor::Black => ColorScale::from_default(ColorScaleName::Black).value(index),
+            DefaultColor::White => ColorScale::from_default(ColorScaleName::White).value(index),
+        }
+    }
+}
 
 /// The default set of color scales.
 ///
@@ -127,6 +202,62 @@ impl ColorScaleName {
                 _ => ColorScaleName::Custom(name),
             }
         }
+
+    pub fn find_or_none(name: String) -> Option<Self> {
+            let standard_name = name.to_lowercase();
+
+            match standard_name.as_str() {
+                "gray" => Some(ColorScaleName::Gray),
+                "mauve" => Some(ColorScaleName::Mauve),
+                "slate" => Some(ColorScaleName::Slate),
+                "sage" => Some(ColorScaleName::Sage),
+                "olive" => Some(ColorScaleName::Olive),
+                "sand" => Some(ColorScaleName::Sand),
+                "gold" => Some(ColorScaleName::Gold),
+                "bronze" => Some(ColorScaleName::Bronze),
+                "brown" => Some(ColorScaleName::Brown),
+                "yellow" => Some(ColorScaleName::Yellow),
+                "amber" => Some(ColorScaleName::Amber),
+                "orange" => Some(ColorScaleName::Orange),
+                "tomato" => Some(ColorScaleName::Tomato),
+                "red" => Some(ColorScaleName::Red),
+                "ruby" => Some(ColorScaleName::Ruby),
+                "crimson" => Some(ColorScaleName::Crimson),
+                "pink" => Some(ColorScaleName::Pink),
+                "plum" => Some(ColorScaleName::Plum),
+                "purple" => Some(ColorScaleName::Purple),
+                "violet" => Some(ColorScaleName::Violet),
+                "iris" => Some(ColorScaleName::Iris),
+                "indigo" => Some(ColorScaleName::Indigo),
+                "blue" => Some(ColorScaleName::Blue),
+                "cyan" => Some(ColorScaleName::Cyan),
+                "teal" => Some(ColorScaleName::Teal),
+                "jade" => Some(ColorScaleName::Jade),
+                "green" => Some(ColorScaleName::Green),
+                "grass" => Some(ColorScaleName::Grass),
+                "lime" => Some(ColorScaleName::Lime),
+                "mint" => Some(ColorScaleName::Mint),
+                "sky" => Some(ColorScaleName::Sky),
+                "black" => Some(ColorScaleName::Black),
+                "white" => Some(ColorScaleName::White),
+                _ => None,
+            }
+        }
+
+    pub fn unwrap_or_default_scale(name: impl Into<String>, v: ThemeVariant) -> ColorScale {
+        let name_string: String = name.into();
+        let combined_scales = v.scales.into_iter().chain(v.extended_scales.into_iter());
+        let scale_in_variant = combined_scales.clone().any(|scale| scale.name == name_string);
+        let has_default = Self::find_or_none(name_string).is_some();
+
+        if scale_in_variant {
+            combined_scales.clone().find(|scale| scale.name == name_string).unwrap_or(ColorScale::from_default(ColorScaleName::Red))
+        } else if has_default {
+            Self::find_or_none(name_string).expect("Tried to unwrap scale but something happened").into()
+        } else {
+            ColorScale::from_default(ColorScaleName::Red)
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -524,7 +655,17 @@ impl RequiredScales {
     }
 }
 
+impl IntoIterator for RequiredScales {
+    type Item = ColorScale;
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        vec![self.neutral, self.accent, self.positive, self.negative, self.caution].into_iter()
+    }
+}
+
 type ExtendedScales = Vec<ColorScale>;
+
 
 #[derive(Debug, Clone)]
 pub struct ThemeVariant {
@@ -533,7 +674,7 @@ pub struct ThemeVariant {
     pub appearance: Appearance,
     pub scales: RequiredScales,
     pub extended_scales: ExtendedScales,
-    pub color: ThemeColor,
+    pub color: Option<ThemeColor>,
 }
 
 impl ThemeVariant {
@@ -578,7 +719,7 @@ impl ThemeVariant {
                 ColorScaleName::Violet.into(),
                 ColorScaleName::Yellow.into(),
             ],
-            color: ThemeColor::new(),
+            color: None,
         }
     }
 
@@ -623,7 +764,7 @@ impl ThemeVariant {
                 ColorScaleName::Violet.into(),
                 ColorScaleName::Yellow.into(),
             ],
-            color: ThemeColor::new(),
+            color: None,
         }
     }
 }
@@ -636,12 +777,28 @@ pub struct PlayerColor {
     pub selection: Hsla,
 }
 
+type Players = [PlayerColor; 8];
+
 impl PlayerColor {
     pub fn new(color: ColorScale) -> Self {
         Self {
             cursor: color.value(9),
             selection: color.value(4),
         }
+    }
+
+    pub fn players(v: ThemeVariant) -> Players {
+        [
+            PlayerColor::new(ColorScaleName::unwrap_or_default_scale("blue", v)),
+            PlayerColor::new(ColorScaleName::unwrap_or_default_scale("green", v)),
+            PlayerColor::new(ColorScaleName::unwrap_or_default_scale("red", v)),
+            PlayerColor::new(ColorScaleName::unwrap_or_default_scale("yellow", v)),
+            PlayerColor::new(ColorScaleName::unwrap_or_default_scale("purple", v)),
+            PlayerColor::new(ColorScaleName::unwrap_or_default_scale("cyan", v)),
+            PlayerColor::new(ColorScaleName::unwrap_or_default_scale("orange", v)),
+            PlayerColor::new(ColorScaleName::unwrap_or_default_scale("pink", v)),
+
+        ]
     }
 }
 
@@ -673,181 +830,220 @@ impl SyntaxColor {
 /// While we are between zed and zed2 we use this to map semantic colors to the old theme.
 #[derive(Debug, Clone, Copy)]
 pub struct ThemeColor {
-    pub transparent: Hsla,
-    pub mac_os_traffic_light_red: Hsla,
-    pub mac_os_traffic_light_yellow: Hsla,
-    pub mac_os_traffic_light_green: Hsla,
-    pub border: Hsla,
-    pub border_variant: Hsla,
-    pub border_focused: Hsla,
-    pub border_transparent: Hsla,
-    /// The background color of an elevated surface, like a modal, tooltip or toast.
-    pub elevated_surface: Hsla,
-    pub surface: Hsla,
-    /// Window background color of the base app
-    pub background: Hsla,
-    /// Default background for elements like filled buttons,
-    /// text fields, checkboxes, radio buttons, etc.
-    /// - TODO: Map to step 3.
-    pub filled_element: Hsla,
-    /// The background color of a hovered element, like a button being hovered
-    /// with a mouse, or hovered on a touch screen.
-    /// - TODO: Map to step 4.
-    pub filled_element_hover: Hsla,
-    /// The background color of an active element, like a button being pressed,
-    /// or tapped on a touch screen.
-    /// - TODO: Map to step 5.
-    pub filled_element_active: Hsla,
-    /// The background color of a selected element, like a selected tab,
-    /// a button toggled on, or a checkbox that is checked.
-    pub filled_element_selected: Hsla,
-    pub filled_element_disabled: Hsla,
-    pub ghost_element: Hsla,
-    /// The background color of a hovered element with no default background,
-    /// like a ghost-style button or an interactable list item.
-    /// - TODO: Map to step 3.
-    pub ghost_element_hover: Hsla,
-    /// - TODO: Map to step 4.
-    pub ghost_element_active: Hsla,
-    pub ghost_element_selected: Hsla,
-    pub ghost_element_disabled: Hsla,
-    pub text: Hsla,
-    pub text_muted: Hsla,
-    pub text_placeholder: Hsla,
-    pub text_disabled: Hsla,
-    pub text_accent: Hsla,
+    pub transparent: Option<Hsla>,
+    pub mac_os_traffic_light_red: Option<Hsla>,
+    pub mac_os_traffic_light_yellow: Option<Hsla>,
+    pub mac_os_traffic_light_green: Option<Hsla>,
+    pub border: Option<Hsla>,
+    pub border_variant: Option<Hsla>,
+    pub border_focused: Option<Hsla>,
+    pub border_transparent: Option<Hsla>,
+    pub elevated_surface: Option<Hsla>,
+    pub surface: Option<Hsla>,
+    pub background: Option<Hsla>,
+    pub element: Option<Hsla>,
+    pub element_hover: Option<Hsla>,
+    pub element_active: Option<Hsla>,
+    pub element_selected: Option<Hsla>,
+    pub element_disabled: Option<Hsla>,
+    pub element_placeholder: Option<Hsla>,
+    pub ghost_element: Option<Hsla>,
+    pub ghost_element_hover: Option<Hsla>,
+    pub ghost_element_active: Option<Hsla>,
+    pub ghost_element_selected: Option<Hsla>,
+    pub ghost_element_disabled: Option<Hsla>,
+    pub text: Option<Hsla>,
+    pub text_muted: Option<Hsla>,
+    pub text_placeholder: Option<Hsla>,
+    pub text_disabled: Option<Hsla>,
+    pub text_accent: Option<Hsla>,
+    pub icon: Option<Hsla>,
+    pub icon_muted: Option<Hsla>,
+    pub icon_disabled: Option<Hsla>,
+    pub icon_placeholder: Option<Hsla>,
+    pub icon_accent: Option<Hsla>,
+    pub syntax: Option<SyntaxColor>,
+    pub status_bar: Option<Hsla>,
+    pub title_bar: Option<Hsla>,
+    pub toolbar: Option<Hsla>,
+    pub tab_bar: Option<Hsla>,
+    pub editor: Option<Hsla>,
+    pub editor_subheader: Option<Hsla>,
+    pub editor_active_line: Option<Hsla>,
+    pub terminal: Option<Hsla>,
+    pub created: Option<Hsla>,
+    pub modified: Option<Hsla>,
+    pub deleted: Option<Hsla>,
+    pub conflict: Option<Hsla>,
+    pub hidden: Option<Hsla>,
+    pub ignored: Option<Hsla>,
+    pub renamed: Option<Hsla>,
+    pub error: Option<Hsla>,
+    pub warning: Option<Hsla>,
+    pub info: Option<Hsla>,
+    pub success: Option<Hsla>,
+    pub git_created: Option<Hsla>,
+    pub git_modified: Option<Hsla>,
+    pub git_deleted: Option<Hsla>,
+    pub git_conflict: Option<Hsla>,
+    pub git_ignored: Option<Hsla>,
+    pub git_renamed: Option<Hsla>,
+    pub player: Option<[PlayerColor; 8]>,
+}
 
-    pub icon: Hsla,
-    pub icon_muted: Hsla,
-    pub icon_disabled: Hsla,
-    pub icon_placeholder: Hsla,
-    pub icon_accent: Hsla,
+impl Default for ThemeColor {
+    fn default() -> Self {
+        let transparent = hsla(0.0, 0.0, 0.0, 0.0);
 
-    pub syntax: SyntaxColor,
+        Self {
+            transparent: Some(transparent),
 
-    pub status_bar: Hsla,
-    pub title_bar: Hsla,
-    pub toolbar: Hsla,
-    pub tab_bar: Hsla,
-    /// The background of the editor
-    pub editor: Hsla,
-    pub editor_subheader: Hsla,
-    pub editor_active_line: Hsla,
-    pub terminal: Hsla,
-    pub image_fallback_background: Hsla,
+            mac_os_traffic_light_red: Some(rgb::<Hsla>(0xEC695E)),
+            mac_os_traffic_light_yellow: Some(rgb::<Hsla>(0xF4BF4F)),
+            mac_os_traffic_light_green: Some(rgb::<Hsla>(0x62C554)),
 
-    pub created: Hsla,
-    pub modified: Hsla,
-    pub deleted: Hsla,
-    pub conflict: Hsla,
-    pub hidden: Hsla,
-    pub ignored: Hsla,
-    pub renamed: Hsla,
-    pub error: Hsla,
-    pub warning: Hsla,
-    pub info: Hsla,
-    pub success: Hsla,
+            border: Some(DefaultColor::Slate.value(4)),
+            border_variant: Some(DefaultColor::Slate.value(5)),
+            border_focused: Some(DefaultColor::Slate.value(6)),
+            border_transparent: Some(DefaultColor::Slate.value(4)),
 
-    pub git_created: Hsla,
-    pub git_modified: Hsla,
-    pub git_deleted: Hsla,
-    pub git_conflict: Hsla,
-    pub git_ignored: Hsla,
-    pub git_renamed: Hsla,
+            surface: Some(DefaultColor::Slate.value(2)),
+            elevated_surface: Some(transparent),
+            background: Some(DefaultColor::Slate.value(3)),
 
-    pub player: [PlayerColor; 8],
+            element: Some(DefaultColor::Slate.value(3)),
+            element_hover: Some(DefaultColor::Slate.value(4)),
+            element_active: Some(DefaultColor::Slate.value(5)),
+            element_selected: Some(DefaultColor::Slate.value(5)),
+            element_disabled: Some(DefaultColor::Slate.value(3)),
+            element_placeholder: Some(DefaultColor::Slate.value(1)),
+
+            ghost_element: Some(transparent),
+            ghost_element_hover: Some(DefaultColor::Slate.value(4)),
+            ghost_element_active: Some(DefaultColor::Slate.value(5)),
+            ghost_element_selected: Some(DefaultColor::Slate.value(5)),
+            ghost_element_disabled: Some(transparent),
+
+            text: Some(DefaultColor::Slate.value(12)),
+            text_muted: Some(DefaultColor::Slate.value(11)),
+            text_placeholder: Some(DefaultColor::Slate.value(11)),
+            text_disabled: Some(DefaultColor::Slate.value(10)),
+            text_accent: Some(DefaultColor::Blue.value(11)),
+
+            icon: Some(DefaultColor::Slate.value(12)),
+            icon_muted: Some(DefaultColor::Slate.value(11)),
+            icon_placeholder: Some(DefaultColor::Slate.value(11)),
+            icon_disabled: Some(DefaultColor::Slate.value(11)),
+            icon_accent: Some(DefaultColor::Blue.value(11)),
+
+            status_bar: Some(DefaultColor::Slate.value(1)),
+            title_bar: Some(DefaultColor::Slate.value(1)),
+            toolbar: Some(DefaultColor::Slate.value(1)),
+            tab_bar: Some(DefaultColor::Slate.value(1)),
+            editor: Some(DefaultColor::Slate.value(1)),
+            editor_subheader: Some(DefaultColor::Slate.value(1)),
+            editor_active_line: Some(DefaultColor::Slate.value(1)),
+            terminal: Some(DefaultColor::Slate.value(1)),
+
+            created: Some(DefaultColor::Green.value(9)),
+            modified: Some(DefaultColor::Amber.value(9)),
+            deleted: Some(DefaultColor::Red.value(9)),
+            conflict: Some(DefaultColor::Amber.value(9)),
+            hidden: Some(DefaultColor::Slate.value(11)),
+            ignored: Some(DefaultColor::Slate.value(10)),
+            renamed: Some(DefaultColor::Blue.value(9)),
+            error: Some(DefaultColor::Red.value(9)),
+            warning: Some(DefaultColor::Amber.value(9)),
+            info: Some(DefaultColor::Blue.value(9)),
+            success: Some(DefaultColor::Green.value(9)),
+
+            git_created: Some(DefaultColor::Green.value(9)),
+            git_modified: Some(DefaultColor::Amber.value(9)),
+            git_deleted: Some(DefaultColor::Slate.value(10)),
+            git_conflict: Some(DefaultColor::Amber.value(9)),
+            git_ignored: Some(DefaultColor::Slate.value(11)),
+            git_renamed: Some(DefaultColor::Blue.value(9)),
+
+            player: Some([
+                PlayerColor::new(ColorScaleName::Blue.into()),
+                PlayerColor::new(ColorScaleName::Green.into()),
+                PlayerColor::new(ColorScaleName::Red.into()),
+                PlayerColor::new(ColorScaleName::Yellow.into()),
+                PlayerColor::new(ColorScaleName::Purple.into()),
+                PlayerColor::new(ColorScaleName::Cyan.into()),
+                PlayerColor::new(ColorScaleName::Orange.into()),
+                PlayerColor::new(ColorScaleName::Pink.into()),
+            ]),
+            syntax: None,
+        }
+    }
 }
 
 impl ThemeColor {
-    pub fn new() -> Self {
+    pub fn new(v: ThemeVariant) -> Self {
         let transparent = hsla(0.0, 0.0, 0.0, 0.0);
-
-        let neutral = ColorScale::from_default(ColorScaleName::Slate);
-        let focus_color = ColorScale::from_default(ColorScaleName::Indigo);
-        let accent_color = ColorScale::from_default(ColorScaleName::Blue);
-
-        let background = neutral.value(3);
-        let surface = neutral.value(2);
-        let editor = neutral.value(1);
+        let vcolor = v.color.unwrap_or_default();
 
         Self {
-            transparent,
-            mac_os_traffic_light_red: rgb::<Hsla>(0xEC695E),
-            mac_os_traffic_light_yellow: rgb::<Hsla>(0xF4BF4F),
-            mac_os_traffic_light_green: rgb::<Hsla>(0x62C554),
-            border: neutral.value(5),
-            border_variant: neutral.value(4),
-            border_focused: focus_color.value(6),
-            border_transparent: transparent,
-            elevated_surface: neutral.value(1),
-            surface,
-            background,
-            filled_element: neutral.value(3),
-            filled_element_hover: neutral.value(4),
-            filled_element_active: neutral.value(5),
-            filled_element_selected: neutral.value(5),
-            filled_element_disabled: transparent,
-            ghost_element: transparent,
-            ghost_element_hover: neutral.value(4),
-            ghost_element_active: neutral.value(5),
-            ghost_element_selected: neutral.value(5),
-            ghost_element_disabled: transparent,
-            text: neutral.value(12),
-            text_muted: neutral.value(11),
-            text_placeholder: neutral.value(11),
-            text_disabled: neutral.value(10),
-            text_accent: accent_color.value(11),
-            icon: neutral.value(12),
-            icon_muted: neutral.value(11),
-            icon_placeholder: neutral.value(11),
-            icon_disabled: neutral.value(10),
-            icon_accent: accent_color.value(11),
-            syntax: SyntaxColor {
-                comment: neutral.value(11),
-                keyword: ColorScaleName::Orange.value(12),
-                string: ColorScaleName::Lime.value(12),
-                function: ColorScaleName::Amber.value(1),
-            },
-            status_bar: background.clone(),
-            title_bar: background.clone(),
-            toolbar: editor.clone(),
-            tab_bar: surface.clone(),
-            editor: editor.clone(),
-            editor_subheader: surface.clone(),
-            terminal: editor.clone(),
-            editor_active_line: neutral.clone().value(3),
-
-            image_fallback_background: neutral.clone().value(1),
-
-            created: ColorScaleName::Green.clone().value(11),
-            modified: ColorScaleName::Amber.clone().value(11),
-            deleted: ColorScaleName::Red.clone().value(11),
-            conflict: ColorScaleName::Red.clone().value(11),
-            hidden: neutral.clone().value(11),
-            ignored: neutral.clone().value(11),
-            renamed: ColorScaleName::Iris.clone().value(11),
-            error: ColorScaleName::Red.clone().value(11),
-            warning: ColorScaleName::Amber.clone().value(11),
-            info: ColorScaleName::Blue.clone().value(11),
-            success: ColorScaleName::Green.clone().value(11),
-
-            git_created: ColorScaleName::Green.clone().value(11),
-            git_modified: ColorScaleName::Amber.clone().value(11),
-            git_deleted: ColorScaleName::Red.clone().value(11),
-            git_conflict: ColorScaleName::Red.clone().value(11),
-            git_ignored: neutral.clone().value(11),
-            git_renamed: ColorScaleName::Iris.clone().value(11),
-
-            player: [
-                PlayerColor::new(ColorScaleName::Blue),
-                PlayerColor::new(ColorScaleName::Green),
-                PlayerColor::new(ColorScaleName::Red),
-                PlayerColor::new(ColorScaleName::Yellow),
-                PlayerColor::new(ColorScaleName::Purple),
-                PlayerColor::new(ColorScaleName::Cyan),
-                PlayerColor::new(ColorScaleName::Orange),
-                PlayerColor::new(ColorScaleName::Pink),
-            ],
+            background: vcolor.background.or(Self::default().background),
+            border: vcolor.border.or(Self::default().border),
+            border_focused: vcolor.border_focused.or(Self::default().border_focused),
+            border_transparent: vcolor.border_transparent.or(Self::default().border_transparent),
+            border_variant: vcolor.border_variant.or(Self::default().border_variant),
+            conflict: vcolor.conflict.or(Self::default().conflict),
+            created: vcolor.created.or(Self::default().created),
+            deleted: vcolor.deleted.or(Self::default().deleted),
+            editor: vcolor.editor.or(Self::default().editor),
+            editor_active_line: vcolor.editor_active_line.or(Self::default().editor_active_line),
+            editor_subheader: vcolor.editor_subheader.or(Self::default().editor_subheader),
+            elevated_surface: vcolor.elevated_surface.or(Self::default().elevated_surface),
+            error: vcolor.error.or(Self::default().error),
+            element: vcolor.element.or(Self::default().element),
+            element_active: vcolor.element_active.or(Self::default().element_active),
+            element_disabled: vcolor.element_disabled.or(Self::default().element_disabled),
+            element_hover: vcolor.element_hover.or(Self::default().element_hover),
+            element_selected: vcolor.element_selected.or(Self::default().element_selected),
+            element_placeholder: vcolor.element_placeholder.or(Self::default().element_placeholder),
+            ghost_element: vcolor.ghost_element.or(Self::default().ghost_element),
+            ghost_element_active: vcolor.ghost_element_active.or(Self::default().ghost_element_active),
+            ghost_element_disabled: vcolor.ghost_element_disabled.or(Self::default().ghost_element_disabled),
+            ghost_element_hover: vcolor.ghost_element_hover.or(Self::default().ghost_element_hover),
+            ghost_element_selected: vcolor.ghost_element_selected.or(Self::default().ghost_element_selected),
+            git_conflict: vcolor.git_conflict.or(Self::default().git_conflict),
+            git_created: vcolor.git_created.or(Self::default().git_created),
+            git_deleted: vcolor.git_deleted.or(Self::default().git_deleted),
+            git_ignored: vcolor.git_ignored.or(Self::default().git_ignored),
+            git_modified: vcolor.git_modified.or(Self::default().git_modified),
+            git_renamed: vcolor.git_renamed.or(Self::default().git_renamed),
+            hidden: vcolor.hidden.or(Self::default().hidden),
+            icon: vcolor.icon.or(Self::default().icon),
+            icon_accent: vcolor.icon_accent.or(Self::default().icon_accent),
+            icon_disabled: vcolor.icon_disabled.or(Self::default().icon_disabled),
+            icon_muted: vcolor.icon_muted.or(Self::default().icon_muted),
+            icon_placeholder: vcolor.icon_placeholder.or(Self::default().icon_placeholder),
+            ignored: vcolor.ignored.or(Self::default().ignored),
+            info: vcolor.info.or(Self::default().info),
+            mac_os_traffic_light_green: vcolor.mac_os_traffic_light_green.or(Self::default().mac_os_traffic_light_green),
+            mac_os_traffic_light_red: vcolor.mac_os_traffic_light_red.or(Self::default().mac_os_traffic_light_red),
+            mac_os_traffic_light_yellow: vcolor.mac_os_traffic_light_yellow.or(Self::default().mac_os_traffic_light_yellow),
+            modified: vcolor.modified.or(Self::default().modified),
+            player: vcolor.player.or(Some(PlayerColor::players(v))),
+            renamed: vcolor.renamed.or(Self::default().renamed),
+            status_bar: vcolor.status_bar.or(Self::default().status_bar),
+            success: vcolor.success.or(Self::default().success),
+            surface: vcolor.surface.or(Self::default().surface),
+            syntax: vcolor.syntax.or(Self::default().syntax),
+            tab_bar: vcolor.tab_bar.or(Self::default().tab_bar),
+            terminal: vcolor.terminal.or(Self::default().terminal),
+            text: vcolor.text.or(Self::default().text),
+            text_accent: vcolor.text_accent.or(Self::default().text_accent),
+            text_disabled: vcolor.text_disabled.or(Self::default().text_disabled),
+            text_muted: vcolor.text_muted.or(Self::default().text_muted),
+            text_placeholder: vcolor.text_placeholder.or(Self::default().text_placeholder),
+            title_bar: vcolor.title_bar.or(Self::default().title_bar),
+            toolbar: vcolor.toolbar.or(Self::default().toolbar),
+            transparent: vcolor.transparent.or(Self::default().transparent),
+            warning: vcolor.warning.or(Self::default().warning),
         }
     }
 }
