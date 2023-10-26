@@ -30,7 +30,7 @@ impl CustomThemeStory {
 
                         h_stack()
                             .gap_2()
-                            .child(h_stack().w_32().justify_end().text_sm().child(scale_name))
+                            .child(h_stack().w_24().text_sm().child(scale_name))
                             .child(
                                 h_stack().gap_0p5().children(
                                     scale_steps
@@ -67,7 +67,7 @@ impl CustomThemeStory {
         v_stack().my_2().mx_4().px_4().py_4()
             .bg(neutral.steps[0].value.clone())
             .text_color(neutral.steps[11].value.clone())
-            .child(div().text_2xl().child(appearance_name))
+            .child(div().text_lg().child(appearance_name))
             .child(Self::render_scales(appearance_scales))
     }
 
