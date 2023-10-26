@@ -254,13 +254,13 @@ impl ColorScale {
 }
 
 #[derive(Debug, Clone)]
-pub struct Color {
+pub struct ColorScaleStep {
     pub name: String,
     pub value: Hsla,
     pub scale: ColorScale,
 }
 
-impl Default for Color {
+impl Default for ColorScaleStep {
     fn default() -> Self {
         Self {
             name: "Untitled Color".into(),
@@ -270,7 +270,7 @@ impl Default for Color {
     }
 }
 
-impl Color {
+impl ColorScaleStep {
     pub fn new<S: Into<String>>(name: S, hsla: Hsla, scale: ColorScale) -> Self {
         Self {
             name: name.into(),
@@ -298,7 +298,7 @@ pub struct Scale {
     /// Prefer ColorScale::value() to using this directly.
     ///
     /// If used directly remember to add 1 to get the correct value.
-    pub steps: [Color; 12],
+    pub steps: [ColorScaleStep; 12],
 }
 
 impl Scale {
@@ -310,9 +310,9 @@ impl Scale {
                 let step = i + 1;
                 let color_name = format!("{:?} {}", name, step);
                 let scale = name.clone();
-                Color::new(color_name, hue, scale)
+                ColorScaleStep::new(color_name, hue, scale)
             })
-            .collect::<Vec<Color>>();
+            .collect::<Vec<ColorScaleStep>>();
 
         Self {
             name,
@@ -333,8 +333,8 @@ impl Scale {
         ColorScale::value(color_scale, step)
     }
 
-    pub fn steps_arr_to_vec(steps: [Color; 12]) -> Vec<Color> {
-        steps.iter().cloned().collect::<Vec<Color>>()
+    pub fn steps_arr_to_vec(steps: [ColorScaleStep; 12]) -> Vec<ColorScaleStep> {
+        steps.iter().cloned().collect::<Vec<ColorScaleStep>>()
     }
 
     pub fn hsla_vec_to_arr(steps: Vec<Hsla>) -> [Hsla; 12] {
@@ -381,16 +381,16 @@ pub struct NewCustomScale {
 }
 
 impl NewCustomScale {
-    pub fn step_arr_to_colors(steps: [Hsla; 12], name: String) -> [Color; 12] {
+    pub fn step_arr_to_colors(steps: [Hsla; 12], name: String) -> [ColorScaleStep; 12] {
         let mut colors_vec = Vec::new();
 
         for (i, step) in steps.iter().enumerate() {
-            let step_name = Color::new_name_from_index(i, *step, ColorScale::Custom(name.clone()));
-            let color = Color::new(step_name, *step, ColorScale::Custom(name.clone()));
+            let step_name = ColorScaleStep::new_name_from_index(i, *step, ColorScale::Custom(name.clone()));
+            let color = ColorScaleStep::new(step_name, *step, ColorScale::Custom(name.clone()));
             colors_vec.push(color);
         }
 
-        let colors: [Color; 12] = match colors_vec.try_into() {
+        let colors: [ColorScaleStep; 12] = match colors_vec.try_into() {
             Ok(array) => array,
             Err(vec) => panic!("Unexpected vector length {}", vec.len()),
         };
@@ -456,8 +456,8 @@ impl NewCustomScale {
         let index = Scale::closest_scale_index(original_steps, input_hsla);
 
         let input_step_name =
-            Color::new_name_from_index(index, input_hsla, ColorScale::Custom(name.clone()));
-        let input_step = Color::new(
+            ColorScaleStep::new_name_from_index(index, input_hsla, ColorScale::Custom(name.clone()));
+        let input_step = ColorScaleStep::new(
             input_step_name,
             input_hsla,
             ColorScale::Custom(name.clone()),
@@ -519,7 +519,7 @@ impl Default for NewCustomScale {
 #[derive(Debug, Clone)]
 pub struct CustomScale {
     pub name: String,
-    pub steps: [Color; 12],
+    pub steps: [ColorScaleStep; 12],
 }
 
 #[derive(Debug, Clone)]
