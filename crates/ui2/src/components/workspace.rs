@@ -3,7 +3,8 @@ use std::sync::Arc;
 use chrono::DateTime;
 use gpui2::{px, relative, rems, view, Context, Size, View};
 
-use crate::{prelude::*, NotificationsPanel};
+use crate::theme2::ThemeColor;
+use crate::{prelude::*, NotificationsPanel, static_default_theme_variant};
 use crate::{
     static_livestream, user_settings_mut, v_stack, AssistantPanel, Button, ChatMessage, ChatPanel,
     CollabPanel, EditorPane, FakeSettings, Label, LanguageSelector, Pane, PaneGroup, Panel,
@@ -207,7 +208,7 @@ impl Workspace {
     }
 
     pub fn render(&mut self, cx: &mut ViewContext<Self>) -> impl Element<ViewState = Self> {
-        let color = ThemeColor::new();
+        let color = ThemeColor::new(static_default_theme_variant());
 
         // HACK: This should happen inside of `debug_toggle_user_settings`, but
         // we don't have `cx.global::<FakeSettings>()` in event handlers at the moment.
@@ -244,8 +245,8 @@ impl Workspace {
             .gap_0()
             .justify_start()
             .items_start()
-            .text_color(color.text)
-            .bg(color.background)
+            .text_color(color.text.unwrap())
+            .bg(color.background.unwrap())
             .child(self.title_bar.clone())
             .child(
                 div()

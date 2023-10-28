@@ -4,13 +4,19 @@ use std::str::FromStr;
 use gpui2::WindowContext;
 use rand::Rng;
 
+use crate::theme2::ThemeVariant;
 use crate::{
     Buffer, BufferRow, BufferRows, Button, EditorPane, FileSystemStatus, GitStatus,
     HighlightedLine, Icon, Keybinding, Label, LabelColor, ListEntry, ListEntrySize, ListItem,
     Livestream, MicStatus, ModifierKeys, PaletteItem, Player, PlayerCallStatus,
-    PlayerWithCallStatus, ScreenShareStatus, Symbol, Tab, ThemeColor, ToggleState, VideoStatus,
+    PlayerWithCallStatus, ScreenShareStatus, Symbol, Tab, ToggleState, VideoStatus,
 };
 use crate::{HighlightedText, ListDetailsEntry};
+
+/// TODO: This should be passed down on the Window/Workspace context
+pub fn static_default_theme_variant() -> ThemeVariant {
+    ThemeVariant::default_dark()
+}
 
 pub fn static_tabs_example<S: 'static + Send + Sync + Clone>() -> Vec<Tab<S>> {
     vec![

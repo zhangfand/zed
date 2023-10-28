@@ -811,8 +811,8 @@ pub struct SyntaxColor {
 }
 
 impl SyntaxColor {
-    pub fn new() -> Self {
-        let color = ThemeColor::new();
+    pub fn new(v: ThemeVariant) -> Self {
+        let color = ThemeColor::new(v);
 
         Self {
             comment: color.syntax.comment,

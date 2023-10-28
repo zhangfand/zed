@@ -3,6 +3,7 @@ use std::marker::PhantomData;
 use gpui2::{rems, AbsoluteLength};
 
 use crate::prelude::*;
+use crate::theme2::ThemeColor;
 use crate::{Icon, IconButton, Label, Panel, PanelSide};
 
 #[derive(Element)]
@@ -27,7 +28,7 @@ impl<S: 'static + Send + Sync> AssistantPanel<S> {
     }
 
     fn render(&mut self, view: &mut S, cx: &mut ViewContext<S>) -> impl Element<ViewState = S> {
-        let color = ThemeColor::new();
+        let color = ThemeColor::new(cx);
 
         Panel::new(self.id.clone(), cx)
             .children(vec![div()
