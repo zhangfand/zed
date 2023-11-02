@@ -1,4 +1,4 @@
-use gpui2::Hsla;
+use gpui::Hsla;
 use refineable::Refineable;
 
 use crate::SyntaxTheme;
@@ -64,6 +64,7 @@ pub struct ThemeColors {
     pub element_selected: Hsla,
     pub element_disabled: Hsla,
     pub element_placeholder: Hsla,
+    pub element_drop_target: Hsla,
     pub ghost_element: Hsla,
     pub ghost_element_hover: Hsla,
     pub ghost_element_active: Hsla,
@@ -83,6 +84,8 @@ pub struct ThemeColors {
     pub title_bar: Hsla,
     pub toolbar: Hsla,
     pub tab_bar: Hsla,
+    pub tab_inactive: Hsla,
+    pub tab_active: Hsla,
     pub editor: Hsla,
     pub editor_subheader: Hsla,
     pub editor_active_line: Hsla,
@@ -106,7 +109,7 @@ mod tests {
     fn override_a_single_theme_color() {
         let mut colors = ThemeColors::default_light();
 
-        let magenta: Hsla = gpui2::rgb(0xff00ff);
+        let magenta: Hsla = gpui::rgb(0xff00ff);
 
         assert_ne!(colors.text, magenta);
 
@@ -124,8 +127,8 @@ mod tests {
     fn override_multiple_theme_colors() {
         let mut colors = ThemeColors::default_light();
 
-        let magenta: Hsla = gpui2::rgb(0xff00ff);
-        let green: Hsla = gpui2::rgb(0x00ff00);
+        let magenta: Hsla = gpui::rgb(0xff00ff);
+        let green: Hsla = gpui::rgb(0x00ff00);
 
         assert_ne!(colors.text, magenta);
         assert_ne!(colors.background, green);

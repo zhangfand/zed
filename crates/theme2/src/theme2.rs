@@ -6,6 +6,7 @@ mod scale;
 mod settings;
 mod syntax;
 
+use ::settings::Settings;
 pub use colors::*;
 pub use default_colors::*;
 pub use default_theme::*;
@@ -14,8 +15,7 @@ pub use scale::*;
 pub use settings::*;
 pub use syntax::*;
 
-use gpui2::{AppContext, Hsla, SharedString};
-use settings2::Settings;
+use gpui::{AppContext, Hsla, SharedString};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Appearance {
@@ -68,6 +68,18 @@ impl ThemeVariant {
     #[inline(always)]
     pub fn syntax(&self) -> &SyntaxTheme {
         &self.styles.syntax
+    }
+
+    /// Returns the [`StatusColors`] for the theme.
+    #[inline(always)]
+    pub fn status(&self) -> &StatusColors {
+        &self.styles.status
+    }
+
+    /// Returns the [`GitStatusColors`] for the theme.
+    #[inline(always)]
+    pub fn git(&self) -> &GitStatusColors {
+        &self.styles.git
     }
 
     /// Returns the color for the syntax node with the given name.

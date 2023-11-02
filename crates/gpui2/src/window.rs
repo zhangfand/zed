@@ -4,15 +4,19 @@ use crate::{
     Entity, EntityId, EventEmitter, FileDropEvent, FocusEvent, FontId, GlobalElementId, GlyphId,
     Hsla, ImageData, InputEvent, IsZero, KeyListener, KeyMatch, KeyMatcher, Keystroke, LayoutId,
     Model, ModelContext, Modifiers, MonochromeSprite, MouseButton, MouseDownEvent, MouseMoveEvent,
-    MouseUpEvent, Path, Pixels, PlatformAtlas, PlatformWindow, Point, PolychromeSprite,
-    PromptLevel, Quad, Render, RenderGlyphParams, RenderImageParams, RenderSvgParams, ScaledPixels,
-    SceneBuilder, Shadow, SharedString, Size, Style, Subscription, TaffyLayoutEngine, Task,
-    Underline, UnderlineStyle, View, VisualContext, WeakView, WindowOptions, SUBPIXEL_VARIANTS,
+    MouseUpEvent, Path, Pixels, PlatformAtlas, PlatformDisplay, PlatformWindow, Point,
+    PolychromeSprite, PromptLevel, Quad, Render, RenderGlyphParams, RenderImageParams,
+    RenderSvgParams, ScaledPixels, SceneBuilder, Shadow, SharedString, Size, Style, SubscriberSet,
+    Subscription, TaffyLayoutEngine, Task, Underline, UnderlineStyle, View, VisualContext,
+    WeakView, WindowBounds, WindowOptions, SUBPIXEL_VARIANTS,
 };
 use anyhow::{anyhow, Result};
 use collections::HashMap;
 use derive_more::{Deref, DerefMut};
-use futures::channel::oneshot;
+use futures::{
+    channel::{mpsc, oneshot},
+    StreamExt,
+};
 use parking_lot::RwLock;
 use slotmap::SlotMap;
 use smallvec::SmallVec;
@@ -24,6 +28,7 @@ use std::{
     hash::{Hash, Hasher},
     marker::PhantomData,
     mem,
+    rc::Rc,
     sync::{
         atomic::{AtomicUsize, Ordering::SeqCst},
         Arc,
@@ -53,6 +58,7 @@ pub enum DispatchPhase {
     Capture,
 }
 
+type AnyObserver = Box<dyn FnMut(&mut WindowContext) -> bool + 'static>;
 type AnyListener = Box<dyn Fn(&dyn Any, DispatchPhase, &mut WindowContext) + 'static>;
 type AnyKeyListener = Box<
     dyn Fn(
@@ -159,6 +165,7 @@ impl Drop for FocusHandle {
 // Holds the state for a specific window.
 pub struct Window {
     pub(crate) handle: AnyWindowHandle,
+    pub(crate) removed: bool,
     platform_window: Box<dyn PlatformWindow>,
     display_id: DisplayId,
     sprite_atlas: Arc<dyn PlatformAtlas>,
@@ -184,6 +191,10 @@ pub struct Window {
     default_prevented: bool,
     mouse_position: Point<Pixels>,
     scale_factor: f32,
+    bounds: WindowBounds,
+    bounds_observers: SubscriberSet<(), AnyObserver>,
+    active: bool,
+    activation_observers: SubscriberSet<(), AnyObserver>,
     pub(crate) scene_builder: SceneBuilder,
     pub(crate) dirty: bool,
     pub(crate) last_blur: Option<Option<FocusId>>,
@@ -202,16 +213,34 @@ impl Window {
         let mouse_position = platform_window.mouse_position();
         let content_size = platform_window.content_size();
         let scale_factor = platform_window.scale_factor();
+        let bounds = platform_window.bounds();
+
         platform_window.on_resize(Box::new({
             let mut cx = cx.to_async();
-            move |content_size, scale_factor| {
+            move |_, _| {
+                handle
+                    .update(&mut cx, |_, cx| cx.window_bounds_changed())
+                    .log_err();
+            }
+        }));
+        platform_window.on_moved(Box::new({
+            let mut cx = cx.to_async();
+            move || {
+                handle
+                    .update(&mut cx, |_, cx| cx.window_bounds_changed())
+                    .log_err();
+            }
+        }));
+        platform_window.on_active_status_change(Box::new({
+            let mut cx = cx.to_async();
+            move |active| {
                 handle
                     .update(&mut cx, |_, cx| {
-                        cx.window.scale_factor = scale_factor;
-                        cx.window.scene_builder = SceneBuilder::new();
-                        cx.window.content_size = content_size;
-                        cx.window.display_id = cx.window.platform_window.display().id();
-                        cx.window.dirty = true;
+                        cx.window.active = active;
+                        cx.window
+                            .activation_observers
+                            .clone()
+                            .retain(&(), |callback| callback(cx));
                     })
                     .log_err();
             }
@@ -229,6 +258,7 @@ impl Window {
 
         Window {
             handle,
+            removed: false,
             platform_window,
             display_id,
             sprite_atlas,
@@ -254,6 +284,10 @@ impl Window {
             default_prevented: true,
             mouse_position,
             scale_factor,
+            bounds,
+            bounds_observers: SubscriberSet::new(),
+            active: false,
+            activation_observers: SubscriberSet::new(),
             scene_builder: SceneBuilder::new(),
             dirty: true,
             last_blur: None,
@@ -318,6 +352,11 @@ impl<'a> WindowContext<'a> {
     /// Mark the window as dirty, scheduling it to be redrawn on the next frame.
     pub fn notify(&mut self) {
         self.window.dirty = true;
+    }
+
+    /// Close this window.
+    pub fn remove_window(&mut self) {
+        self.window.removed = true;
     }
 
     /// Obtain a new `FocusHandle`, which allows you to track and manipulate the keyboard focus
@@ -407,42 +446,55 @@ impl<'a> WindowContext<'a> {
     }
 
     /// Schedule the given closure to be run directly after the current frame is rendered.
-    pub fn on_next_frame(&mut self, f: impl FnOnce(&mut WindowContext) + 'static) {
-        let f = Box::new(f);
+    pub fn on_next_frame(&mut self, callback: impl FnOnce(&mut WindowContext) + 'static) {
+        let handle = self.window.handle;
         let display_id = self.window.display_id;
 
-        if let Some(callbacks) = self.next_frame_callbacks.get_mut(&display_id) {
-            callbacks.push(f);
-            // If there was already a callback, it means that we already scheduled a frame.
-            if callbacks.len() > 1 {
-                return;
-            }
-        } else {
-            let mut async_cx = self.to_async();
-            self.next_frame_callbacks.insert(display_id, vec![f]);
+        if !self.frame_consumers.contains_key(&display_id) {
+            let (tx, mut rx) = mpsc::unbounded::<()>();
             self.platform.set_display_link_output_callback(
                 display_id,
-                Box::new(move |_current_time, _output_time| {
-                    let _ = async_cx.update(|_, cx| {
-                        let callbacks = cx
+                Box::new(move |_current_time, _output_time| _ = tx.unbounded_send(())),
+            );
+
+            let consumer_task = self.app.spawn(|cx| async move {
+                while rx.next().await.is_some() {
+                    cx.update(|cx| {
+                        for callback in cx
                             .next_frame_callbacks
                             .get_mut(&display_id)
                             .unwrap()
                             .drain(..)
-                            .collect::<Vec<_>>();
-                        for callback in callbacks {
+                            .collect::<SmallVec<[_; 32]>>()
+                        {
                             callback(cx);
                         }
+                    })
+                    .ok();
 
-                        if cx.next_frame_callbacks.get(&display_id).unwrap().is_empty() {
+                    // Flush effects, then stop the display link if no new next_frame_callbacks have been added.
+
+                    cx.update(|cx| {
+                        if cx.next_frame_callbacks.is_empty() {
                             cx.platform.stop_display_link(display_id);
                         }
-                    });
-                }),
-            );
+                    })
+                    .ok();
+                }
+            });
+            self.frame_consumers.insert(display_id, consumer_task);
         }
 
-        self.platform.start_display_link(display_id);
+        if self.next_frame_callbacks.is_empty() {
+            self.platform.start_display_link(display_id);
+        }
+
+        self.next_frame_callbacks
+            .entry(display_id)
+            .or_default()
+            .push(Box::new(move |cx: &mut AppContext| {
+                cx.update_window(handle, |_root_view, cx| callback(cx)).ok();
+            }));
     }
 
     /// Spawn the future returned by the given closure on the application thread pool.
@@ -516,6 +568,38 @@ impl<'a> WindowContext<'a> {
             .map(Into::into);
         bounds.origin += self.element_offset();
         bounds
+    }
+
+    fn window_bounds_changed(&mut self) {
+        self.window.scale_factor = self.window.platform_window.scale_factor();
+        self.window.content_size = self.window.platform_window.content_size();
+        self.window.bounds = self.window.platform_window.bounds();
+        self.window.display_id = self.window.platform_window.display().id();
+        self.window.dirty = true;
+
+        self.window
+            .bounds_observers
+            .clone()
+            .retain(&(), |callback| callback(self));
+    }
+
+    pub fn window_bounds(&self) -> WindowBounds {
+        self.window.bounds
+    }
+
+    pub fn is_window_active(&self) -> bool {
+        self.window.active
+    }
+
+    pub fn zoom_window(&self) {
+        self.window.platform_window.zoom();
+    }
+
+    pub fn display(&self) -> Option<Rc<dyn PlatformDisplay>> {
+        self.platform
+            .displays()
+            .into_iter()
+            .find(|display| display.id() == self.window.display_id)
     }
 
     /// The scale factor of the display associated with the window. For example, it could
@@ -1708,6 +1792,28 @@ impl<'a, V: 'static> ViewContext<'a, V> {
         self.window_cx.app.push_effect(Effect::Notify {
             emitter: self.view.model.entity_id,
         });
+    }
+
+    pub fn observe_window_bounds(
+        &mut self,
+        mut callback: impl FnMut(&mut V, &mut ViewContext<V>) + 'static,
+    ) -> Subscription {
+        let view = self.view.downgrade();
+        self.window.bounds_observers.insert(
+            (),
+            Box::new(move |cx| view.update(cx, |view, cx| callback(view, cx)).is_ok()),
+        )
+    }
+
+    pub fn observe_window_activation(
+        &mut self,
+        mut callback: impl FnMut(&mut V, &mut ViewContext<V>) + 'static,
+    ) -> Subscription {
+        let view = self.view.downgrade();
+        self.window.activation_observers.insert(
+            (),
+            Box::new(move |cx| view.update(cx, |view, cx| callback(view, cx)).is_ok()),
+        )
     }
 
     pub fn on_focus_changed(
