@@ -2,15 +2,15 @@ use crate::{
     parsing::{Span, SpanDigest},
     SEMANTIC_INDEX_VERSION,
 };
-use ai::embedding::Embedding;
+use ai2::embedding::Embedding;
 use anyhow::{anyhow, Context, Result};
 use collections::HashMap;
 use futures::channel::oneshot;
-use gpui::executor;
+use gpui2::BackgroundExecutor;
 use ndarray::{Array1, Array2};
 use ordered_float::OrderedFloat;
-use project::{search::PathMatcher, Fs};
-use rpc::proto::Timestamp;
+use project2::{search::PathMatcher, Fs};
+use rpc2::proto::Timestamp;
 use rusqlite::params;
 use rusqlite::types::Value;
 use std::{
@@ -48,7 +48,7 @@ impl VectorDatabase {
     pub async fn new(
         fs: Arc<dyn Fs>,
         path: Arc<Path>,
-        executor: Arc<executor::Background>,
+        executor: Arc<BackgroundExecutor>,
     ) -> Result<Self> {
         if let Some(db_directory) = path.parent() {
             fs.create_dir(db_directory).await?;

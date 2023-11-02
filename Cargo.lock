@@ -7652,6 +7652,7 @@ dependencies = [
  "ctor",
  "editor",
  "env_logger 0.9.3",
+ "fs2",
  "futures 0.3.28",
  "globset",
  "gpui2",

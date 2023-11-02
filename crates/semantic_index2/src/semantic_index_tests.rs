@@ -4,16 +4,17 @@ use crate::{
     semantic_index_settings::SemanticIndexSettings,
     FileToEmbed, JobHandle, SearchResult, SemanticIndex, EMBEDDING_QUEUE_FLUSH_TIMEOUT,
 };
-use ai::test::FakeEmbeddingProvider;
+use ai2::test::FakeEmbeddingProvider;
 
-use gpui::{executor::Deterministic, Task, TestAppContext};
-use language::{Language, LanguageConfig, LanguageRegistry, ToOffset};
+use gpui2::{BackgroundExecutor, Task, TestAppContext};
+use language2::{Language, LanguageConfig, LanguageRegistry, ToOffset};
 use parking_lot::Mutex;
 use pretty_assertions::assert_eq;
-use project::{project_settings::ProjectSettings, search::PathMatcher, FakeFs, Fs, Project};
+use project2::{project_settings::ProjectSettings, search::PathMatcher, FakeFs, Fs, Project};
 use rand::{rngs::StdRng, Rng};
 use serde_json::json;
-use settings::SettingsStore;
+use settings2::Settings;
+use settings2::SettingsStore;
 use std::{path::Path, sync::Arc, time::SystemTime};
 use unindent::Unindent;
 use util::RandomCharIter;
@@ -25,11 +26,11 @@ fn init_logger() {
     }
 }
 
-#[gpui::test]
-async fn test_semantic_index(deterministic: Arc<Deterministic>, cx: &mut TestAppContext) {
+#[gpui2::test]
+async fn test_semantic_index(executor: BackgroundExecutor, cx: &mut TestAppContext) {
     init_test(cx);
 
-    let fs = FakeFs::new(cx.background());
+    let fs = FakeFs::new(executor.clone());
     fs.insert_tree(
         "/the-root",
         json!({
@@ -90,10 +91,10 @@ async fn test_semantic_index(deterministic: Arc<Deterministic>, cx: &mut TestApp
         )
     });
     let pending_file_count =
-        semantic_index.read_with(cx, |index, _| index.pending_file_count(&project).unwrap());
-    deterministic.run_until_parked();
+        semantic_index.update(cx, |index, _| index.pending_file_count(&project).unwrap());
+    executor.run_until_parked();
     assert_eq!(*pending_file_count.borrow(), 3);
-    deterministic.advance_clock(EMBEDDING_QUEUE_FLUSH_TIMEOUT);
+    executor.advance_clock(EMBEDDING_QUEUE_FLUSH_TIMEOUT);
     assert_eq!(*pending_file_count.borrow(), 0);
 
     let search_results = search_results.await.unwrap();
@@ -170,13 +171,13 @@ async fn test_semantic_index(deterministic: Arc<Deterministic>, cx: &mut TestApp
     .await
     .unwrap();
 
-    deterministic.advance_clock(EMBEDDING_QUEUE_FLUSH_TIMEOUT);
+    executor.advance_clock(EMBEDDING_QUEUE_FLUSH_TIMEOUT);
 
     let prev_embedding_count = embedding_provider.embedding_count();
     let index = semantic_index.update(cx, |store, cx| store.index_project(project.clone(), cx));
-    deterministic.run_until_parked();
+    executor.run_until_parked();
     assert_eq!(*pending_file_count.borrow(), 1);
-    deterministic.advance_clock(EMBEDDING_QUEUE_FLUSH_TIMEOUT);
+    executor.advance_clock(EMBEDDING_QUEUE_FLUSH_TIMEOUT);
     assert_eq!(*pending_file_count.borrow(), 0);
     index.await.unwrap();
 
@@ -186,8 +187,8 @@ async fn test_semantic_index(deterministic: Arc<Deterministic>, cx: &mut TestApp
     );
 }
 
-#[gpui::test(iterations = 10)]
-async fn test_embedding_batching(cx: &mut TestAppContext, mut rng: StdRng) {
+#[gpui2::test(iterations = 10)]
+async fn test_embedding_batching(executor: BackgroundExecutor, mut rng: StdRng) {
     let (outstanding_job_count, _) = postage::watch::channel_with(0);
     let outstanding_job_count = Arc::new(Mutex::new(outstanding_job_count));
 
@@ -220,13 +221,13 @@ async fn test_embedding_batching(cx: &mut TestAppContext, mut rng: StdRng) {
 
     let embedding_provider = Arc::new(FakeEmbeddingProvider::default());
 
-    let mut queue = EmbeddingQueue::new(embedding_provider.clone(), cx.background());
+    let mut queue = EmbeddingQueue::new(embedding_provider.clone(), Arc::new(executor.clone()));
     for file in &files {
         queue.push(file.clone());
     }
     queue.flush();
 
-    cx.foreground().run_until_parked();
+    executor.run_until_parked();
     let finished_files = queue.finished_files();
     let mut embedded_files: Vec<_> = files
         .iter()
@@ -253,12 +254,12 @@ async fn test_embedding_batching(cx: &mut TestAppContext, mut rng: StdRng) {
 fn assert_search_results(
     actual: &[SearchResult],
     expected: &[(Arc<Path>, usize)],
-    cx: &TestAppContext,
+    cx: &mut TestAppContext,
 ) {
     let actual = actual
         .iter()
         .map(|search_result| {
-            search_result.buffer.read_with(cx, |buffer, _cx| {
+            search_result.buffer.update(cx, |buffer, _cx| {
                 (
                     buffer.file().unwrap().path().clone(),
                     search_result.range.start.to_offset(buffer),
@@ -269,7 +270,7 @@ fn assert_search_results(
     assert_eq!(actual, expected);
 }
 
-#[gpui::test]
+#[gpui2::test]
 async fn test_code_context_retrieval_rust() {
     let language = rust_lang();
     let embedding_provider = Arc::new(FakeEmbeddingProvider::default());
@@ -371,7 +372,7 @@ async fn test_code_context_retrieval_rust() {
     );
 }
 
-#[gpui::test]
+#[gpui2::test]
 async fn test_code_context_retrieval_json() {
     let language = json_lang();
     let embedding_provider = Arc::new(FakeEmbeddingProvider::default());
@@ -455,7 +456,7 @@ fn assert_documents_eq(
     );
 }
 
-#[gpui::test]
+#[gpui2::test]
 async fn test_code_context_retrieval_javascript() {
     let language = js_lang();
     let embedding_provider = Arc::new(FakeEmbeddingProvider::default());
@@ -554,7 +555,7 @@ async fn test_code_context_retrieval_javascript() {
     )
 }
 
-#[gpui::test]
+#[gpui2::test]
 async fn test_code_context_retrieval_lua() {
     let language = lua_lang();
     let embedding_provider = Arc::new(FakeEmbeddingProvider::default());
@@ -628,7 +629,7 @@ async fn test_code_context_retrieval_lua() {
     );
 }
 
-#[gpui::test]
+#[gpui2::test]
 async fn test_code_context_retrieval_elixir() {
     let language = elixir_lang();
     let embedding_provider = Arc::new(FakeEmbeddingProvider::default());
@@ -745,7 +746,7 @@ async fn test_code_context_retrieval_elixir() {
     );
 }
 
-#[gpui::test]
+#[gpui2::test]
 async fn test_code_context_retrieval_cpp() {
     let language = cpp_lang();
     let embedding_provider = Arc::new(FakeEmbeddingProvider::default());
@@ -898,7 +899,7 @@ async fn test_code_context_retrieval_cpp() {
     );
 }
 
-#[gpui::test]
+#[gpui2::test]
 async fn test_code_context_retrieval_ruby() {
     let language = ruby_lang();
     let embedding_provider = Arc::new(FakeEmbeddingProvider::default());
@@ -1089,7 +1090,7 @@ async fn test_code_context_retrieval_ruby() {
     );
 }
 
-#[gpui::test]
+#[gpui2::test]
 async fn test_code_context_retrieval_php() {
     let language = php_lang();
     let embedding_provider = Arc::new(FakeEmbeddingProvider::default());
@@ -1672,7 +1673,7 @@ fn elixir_lang() -> Arc<Language> {
     )
 }
 
-#[gpui::test]
+#[gpui2::test]
 fn test_subtract_ranges() {
     // collapsed_ranges: Vec<Range<usize>>, keep_ranges: Vec<Range<usize>>
 
@@ -1686,8 +1687,9 @@ fn test_subtract_ranges() {
 
 fn init_test(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        cx.set_global(SettingsStore::test(cx));
-        settings::register::<SemanticIndexSettings>(cx);
-        settings::register::<ProjectSettings>(cx);
+        let store = SettingsStore::test(cx);
+        cx.set_global(store);
+        SemanticIndexSettings::register(cx);
+        ProjectSettings::register(cx);
     });
 }

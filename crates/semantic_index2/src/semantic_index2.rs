@@ -7,21 +7,24 @@ pub mod semantic_index_settings;
 mod semantic_index_tests;
 
 use crate::semantic_index_settings::SemanticIndexSettings;
-use ai::embedding::{Embedding, EmbeddingProvider};
-use ai::providers::open_ai::OpenAIEmbeddingProvider;
+use ai2::embedding::{Embedding, EmbeddingProvider};
+use ai2::providers::open_ai::OpenAIEmbeddingProvider;
 use anyhow::{anyhow, Result};
 use collections::{BTreeMap, HashMap, HashSet};
 use db::VectorDatabase;
 use embedding_queue::{EmbeddingQueue, FileToEmbed};
 use futures::{future, FutureExt, StreamExt};
-use gpui::{AppContext, AsyncAppContext, Entity, ModelContext, ModelHandle, Task, WeakModelHandle};
-use language::{Anchor, Bias, Buffer, Language, LanguageRegistry};
+use gpui2::{AppContext, AsyncAppContext, Context, Model, ModelContext, Task, WeakModel};
+use language2::{Anchor, Bias, Buffer, Language, LanguageRegistry};
 use lazy_static::lazy_static;
 use ordered_float::OrderedFloat;
 use parking_lot::Mutex;
 use parsing::{CodeContextRetriever, Span, SpanDigest, PARSEABLE_ENTIRE_FILE_TYPES};
 use postage::watch;
-use project::{search::PathMatcher, Fs, PathChange, Project, ProjectEntryId, Worktree, WorktreeId};
+use project2::{
+    search::PathMatcher, Fs, PathChange, Project, ProjectEntryId, Worktree, WorktreeId,
+};
+use settings2::Settings;
 use smol::channel;
 use std::{
     cmp::Reverse,
@@ -34,7 +37,8 @@ use std::{
     time::{Duration, Instant, SystemTime},
 };
 use util::{channel::RELEASE_CHANNEL_NAME, http::HttpClient, paths::EMBEDDINGS_DIR, ResultExt};
-use workspace::WorkspaceCreated;
+
+// use workspace::WorkspaceCreated;
 
 const SEMANTIC_INDEX_VERSION: usize = 11;
 const BACKGROUND_INDEXING_DELAY: Duration = Duration::from_secs(5 * 60);
@@ -50,46 +54,50 @@ pub fn init(
     language_registry: Arc<LanguageRegistry>,
     cx: &mut AppContext,
 ) {
-    settings::register::<SemanticIndexSettings>(cx);
+    SemanticIndexSettings::register(cx);
 
     let db_file_path = EMBEDDINGS_DIR
         .join(Path::new(RELEASE_CHANNEL_NAME.as_str()))
         .join("embeddings_db");
 
-    cx.subscribe_global::<WorkspaceCreated, _>({
-        move |event, cx| {
-            let Some(semantic_index) = SemanticIndex::global(cx) else {
-                return;
-            };
-            let workspace = &event.0;
-            if let Some(workspace) = workspace.upgrade(cx) {
-                let project = workspace.read(cx).project().clone();
-                if project.read(cx).is_local() {
-                    cx.spawn(|mut cx| async move {
-                        let previously_indexed = semantic_index
-                            .update(&mut cx, |index, cx| {
-                                index.project_previously_indexed(&project, cx)
-                            })
-                            .await?;
-                        if previously_indexed {
-                            semantic_index
-                                .update(&mut cx, |index, cx| index.index_project(project, cx))
-                                .await?;
-                        }
-                        anyhow::Ok(())
-                    })
-                    .detach_and_log_err(cx);
-                }
-            }
-        }
-    })
-    .detach();
+    // todo!();
+    // cx.subscribe_global::<WorkspaceCreated, _>({
+    //     move |event, cx| {
+    //         let Some(semantic_index) = SemanticIndex::global(cx) else {
+    //             return;
+    //         };
+    //         let workspace = &event.0;
+    //         if let Some(workspace) = workspace.upgrade(cx) {
+    //             let project = workspace.read(cx).project().clone();
+    //             if project.read(cx).is_local() {
+    //                 cx.spawn(|mut cx| async move {
+    //                     let previously_indexed = semantic_index
+    //                         .update(&mut cx, |index, cx| {
+    //                             index.project_previously_indexed(&project, cx)
+    //                         })
+    //                         .await?;
+    //                     if previously_indexed {
+    //                         semantic_index
+    //                             .update(&mut cx, |index, cx| index.index_project(project, cx))
+    //                             .await?;
+    //                     }
+    //                     anyhow::Ok(())
+    //                 })
+    //                 .detach_and_log_err(cx);
+    //             }
+    //         }
+    //     }
+    // })
+    // .detach();
 
-    cx.spawn(move |mut cx| async move {
+    cx.spawn(move |cx| async move {
         let semantic_index = SemanticIndex::new(
             fs,
             db_file_path,
-            Arc::new(OpenAIEmbeddingProvider::new(http_client, cx.background())),
+            Arc::new(OpenAIEmbeddingProvider::new(
+                http_client,
+                Arc::new(cx.background_executor().clone()),
+            )),
             language_registry,
             cx.clone(),
         )
@@ -97,7 +105,7 @@ pub fn init(
 
         cx.update(|cx| {
             cx.set_global(semantic_index.clone());
-        });
+        })?;
 
         anyhow::Ok(())
     })
@@ -123,7 +131,7 @@ pub struct SemanticIndex {
     parsing_files_tx: channel::Sender<(Arc<HashMap<SpanDigest, Embedding>>, PendingFile)>,
     _embedding_task: Task<()>,
     _parsing_files_tasks: Vec<Task<()>>,
-    projects: HashMap<WeakModelHandle<Project>, ProjectState>,
+    projects: HashMap<WeakModel<Project>, ProjectState>,
 }
 
 struct ProjectState {
@@ -131,7 +139,7 @@ struct ProjectState {
     pending_file_count_rx: watch::Receiver<usize>,
     pending_file_count_tx: Arc<Mutex<watch::Sender<usize>>>,
     pending_index: usize,
-    _subscription: gpui::Subscription,
+    _subscription: gpui2::Subscription,
     _observe_pending_file_count: Task<()>,
 }
 
@@ -219,7 +227,7 @@ impl JobHandle {
 }
 
 impl ProjectState {
-    fn new(subscription: gpui::Subscription, cx: &mut ModelContext<SemanticIndex>) -> Self {
+    fn new(subscription: gpui2::Subscription, cx: &mut ModelContext<SemanticIndex>) -> Self {
         let (pending_file_count_tx, pending_file_count_rx) = watch::channel_with(0);
         let pending_file_count_tx = Arc::new(Mutex::new(pending_file_count_tx));
         Self {
@@ -228,12 +236,12 @@ impl ProjectState {
             pending_file_count_tx,
             pending_index: 0,
             _subscription: subscription,
-            _observe_pending_file_count: cx.spawn_weak({
+            _observe_pending_file_count: cx.spawn({
                 let mut pending_file_count_rx = pending_file_count_rx.clone();
                 |this, mut cx| async move {
                     while let Some(_) = pending_file_count_rx.next().await {
-                        if let Some(this) = this.upgrade(&cx) {
-                            this.update(&mut cx, |_, cx| cx.notify());
+                        if let Some(this) = this.upgrade() {
+                            let _ = this.update(&mut cx, |_, cx| cx.notify());
                         }
                     }
                 }
@@ -263,21 +271,21 @@ pub struct PendingFile {
 
 #[derive(Clone)]
 pub struct SearchResult {
-    pub buffer: ModelHandle<Buffer>,
+    pub buffer: Model<Buffer>,
     pub range: Range<Anchor>,
     pub similarity: OrderedFloat<f32>,
 }
 
 impl SemanticIndex {
-    pub fn global(cx: &mut AppContext) -> Option<ModelHandle<SemanticIndex>> {
-        if cx.has_global::<ModelHandle<Self>>() {
-            Some(cx.global::<ModelHandle<SemanticIndex>>().clone())
+    pub fn global(cx: &mut AppContext) -> Option<Model<SemanticIndex>> {
+        if cx.has_global::<Model<Self>>() {
+            Some(cx.global::<Model<SemanticIndex>>().clone())
         } else {
             None
         }
     }
 
-    pub fn authenticate(&mut self, cx: &AppContext) -> bool {
+    pub fn authenticate(&mut self, cx: &mut AppContext) -> bool {
         if !self.embedding_provider.has_credentials() {
             self.embedding_provider.retrieve_credentials(cx);
         } else {
@@ -292,10 +300,10 @@ impl SemanticIndex {
     }
 
     pub fn enabled(cx: &AppContext) -> bool {
-        settings::get::<SemanticIndexSettings>(cx).enabled
+        SemanticIndexSettings::get_global(cx).enabled
     }
 
-    pub fn status(&self, project: &ModelHandle<Project>) -> SemanticIndexStatus {
+    pub fn status(&self, project: &Model<Project>) -> SemanticIndexStatus {
         if !self.is_authenticated() {
             return SemanticIndexStatus::NotAuthenticated;
         }
@@ -325,21 +333,26 @@ impl SemanticIndex {
         embedding_provider: Arc<dyn EmbeddingProvider>,
         language_registry: Arc<LanguageRegistry>,
         mut cx: AsyncAppContext,
-    ) -> Result<ModelHandle<Self>> {
+    ) -> Result<Model<Self>> {
         let t0 = Instant::now();
         let database_path = Arc::from(database_path);
-        let db = VectorDatabase::new(fs.clone(), database_path, cx.background()).await?;
+        let db = VectorDatabase::new(
+            fs.clone(),
+            database_path,
+            Arc::new(cx.background_executor().clone()),
+        )
+        .await?;
 
         log::trace!(
             "db initialization took {:?} milliseconds",
             t0.elapsed().as_millis()
         );
 
-        Ok(cx.add_model(|cx| {
+        cx.build_model(|cx| {
             let t0 = Instant::now();
             let embedding_queue =
-                EmbeddingQueue::new(embedding_provider.clone(), cx.background().clone());
-            let _embedding_task = cx.background().spawn({
+                EmbeddingQueue::new(embedding_provider.clone(), Arc::new(cx.background_executor().clone()));
+            let _embedding_task = cx.background_executor().spawn({
                 let embedded_files = embedding_queue.finished_files();
                 let db = db.clone();
                 async move {
@@ -356,13 +369,13 @@ impl SemanticIndex {
                 channel::unbounded::<(Arc<HashMap<SpanDigest, Embedding>>, PendingFile)>();
             let embedding_queue = Arc::new(Mutex::new(embedding_queue));
             let mut _parsing_files_tasks = Vec::new();
-            for _ in 0..cx.background().num_cpus() {
+            for _ in 0..cx.background_executor().num_cpus() {
                 let fs = fs.clone();
                 let mut parsing_files_rx = parsing_files_rx.clone();
                 let embedding_provider = embedding_provider.clone();
                 let embedding_queue = embedding_queue.clone();
-                let background = cx.background().clone();
-                _parsing_files_tasks.push(cx.background().spawn(async move {
+                let background = cx.background_executor().clone();
+                _parsing_files_tasks.push(cx.background_executor().spawn(async move {
                     let mut retriever = CodeContextRetriever::new(embedding_provider.clone());
                     loop {
                         let mut timer = background.timer(EMBEDDING_QUEUE_FLUSH_TIMEOUT).fuse();
@@ -404,7 +417,7 @@ impl SemanticIndex {
                 _parsing_files_tasks,
                 projects: Default::default(),
             }
-        }))
+        })
     }
 
     async fn parse_file(
@@ -448,12 +461,12 @@ impl SemanticIndex {
 
     pub fn project_previously_indexed(
         &mut self,
-        project: &ModelHandle<Project>,
+        project: &Model<Project>,
         cx: &mut ModelContext<Self>,
     ) -> Task<Result<bool>> {
         let worktrees_indexed_previously = project
             .read(cx)
-            .worktrees(cx)
+            .worktrees()
             .map(|worktree| {
                 self.db
                     .worktree_previously_indexed(&worktree.read(cx).abs_path())
@@ -472,7 +485,7 @@ impl SemanticIndex {
 
     fn project_entries_changed(
         &mut self,
-        project: ModelHandle<Project>,
+        project: Model<Project>,
         worktree_id: WorktreeId,
         changes: Arc<[(Arc<Path>, ProjectEntryId, PathChange)]>,
         cx: &mut ModelContext<Self>,
@@ -494,10 +507,12 @@ impl SemanticIndex {
             };
         worktree_state.paths_changed(changes, worktree);
         if let WorktreeState::Registered(_) = worktree_state {
-            cx.spawn_weak(|this, mut cx| async move {
-                cx.background().timer(BACKGROUND_INDEXING_DELAY).await;
-                if let Some((this, project)) = this.upgrade(&cx).zip(project.upgrade(&cx)) {
-                    this.update(&mut cx, |this, cx| {
+            cx.spawn(|this, mut cx| async move {
+                cx.background_executor()
+                    .timer(BACKGROUND_INDEXING_DELAY)
+                    .await;
+                if let Some((this, project)) = this.upgrade().zip(project.upgrade()) {
+                    let _ = this.update(&mut cx, |this, cx| {
                         this.index_project(project, cx).detach_and_log_err(cx)
                     });
                 }
@@ -508,8 +523,8 @@ impl SemanticIndex {
 
     fn register_worktree(
         &mut self,
-        project: ModelHandle<Project>,
-        worktree: ModelHandle<Worktree>,
+        project: Model<Project>,
+        worktree: Model<Worktree>,
         cx: &mut ModelContext<Self>,
     ) {
         let project = project.downgrade();
@@ -535,20 +550,23 @@ impl SemanticIndex {
                     scan_complete.await;
                     let db_id = db.find_or_create_worktree(worktree_abs_path).await?;
                     let mut file_mtimes = db.get_file_mtimes(db_id).await?;
-                    let worktree = if let Some(project) = project.upgrade(&cx) {
-                        project
-                            .read_with(&cx, |project, cx| project.worktree_for_id(worktree_id, cx))
-                            .ok_or_else(|| anyhow!("worktree not found"))?
+                    let worktree = if let Some(project) = project.upgrade() {
+                        project.update(&mut cx, |project, cx| {
+                            project
+                                .worktree_for_id(worktree_id, cx)
+                                .ok_or(anyhow!("missing worktree for id"))
+                        })?
                     } else {
                         return anyhow::Ok(());
                     };
-                    let worktree = worktree.read_with(&cx, |worktree, _| worktree.snapshot());
+
+                    let snapshot = worktree?.update(&mut cx, |worktree, _| worktree.snapshot())?;
                     let mut changed_paths = cx
-                        .background()
+                        .background_executor()
                         .spawn(async move {
                             let mut changed_paths = BTreeMap::new();
-                            for file in worktree.files(false, 0) {
-                                let absolute_path = worktree.absolutize(&file.path);
+                            for file in snapshot.files(false, 0) {
+                                let absolute_path = snapshot.absolutize(&file.path);
 
                                 if file.is_external || file.is_ignored || file.is_symlink {
                                     continue;
@@ -608,7 +626,7 @@ impl SemanticIndex {
                             .get_mut(&project)
                             .ok_or_else(|| anyhow!("project not registered"))?;
                         let project = project
-                            .upgrade(cx)
+                            .upgrade()
                             .ok_or_else(|| anyhow!("project was dropped"))?;
 
                         if let Some(WorktreeState::Registering(state)) =
@@ -626,18 +644,18 @@ impl SemanticIndex {
                         this.index_project(project, cx).detach_and_log_err(cx);
 
                         anyhow::Ok(())
-                    })?;
+                    })??;
 
                     anyhow::Ok(())
                 };
 
                 if register.await.log_err().is_none() {
                     // Stop tracking this worktree if the registration failed.
-                    this.update(&mut cx, |this, _| {
+                    let _ = this.update(&mut cx, |this, _| {
                         this.projects.get_mut(&project).map(|project_state| {
                             project_state.worktrees.remove(&worktree_id);
                         });
-                    })
+                    });
                 }
 
                 *done_tx.borrow_mut() = Some(());
@@ -653,11 +671,7 @@ impl SemanticIndex {
         );
     }
 
-    fn project_worktrees_changed(
-        &mut self,
-        project: ModelHandle<Project>,
-        cx: &mut ModelContext<Self>,
-    ) {
+    fn project_worktrees_changed(&mut self, project: Model<Project>, cx: &mut ModelContext<Self>) {
         let project_state = if let Some(project_state) = self.projects.get_mut(&project.downgrade())
         {
             project_state
@@ -667,7 +681,7 @@ impl SemanticIndex {
 
         let mut worktrees = project
             .read(cx)
-            .worktrees(cx)
+            .worktrees()
             .filter(|worktree| worktree.read(cx).is_local())
             .collect::<Vec<_>>();
         let worktree_ids = worktrees
@@ -690,10 +704,7 @@ impl SemanticIndex {
         }
     }
 
-    pub fn pending_file_count(
-        &self,
-        project: &ModelHandle<Project>,
-    ) -> Option<watch::Receiver<usize>> {
+    pub fn pending_file_count(&self, project: &Model<Project>) -> Option<watch::Receiver<usize>> {
         Some(
             self.projects
                 .get(&project.downgrade())?
@@ -704,7 +715,7 @@ impl SemanticIndex {
 
     pub fn search_project(
         &mut self,
-        project: ModelHandle<Project>,
+        project: Model<Project>,
         query: String,
         limit: usize,
         includes: Vec<PathMatcher>,
@@ -744,7 +755,7 @@ impl SemanticIndex {
                 this.search_files(project, query, limit, includes, excludes, cx)
             });
             let (modified_buffer_results, file_results) =
-                futures::join!(modified_buffer_results, file_results);
+                futures::join!(modified_buffer_results?, file_results?);
 
             // Weave together the results from modified buffers and files.
             let mut results = Vec::new();
@@ -767,7 +778,7 @@ impl SemanticIndex {
 
     pub fn search_files(
         &mut self,
-        project: ModelHandle<Project>,
+        project: Model<Project>,
         query: Embedding,
         limit: usize,
         includes: Vec<PathMatcher>,
@@ -777,10 +788,14 @@ impl SemanticIndex {
         let db_path = self.db.path().clone();
         let fs = self.fs.clone();
         cx.spawn(|this, mut cx| async move {
-            let database =
-                VectorDatabase::new(fs.clone(), db_path.clone(), cx.background()).await?;
+            let database = VectorDatabase::new(
+                fs.clone(),
+                db_path.clone(),
+                Arc::new(cx.background_executor().clone()),
+            )
+            .await?;
 
-            let worktree_db_ids = this.read_with(&cx, |this, _| {
+            let worktree_db_ids = this.update(&mut cx, |this, _| {
                 let project_state = this
                     .projects
                     .get(&project.downgrade())
@@ -800,10 +815,10 @@ impl SemanticIndex {
             })?;
 
             let file_ids = database
-                .retrieve_included_file_ids(&worktree_db_ids, &includes, &excludes)
+                .retrieve_included_file_ids(&worktree_db_ids?, &includes, &excludes)
                 .await?;
 
-            let batch_n = cx.background().num_cpus();
+            let batch_n = cx.background_executor().num_cpus();
             let ids_len = file_ids.clone().len();
             let minimum_batch_size = 50;
 
@@ -823,9 +838,13 @@ impl SemanticIndex {
                 let fs = fs.clone();
                 let db_path = db_path.clone();
                 let query = query.clone();
-                if let Some(db) = VectorDatabase::new(fs, db_path.clone(), cx.background())
-                    .await
-                    .log_err()
+                if let Some(db) = VectorDatabase::new(
+                    fs,
+                    db_path.clone(),
+                    Arc::new(cx.background_executor().clone()),
+                )
+                .await
+                .log_err()
                 {
                     batch_results.push(async move {
                         db.top_k_search(&query, limit, batch.as_slice()).await
@@ -864,20 +883,19 @@ impl SemanticIndex {
             let weak_project = project.downgrade();
             project.update(&mut cx, |project, cx| {
                 for (worktree_db_id, file_path, byte_range) in spans {
-                    let project_state =
-                        if let Some(state) = this.read(cx).projects.get(&weak_project) {
-                            state
-                        } else {
-                            return Err(anyhow!("project not added"));
-                        };
+                    let project_state = this
+                        .upgrade()
+                        .and_then(|index| index.read(cx).projects.get(&weak_project))
+                        .ok_or(anyhow!("missing project"))?;
+
                     if let Some(worktree_id) = project_state.worktree_id_for_db_id(worktree_db_id) {
                         tasks.push(project.open_buffer((worktree_id, file_path), cx));
                         ranges.push(byte_range);
                     }
                 }
 
-                Ok(())
-            })?;
+                anyhow::Ok(())
+            })??;
 
             let buffers = futures::future::join_all(tasks).await;
             Ok(buffers
@@ -886,16 +904,21 @@ impl SemanticIndex {
                 .zip(scores)
                 .filter_map(|((buffer, range), similarity)| {
                     let buffer = buffer.log_err()?;
-                    let range = buffer.read_with(&cx, |buffer, _| {
-                        let start = buffer.clip_offset(range.start, Bias::Left);
-                        let end = buffer.clip_offset(range.end, Bias::Right);
-                        buffer.anchor_before(start)..buffer.anchor_after(end)
-                    });
-                    Some(SearchResult {
-                        buffer,
-                        range,
-                        similarity,
-                    })
+
+                    buffer
+                        .update(&mut cx, |buffer, _| {
+                            let start = buffer.clip_offset(range.start, Bias::Left);
+                            let end = buffer.clip_offset(range.end, Bias::Right);
+                            buffer.anchor_before(start)..buffer.anchor_after(end)
+                        })
+                        .and_then(|range| {
+                            anyhow::Ok(SearchResult {
+                                buffer,
+                                range,
+                                similarity,
+                            })
+                        })
+                        .ok()
                 })
                 .collect())
         })
@@ -903,7 +926,7 @@ impl SemanticIndex {
 
     fn search_modified_buffers(
         &self,
-        project: &ModelHandle<Project>,
+        project: &Model<Project>,
         query: Embedding,
         limit: usize,
         includes: &[PathMatcher],
@@ -912,7 +935,7 @@ impl SemanticIndex {
     ) -> Task<Result<Vec<SearchResult>>> {
         let modified_buffers = project
             .read(cx)
-            .opened_buffers(cx)
+            .opened_buffers()
             .into_iter()
             .filter_map(|buffer_handle| {
                 let buffer = buffer_handle.read(cx);
@@ -940,8 +963,8 @@ impl SemanticIndex {
         let embedding_provider = self.embedding_provider.clone();
         let fs = self.fs.clone();
         let db_path = self.db.path().clone();
-        let background = cx.background().clone();
-        cx.background().spawn(async move {
+        let background = Arc::new(cx.background_executor().clone());
+        cx.background_executor().spawn(async move {
             let db = VectorDatabase::new(fs, db_path.clone(), background).await?;
             let mut results = Vec::<SearchResult>::new();
 
@@ -950,7 +973,7 @@ impl SemanticIndex {
                 let language = snapshot
                     .language_at(0)
                     .cloned()
-                    .unwrap_or_else(|| language::PLAIN_TEXT.clone());
+                    .unwrap_or_else(|| language2::PLAIN_TEXT.clone());
                 let mut spans = retriever
                     .parse_file_with_template(None, &snapshot.text(), language)
                     .log_err()
@@ -995,7 +1018,7 @@ impl SemanticIndex {
 
     pub fn index_project(
         &mut self,
-        project: ModelHandle<Project>,
+        project: Model<Project>,
         cx: &mut ModelContext<Self>,
     ) -> Task<Result<()>> {
         if !self.is_authenticated() {
@@ -1006,10 +1029,10 @@ impl SemanticIndex {
 
         if !self.projects.contains_key(&project.downgrade()) {
             let subscription = cx.subscribe(&project, |this, project, event, cx| match event {
-                project::Event::WorktreeAdded | project::Event::WorktreeRemoved(_) => {
+                project2::Event::WorktreeAdded | project2::Event::WorktreeRemoved(_) => {
                     this.project_worktrees_changed(project.clone(), cx);
                 }
-                project::Event::WorktreeUpdatedEntries(worktree_id, changes) => {
+                project2::Event::WorktreeUpdatedEntries(worktree_id, changes) => {
                     this.project_entries_changed(project, *worktree_id, changes.clone(), cx);
                 }
                 _ => {}
@@ -1079,9 +1102,9 @@ impl SemanticIndex {
                     });
 
                 anyhow::Ok(())
-            })?;
+            })??;
 
-            cx.background()
+            cx.background_executor()
                 .spawn(async move {
                     for (worktree_db_id, path) in files_to_delete {
                         db.delete_file(worktree_db_id, path).await.log_err();
@@ -1133,7 +1156,7 @@ impl SemanticIndex {
                 })
                 .await;
 
-            this.update(&mut cx, |this, cx| {
+            let _ = this.update(&mut cx, |this, cx| {
                 let project_state = this
                     .projects
                     .get_mut(&project.downgrade())
@@ -1149,16 +1172,16 @@ impl SemanticIndex {
 
     fn wait_for_worktree_registration(
         &self,
-        project: &ModelHandle<Project>,
+        project: &Model<Project>,
         cx: &mut ModelContext<Self>,
     ) -> Task<Result<()>> {
         let project = project.downgrade();
-        cx.spawn_weak(|this, cx| async move {
+        cx.spawn(|this, mut cx| async move {
             loop {
                 let mut pending_worktrees = Vec::new();
-                this.upgrade(&cx)
+                this.upgrade()
                     .ok_or_else(|| anyhow!("semantic index dropped"))?
-                    .read_with(&cx, |this, _| {
+                    .update(&mut cx, |this, _| {
                         if let Some(project) = this.projects.get(&project) {
                             for worktree in project.worktrees.values() {
                                 if let WorktreeState::Registering(worktree) = worktree {
@@ -1166,7 +1189,7 @@ impl SemanticIndex {
                                 }
                             }
                         }
-                    });
+                    })?;
 
                 if pending_worktrees.is_empty() {
                     break;
@@ -1236,9 +1259,9 @@ impl SemanticIndex {
     }
 }
 
-impl Entity for SemanticIndex {
-    type Event = ();
-}
+// impl Entity for SemanticIndex {
+//     type Event = ();
+// }
 
 impl Drop for JobHandle {
     fn drop(&mut self) {

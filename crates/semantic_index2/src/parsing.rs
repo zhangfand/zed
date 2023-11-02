@@ -1,9 +1,9 @@
-use ai::{
+use ai2::{
     embedding::{Embedding, EmbeddingProvider},
     models::TruncationDirection,
 };
 use anyhow::{anyhow, Result};
-use language::{Grammar, Language};
+use language2::{Grammar, Language};
 use rusqlite::{
     types::{FromSql, FromSqlResult, ToSqlOutput, ValueRef},
     ToSql,
@@ -115,7 +115,7 @@ impl CodeContextRetriever {
         let document_span = model.truncate(
             &document_span,
             model.capacity()?,
-            ai::models::TruncationDirection::End,
+            ai2::models::TruncationDirection::End,
         )?;
         let token_count = model.count_tokens(&document_span)?;
 
@@ -146,7 +146,7 @@ impl CodeContextRetriever {
         let document_span = model.truncate(
             &document_span,
             model.capacity()?,
-            ai::models::TruncationDirection::End,
+            ai2::models::TruncationDirection::End,
         )?;
         let token_count = model.count_tokens(&document_span)?;
 
