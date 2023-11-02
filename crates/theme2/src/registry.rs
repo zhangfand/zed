@@ -42,7 +42,7 @@ impl Default for ThemeRegistry {
             themes: HashMap::default(),
         };
 
-        this.insert_theme_families([zed_pro_family()]);
+        this.insert_theme_families([zed_pro_family(), crate::themes::ayu::ayu_family()]);
 
         this
     }
