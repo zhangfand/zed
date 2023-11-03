@@ -8,14 +8,18 @@ pub mod pane;
 pub mod pane_group;
 mod persistence;
 pub mod searchable;
+// todo!()
 // pub mod shared_screen;
 mod status_bar;
 mod toolbar;
 mod workspace_settings;
 
-use crate::persistence::model::{
-    DockData, DockStructure, SerializedItem, SerializedPane, SerializedPaneGroup,
-    SerializedWorkspace,
+pub use crate::persistence::{
+    model::{
+        DockData, DockStructure, ItemId, SerializedItem, SerializedPane, SerializedPaneGroup,
+        SerializedWorkspace,
+    },
+    WorkspaceDb,
 };
 use anyhow::{anyhow, Context as _, Result};
 use call2::ActiveCall;
@@ -23,36 +27,35 @@ use client2::{
     proto::{self, PeerId},
     Client, TypedEnvelope, UserStore,
 };
-use collections::{HashMap, HashSet};
+use collections::{hash_map, HashMap, HashSet};
 use dock::{Dock, DockPosition, PanelButtons};
 use futures::{
     channel::{mpsc, oneshot},
     future::try_join_all,
     Future, FutureExt, StreamExt,
 };
-use gpui2::{
+use gpui::{
     div, point, size, AnyModel, AnyView, AnyWeakView, AppContext, AsyncAppContext,
-    AsyncWindowContext, Bounds, Component, Div, EntityId, EventEmitter, GlobalPixels, Model,
-    ModelContext, ParentElement, Point, Render, Size, StatefulInteractive, Styled, Subscription,
-    Task, View, ViewContext, VisualContext, WeakView, WindowBounds, WindowContext, WindowHandle,
-    WindowOptions,
+    AsyncWindowContext, Bounds, Component, Div, Entity, EntityId, EventEmitter, FocusHandle,
+    GlobalPixels, Model, ModelContext, ParentElement, Point, Render, Size, StatefulInteractive,
+    Styled, Subscription, Task, View, ViewContext, VisualContext, WeakView, WindowBounds,
+    WindowContext, WindowHandle, WindowOptions,
 };
 use item::{FollowableItem, FollowableItemHandle, Item, ItemHandle, ItemSettings, ProjectItem};
+use itertools::Itertools;
 use language2::LanguageRegistry;
 use lazy_static::lazy_static;
 use node_runtime::NodeRuntime;
 use notifications::{simple_message_notification::MessageNotification, NotificationHandle};
 pub use pane::*;
 pub use pane_group::*;
-use persistence::{
-    model::{ItemId, WorkspaceLocation},
-    DB,
-};
+use persistence::{model::WorkspaceLocation, DB};
 use postage::stream::Stream;
 use project2::{Project, ProjectEntryId, ProjectPath, Worktree};
 use serde::Deserialize;
 use settings2::Settings;
 use status_bar::StatusBar;
+pub use status_bar::StatusItemView;
 use std::{
     any::TypeId,
     borrow::Cow,
@@ -174,42 +177,42 @@ pub struct Toast {
     on_click: Option<(Cow<'static, str>, Arc<dyn Fn(&mut WindowContext)>)>,
 }
 
-// impl Toast {
-//     pub fn new<I: Into<Cow<'static, str>>>(id: usize, msg: I) -> Self {
-//         Toast {
-//             id,
-//             msg: msg.into(),
-//             on_click: None,
-//         }
-//     }
+impl Toast {
+    pub fn new<I: Into<Cow<'static, str>>>(id: usize, msg: I) -> Self {
+        Toast {
+            id,
+            msg: msg.into(),
+            on_click: None,
+        }
+    }
 
-//     pub fn on_click<F, M>(mut self, message: M, on_click: F) -> Self
-//     where
-//         M: Into<Cow<'static, str>>,
-//         F: Fn(&mut WindowContext) + 'static,
-//     {
-//         self.on_click = Some((message.into(), Arc::new(on_click)));
-//         self
-//     }
-// }
+    pub fn on_click<F, M>(mut self, message: M, on_click: F) -> Self
+    where
+        M: Into<Cow<'static, str>>,
+        F: Fn(&mut WindowContext) + 'static,
+    {
+        self.on_click = Some((message.into(), Arc::new(on_click)));
+        self
+    }
+}
 
-// impl PartialEq for Toast {
-//     fn eq(&self, other: &Self) -> bool {
-//         self.id == other.id
-//             && self.msg == other.msg
-//             && self.on_click.is_some() == other.on_click.is_some()
-//     }
-// }
+impl PartialEq for Toast {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+            && self.msg == other.msg
+            && self.on_click.is_some() == other.on_click.is_some()
+    }
+}
 
-// impl Clone for Toast {
-//     fn clone(&self) -> Self {
-//         Toast {
-//             id: self.id,
-//             msg: self.msg.to_owned(),
-//             on_click: self.on_click.clone(),
-//         }
-//     }
-// }
+impl Clone for Toast {
+    fn clone(&self) -> Self {
+        Toast {
+            id: self.id,
+            msg: self.msg.to_owned(),
+            on_click: self.on_click.clone(),
+        }
+    }
+}
 
 // #[derive(Clone, Deserialize, PartialEq)]
 // pub struct OpenTerminal {
@@ -413,18 +416,17 @@ type ItemDeserializers = HashMap<
     ) -> Task<Result<Box<dyn ItemHandle>>>,
 >;
 pub fn register_deserializable_item<I: Item>(cx: &mut AppContext) {
-    cx.update_global(|deserializers: &mut ItemDeserializers, _cx| {
-        if let Some(serialized_item_kind) = I::serialized_item_kind() {
-            deserializers.insert(
-                Arc::from(serialized_item_kind),
-                |project, workspace, workspace_id, item_id, cx| {
-                    let task = I::deserialize(project, workspace, workspace_id, item_id, cx);
-                    cx.foreground_executor()
-                        .spawn(async { Ok(Box::new(task.await?) as Box<_>) })
-                },
-            );
-        }
-    });
+    if let Some(serialized_item_kind) = I::serialized_item_kind() {
+        let deserializers = cx.default_global::<ItemDeserializers>();
+        deserializers.insert(
+            Arc::from(serialized_item_kind),
+            |project, workspace, workspace_id, item_id, cx| {
+                let task = I::deserialize(project, workspace, workspace_id, item_id, cx);
+                cx.foreground_executor()
+                    .spawn(async { Ok(Box::new(task.await?) as Box<_>) })
+            },
+        );
+    }
 }
 
 pub struct AppState {
@@ -460,7 +462,7 @@ struct Follower {
 impl AppState {
     #[cfg(any(test, feature = "test-support"))]
     pub fn test(cx: &mut AppContext) -> Arc<Self> {
-        use gpui2::Context;
+        use gpui::Context;
         use node_runtime::FakeNodeRuntime;
         use settings2::SettingsStore;
 
@@ -476,8 +478,7 @@ impl AppState {
         let user_store = cx.build_model(|cx| UserStore::new(client.clone(), http_client, cx));
         let workspace_store = cx.build_model(|cx| WorkspaceStore::new(client.clone(), cx));
 
-        // todo!()
-        // theme::init((), cx);
+        theme2::init(cx);
         client2::init(&client, cx);
         crate::init_settings(cx);
 
@@ -543,13 +544,15 @@ impl DelayedDebouncedEditAction {
 pub enum Event {
     PaneAdded(View<Pane>),
     ContactRequestedJoin(u64),
+    WorkspaceCreated(WeakView<Workspace>),
 }
 
 pub struct Workspace {
     weak_self: WeakView<Self>,
+    focus_handle: FocusHandle,
     //     modal: Option<ActiveModal>,
     zoomed: Option<AnyWeakView>,
-    //     zoomed_position: Option<DockPosition>,
+    zoomed_position: Option<DockPosition>,
     center: PaneGroup,
     left_dock: View<Dock>,
     bottom_dock: View<Dock>,
@@ -626,7 +629,7 @@ impl Workspace {
                 }
 
                 project2::Event::Closed => {
-                    // cx.remove_window();
+                    cx.remove_window();
                 }
 
                 project2::Event::DeletedEntry(entry_id) => {
@@ -696,8 +699,7 @@ impl Workspace {
             Ok(())
         });
 
-        // todo!("replace with a different mechanism")
-        // cx.emit_global(WorkspaceCreated(weak_handle.clone()));
+        cx.emit(Event::WorkspaceCreated(weak_handle.clone()));
 
         let left_dock = cx.build_view(|_| Dock::new(DockPosition::Left));
         let bottom_dock = cx.build_view(|_| Dock::new(DockPosition::Bottom));
@@ -766,9 +768,10 @@ impl Workspace {
         cx.defer(|this, cx| this.update_window_title(cx));
         Workspace {
             weak_self: weak_handle.clone(),
+            focus_handle: cx.focus_handle(),
             // modal: None,
             zoomed: None,
-            // zoomed_position: None,
+            zoomed_position: None,
             center: PaneGroup::new(center_pane.clone()),
             panes: vec![center_pane.clone()],
             panes_by_item: Default::default(),
@@ -1043,9 +1046,9 @@ impl Workspace {
     //         dock.update(cx, |dock, cx| dock.add_panel(panel, cx));
     //     }
 
-    //     pub fn status_bar(&self) -> &View<StatusBar> {
-    //         &self.status_bar
-    //     }
+    pub fn status_bar(&self) -> &View<StatusBar> {
+        &self.status_bar
+    }
 
     pub fn app_state(&self) -> &Arc<AppState> {
         &self.app_state
@@ -1059,183 +1062,185 @@ impl Workspace {
         &self.project
     }
 
-    //     pub fn recent_navigation_history(
-    //         &self,
-    //         limit: Option<usize>,
-    //         cx: &AppContext,
-    //     ) -> Vec<(ProjectPath, Option<PathBuf>)> {
-    //         let mut abs_paths_opened: HashMap<PathBuf, HashSet<ProjectPath>> = HashMap::default();
-    //         let mut history: HashMap<ProjectPath, (Option<PathBuf>, usize)> = HashMap::default();
-    //         for pane in &self.panes {
-    //             let pane = pane.read(cx);
-    //             pane.nav_history()
-    //                 .for_each_entry(cx, |entry, (project_path, fs_path)| {
-    //                     if let Some(fs_path) = &fs_path {
-    //                         abs_paths_opened
-    //                             .entry(fs_path.clone())
-    //                             .or_default()
-    //                             .insert(project_path.clone());
-    //                     }
-    //                     let timestamp = entry.timestamp;
-    //                     match history.entry(project_path) {
-    //                         hash_map::Entry::Occupied(mut entry) => {
-    //                             let (_, old_timestamp) = entry.get();
-    //                             if &timestamp > old_timestamp {
-    //                                 entry.insert((fs_path, timestamp));
-    //                             }
-    //                         }
-    //                         hash_map::Entry::Vacant(entry) => {
-    //                             entry.insert((fs_path, timestamp));
-    //                         }
-    //                     }
-    //                 });
-    //         }
+    pub fn recent_navigation_history(
+        &self,
+        limit: Option<usize>,
+        cx: &AppContext,
+    ) -> Vec<(ProjectPath, Option<PathBuf>)> {
+        let mut abs_paths_opened: HashMap<PathBuf, HashSet<ProjectPath>> = HashMap::default();
+        let mut history: HashMap<ProjectPath, (Option<PathBuf>, usize)> = HashMap::default();
+        for pane in &self.panes {
+            let pane = pane.read(cx);
+            pane.nav_history()
+                .for_each_entry(cx, |entry, (project_path, fs_path)| {
+                    if let Some(fs_path) = &fs_path {
+                        abs_paths_opened
+                            .entry(fs_path.clone())
+                            .or_default()
+                            .insert(project_path.clone());
+                    }
+                    let timestamp = entry.timestamp;
+                    match history.entry(project_path) {
+                        hash_map::Entry::Occupied(mut entry) => {
+                            let (_, old_timestamp) = entry.get();
+                            if &timestamp > old_timestamp {
+                                entry.insert((fs_path, timestamp));
+                            }
+                        }
+                        hash_map::Entry::Vacant(entry) => {
+                            entry.insert((fs_path, timestamp));
+                        }
+                    }
+                });
+        }
 
-    //         history
-    //             .into_iter()
-    //             .sorted_by_key(|(_, (_, timestamp))| *timestamp)
-    //             .map(|(project_path, (fs_path, _))| (project_path, fs_path))
-    //             .rev()
-    //             .filter(|(history_path, abs_path)| {
-    //                 let latest_project_path_opened = abs_path
-    //                     .as_ref()
-    //                     .and_then(|abs_path| abs_paths_opened.get(abs_path))
-    //                     .and_then(|project_paths| {
-    //                         project_paths
-    //                             .iter()
-    //                             .max_by(|b1, b2| b1.worktree_id.cmp(&b2.worktree_id))
-    //                     });
+        history
+            .into_iter()
+            .sorted_by_key(|(_, (_, timestamp))| *timestamp)
+            .map(|(project_path, (fs_path, _))| (project_path, fs_path))
+            .rev()
+            .filter(|(history_path, abs_path)| {
+                let latest_project_path_opened = abs_path
+                    .as_ref()
+                    .and_then(|abs_path| abs_paths_opened.get(abs_path))
+                    .and_then(|project_paths| {
+                        project_paths
+                            .iter()
+                            .max_by(|b1, b2| b1.worktree_id.cmp(&b2.worktree_id))
+                    });
 
-    //                 match latest_project_path_opened {
-    //                     Some(latest_project_path_opened) => latest_project_path_opened == history_path,
-    //                     None => true,
-    //                 }
-    //             })
-    //             .take(limit.unwrap_or(usize::MAX))
-    //             .collect()
-    //     }
+                match latest_project_path_opened {
+                    Some(latest_project_path_opened) => latest_project_path_opened == history_path,
+                    None => true,
+                }
+            })
+            .take(limit.unwrap_or(usize::MAX))
+            .collect()
+    }
 
-    //     fn navigate_history(
-    //         &mut self,
-    //         pane: WeakView<Pane>,
-    //         mode: NavigationMode,
-    //         cx: &mut ViewContext<Workspace>,
-    //     ) -> Task<Result<()>> {
-    //         let to_load = if let Some(pane) = pane.upgrade(cx) {
-    //             cx.focus(&pane);
+    fn navigate_history(
+        &mut self,
+        pane: WeakView<Pane>,
+        mode: NavigationMode,
+        cx: &mut ViewContext<Workspace>,
+    ) -> Task<Result<()>> {
+        let to_load = if let Some(pane) = pane.upgrade() {
+            // todo!("focus")
+            // cx.focus(&pane);
 
-    //             pane.update(cx, |pane, cx| {
-    //                 loop {
-    //                     // Retrieve the weak item handle from the history.
-    //                     let entry = pane.nav_history_mut().pop(mode, cx)?;
+            pane.update(cx, |pane, cx| {
+                loop {
+                    // Retrieve the weak item handle from the history.
+                    let entry = pane.nav_history_mut().pop(mode, cx)?;
 
-    //                     // If the item is still present in this pane, then activate it.
-    //                     if let Some(index) = entry
-    //                         .item
-    //                         .upgrade(cx)
-    //                         .and_then(|v| pane.index_for_item(v.as_ref()))
-    //                     {
-    //                         let prev_active_item_index = pane.active_item_index();
-    //                         pane.nav_history_mut().set_mode(mode);
-    //                         pane.activate_item(index, true, true, cx);
-    //                         pane.nav_history_mut().set_mode(NavigationMode::Normal);
+                    // If the item is still present in this pane, then activate it.
+                    if let Some(index) = entry
+                        .item
+                        .upgrade()
+                        .and_then(|v| pane.index_for_item(v.as_ref()))
+                    {
+                        let prev_active_item_index = pane.active_item_index();
+                        pane.nav_history_mut().set_mode(mode);
+                        pane.activate_item(index, true, true, cx);
+                        pane.nav_history_mut().set_mode(NavigationMode::Normal);
 
-    //                         let mut navigated = prev_active_item_index != pane.active_item_index();
-    //                         if let Some(data) = entry.data {
-    //                             navigated |= pane.active_item()?.navigate(data, cx);
-    //                         }
+                        let mut navigated = prev_active_item_index != pane.active_item_index();
+                        if let Some(data) = entry.data {
+                            navigated |= pane.active_item()?.navigate(data, cx);
+                        }
 
-    //                         if navigated {
-    //                             break None;
-    //                         }
-    //                     }
-    //                     // If the item is no longer present in this pane, then retrieve its
-    //                     // project path in order to reopen it.
-    //                     else {
-    //                         break pane
-    //                             .nav_history()
-    //                             .path_for_item(entry.item.id())
-    //                             .map(|(project_path, _)| (project_path, entry));
-    //                     }
-    //                 }
-    //             })
-    //         } else {
-    //             None
-    //         };
+                        if navigated {
+                            break None;
+                        }
+                    }
+                    // If the item is no longer present in this pane, then retrieve its
+                    // project path in order to reopen it.
+                    else {
+                        break pane
+                            .nav_history()
+                            .path_for_item(entry.item.id())
+                            .map(|(project_path, _)| (project_path, entry));
+                    }
+                }
+            })
+        } else {
+            None
+        };
 
-    //         if let Some((project_path, entry)) = to_load {
-    //             // If the item was no longer present, then load it again from its previous path.
-    //             let task = self.load_path(project_path, cx);
-    //             cx.spawn(|workspace, mut cx| async move {
-    //                 let task = task.await;
-    //                 let mut navigated = false;
-    //                 if let Some((project_entry_id, build_item)) = task.log_err() {
-    //                     let prev_active_item_id = pane.update(&mut cx, |pane, _| {
-    //                         pane.nav_history_mut().set_mode(mode);
-    //                         pane.active_item().map(|p| p.id())
-    //                     })?;
+        if let Some((project_path, entry)) = to_load {
+            // If the item was no longer present, then load it again from its previous path.
+            let task = self.load_path(project_path, cx);
+            cx.spawn(|workspace, mut cx| async move {
+                let task = task.await;
+                let mut navigated = false;
+                if let Some((project_entry_id, build_item)) = task.log_err() {
+                    let prev_active_item_id = pane.update(&mut cx, |pane, _| {
+                        pane.nav_history_mut().set_mode(mode);
+                        pane.active_item().map(|p| p.id())
+                    })?;
 
-    //                     pane.update(&mut cx, |pane, cx| {
-    //                         let item = pane.open_item(project_entry_id, true, cx, build_item);
-    //                         navigated |= Some(item.id()) != prev_active_item_id;
-    //                         pane.nav_history_mut().set_mode(NavigationMode::Normal);
-    //                         if let Some(data) = entry.data {
-    //                             navigated |= item.navigate(data, cx);
-    //                         }
-    //                     })?;
-    //                 }
+                    pane.update(&mut cx, |pane, cx| {
+                        let item = pane.open_item(project_entry_id, true, cx, build_item);
+                        navigated |= Some(item.id()) != prev_active_item_id;
+                        pane.nav_history_mut().set_mode(NavigationMode::Normal);
+                        if let Some(data) = entry.data {
+                            navigated |= item.navigate(data, cx);
+                        }
+                    })?;
+                }
 
-    //                 if !navigated {
-    //                     workspace
-    //                         .update(&mut cx, |workspace, cx| {
-    //                             Self::navigate_history(workspace, pane, mode, cx)
-    //                         })?
-    //                         .await?;
-    //                 }
+                if !navigated {
+                    workspace
+                        .update(&mut cx, |workspace, cx| {
+                            Self::navigate_history(workspace, pane, mode, cx)
+                        })?
+                        .await?;
+                }
 
-    //                 Ok(())
-    //             })
-    //         } else {
-    //             Task::ready(Ok(()))
-    //         }
-    //     }
+                Ok(())
+            })
+        } else {
+            Task::ready(Ok(()))
+        }
+    }
 
-    //     pub fn go_back(
-    //         &mut self,
-    //         pane: WeakView<Pane>,
-    //         cx: &mut ViewContext<Workspace>,
-    //     ) -> Task<Result<()>> {
-    //         self.navigate_history(pane, NavigationMode::GoingBack, cx)
-    //     }
+    pub fn go_back(
+        &mut self,
+        pane: WeakView<Pane>,
+        cx: &mut ViewContext<Workspace>,
+    ) -> Task<Result<()>> {
+        self.navigate_history(pane, NavigationMode::GoingBack, cx)
+    }
 
-    //     pub fn go_forward(
-    //         &mut self,
-    //         pane: WeakView<Pane>,
-    //         cx: &mut ViewContext<Workspace>,
-    //     ) -> Task<Result<()>> {
-    //         self.navigate_history(pane, NavigationMode::GoingForward, cx)
-    //     }
+    pub fn go_forward(
+        &mut self,
+        pane: WeakView<Pane>,
+        cx: &mut ViewContext<Workspace>,
+    ) -> Task<Result<()>> {
+        self.navigate_history(pane, NavigationMode::GoingForward, cx)
+    }
 
-    //     pub fn reopen_closed_item(&mut self, cx: &mut ViewContext<Workspace>) -> Task<Result<()>> {
-    //         self.navigate_history(
-    //             self.active_pane().downgrade(),
-    //             NavigationMode::ReopeningClosedItem,
-    //             cx,
-    //         )
-    //     }
+    pub fn reopen_closed_item(&mut self, cx: &mut ViewContext<Workspace>) -> Task<Result<()>> {
+        self.navigate_history(
+            self.active_pane().downgrade(),
+            NavigationMode::ReopeningClosedItem,
+            cx,
+        )
+    }
 
-    //     pub fn client(&self) -> &Client {
-    //         &self.app_state.client
-    //     }
+    pub fn client(&self) -> &Client {
+        &self.app_state.client
+    }
 
-    //     pub fn set_titlebar_item(&mut self, item: AnyViewHandle, cx: &mut ViewContext<Self>) {
-    //         self.titlebar_item = Some(item);
-    //         cx.notify();
-    //     }
+    // todo!()
+    // pub fn set_titlebar_item(&mut self, item: AnyViewHandle, cx: &mut ViewContext<Self>) {
+    //     self.titlebar_item = Some(item);
+    //     cx.notify();
+    // }
 
-    //     pub fn titlebar_item(&self) -> Option<AnyViewHandle> {
-    //         self.titlebar_item.clone()
-    //     }
+    // pub fn titlebar_item(&self) -> Option<AnyViewHandle> {
+    //     self.titlebar_item.clone()
+    // }
 
     //     /// Call the given callback with a workspace whose project is local.
     //     ///
@@ -1261,32 +1266,29 @@ impl Workspace {
     //         }
     //     }
 
-    //     pub fn worktrees<'a>(
-    //         &self,
-    //         cx: &'a AppContext,
-    //     ) -> impl 'a + Iterator<Item = ModelHandle<Worktree>> {
-    //         self.project.read(cx).worktrees(cx)
-    //     }
+    pub fn worktrees<'a>(&self, cx: &'a AppContext) -> impl 'a + Iterator<Item = Model<Worktree>> {
+        self.project.read(cx).worktrees()
+    }
 
-    //     pub fn visible_worktrees<'a>(
-    //         &self,
-    //         cx: &'a AppContext,
-    //     ) -> impl 'a + Iterator<Item = ModelHandle<Worktree>> {
-    //         self.project.read(cx).visible_worktrees(cx)
-    //     }
+    pub fn visible_worktrees<'a>(
+        &self,
+        cx: &'a AppContext,
+    ) -> impl 'a + Iterator<Item = Model<Worktree>> {
+        self.project.read(cx).visible_worktrees(cx)
+    }
 
-    //     pub fn worktree_scans_complete(&self, cx: &AppContext) -> impl Future<Output = ()> + 'static {
-    //         let futures = self
-    //             .worktrees(cx)
-    //             .filter_map(|worktree| worktree.read(cx).as_local())
-    //             .map(|worktree| worktree.scan_complete())
-    //             .collect::<Vec<_>>();
-    //         async move {
-    //             for future in futures {
-    //                 future.await;
-    //             }
-    //         }
-    //     }
+    pub fn worktree_scans_complete(&self, cx: &AppContext) -> impl Future<Output = ()> + 'static {
+        let futures = self
+            .worktrees(cx)
+            .filter_map(|worktree| worktree.read(cx).as_local())
+            .map(|worktree| worktree.scan_complete())
+            .collect::<Vec<_>>();
+        async move {
+            for future in futures {
+                future.await;
+            }
+        }
+    }
 
     //     pub fn close_global(_: &CloseWindow, cx: &mut AppContext) {
     //         cx.spawn(|mut cx| async move {
@@ -1699,31 +1701,31 @@ impl Workspace {
         self.active_pane().read(cx).active_item()
     }
 
-    //     fn active_project_path(&self, cx: &ViewContext<Self>) -> Option<ProjectPath> {
-    //         self.active_item(cx).and_then(|item| item.project_path(cx))
-    //     }
+    fn active_project_path(&self, cx: &ViewContext<Self>) -> Option<ProjectPath> {
+        self.active_item(cx).and_then(|item| item.project_path(cx))
+    }
 
-    //     pub fn save_active_item(
-    //         &mut self,
-    //         save_intent: SaveIntent,
-    //         cx: &mut ViewContext<Self>,
-    //     ) -> Task<Result<()>> {
-    //         let project = self.project.clone();
-    //         let pane = self.active_pane();
-    //         let item_ix = pane.read(cx).active_item_index();
-    //         let item = pane.read(cx).active_item();
-    //         let pane = pane.downgrade();
+    pub fn save_active_item(
+        &mut self,
+        save_intent: SaveIntent,
+        cx: &mut ViewContext<Self>,
+    ) -> Task<Result<()>> {
+        let project = self.project.clone();
+        let pane = self.active_pane();
+        let item_ix = pane.read(cx).active_item_index();
+        let item = pane.read(cx).active_item();
+        let pane = pane.downgrade();
 
-    //         cx.spawn(|_, mut cx| async move {
-    //             if let Some(item) = item {
-    //                 Pane::save_item(project, &pane, item_ix, item.as_ref(), save_intent, &mut cx)
-    //                     .await
-    //                     .map(|_| ())
-    //             } else {
-    //                 Ok(())
-    //             }
-    //         })
-    //     }
+        cx.spawn(|_, mut cx| async move {
+            if let Some(item) = item {
+                Pane::save_item(project, &pane, item_ix, item.as_ref(), save_intent, &mut cx)
+                    .await
+                    .map(|_| ())
+            } else {
+                Ok(())
+            }
+        })
+    }
 
     //     pub fn close_inactive_items_and_panes(
     //         &mut self,
@@ -1825,19 +1827,20 @@ impl Workspace {
     //         self.serialize_workspace(cx);
     //     }
 
-    //     pub fn close_all_docks(&mut self, cx: &mut ViewContext<Self>) {
-    //         let docks = [&self.left_dock, &self.bottom_dock, &self.right_dock];
+    pub fn close_all_docks(&mut self, cx: &mut ViewContext<Self>) {
+        let docks = [&self.left_dock, &self.bottom_dock, &self.right_dock];
 
-    //         for dock in docks {
-    //             dock.update(cx, |dock, cx| {
-    //                 dock.set_open(false, cx);
-    //             });
-    //         }
+        for dock in docks {
+            dock.update(cx, |dock, cx| {
+                dock.set_open(false, cx);
+            });
+        }
 
-    //         cx.focus_self();
-    //         cx.notify();
-    //         self.serialize_workspace(cx);
-    //     }
+        // todo!("focus")
+        // cx.focus_self();
+        cx.notify();
+        self.serialize_workspace(cx);
+    }
 
     //     /// Transfer focus to the panel of the given type.
     //     pub fn focus_panel<T: Panel>(&mut self, cx: &mut ViewContext<Self>) -> Option<View<T>> {
@@ -1904,80 +1907,79 @@ impl Workspace {
     //         None
     //     }
 
-    //     fn zoom_out(&mut self, cx: &mut ViewContext<Self>) {
-    //         for pane in &self.panes {
-    //             pane.update(cx, |pane, cx| pane.set_zoomed(false, cx));
-    //         }
+    fn zoom_out(&mut self, cx: &mut ViewContext<Self>) {
+        for pane in &self.panes {
+            pane.update(cx, |pane, cx| pane.set_zoomed(false, cx));
+        }
 
-    //         self.left_dock.update(cx, |dock, cx| dock.zoom_out(cx));
-    //         self.bottom_dock.update(cx, |dock, cx| dock.zoom_out(cx));
-    //         self.right_dock.update(cx, |dock, cx| dock.zoom_out(cx));
-    //         self.zoomed = None;
-    //         self.zoomed_position = None;
+        self.left_dock.update(cx, |dock, cx| dock.zoom_out(cx));
+        self.bottom_dock.update(cx, |dock, cx| dock.zoom_out(cx));
+        self.right_dock.update(cx, |dock, cx| dock.zoom_out(cx));
+        self.zoomed = None;
+        self.zoomed_position = None;
 
-    //         cx.notify();
-    //     }
+        cx.notify();
+    }
 
     //     #[cfg(any(test, feature = "test-support"))]
     //     pub fn zoomed_view(&self, cx: &AppContext) -> Option<AnyViewHandle> {
     //         self.zoomed.and_then(|view| view.upgrade(cx))
     //     }
 
-    //     fn dismiss_zoomed_items_to_reveal(
-    //         &mut self,
-    //         dock_to_reveal: Option<DockPosition>,
-    //         cx: &mut ViewContext<Self>,
-    //     ) {
-    //         // If a center pane is zoomed, unzoom it.
-    //         for pane in &self.panes {
-    //             if pane != &self.active_pane || dock_to_reveal.is_some() {
-    //                 pane.update(cx, |pane, cx| pane.set_zoomed(false, cx));
-    //             }
-    //         }
+    fn dismiss_zoomed_items_to_reveal(
+        &mut self,
+        dock_to_reveal: Option<DockPosition>,
+        cx: &mut ViewContext<Self>,
+    ) {
+        // If a center pane is zoomed, unzoom it.
+        for pane in &self.panes {
+            if pane != &self.active_pane || dock_to_reveal.is_some() {
+                pane.update(cx, |pane, cx| pane.set_zoomed(false, cx));
+            }
+        }
 
-    //         // If another dock is zoomed, hide it.
-    //         let mut focus_center = false;
-    //         for dock in [&self.left_dock, &self.right_dock, &self.bottom_dock] {
-    //             dock.update(cx, |dock, cx| {
-    //                 if Some(dock.position()) != dock_to_reveal {
-    //                     if let Some(panel) = dock.active_panel() {
-    //                         if panel.is_zoomed(cx) {
-    //                             focus_center |= panel.has_focus(cx);
-    //                             dock.set_open(false, cx);
-    //                         }
-    //                     }
-    //                 }
-    //             });
-    //         }
+        // If another dock is zoomed, hide it.
+        let mut focus_center = false;
+        for dock in [&self.left_dock, &self.right_dock, &self.bottom_dock] {
+            dock.update(cx, |dock, cx| {
+                if Some(dock.position()) != dock_to_reveal {
+                    if let Some(panel) = dock.active_panel() {
+                        if panel.is_zoomed(cx) {
+                            focus_center |= panel.has_focus(cx);
+                            dock.set_open(false, cx);
+                        }
+                    }
+                }
+            });
+        }
 
-    //         if focus_center {
-    //             cx.focus_self();
-    //         }
+        if focus_center {
+            cx.focus(&self.focus_handle);
+        }
 
-    //         if self.zoomed_position != dock_to_reveal {
-    //             self.zoomed = None;
-    //             self.zoomed_position = None;
-    //         }
+        if self.zoomed_position != dock_to_reveal {
+            self.zoomed = None;
+            self.zoomed_position = None;
+        }
 
-    //         cx.notify();
-    //     }
+        cx.notify();
+    }
 
-    fn add_pane(&mut self, _cx: &mut ViewContext<Self>) -> View<Pane> {
-        todo!()
-        // let pane = cx.build_view(|cx| {
-        //     Pane::new(
-        //         self.weak_handle(),
-        //         self.project.clone(),
-        //         self.pane_history_timestamp.clone(),
-        //         cx,
-        //     )
-        // });
-        // cx.subscribe(&pane, Self::handle_pane_event).detach();
-        // self.panes.push(pane.clone());
+    fn add_pane(&mut self, cx: &mut ViewContext<Self>) -> View<Pane> {
+        let pane = cx.build_view(|cx| {
+            Pane::new(
+                self.weak_handle(),
+                self.project.clone(),
+                self.pane_history_timestamp.clone(),
+                cx,
+            )
+        });
+        cx.subscribe(&pane, Self::handle_pane_event).detach();
+        self.panes.push(pane.clone());
         // todo!()
         // cx.focus(&pane);
-        // cx.emit(Event::PaneAdded(pane.clone()));
-        // pane
+        cx.emit(Event::PaneAdded(pane.clone()));
+        pane
     }
 
     //     pub fn add_item_to_center(
@@ -1997,22 +1999,22 @@ impl Workspace {
     //         }
     //     }
 
-    //     pub fn add_item(&mut self, item: Box<dyn ItemHandle>, cx: &mut ViewContext<Self>) {
-    //         self.active_pane
-    //             .update(cx, |pane, cx| pane.add_item(item, true, true, None, cx));
-    //     }
+    pub fn add_item(&mut self, item: Box<dyn ItemHandle>, cx: &mut ViewContext<Self>) {
+        self.active_pane
+            .update(cx, |pane, cx| pane.add_item(item, true, true, None, cx));
+    }
 
-    //     pub fn split_item(
-    //         &mut self,
-    //         split_direction: SplitDirection,
-    //         item: Box<dyn ItemHandle>,
-    //         cx: &mut ViewContext<Self>,
-    //     ) {
-    //         let new_pane = self.split_pane(self.active_pane.clone(), split_direction, cx);
-    //         new_pane.update(cx, move |new_pane, cx| {
-    //             new_pane.add_item(item, true, true, None, cx)
-    //         })
-    //     }
+    pub fn split_item(
+        &mut self,
+        split_direction: SplitDirection,
+        item: Box<dyn ItemHandle>,
+        cx: &mut ViewContext<Self>,
+    ) {
+        let new_pane = self.split_pane(self.active_pane.clone(), split_direction, cx);
+        new_pane.update(cx, move |new_pane, cx| {
+            new_pane.add_item(item, true, true, None, cx)
+        })
+    }
 
     //     pub fn open_abs_path(
     //         &mut self,
@@ -2142,53 +2144,55 @@ impl Workspace {
         })
     }
 
-    //     pub fn open_project_item<T>(
-    //         &mut self,
-    //         project_item: ModelHandle<T::Item>,
-    //         cx: &mut ViewContext<Self>,
-    //     ) -> View<T>
-    //     where
-    //         T: ProjectItem,
-    //     {
-    //         use project::Item as _;
+    pub fn open_project_item<T>(
+        &mut self,
+        project_item: Model<T::Item>,
+        cx: &mut ViewContext<Self>,
+    ) -> View<T>
+    where
+        T: ProjectItem,
+    {
+        use project2::Item as _;
 
-    //         let entry_id = project_item.read(cx).entry_id(cx);
-    //         if let Some(item) = entry_id
-    //             .and_then(|entry_id| self.active_pane().read(cx).item_for_entry(entry_id, cx))
-    //             .and_then(|item| item.downcast())
-    //         {
-    //             self.activate_item(&item, cx);
-    //             return item;
-    //         }
+        let entry_id = project_item.read(cx).entry_id(cx);
+        if let Some(item) = entry_id
+            .and_then(|entry_id| self.active_pane().read(cx).item_for_entry(entry_id, cx))
+            .and_then(|item| item.downcast())
+        {
+            self.activate_item(&item, cx);
+            return item;
+        }
 
-    //         let item = cx.build_view(|cx| T::for_project_item(self.project().clone(), project_item, cx));
-    //         self.add_item(Box::new(item.clone()), cx);
-    //         item
-    //     }
+        let item =
+            cx.build_view(|cx| T::for_project_item(self.project().clone(), project_item, cx));
+        self.add_item(Box::new(item.clone()), cx);
+        item
+    }
 
-    //     pub fn split_project_item<T>(
-    //         &mut self,
-    //         project_item: ModelHandle<T::Item>,
-    //         cx: &mut ViewContext<Self>,
-    //     ) -> View<T>
-    //     where
-    //         T: ProjectItem,
-    //     {
-    //         use project::Item as _;
+    pub fn split_project_item<T>(
+        &mut self,
+        project_item: Model<T::Item>,
+        cx: &mut ViewContext<Self>,
+    ) -> View<T>
+    where
+        T: ProjectItem,
+    {
+        use project2::Item as _;
 
-    //         let entry_id = project_item.read(cx).entry_id(cx);
-    //         if let Some(item) = entry_id
-    //             .and_then(|entry_id| self.active_pane().read(cx).item_for_entry(entry_id, cx))
-    //             .and_then(|item| item.downcast())
-    //         {
-    //             self.activate_item(&item, cx);
-    //             return item;
-    //         }
+        let entry_id = project_item.read(cx).entry_id(cx);
+        if let Some(item) = entry_id
+            .and_then(|entry_id| self.active_pane().read(cx).item_for_entry(entry_id, cx))
+            .and_then(|item| item.downcast())
+        {
+            self.activate_item(&item, cx);
+            return item;
+        }
 
-    //         let item = cx.build_view(|cx| T::for_project_item(self.project().clone(), project_item, cx));
-    //         self.split_item(SplitDirection::Right, Box::new(item.clone()), cx);
-    //         item
-    //     }
+        let item =
+            cx.build_view(|cx| T::for_project_item(self.project().clone(), project_item, cx));
+        self.split_item(SplitDirection::Right, Box::new(item.clone()), cx);
+        item
+    }
 
     //     pub fn open_shared_screen(&mut self, peer_id: PeerId, cx: &mut ViewContext<Self>) {
     //         if let Some(shared_screen) = self.shared_screen_for_peer(peer_id, &self.active_pane, cx) {
@@ -2198,19 +2202,19 @@ impl Workspace {
     //         }
     //     }
 
-    //     pub fn activate_item(&mut self, item: &dyn ItemHandle, cx: &mut ViewContext<Self>) -> bool {
-    //         let result = self.panes.iter().find_map(|pane| {
-    //             pane.read(cx)
-    //                 .index_for_item(item)
-    //                 .map(|ix| (pane.clone(), ix))
-    //         });
-    //         if let Some((pane, ix)) = result {
-    //             pane.update(cx, |pane, cx| pane.activate_item(ix, true, true, cx));
-    //             true
-    //         } else {
-    //             false
-    //         }
-    //     }
+    pub fn activate_item(&mut self, item: &dyn ItemHandle, cx: &mut ViewContext<Self>) -> bool {
+        let result = self.panes.iter().find_map(|pane| {
+            pane.read(cx)
+                .index_for_item(item)
+                .map(|ix| (pane.clone(), ix))
+        });
+        if let Some((pane, ix)) = result {
+            pane.update(cx, |pane, cx| pane.activate_item(ix, true, true, cx));
+            true
+        } else {
+            false
+        }
+    }
 
     //     fn activate_pane_at_index(&mut self, action: &ActivatePane, cx: &mut ViewContext<Self>) {
     //         let panes = self.center.panes();
@@ -2288,214 +2292,213 @@ impl Workspace {
     //         self.center.pane_at_pixel_position(target)
     //     }
 
-    //     fn handle_pane_focused(&mut self, pane: View<Pane>, cx: &mut ViewContext<Self>) {
-    //         if self.active_pane != pane {
-    //             self.active_pane = pane.clone();
-    //             self.status_bar.update(cx, |status_bar, cx| {
-    //                 status_bar.set_active_pane(&self.active_pane, cx);
-    //             });
-    //             self.active_item_path_changed(cx);
-    //             self.last_active_center_pane = Some(pane.downgrade());
-    //         }
+    fn handle_pane_focused(&mut self, pane: View<Pane>, cx: &mut ViewContext<Self>) {
+        if self.active_pane != pane {
+            self.active_pane = pane.clone();
+            self.status_bar.update(cx, |status_bar, cx| {
+                status_bar.set_active_pane(&self.active_pane, cx);
+            });
+            self.active_item_path_changed(cx);
+            self.last_active_center_pane = Some(pane.downgrade());
+        }
 
-    //         self.dismiss_zoomed_items_to_reveal(None, cx);
-    //         if pane.read(cx).is_zoomed() {
-    //             self.zoomed = Some(pane.downgrade().into_any());
-    //         } else {
-    //             self.zoomed = None;
-    //         }
-    //         self.zoomed_position = None;
-    //         self.update_active_view_for_followers(cx);
+        self.dismiss_zoomed_items_to_reveal(None, cx);
+        if pane.read(cx).is_zoomed() {
+            self.zoomed = Some(pane.downgrade().into());
+        } else {
+            self.zoomed = None;
+        }
+        self.zoomed_position = None;
+        self.update_active_view_for_followers(cx);
 
-    //         cx.notify();
-    //     }
+        cx.notify();
+    }
 
     fn handle_pane_event(
         &mut self,
-        _pane: View<Pane>,
-        _event: &pane::Event,
-        _cx: &mut ViewContext<Self>,
+        pane: View<Pane>,
+        event: &pane::Event,
+        cx: &mut ViewContext<Self>,
     ) {
-        todo!()
-        // match event {
-        //     pane::Event::AddItem { item } => item.added_to_pane(self, pane, cx),
-        //     pane::Event::Split(direction) => {
-        //         self.split_and_clone(pane, *direction, cx);
-        //     }
-        //     pane::Event::Remove => self.remove_pane(pane, cx),
-        //     pane::Event::ActivateItem { local } => {
-        //         if *local {
-        //             self.unfollow(&pane, cx);
-        //         }
-        //         if &pane == self.active_pane() {
-        //             self.active_item_path_changed(cx);
-        //         }
-        //     }
-        //     pane::Event::ChangeItemTitle => {
-        //         if pane == self.active_pane {
-        //             self.active_item_path_changed(cx);
-        //         }
-        //         self.update_window_edited(cx);
-        //     }
-        //     pane::Event::RemoveItem { item_id } => {
-        //         self.update_window_edited(cx);
-        //         if let hash_map::Entry::Occupied(entry) = self.panes_by_item.entry(*item_id) {
-        //             if entry.get().id() == pane.id() {
-        //                 entry.remove();
-        //             }
-        //         }
-        //     }
-        //     pane::Event::Focus => {
-        //         self.handle_pane_focused(pane.clone(), cx);
-        //     }
-        //     pane::Event::ZoomIn => {
-        //         if pane == self.active_pane {
-        //             pane.update(cx, |pane, cx| pane.set_zoomed(true, cx));
-        //             if pane.read(cx).has_focus() {
-        //                 self.zoomed = Some(pane.downgrade().into_any());
-        //                 self.zoomed_position = None;
-        //             }
-        //             cx.notify();
-        //         }
-        //     }
-        //     pane::Event::ZoomOut => {
-        //         pane.update(cx, |pane, cx| pane.set_zoomed(false, cx));
-        //         if self.zoomed_position.is_none() {
-        //             self.zoomed = None;
-        //         }
-        //         cx.notify();
-        //     }
-        // }
+        match event {
+            pane::Event::AddItem { item } => item.added_to_pane(self, pane, cx),
+            pane::Event::Split(direction) => {
+                self.split_and_clone(pane, *direction, cx);
+            }
+            pane::Event::Remove => self.remove_pane(pane, cx),
+            pane::Event::ActivateItem { local } => {
+                if *local {
+                    self.unfollow(&pane, cx);
+                }
+                if &pane == self.active_pane() {
+                    self.active_item_path_changed(cx);
+                }
+            }
+            pane::Event::ChangeItemTitle => {
+                if pane == self.active_pane {
+                    self.active_item_path_changed(cx);
+                }
+                self.update_window_edited(cx);
+            }
+            pane::Event::RemoveItem { item_id } => {
+                self.update_window_edited(cx);
+                if let hash_map::Entry::Occupied(entry) = self.panes_by_item.entry(*item_id) {
+                    if entry.get().entity_id() == pane.entity_id() {
+                        entry.remove();
+                    }
+                }
+            }
+            pane::Event::Focus => {
+                self.handle_pane_focused(pane.clone(), cx);
+            }
+            pane::Event::ZoomIn => {
+                if pane == self.active_pane {
+                    pane.update(cx, |pane, cx| pane.set_zoomed(true, cx));
+                    if pane.read(cx).has_focus(cx) {
+                        self.zoomed = Some(pane.downgrade().into());
+                        self.zoomed_position = None;
+                    }
+                    cx.notify();
+                }
+            }
+            pane::Event::ZoomOut => {
+                pane.update(cx, |pane, cx| pane.set_zoomed(false, cx));
+                if self.zoomed_position.is_none() {
+                    self.zoomed = None;
+                }
+                cx.notify();
+            }
+        }
 
-        // self.serialize_workspace(cx);
+        self.serialize_workspace(cx);
     }
 
-    //     pub fn split_pane(
-    //         &mut self,
-    //         pane_to_split: View<Pane>,
-    //         split_direction: SplitDirection,
-    //         cx: &mut ViewContext<Self>,
-    //     ) -> View<Pane> {
-    //         let new_pane = self.add_pane(cx);
-    //         self.center
-    //             .split(&pane_to_split, &new_pane, split_direction)
-    //             .unwrap();
-    //         cx.notify();
-    //         new_pane
-    //     }
+    pub fn split_pane(
+        &mut self,
+        pane_to_split: View<Pane>,
+        split_direction: SplitDirection,
+        cx: &mut ViewContext<Self>,
+    ) -> View<Pane> {
+        let new_pane = self.add_pane(cx);
+        self.center
+            .split(&pane_to_split, &new_pane, split_direction)
+            .unwrap();
+        cx.notify();
+        new_pane
+    }
 
-    //     pub fn split_and_clone(
-    //         &mut self,
-    //         pane: View<Pane>,
-    //         direction: SplitDirection,
-    //         cx: &mut ViewContext<Self>,
-    //     ) -> Option<View<Pane>> {
-    //         let item = pane.read(cx).active_item()?;
-    //         let maybe_pane_handle = if let Some(clone) = item.clone_on_split(self.database_id(), cx) {
-    //             let new_pane = self.add_pane(cx);
-    //             new_pane.update(cx, |pane, cx| pane.add_item(clone, true, true, None, cx));
-    //             self.center.split(&pane, &new_pane, direction).unwrap();
-    //             Some(new_pane)
-    //         } else {
-    //             None
-    //         };
-    //         cx.notify();
-    //         maybe_pane_handle
-    //     }
+    pub fn split_and_clone(
+        &mut self,
+        pane: View<Pane>,
+        direction: SplitDirection,
+        cx: &mut ViewContext<Self>,
+    ) -> Option<View<Pane>> {
+        let item = pane.read(cx).active_item()?;
+        let maybe_pane_handle = if let Some(clone) = item.clone_on_split(self.database_id(), cx) {
+            let new_pane = self.add_pane(cx);
+            new_pane.update(cx, |pane, cx| pane.add_item(clone, true, true, None, cx));
+            self.center.split(&pane, &new_pane, direction).unwrap();
+            Some(new_pane)
+        } else {
+            None
+        };
+        cx.notify();
+        maybe_pane_handle
+    }
 
-    //     pub fn split_pane_with_item(
-    //         &mut self,
-    //         pane_to_split: WeakView<Pane>,
-    //         split_direction: SplitDirection,
-    //         from: WeakView<Pane>,
-    //         item_id_to_move: usize,
-    //         cx: &mut ViewContext<Self>,
-    //     ) {
-    //         let Some(pane_to_split) = pane_to_split.upgrade(cx) else {
-    //             return;
-    //         };
-    //         let Some(from) = from.upgrade(cx) else {
-    //             return;
-    //         };
+    pub fn split_pane_with_item(
+        &mut self,
+        pane_to_split: WeakView<Pane>,
+        split_direction: SplitDirection,
+        from: WeakView<Pane>,
+        item_id_to_move: EntityId,
+        cx: &mut ViewContext<Self>,
+    ) {
+        let Some(pane_to_split) = pane_to_split.upgrade() else {
+            return;
+        };
+        let Some(from) = from.upgrade() else {
+            return;
+        };
 
-    //         let new_pane = self.add_pane(cx);
-    //         self.move_item(from.clone(), new_pane.clone(), item_id_to_move, 0, cx);
-    //         self.center
-    //             .split(&pane_to_split, &new_pane, split_direction)
-    //             .unwrap();
-    //         cx.notify();
-    //     }
+        let new_pane = self.add_pane(cx);
+        self.move_item(from.clone(), new_pane.clone(), item_id_to_move, 0, cx);
+        self.center
+            .split(&pane_to_split, &new_pane, split_direction)
+            .unwrap();
+        cx.notify();
+    }
 
-    //     pub fn split_pane_with_project_entry(
-    //         &mut self,
-    //         pane_to_split: WeakView<Pane>,
-    //         split_direction: SplitDirection,
-    //         project_entry: ProjectEntryId,
-    //         cx: &mut ViewContext<Self>,
-    //     ) -> Option<Task<Result<()>>> {
-    //         let pane_to_split = pane_to_split.upgrade(cx)?;
-    //         let new_pane = self.add_pane(cx);
-    //         self.center
-    //             .split(&pane_to_split, &new_pane, split_direction)
-    //             .unwrap();
+    pub fn split_pane_with_project_entry(
+        &mut self,
+        pane_to_split: WeakView<Pane>,
+        split_direction: SplitDirection,
+        project_entry: ProjectEntryId,
+        cx: &mut ViewContext<Self>,
+    ) -> Option<Task<Result<()>>> {
+        let pane_to_split = pane_to_split.upgrade()?;
+        let new_pane = self.add_pane(cx);
+        self.center
+            .split(&pane_to_split, &new_pane, split_direction)
+            .unwrap();
 
-    //         let path = self.project.read(cx).path_for_entry(project_entry, cx)?;
-    //         let task = self.open_path(path, Some(new_pane.downgrade()), true, cx);
-    //         Some(cx.foreground().spawn(async move {
-    //             task.await?;
-    //             Ok(())
-    //         }))
-    //     }
+        let path = self.project.read(cx).path_for_entry(project_entry, cx)?;
+        let task = self.open_path(path, Some(new_pane.downgrade()), true, cx);
+        Some(cx.foreground_executor().spawn(async move {
+            task.await?;
+            Ok(())
+        }))
+    }
 
-    //     pub fn move_item(
-    //         &mut self,
-    //         source: View<Pane>,
-    //         destination: View<Pane>,
-    //         item_id_to_move: usize,
-    //         destination_index: usize,
-    //         cx: &mut ViewContext<Self>,
-    //     ) {
-    //         let item_to_move = source
-    //             .read(cx)
-    //             .items()
-    //             .enumerate()
-    //             .find(|(_, item_handle)| item_handle.id() == item_id_to_move);
+    pub fn move_item(
+        &mut self,
+        source: View<Pane>,
+        destination: View<Pane>,
+        item_id_to_move: EntityId,
+        destination_index: usize,
+        cx: &mut ViewContext<Self>,
+    ) {
+        let item_to_move = source
+            .read(cx)
+            .items()
+            .enumerate()
+            .find(|(_, item_handle)| item_handle.id() == item_id_to_move);
 
-    //         if item_to_move.is_none() {
-    //             log::warn!("Tried to move item handle which was not in `from` pane. Maybe tab was closed during drop");
-    //             return;
-    //         }
-    //         let (item_ix, item_handle) = item_to_move.unwrap();
-    //         let item_handle = item_handle.clone();
+        if item_to_move.is_none() {
+            log::warn!("Tried to move item handle which was not in `from` pane. Maybe tab was closed during drop");
+            return;
+        }
+        let (item_ix, item_handle) = item_to_move.unwrap();
+        let item_handle = item_handle.clone();
 
-    //         if source != destination {
-    //             // Close item from previous pane
-    //             source.update(cx, |source, cx| {
-    //                 source.remove_item(item_ix, false, cx);
-    //             });
-    //         }
+        if source != destination {
+            // Close item from previous pane
+            source.update(cx, |source, cx| {
+                source.remove_item(item_ix, false, cx);
+            });
+        }
 
-    //         // This automatically removes duplicate items in the pane
-    //         destination.update(cx, |destination, cx| {
-    //             destination.add_item(item_handle, true, true, Some(destination_index), cx);
-    //             cx.focus_self();
-    //         });
-    //     }
+        // This automatically removes duplicate items in the pane
+        destination.update(cx, |destination, cx| {
+            destination.add_item(item_handle, true, true, Some(destination_index), cx);
+            destination.focus(cx)
+        });
+    }
 
-    //     fn remove_pane(&mut self, pane: View<Pane>, cx: &mut ViewContext<Self>) {
-    //         if self.center.remove(&pane).unwrap() {
-    //             self.force_remove_pane(&pane, cx);
-    //             self.unfollow(&pane, cx);
-    //             self.last_leaders_by_pane.remove(&pane.downgrade());
-    //             for removed_item in pane.read(cx).items() {
-    //                 self.panes_by_item.remove(&removed_item.id());
-    //             }
+    fn remove_pane(&mut self, pane: View<Pane>, cx: &mut ViewContext<Self>) {
+        if self.center.remove(&pane).unwrap() {
+            self.force_remove_pane(&pane, cx);
+            self.unfollow(&pane, cx);
+            self.last_leaders_by_pane.remove(&pane.downgrade());
+            for removed_item in pane.read(cx).items() {
+                self.panes_by_item.remove(&removed_item.id());
+            }
 
-    //             cx.notify();
-    //         } else {
-    //             self.active_item_path_changed(cx);
-    //         }
-    //     }
+            cx.notify();
+        } else {
+            self.active_item_path_changed(cx);
+        }
+    }
 
     pub fn panes(&self) -> &[View<Pane>] {
         &self.panes
@@ -2708,12 +2711,12 @@ impl Workspace {
             .child("Collab title bar Item") // self.titlebar_item
     }
 
-    // fn active_item_path_changed(&mut self, cx: &mut ViewContext<Self>) {
-    //     let active_entry = self.active_project_path(cx);
-    //     self.project
-    //         .update(cx, |project, cx| project.set_active_path(active_entry, cx));
-    //     self.update_window_title(cx);
-    // }
+    fn active_item_path_changed(&mut self, cx: &mut ViewContext<Self>) {
+        let active_entry = self.active_project_path(cx);
+        self.project
+            .update(cx, |project, cx| project.set_active_path(active_entry, cx));
+        self.update_window_title(cx);
+    }
 
     fn update_window_title(&mut self, cx: &mut ViewContext<Self>) {
         let project = self.project().read(cx);
@@ -3010,7 +3013,7 @@ impl Workspace {
     fn update_active_view_for_followers(&mut self, cx: &mut ViewContext<Self>) {
         let mut is_project_item = true;
         let mut update = proto::UpdateActiveView::default();
-        if self.active_pane.read(cx).has_focus() {
+        if self.active_pane.read(cx).has_focus(cx) {
             let item = self
                 .active_item(cx)
                 .and_then(|item| item.to_followable_item_handle(cx));
@@ -3105,7 +3108,7 @@ impl Workspace {
         }
 
         for (pane, item) in items_to_activate {
-            let pane_was_focused = pane.read(cx).has_focus();
+            let pane_was_focused = pane.read(cx).has_focus(cx);
             if let Some(index) = pane.update(cx, |pane, _| pane.index_for_item(item.as_ref())) {
                 pane.update(cx, |pane, cx| pane.activate_item(index, false, false, cx));
             } else {
@@ -3122,6 +3125,7 @@ impl Workspace {
         None
     }
 
+    // todo!()
     //     fn shared_screen_for_peer(
     //         &self,
     //         peer_id: PeerId,
@@ -3242,7 +3246,7 @@ impl Workspace {
     //     }
 
     fn serialize_workspace(&self, cx: &mut ViewContext<Self>) {
-        fn serialize_pane_handle(pane_handle: &View<Pane>, cx: &AppContext) -> SerializedPane {
+        fn serialize_pane_handle(pane_handle: &View<Pane>, cx: &WindowContext) -> SerializedPane {
             let (items, active) = {
                 let pane = pane_handle.read(cx);
                 let active_item_id = pane.active_item().map(|item| item.id());
@@ -3256,7 +3260,7 @@ impl Workspace {
                             })
                         })
                         .collect::<Vec<_>>(),
-                    pane.has_focus(),
+                    pane.has_focus(cx),
                 )
             };
 
@@ -3265,7 +3269,7 @@ impl Workspace {
 
         fn build_serialized_pane_group(
             pane_group: &Member,
-            cx: &AppContext,
+            cx: &WindowContext,
         ) -> SerializedPaneGroup {
             match pane_group {
                 Member::Axis(PaneAxis {
@@ -3498,6 +3502,7 @@ impl Workspace {
         })
     }
 
+    // todo!()
     //     #[cfg(any(test, feature = "test-support"))]
     //     pub fn test_new(project: ModelHandle<Project>, cx: &mut ViewContext<Self>) -> Self {
     //         use node_runtime::FakeNodeRuntime;
@@ -3658,6 +3663,7 @@ fn open_items(
     })
 }
 
+// todo!()
 // fn notify_of_new_dock(workspace: &WeakView<Workspace>, cx: &mut AsyncAppContext) {
 //     const NEW_PANEL_BLOG_POST: &str = "https://zed.dev/blog/new-panel-system";
 //     const NEW_DOCK_HINT_KEY: &str = "show_new_dock_key";
@@ -3738,23 +3744,22 @@ fn open_items(
 //         })
 //         .ok();
 
-fn notify_if_database_failed(_workspace: WindowHandle<Workspace>, _cx: &mut AsyncAppContext) {
+fn notify_if_database_failed(workspace: WindowHandle<Workspace>, cx: &mut AsyncAppContext) {
     const REPORT_ISSUE_URL: &str ="https://github.com/zed-industries/community/issues/new?assignees=&labels=defect%2Ctriage&template=2_bug_report.yml";
 
-    // todo!()
-    // workspace
-    //     .update(cx, |workspace, cx| {
-    //         if (*db::ALL_FILE_DB_FAILED).load(std::sync::atomic::Ordering::Acquire) {
-    //             workspace.show_notification_once(0, cx, |cx| {
-    //                 cx.build_view(|_| {
-    //                     MessageNotification::new("Failed to load the database file.")
-    //                         .with_click_message("Click to let us know about this error")
-    //                         .on_click(|cx| cx.platform().open_url(REPORT_ISSUE_URL))
-    //                 })
-    //             });
-    //         }
-    //     })
-    //     .log_err();
+    workspace
+        .update(cx, |workspace, cx| {
+            if (*db2::ALL_FILE_DB_FAILED).load(std::sync::atomic::Ordering::Acquire) {
+                workspace.show_notification_once(0, cx, |cx| {
+                    cx.build_view(|_| {
+                        MessageNotification::new("Failed to load the database file.")
+                            .with_click_message("Click to let us know about this error")
+                            .on_click(|cx| cx.open_url(REPORT_ISSUE_URL))
+                    })
+                });
+            }
+        })
+        .log_err();
 }
 
 impl EventEmitter for Workspace {
@@ -4176,36 +4181,32 @@ impl WorkspaceStore {
     }
 
     async fn handle_update_followers(
-        _this: Model<Self>,
-        _envelope: TypedEnvelope<proto::UpdateFollowers>,
+        this: Model<Self>,
+        envelope: TypedEnvelope<proto::UpdateFollowers>,
         _: Arc<Client>,
-        mut _cx: AsyncWindowContext,
+        mut cx: AsyncWindowContext,
     ) -> Result<()> {
-        // let leader_id = envelope.original_sender_id()?;
-        // let update = envelope.payload;
+        let leader_id = envelope.original_sender_id()?;
+        let update = envelope.payload;
 
-        // this.update(&mut cx, |this, cx| {
-        //     for workspace in &this.workspaces {
-        //         let Some(workspace) = workspace.upgrade() else {
-        //             continue;
-        //         };
-        //         workspace.update(cx, |workspace, cx| {
-        //             let project_id = workspace.project.read(cx).remote_id();
-        //             if update.project_id != project_id && update.project_id.is_some() {
-        //                 return;
-        //             }
-        //             workspace.handle_update_followers(leader_id, update.clone(), cx);
-        //         });
-        //     }
-        //     Ok(())
-        // })?
-        todo!()
+        this.update(&mut cx, |this, cx| {
+            for workspace in &this.workspaces {
+                workspace.update(cx, |workspace, cx| {
+                    let project_id = workspace.project.read(cx).remote_id();
+                    if update.project_id != project_id && update.project_id.is_some() {
+                        return;
+                    }
+                    workspace.handle_update_followers(leader_id, update.clone(), cx);
+                })?;
+            }
+            Ok(())
+        })?
     }
 }
 
-// impl Entity for WorkspaceStore {
-//     type Event = ();
-// }
+impl EventEmitter for WorkspaceStore {
+    type Event = ();
+}
 
 impl ViewId {
     pub(crate) fn from_proto(message: proto::ViewId) -> Result<Self> {
@@ -4252,7 +4253,7 @@ impl ViewId {
 //     }
 // }
 
-// pub struct WorkspaceCreated(pub WeakView<Workspace>);
+pub struct WorkspaceCreated(pub WeakView<Workspace>);
 
 pub fn activate_workspace_for_project(
     cx: &mut AppContext,
