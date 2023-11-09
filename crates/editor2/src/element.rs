@@ -130,7 +130,13 @@ impl EditorElement {
                 indicator_bounds.contains_point(&event.position)
             })
         {
-            todo!()
+            editor.toggle_code_actions(
+                &crate::ToggleCodeActions {
+                    deployed_from_indicator: true,
+                },
+                cx,
+            );
+            return true;
         } else if bounds.gutter.contains_point(&event.position) {
             click_count = 3; // Simulate triple-click when clicking the gutter to select lines
         } else if !bounds.text.contains_point(&event.position) {
