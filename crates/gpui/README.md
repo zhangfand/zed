@@ -1,3 +1,39 @@
+# GPUI - A fast framework for beautiful desktop apps in Rust.
+
+We created GPUI to build Zed, a fast multiplayer code editor.
+
+It's designed to be familiar to web developers. It integrates a web compatible layout engine and features a styling system inspired by Tailwind CSS. It avoids fancy macros and templating languages, instead expressing UI in pure Rust using method chains. The resulting "markup" resembles HTML, as you can see in the following minimal app.
+
+```rust
+struct Hello(SharedString);
+
+// Any type that implements the `Render` trait can become a view.
+impl gpui::Render for Hello {
+    fn render(&mut self, cx: &mut ViewContext<Self>) -> impl Component {
+        div()
+            .p_5() // 5px padding
+            .child("Hello")
+            .child(self.0.clone())
+    }
+}
+
+fn main() {
+    gpui::App::new().run(|cx| {
+        cx.open_window(|cx| cx.new_view(|_cx| Hello("World".into()));
+    })
+}
+```
+
+
+
+
+
+## Familiar yet innovative
+
+
+
+
+
 # GPUI: A Performant Desktop App Dev Tool
 
 Welcome to GPUI! This new open-source tool, engineered in Rust, is designed for native desktop applications. Created in response to performance issues with Electron during the development of Atom, GPUI is a game-changer.
