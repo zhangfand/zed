@@ -31,6 +31,9 @@ pub enum Appearance {
     Dark,
 }
 
+pub fn unused() {}
+
+#[gpui::init]
 pub fn init(cx: &mut AppContext) {
     cx.set_global(ThemeRegistry::default());
     ThemeSettings::register(cx);

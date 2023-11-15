@@ -57,8 +57,8 @@ use zed2::{
 mod open_listener;
 
 fn main() {
-    menu::init();
     zed_actions::init();
+    // theme::unused();
 
     let http = http::client();
     init_paths();
@@ -111,7 +111,7 @@ fn main() {
         // }
     });
 
-    app.run(move |cx| {
+    app.run(move |cx, initializers| {
         cx.set_global(*RELEASE_CHANNEL);
         cx.set_global(listener.clone());
 
@@ -133,6 +133,10 @@ fn main() {
         let languages = Arc::new(languages);
         let node_runtime = RealNodeRuntime::new(http.clone());
 
+        dbg!("got to initializers");
+        initializers(cx);
+        dbg!("got past initializers");
+
         language::init(cx);
         languages::init(languages.clone(), node_runtime.clone(), cx);
         let user_store = cx.build_model(|cx| UserStore::new(client.clone(), http.clone(), cx));
@@ -140,7 +144,6 @@ fn main() {
 
         cx.set_global(client.clone());
 
-        theme::init(cx);
         // context_menu::init(cx);
         project::Project::init(&client, cx);
         client::init(&client, cx);

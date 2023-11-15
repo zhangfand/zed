@@ -362,7 +362,7 @@ impl AppState {
         let user_store = cx.build_model(|cx| UserStore::new(client.clone(), http_client, cx));
         let workspace_store = cx.build_model(|cx| WorkspaceStore::new(client.clone(), cx));
 
-        theme2::init(cx);
+        theme2::initi::init(cx);
         client2::init(&client, cx);
         crate::init_settings(cx);
 

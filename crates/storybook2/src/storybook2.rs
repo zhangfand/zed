@@ -41,8 +41,6 @@ struct Args {
 }
 
 fn main() {
-    // unsafe { backtrace_on_stack_overflow::enable() };
-
     SimpleLogger::init(LevelFilter::Info, Default::default()).expect("could not initialize logger");
 
     let args = Args::parse();
@@ -51,7 +49,7 @@ fn main() {
     let theme_name = args.theme.unwrap_or("One Dark".to_string());
 
     let asset_source = Arc::new(Assets);
-    gpui::App::production(asset_source).run(move |cx| {
+    gpui::App::production(asset_source).run(move |cx, initializers| {
         load_embedded_fonts(cx).unwrap();
 
         let mut store = SettingsStore::default();
@@ -60,7 +58,7 @@ fn main() {
             .unwrap();
         cx.set_global(store);
 
-        theme2::init(cx);
+        initializers(cx);
 
         let selector =
             story_selector.unwrap_or(StorySelector::Component(ComponentStory::Workspace));

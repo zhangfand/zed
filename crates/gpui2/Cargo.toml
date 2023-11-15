@@ -26,6 +26,7 @@ derive_more.workspace = true
 dhat = { version = "0.3", optional = true }
 env_logger = { version = "0.9", optional = true }
 etagere = "0.2"
+linkme = "0.3.17"
 futures.workspace = true
 image = "0.23"
 itertools = "0.10"

@@ -7,6 +7,7 @@ mod test_context;
 pub use async_context::*;
 use derive_more::{Deref, DerefMut};
 pub use entity_map::*;
+use linkme::distributed_slice;
 pub use model_context::*;
 use refineable::Refineable;
 use smallvec::SmallVec;
@@ -14,12 +15,13 @@ use smallvec::SmallVec;
 pub use test_context::*;
 
 use crate::{
-    current_platform, image_cache::ImageCache, Action, AnyBox, AnyView, AnyWindowHandle,
-    AppMetadata, AssetSource, BackgroundExecutor, ClipboardItem, Context, DispatchPhase, DisplayId,
-    Entity, EventEmitter, FocusEvent, FocusHandle, FocusId, ForegroundExecutor, KeyBinding, Keymap,
-    LayoutId, PathPromptOptions, Pixels, Platform, PlatformDisplay, Point, Render, SubscriberSet,
-    Subscription, SvgRenderer, Task, TextStyle, TextStyleRefinement, TextSystem, View, ViewContext,
-    Window, WindowContext, WindowHandle, WindowId,
+    current_platform, image_cache::ImageCache, load_actions_2, Action, AnyBox, AnyView,
+    AnyWindowHandle, AppMetadata, AssetSource, BackgroundExecutor, ClipboardItem, Context,
+    DispatchPhase, DisplayId, Entity, EventEmitter, FocusEvent, FocusHandle, FocusId,
+    ForegroundExecutor, KeyBinding, Keymap, LayoutId, PathPromptOptions, Pixels, Platform,
+    PlatformDisplay, Point, Render, SubscriberSet, Subscription, SvgRenderer, Task, TextStyle,
+    TextStyleRefinement, TextSystem, View, ViewContext, Window, WindowContext, WindowHandle,
+    WindowId,
 };
 use anyhow::{anyhow, Result};
 use collections::{HashMap, HashSet, VecDeque};
@@ -107,13 +109,19 @@ impl App {
     /// app is fully launched.
     pub fn run<F>(self, on_finish_launching: F)
     where
-        F: 'static + FnOnce(&mut AppContext),
+        F: 'static + FnOnce(&mut AppContext, fn(&mut AppContext)),
     {
         let this = self.0.clone();
         let platform = self.0.borrow().platform.clone();
         platform.run(Box::new(move || {
             let cx = &mut *this.borrow_mut();
-            on_finish_launching(cx);
+
+            on_finish_launching(cx, |cx| {
+                dbg!("running initializers", __GPUI_INIT.len());
+                for init in __GPUI_INIT {
+                    init(cx);
+                }
+            });
         }));
     }
 
@@ -218,6 +226,7 @@ impl AppContext {
         asset_source: Arc<dyn AssetSource>,
         http_client: Arc<dyn HttpClient>,
     ) -> Rc<AppCell> {
+        load_actions_2();
         let executor = platform.background_executor();
         let foreground_executor = platform.foreground_executor();
         assert!(
@@ -1124,3 +1133,14 @@ pub(crate) struct AnyTooltip {
     pub view: AnyView,
     pub cursor_offset: Point<Pixels>,
 }
+
+/// This type must be public so that our macros can build it in other crates.
+/// But this is an implementation detail and should not be used directly.
+#[doc(hidden)]
+pub type MacroInitFn = fn(&mut AppContext);
+
+/// This constant must be public to be accessible from other crates.
+/// But it's existence is an implementation detail and should not be used directly.
+#[doc(hidden)]
+#[distributed_slice]
+pub static __GPUI_INIT: [MacroInitFn];

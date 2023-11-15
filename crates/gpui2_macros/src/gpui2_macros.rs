@@ -1,5 +1,6 @@
 mod action;
 mod derive_component;
+mod init;
 mod register_action;
 mod style_helpers;
 mod test;
@@ -29,4 +30,9 @@ pub fn derive_component(input: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn test(args: TokenStream, function: TokenStream) -> TokenStream {
     test::test(args, function)
+}
+
+#[proc_macro_attribute]
+pub fn init(args: TokenStream, function: TokenStream) -> TokenStream {
+    init::init(args, function)
 }
