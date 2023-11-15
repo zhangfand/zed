@@ -57,7 +57,7 @@ use zed2::{
 mod open_listener;
 
 fn main() {
-    zed_actions::init();
+    // zed_actions::init();
     // theme::unused();
 
     let http = http::client();
