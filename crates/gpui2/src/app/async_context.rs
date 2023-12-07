@@ -1,15 +1,15 @@
 use crate::{
-    AnyView, AnyWindowHandle, AppCell, AppContext, BackgroundExecutor, Context, DismissEvent,
-    FocusableView, ForegroundExecutor, Model, ModelContext, Render, Result, Task, View,
-    ViewContext, VisualContext, WindowContext, WindowHandle,
+    AnyView, AnyWindowHandle, AppContext, BackgroundExecutor, Context, DismissEvent, FocusableView,
+    ForegroundExecutor, Model, ModelContext, Render, Result, Task, View, ViewContext,
+    VisualContext, WindowContext, WindowHandle,
 };
 use anyhow::{anyhow, Context as _};
 use derive_more::{Deref, DerefMut};
-use std::{future::Future, rc::Weak};
+use std::{cell::RefCell, future::Future, rc::Weak};
 
 #[derive(Clone)]
 pub struct AsyncAppContext {
-    pub(crate) app: Weak<AppCell>,
+    pub(crate) app: Weak<RefCell<AppContext>>,
     pub(crate) background_executor: BackgroundExecutor,
     pub(crate) foreground_executor: ForegroundExecutor,
 }

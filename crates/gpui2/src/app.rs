@@ -5,7 +5,6 @@ mod model_context;
 mod test_context;
 
 pub use async_context::*;
-use derive_more::{Deref, DerefMut};
 pub use entity_map::*;
 pub use model_context::*;
 use refineable::Refineable;
@@ -30,7 +29,7 @@ use parking_lot::Mutex;
 use slotmap::SlotMap;
 use std::{
     any::{type_name, TypeId},
-    cell::{Ref, RefCell, RefMut},
+    cell::RefCell,
     marker::PhantomData,
     mem,
     ops::{Deref, DerefMut},
@@ -41,60 +40,10 @@ use std::{
 };
 use util::http::{self, HttpClient};
 
-/// Temporary(?) wrapper around RefCell<AppContext> to help us debug any double borrows.
-/// Strongly consider removing after stabilization.
-pub struct AppCell {
-    app: RefCell<AppContext>,
-}
-
-impl AppCell {
-    #[track_caller]
-    pub fn borrow(&self) -> AppRef {
-        if let Some(_) = option_env!("TRACK_THREAD_BORROWS") {
-            let thread_id = std::thread::current().id();
-            eprintln!("borrowed {thread_id:?}");
-        }
-        AppRef(self.app.borrow())
-    }
-
-    #[track_caller]
-    pub fn borrow_mut(&self) -> AppRefMut {
-        if let Some(_) = option_env!("TRACK_THREAD_BORROWS") {
-            let thread_id = std::thread::current().id();
-            eprintln!("borrowed {thread_id:?}");
-        }
-        AppRefMut(self.app.borrow_mut())
-    }
-}
-
-#[derive(Deref, DerefMut)]
-pub struct AppRef<'a>(Ref<'a, AppContext>);
-
-impl<'a> Drop for AppRef<'a> {
-    fn drop(&mut self) {
-        if let Some(_) = option_env!("TRACK_THREAD_BORROWS") {
-            let thread_id = std::thread::current().id();
-            eprintln!("dropped borrow from {thread_id:?}");
-        }
-    }
-}
-
-#[derive(Deref, DerefMut)]
-pub struct AppRefMut<'a>(RefMut<'a, AppContext>);
-
-impl<'a> Drop for AppRefMut<'a> {
-    fn drop(&mut self) {
-        if let Some(_) = option_env!("TRACK_THREAD_BORROWS") {
-            let thread_id = std::thread::current().id();
-            eprintln!("dropped {thread_id:?}");
-        }
-    }
-}
-
-pub struct App(Rc<AppCell>);
-
 /// Represents an application before it is fully launched. Once your app is
 /// configured, you'll start the app with `App::run`.
+pub struct App(Rc<RefCell<AppContext>>);
+
 impl App {
     /// Builds an app with the given asset source.
     pub fn production(asset_source: Arc<dyn AssetSource>) -> Self {
@@ -178,7 +127,7 @@ type NewViewListener = Box<dyn FnMut(AnyView, &mut WindowContext) + 'static>;
 // }
 
 pub struct AppContext {
-    pub(crate) this: Weak<AppCell>,
+    pub(crate) this: Weak<RefCell<AppContext>>,
     pub(crate) platform: Rc<dyn Platform>,
     app_metadata: AppMetadata,
     text_system: Arc<TextSystem>,
@@ -220,7 +169,7 @@ impl AppContext {
         platform: Rc<dyn Platform>,
         asset_source: Arc<dyn AssetSource>,
         http_client: Arc<dyn HttpClient>,
-    ) -> Rc<AppCell> {
+    ) -> Rc<RefCell<AppContext>> {
         let executor = platform.background_executor();
         let foreground_executor = platform.foreground_executor();
         assert!(
@@ -237,8 +186,8 @@ impl AppContext {
             app_version: platform.app_version().ok(),
         };
 
-        let app = Rc::new_cyclic(|this| AppCell {
-            app: RefCell::new(AppContext {
+        let app = Rc::new_cyclic(|this| {
+            RefCell::new(AppContext {
                 this: this.clone(),
                 platform: platform.clone(),
                 app_metadata,
@@ -272,7 +221,7 @@ impl AppContext {
                 quit_observers: SubscriberSet::new(),
                 layout_id_buffer: Default::default(),
                 propagate_event: true,
-            }),
+            })
         });
 
         platform.on_quit(Box::new({

@@ -1,17 +1,17 @@
 use crate::{
-    div, Action, AnyView, AnyWindowHandle, AppCell, AppContext, AsyncAppContext,
-    BackgroundExecutor, Bounds, Context, Div, Entity, EventEmitter, ForegroundExecutor, InputEvent,
-    KeyDownEvent, Keystroke, Model, ModelContext, Pixels, PlatformWindow, Point, Render, Result,
-    Size, Task, TestDispatcher, TestPlatform, TestWindow, TestWindowHandlers, View, ViewContext,
-    VisualContext, WindowBounds, WindowContext, WindowHandle, WindowOptions,
+    div, Action, AnyView, AnyWindowHandle, AppContext, AsyncAppContext, BackgroundExecutor, Bounds,
+    Context, Div, Entity, EventEmitter, ForegroundExecutor, InputEvent, KeyDownEvent, Keystroke,
+    Model, ModelContext, Pixels, PlatformWindow, Point, Render, Result, Size, Task, TestDispatcher,
+    TestPlatform, TestWindow, TestWindowHandlers, View, ViewContext, VisualContext, WindowBounds,
+    WindowContext, WindowHandle, WindowOptions,
 };
 use anyhow::{anyhow, bail};
 use futures::{Stream, StreamExt};
-use std::{future::Future, mem, ops::Deref, rc::Rc, sync::Arc, time::Duration};
+use std::{cell::RefCell, future::Future, mem, ops::Deref, rc::Rc, sync::Arc, time::Duration};
 
 #[derive(Clone)]
 pub struct TestAppContext {
-    pub app: Rc<AppCell>,
+    pub app: Rc<RefCell<AppContext>>,
     pub background_executor: BackgroundExecutor,
     pub foreground_executor: ForegroundExecutor,
     pub dispatcher: TestDispatcher,
@@ -432,7 +432,7 @@ impl<V: 'static> View<V> {
         use postage::prelude::{Sink as _, Stream as _};
 
         let (mut tx, mut rx) = postage::mpsc::channel(1);
-        let mut cx = cx.app.app.borrow_mut();
+        let mut cx = cx.app.borrow_mut();
         let subscription = cx.observe(self, move |_, _| {
             tx.try_send(()).ok();
         });
