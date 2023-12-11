@@ -3650,7 +3650,9 @@ impl Render for Workspace {
                                     });
                                 }
                                 DockPosition::Bottom => {
-                                    let size = workspace_bounds.size.height - e.position.y;
+                                    let size = dbg!(dbg!(workspace_bounds).size.height)
+                                        - dbg!(e.position.y);
+                                    dbg!(size);
                                     workspace.bottom_dock.update(cx, |bottom_dock, cx| {
                                         bottom_dock.resize_active_panel(Some(size.0), cx);
                                     });
@@ -3658,17 +3660,20 @@ impl Render for Workspace {
                             }
                         }
                     }))
-                    .child(canvas(|bounds, cx| {
-                        cx.paint_quad(Quad::outline(bounds, gpui::red()));
-                        cx.set_global(WorkspaceBounds(bounds))
-                    }))
                     .child(self.modal_layer.clone())
                     .child(
                         div()
                             .flex()
                             .flex_row()
                             .flex_1()
+                            .w_full()
                             .h_full()
+                            .child(canvas(|bounds, cx| {
+                                cx.with_z_index(100, |cx| {
+                                    cx.paint_quad(Quad::outline(bounds, gpui::red()));
+                                });
+                                cx.set_global(WorkspaceBounds(bounds))
+                            }))
                             // Left Dock
                             .child(
                                 div()

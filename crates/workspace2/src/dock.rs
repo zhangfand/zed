@@ -483,7 +483,7 @@ impl Render for Dock {
     type Element = Div;
 
     fn render(&mut self, cx: &mut ViewContext<Self>) -> Self::Element {
-        self.resize_active_panel(None, cx);
+        // self.resize_active_panel(None, cx);
         if let Some(entry) = self.visible_entry() {
             let size = entry.panel.size(cx);
 
