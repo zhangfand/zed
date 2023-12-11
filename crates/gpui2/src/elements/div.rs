@@ -174,6 +174,7 @@ pub trait InteractiveElement: Sized + Element {
         self
     }
 
+    // Fire the given callback when the mouse moves over this element, and this element is on top
     fn on_mouse_move(
         mut self,
         listener: impl Fn(&MouseMoveEvent, &mut WindowContext) + 'static,
@@ -181,6 +182,27 @@ pub trait InteractiveElement: Sized + Element {
         self.interactivity().mouse_move_listeners.push(Box::new(
             move |event, bounds, phase, cx| {
                 if phase == DispatchPhase::Bubble && bounds.visibly_contains(&event.position, cx) {
+                    (listener)(event, cx);
+                }
+            },
+        ));
+        self
+    }
+
+    /// Fires mouse move events when the mouse moves inside the bounds of this element, ignoring z-index
+    /// and during the capture phase
+    fn on_mouse_move_in(
+        mut self,
+        listener: impl Fn(&MouseMoveEvent, &mut WindowContext) + 'static,
+    ) -> Self {
+        // todo!(this API was added to make resizing drags possible. But This is very non-standard
+        // compared to the other mouse events (fires on capture + doesn't respect stacking). We should
+        // probably remove it and find a better way to do resizing drags)
+        self.interactivity().mouse_move_listeners.push(Box::new(
+            move |event, bounds, phase, cx| {
+                if phase == DispatchPhase::Capture
+                    && dbg!(bounds.bounds).contains(&dbg!(event.position))
+                {
                     (listener)(event, cx);
                 }
             },

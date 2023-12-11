@@ -33,7 +33,7 @@ use gpui::{
     AnyWindowHandle, AppContext, AsyncAppContext, AsyncWindowContext, Bounds, Context, Div, Entity,
     EntityId, EventEmitter, FocusHandle, FocusableView, GlobalPixels, InteractiveElement,
     KeyContext, ManagedView, Model, ModelContext, MouseMoveEvent, ParentElement, PathPromptOptions,
-    Pixels, Point, PromptLevel, Render, Size, Styled, Subscription, Task, View, ViewContext,
+    Pixels, Point, PromptLevel, Quad, Render, Size, Styled, Subscription, Task, View, ViewContext,
     VisualContext, WeakView, WindowBounds, WindowContext, WindowHandle, WindowOptions,
 };
 use item::{FollowableItem, FollowableItemHandle, Item, ItemHandle, ItemSettings, ProjectItem};
@@ -3575,7 +3575,7 @@ impl FocusableView for Workspace {
 struct WorkspaceBounds(Bounds<Pixels>);
 
 //todo!("remove this when better drag APIs are in GPUI2")
-#[derive(Default)]
+#[derive(Default, Copy, Clone)]
 struct DockDragState(Option<DockPosition>);
 
 //todo!("remove this when better double APIs are in GPUI2")
@@ -3630,8 +3630,9 @@ impl Render for Workspace {
                             drag.0 = None;
                         })
                     })
-                    .on_mouse_move(cx.listener(|workspace, e: &MouseMoveEvent, cx| {
-                        if let Some(types) = &cx.global::<DockDragState>().0 {
+                    .on_mouse_move_in(cx.listener(|workspace, e: &MouseMoveEvent, cx| {
+                        if let Some(types) = cx.global::<DockDragState>().0 {
+                            cx.stop_propagation();
                             let workspace_bounds = cx.global::<WorkspaceBounds>().0;
                             match types {
                                 DockPosition::Left => {
@@ -3641,7 +3642,9 @@ impl Render for Workspace {
                                     });
                                 }
                                 DockPosition::Right => {
-                                    let size = workspace_bounds.size.width - e.position.x;
+                                    let size =
+                                        dbg!(workspace_bounds.size.width) - dbg!(e.position.x);
+                                    dbg!(size);
                                     workspace.right_dock.update(cx, |right_dock, cx| {
                                         right_dock.resize_active_panel(Some(size.0), cx);
                                     });
@@ -3655,7 +3658,10 @@ impl Render for Workspace {
                             }
                         }
                     }))
-                    .child(canvas(|bounds, cx| cx.set_global(WorkspaceBounds(bounds))))
+                    .child(canvas(|bounds, cx| {
+                        cx.paint_quad(Quad::outline(bounds, gpui::red()));
+                        cx.set_global(WorkspaceBounds(bounds))
+                    }))
                     .child(self.modal_layer.clone())
                     .child(
                         div()

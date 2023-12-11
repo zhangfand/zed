@@ -1,7 +1,7 @@
 use crate::{
     point, size, AtlasTextureId, AtlasTextureKind, AtlasTile, Bounds, ContentMask, DevicePixels,
     Hsla, MetalAtlas, MonochromeSprite, Path, PathId, PathVertex, PolychromeSprite, PrimitiveBatch,
-    Quad, ScaledPixels, Scene, Shadow, Size, Surface, Underline,
+    RenderQuad, ScaledPixels, Scene, Shadow, Size, Surface, Underline,
 };
 use cocoa::{
     base::{NO, YES},
@@ -455,7 +455,7 @@ impl MetalRenderer {
 
     fn draw_quads(
         &mut self,
-        quads: &[Quad],
+        quads: &[RenderQuad],
         offset: &mut usize,
         viewport_size: Size<DevicePixels>,
         command_encoder: &metal::RenderCommandEncoderRef,
@@ -488,7 +488,7 @@ impl MetalRenderer {
             &viewport_size as *const Size<DevicePixels> as *const _,
         );
 
-        let quad_bytes_len = mem::size_of::<Quad>() * quads.len();
+        let quad_bytes_len = mem::size_of::<RenderQuad>() * quads.len();
         let buffer_contents = unsafe { (self.instances.contents() as *mut u8).add(*offset) };
         unsafe {
             ptr::copy_nonoverlapping(quads.as_ptr() as *const u8, buffer_contents, quad_bytes_len);

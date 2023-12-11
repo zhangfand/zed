@@ -174,12 +174,12 @@ use editor::Editor;
 use feature_flags::{ChannelsAlpha, FeatureFlagAppExt, FeatureFlagViewExt};
 use fuzzy::{match_strings, StringMatchCandidate};
 use gpui::{
-    actions, canvas, div, img, impl_actions, overlay, point, prelude::*, px, rems, serde_json,
-    size, Action, AppContext, AsyncWindowContext, Bounds, ClipboardItem, DismissEvent, Div,
-    EventEmitter, FocusHandle, Focusable, FocusableView, Hsla, InteractiveElement, IntoElement,
-    Length, Model, MouseDownEvent, ParentElement, Pixels, Point, PromptLevel, Quad, Render,
-    RenderOnce, ScrollHandle, SharedString, Size, Stateful, Styled, Subscription, Task, View,
-    ViewContext, VisualContext, WeakView,
+    actions, canvas, div, filled, img, impl_actions, overlay, point, prelude::*, px, rems,
+    serde_json, size, Action, AppContext, AsyncWindowContext, Bounds, ClipboardItem, DismissEvent,
+    Div, EventEmitter, FocusHandle, Focusable, FocusableView, Hsla, InteractiveElement,
+    IntoElement, Length, Model, MouseDownEvent, ParentElement, Pixels, Point, PromptLevel, Render,
+    RenderOnce, RenderQuad, ScrollHandle, SharedString, Size, Stateful, Styled, Subscription, Task,
+    View, ViewContext, VisualContext, WeakView,
 };
 use project::{Fs, Project};
 use serde_derive::{Deserialize, Serialize};
@@ -3010,7 +3010,7 @@ fn render_tree_branch(is_last: bool, cx: &mut WindowContext) -> impl IntoElement
         let right = bounds.right();
         let top = bounds.top();
 
-        cx.paint_quad(
+        cx.paint_quad(filled(
             Bounds::from_corners(
                 point(start_x, top),
                 point(
@@ -3018,18 +3018,12 @@ fn render_tree_branch(is_last: bool, cx: &mut WindowContext) -> impl IntoElement
                     if is_last { start_y } else { bounds.bottom() },
                 ),
             ),
-            Default::default(),
             color,
-            Default::default(),
-            Hsla::transparent_black(),
-        );
-        cx.paint_quad(
+        ));
+        cx.paint_quad(filled(
             Bounds::from_corners(point(start_x, start_y), point(right, start_y + thickness)),
-            Default::default(),
             color,
-            Default::default(),
-            Hsla::transparent_black(),
-        );
+        ));
     })
     .w(width)
     .h(line_height)

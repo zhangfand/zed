@@ -483,6 +483,7 @@ impl Render for Dock {
     type Element = Div;
 
     fn render(&mut self, cx: &mut ViewContext<Self>) -> Self::Element {
+        self.resize_active_panel(None, cx);
         if let Some(entry) = self.visible_entry() {
             let size = entry.panel.size(cx);
 
@@ -524,15 +525,16 @@ impl Render for Dock {
                     pre_resize_handle = Some(handler.w_full().h_1().cursor_row_resize())
                 }
                 DockPosition::Right => {
-                    pre_resize_handle = Some(handler.w_full().h_1().cursor_col_resize())
+                    pre_resize_handle = Some(handler.w_1().h_full().cursor_col_resize())
                 }
             }
 
             div()
                 .border_color(cx.theme().colors().border)
+                .flex()
                 .map(|this| match self.position().axis() {
-                    Axis::Horizontal => this.w(px(size)).h_full(),
-                    Axis::Vertical => this.h(px(size)).w_full(),
+                    Axis::Horizontal => this.w(px(size)).h_full().flex_row(),
+                    Axis::Vertical => this.h(px(size)).w_full().flex_col(),
                 })
                 .map(|this| match self.position() {
                     DockPosition::Left => this.border_r(),
