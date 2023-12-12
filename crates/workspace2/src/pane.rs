@@ -10,7 +10,7 @@ use gpui::{
     actions, impl_actions, overlay, prelude::*, rems, Action, AnchorCorner, AnyWeakView,
     AppContext, AsyncWindowContext, DismissEvent, Div, EntityId, EventEmitter, FocusHandle,
     Focusable, FocusableView, Model, MouseButton, NavigationDirection, Pixels, Point, PromptLevel,
-    Render, Task, View, ViewContext, VisualContext, WeakView, WindowContext,
+    Render, Subscription, Task, View, ViewContext, VisualContext, WeakView, WindowContext,
 };
 use parking_lot::Mutex;
 use project::{Project, ProjectEntryId, ProjectPath};
@@ -85,7 +85,21 @@ pub struct CloseAllItems {
     pub save_intent: Option<SaveIntent>,
 }
 
-impl_actions!(pane, [CloseAllItems, CloseActiveItem, ActivateItem]);
+#[derive(Clone, PartialEq, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RevealInProjectPanel {
+    pub entry_id: u64,
+}
+
+impl_actions!(
+    pane,
+    [
+        CloseAllItems,
+        CloseActiveItem,
+        ActivateItem,
+        RevealInProjectPanel
+    ]
+);
 
 actions!(
     pane,
@@ -174,6 +188,7 @@ pub struct Pane {
     //     can_drop: Rc<dyn Fn(&DragAndDrop<Workspace>, &WindowContext) -> bool>,
     can_split: bool,
     //     render_tab_bar_buttons: Rc<dyn Fn(&mut Pane, &mut ViewContext<Pane>) -> AnyElement<Pane>>,
+    subscriptions: Vec<Subscription>,
 }
 
 pub struct ItemNavHistory {
@@ -312,10 +327,17 @@ impl Pane {
         // context_menu.update(cx, |menu, _| {
         //     menu.set_position_mode(OverlayPositionMode::Local)
         // });
+        //
+        let focus_handle = cx.focus_handle();
+
+        let subscriptions = vec![
+            cx.on_focus_in(&focus_handle, move |this, cx| this.focus_in(cx)),
+            cx.on_focus_out(&focus_handle, move |this, cx| this.focus_out(cx)),
+        ];
 
         let handle = cx.view().downgrade();
         Self {
-            focus_handle: cx.focus_handle(),
+            focus_handle,
             items: Vec::new(),
             activation_history: Vec::new(),
             was_focused: false,
@@ -402,6 +424,7 @@ impl Pane {
             //         })
             //         .into_any()
             // }),
+            subscriptions,
         }
     }
 
@@ -1499,9 +1522,19 @@ impl Pane {
                 )
                 .child(label);
 
-        right_click_menu(ix).trigger(tab).menu(|cx| {
-            ContextMenu::build(cx, |menu, cx| {
-                menu.action("Close", CloseActiveItem { save_intent: None }.boxed_clone())
+        let single_entry_to_resolve = {
+            let item_entries = self.items[ix].project_entry_ids(cx);
+            if item_entries.len() == 1 {
+                Some(item_entries[0])
+            } else {
+                None
+            }
+        };
+
+        right_click_menu(ix).trigger(tab).menu(move |cx| {
+            ContextMenu::build(cx, |menu, _| {
+                let menu = menu
+                    .action("Close", CloseActiveItem { save_intent: None }.boxed_clone())
                     .action("Close Others", CloseInactiveItems.boxed_clone())
                     .separator()
                     .action("Close Left", CloseItemsToTheLeft.boxed_clone())
@@ -1511,7 +1544,19 @@ impl Pane {
                     .action(
                         "Close All",
                         CloseAllItems { save_intent: None }.boxed_clone(),
+                    );
+
+                if let Some(entry) = single_entry_to_resolve {
+                    menu.separator().action(
+                        "Reveal In Project Panel",
+                        RevealInProjectPanel {
+                            entry_id: entry.to_proto(),
+                        }
+                        .boxed_clone(),
                     )
+                } else {
+                    menu
+                }
             })
         })
     }
@@ -2061,19 +2106,8 @@ impl Render for Pane {
             .key_context("Pane")
             .track_focus(&self.focus_handle)
             .size_full()
+            .flex_none()
             .overflow_hidden()
-            .on_focus_in({
-                let this = this.clone();
-                move |event, cx| {
-                    this.update(cx, |this, cx| this.focus_in(cx)).ok();
-                }
-            })
-            .on_focus_out({
-                let this = this.clone();
-                move |event, cx| {
-                    this.update(cx, |this, cx| this.focus_out(cx)).ok();
-                }
-            })
             .on_action(cx.listener(|pane, _: &SplitLeft, cx| pane.split(SplitDirection::Left, cx)))
             .on_action(cx.listener(|pane, _: &SplitUp, cx| pane.split(SplitDirection::Up, cx)))
             .on_action(
@@ -2133,6 +2167,15 @@ impl Render for Pane {
                 cx.listener(|pane: &mut Self, action: &CloseActiveItem, cx| {
                     pane.close_active_item(action, cx)
                         .map(|task| task.detach_and_log_err(cx));
+                }),
+            )
+            .on_action(
+                cx.listener(|pane: &mut Self, action: &RevealInProjectPanel, cx| {
+                    pane.project.update(cx, |_, cx| {
+                        cx.emit(project::Event::RevealInProjectPanel(
+                            ProjectEntryId::from_proto(action.entry_id),
+                        ))
+                    })
                 }),
             )
             .child(self.render_tab_bar(cx))
