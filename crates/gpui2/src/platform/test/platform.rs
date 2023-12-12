@@ -1,6 +1,7 @@
 use crate::{
     AnyWindowHandle, BackgroundExecutor, ClipboardItem, CursorStyle, DisplayId, ForegroundExecutor,
-    Keymap, Platform, PlatformDisplay, PlatformTextSystem, TestDisplay, TestWindow, WindowOptions,
+    Keymap, Platform, PlatformDisplay, PlatformTextSystem, Scene, TestDisplay, TestWindow,
+    WindowOptions,
 };
 use anyhow::{anyhow, Result};
 use collections::VecDeque;
@@ -129,13 +130,14 @@ impl Platform for TestPlatform {
     }
 
     fn active_window(&self) -> Option<crate::AnyWindowHandle> {
-        unimplemented!()
+        self.active_window.lock().clone()
     }
 
     fn open_window(
         &self,
         handle: AnyWindowHandle,
         options: WindowOptions,
+        _draw: Box<dyn FnMut() -> Result<Scene>>,
     ) -> Box<dyn crate::PlatformWindow> {
         *self.active_window.lock() = Some(handle);
         Box::new(TestWindow::new(

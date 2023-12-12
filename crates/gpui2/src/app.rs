@@ -9,7 +9,6 @@ use derive_more::{Deref, DerefMut};
 pub use entity_map::*;
 pub use model_context::*;
 use refineable::Refineable;
-use smallvec::SmallVec;
 use smol::future::FutureExt;
 #[cfg(any(test, feature = "test-support"))]
 pub use test_context::*;
@@ -19,10 +18,10 @@ use crate::{
     current_platform, image_cache::ImageCache, init_app_menus, Action, ActionRegistry, Any,
     AnyView, AnyWindowHandle, AppMetadata, AssetSource, BackgroundExecutor, ClipboardItem, Context,
     DispatchPhase, DisplayId, Entity, EventEmitter, FocusEvent, FocusHandle, FocusId,
-    ForegroundExecutor, KeyBinding, Keymap, LayoutId, Menu, PathPromptOptions, Pixels, Platform,
-    PlatformDisplay, Point, Render, SharedString, SubscriberSet, Subscription, SvgRenderer, Task,
-    TextStyle, TextStyleRefinement, TextSystem, View, ViewContext, Window, WindowContext,
-    WindowHandle, WindowId,
+    ForegroundExecutor, KeyBinding, Keymap, Keystroke, LayoutId, Menu, PathPromptOptions, Pixels,
+    Platform, PlatformDisplay, Point, Render, SharedString, SubscriberSet, Subscription,
+    SvgRenderer, Task, TextStyle, TextStyleRefinement, TextSystem, View, ViewContext, Window,
+    WindowContext, WindowHandle, WindowId,
 };
 use anyhow::{anyhow, Result};
 use collections::{HashMap, HashSet, VecDeque};
@@ -171,6 +170,7 @@ impl App {
 pub(crate) type FrameCallback = Box<dyn FnOnce(&mut AppContext)>;
 type Handler = Box<dyn FnMut(&mut AppContext) -> bool + 'static>;
 type Listener = Box<dyn FnMut(&dyn Any, &mut AppContext) -> bool + 'static>;
+type KeystrokeObserver = Box<dyn FnMut(&KeystrokeEvent, &mut WindowContext) + 'static>;
 type QuitHandler = Box<dyn FnOnce(&mut AppContext) -> LocalBoxFuture<'static, ()> + 'static>;
 type ReleaseListener = Box<dyn FnOnce(&mut dyn Any, &mut AppContext) + 'static>;
 type NewViewListener = Box<dyn FnMut(AnyView, &mut WindowContext) + 'static>;
@@ -212,6 +212,7 @@ pub struct AppContext {
     pub(crate) observers: SubscriberSet<EntityId, Handler>,
     // TypeId is the type of the event that the listener callback expects
     pub(crate) event_listeners: SubscriberSet<EntityId, (TypeId, Listener)>,
+    pub(crate) keystroke_observers: SubscriberSet<(), KeystrokeObserver>,
     pub(crate) release_listeners: SubscriberSet<EntityId, ReleaseListener>,
     pub(crate) global_observers: SubscriberSet<TypeId, Handler>,
     pub(crate) quit_observers: SubscriberSet<(), QuitHandler>,
@@ -272,6 +273,7 @@ impl AppContext {
                 observers: SubscriberSet::new(),
                 event_listeners: SubscriberSet::new(),
                 release_listeners: SubscriberSet::new(),
+                keystroke_observers: SubscriberSet::new(),
                 global_observers: SubscriberSet::new(),
                 quit_observers: SubscriberSet::new(),
                 layout_id_buffer: Default::default(),
@@ -601,21 +603,25 @@ impl AppContext {
             }
         }
 
-        let dirty_window_ids = self
-            .windows
-            .iter()
-            .filter_map(|(_, window)| {
-                let window = window.as_ref()?;
+        for window in self.windows.values() {
+            if let Some(window) = window.as_ref() {
                 if window.dirty {
-                    Some(window.handle.clone())
-                } else {
-                    None
+                    window.platform_window.invalidate();
                 }
-            })
-            .collect::<SmallVec<[_; 8]>>();
+            }
+        }
 
-        for dirty_window_handle in dirty_window_ids {
-            dirty_window_handle.update(self, |_, cx| cx.draw()).unwrap();
+        #[cfg(any(test, feature = "test-support"))]
+        for window in self
+            .windows
+            .values()
+            .filter_map(|window| {
+                let window = window.as_ref()?;
+                window.dirty.then_some(window.handle)
+            })
+            .collect::<Vec<_>>()
+        {
+            self.update_window(window, |_, cx| cx.draw()).unwrap();
         }
     }
 
@@ -959,6 +965,15 @@ impl AppContext {
         subscription
     }
 
+    pub fn observe_keystrokes(
+        &mut self,
+        f: impl FnMut(&KeystrokeEvent, &mut WindowContext) + 'static,
+    ) -> Subscription {
+        let (subscription, activate) = self.keystroke_observers.insert((), Box::new(f));
+        activate();
+        subscription
+    }
+
     pub(crate) fn push_text_style(&mut self, text_style: TextStyleRefinement) {
         self.text_style_stack.push(text_style);
     }
@@ -1284,4 +1299,10 @@ pub struct AnyDrag {
 pub(crate) struct AnyTooltip {
     pub view: AnyView,
     pub cursor_offset: Point<Pixels>,
+}
+
+#[derive(Debug)]
+pub struct KeystrokeEvent {
+    pub keystroke: Keystroke,
+    pub action: Option<Box<dyn Action>>,
 }

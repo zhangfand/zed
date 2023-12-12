@@ -3,13 +3,14 @@ use crate::{
     AppContext, AsyncWindowContext, AvailableSpace, Bounds, BoxShadow, Context, Corners,
     CursorStyle, DevicePixels, DispatchNodeId, DispatchTree, DisplayId, Edges, Effect, Entity,
     EntityId, EventEmitter, FileDropEvent, Flatten, FocusEvent, FontId, GlobalElementId, GlyphId,
-    Hsla, ImageData, InputEvent, IsZero, KeyBinding, KeyContext, KeyDownEvent, LayoutId, Model,
-    ModelContext, Modifiers, MonochromeSprite, MouseButton, MouseMoveEvent, MouseUpEvent, Path,
-    Pixels, PlatformAtlas, PlatformDisplay, PlatformInputHandler, PlatformWindow, Point,
-    PolychromeSprite, PromptLevel, Render, RenderGlyphParams, RenderImageParams, RenderQuad,
-    RenderSvgParams, ScaledPixels, SceneBuilder, Shadow, SharedString, Size, Style, SubscriberSet,
-    Subscription, Surface, TaffyLayoutEngine, Task, Underline, UnderlineStyle, View, VisualContext,
-    WeakView, WindowBounds, WindowOptions, SUBPIXEL_VARIANTS,
+    Hsla, ImageData, InputEvent, IsZero, KeyBinding, KeyContext, KeyDownEvent, KeystrokeEvent,
+    LayoutId, Model, ModelContext, Modifiers, MonochromeSprite, MouseButton, MouseMoveEvent,
+    MouseUpEvent, Path, Pixels, PlatformAtlas, PlatformDisplay, PlatformInputHandler,
+    PlatformWindow, Point, PolychromeSprite, PromptLevel, Render, RenderGlyphParams,
+    RenderImageParams, RenderQuad, RenderSvgParams, ScaledPixels, Scene, SceneBuilder, Shadow,
+    SharedString, Size, Style, SubscriberSet, Subscription, Surface, TaffyLayoutEngine, Task,
+    Underline, UnderlineStyle, View, VisualContext, WeakView, WindowBounds, WindowOptions,
+    SUBPIXEL_VARIANTS,
 };
 use anyhow::{anyhow, Context as _, Result};
 use collections::HashMap;
@@ -233,8 +234,8 @@ pub struct Window {
     bounds: WindowBounds,
     bounds_observers: SubscriberSet<(), AnyObserver>,
     active: bool,
-    activation_observers: SubscriberSet<(), AnyObserver>,
     pub(crate) dirty: bool,
+    activation_observers: SubscriberSet<(), AnyObserver>,
     pub(crate) last_blur: Option<Option<FocusId>>,
     pub(crate) focus: Option<FocusId>,
 }
@@ -288,7 +289,14 @@ impl Window {
         options: WindowOptions,
         cx: &mut AppContext,
     ) -> Self {
-        let platform_window = cx.platform.open_window(handle, options);
+        let platform_window = cx.platform.open_window(
+            handle,
+            options,
+            Box::new({
+                let mut cx = cx.to_async();
+                move || handle.update(&mut cx, |_, cx| cx.draw())
+            }),
+        );
         let display_id = platform_window.display().id();
         let sprite_atlas = platform_window.sprite_atlas();
         let mouse_position = platform_window.mouse_position();
@@ -359,8 +367,8 @@ impl Window {
             bounds,
             bounds_observers: SubscriberSet::new(),
             active: false,
+            dirty: false,
             activation_observers: SubscriberSet::new(),
-            dirty: true,
             last_blur: None,
             focus: None,
         }
@@ -486,6 +494,29 @@ impl<'a> WindowContext<'a> {
             cx.propagate_event = true;
             cx.dispatch_action_on_node(node_id, action);
         })
+    }
+
+    pub(crate) fn dispatch_keystroke_observers(
+        &mut self,
+        event: &dyn Any,
+        action: Option<Box<dyn Action>>,
+    ) {
+        let Some(key_down_event) = event.downcast_ref::<KeyDownEvent>() else {
+            return;
+        };
+
+        self.keystroke_observers
+            .clone()
+            .retain(&(), move |callback| {
+                (callback)(
+                    &KeystrokeEvent {
+                        keystroke: key_down_event.keystroke.clone(),
+                        action: action.as_ref().map(|action| action.boxed_clone()),
+                    },
+                    self,
+                );
+                true
+            });
     }
 
     /// Schedules the given function to be run at the end of the current effect cycle, allowing entities
@@ -683,7 +714,7 @@ impl<'a> WindowContext<'a> {
         self.window.viewport_size = self.window.platform_window.content_size();
         self.window.bounds = self.window.platform_window.bounds();
         self.window.display_id = self.window.platform_window.display().id();
-        self.window.dirty = true;
+        self.notify();
 
         self.window
             .bounds_observers
@@ -1177,7 +1208,7 @@ impl<'a> WindowContext<'a> {
     }
 
     /// Draw pixels to the display for this window based on the contents of its scene.
-    pub(crate) fn draw(&mut self) {
+    pub(crate) fn draw(&mut self) -> Scene {
         self.text_system().start_frame();
         self.window.platform_window.clear_input_handler();
         self.window.layout_engine.as_mut().unwrap().clear();
@@ -1229,15 +1260,15 @@ impl<'a> WindowContext<'a> {
         mem::swap(&mut window.rendered_frame, &mut window.next_frame);
 
         let scene = self.window.rendered_frame.scene_builder.build();
-        self.window.platform_window.draw(scene);
         let cursor_style = self
             .window
             .requested_cursor_style
             .take()
             .unwrap_or(CursorStyle::Arrow);
         self.platform.set_cursor_style(cursor_style);
-
         self.window.dirty = false;
+
+        scene
     }
 
     /// Dispatch a mouse or keyboard event on the window.
@@ -1409,14 +1440,12 @@ impl<'a> WindowContext<'a> {
             let node = self.window.rendered_frame.dispatch_tree.node(*node_id);
             if node.context.is_some() {
                 if let Some(key_down_event) = event.downcast_ref::<KeyDownEvent>() {
-                    if let Some(found) = self
+                    let mut new_actions = self
                         .window
                         .rendered_frame
                         .dispatch_tree
-                        .dispatch_key(&key_down_event.keystroke, &context_stack)
-                    {
-                        actions.push(found.boxed_clone())
-                    }
+                        .dispatch_key(&key_down_event.keystroke, &context_stack);
+                    actions.append(&mut new_actions);
                 }
 
                 context_stack.pop();
@@ -1424,11 +1453,20 @@ impl<'a> WindowContext<'a> {
         }
 
         for action in actions {
-            self.dispatch_action_on_node(node_id, action);
+            self.dispatch_action_on_node(node_id, action.boxed_clone());
             if !self.propagate_event {
+                self.dispatch_keystroke_observers(event, Some(action));
                 return;
             }
         }
+        self.dispatch_keystroke_observers(event, None);
+    }
+
+    pub fn has_pending_keystrokes(&self) -> bool {
+        self.window
+            .rendered_frame
+            .dispatch_tree
+            .has_pending_keystrokes()
     }
 
     fn dispatch_action_on_node(&mut self, node_id: DispatchNodeId, action: Box<dyn Action>) {
