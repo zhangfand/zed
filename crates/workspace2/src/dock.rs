@@ -1,4 +1,4 @@
-use crate::DockDragState;
+use crate::DraggedDock;
 use crate::{status_bar::StatusItemView, Workspace};
 use gpui::{
     div, px, Action, AnchorCorner, AnyView, AppContext, Axis, ClickEvent, Div, Entity, EntityId,
@@ -494,9 +494,7 @@ impl Render for Dock {
             let handler = div()
                 .id("resize-handle")
                 .bg(gpui::red())
-                .on_mouse_down(gpui::MouseButton::Left, move |_, cx| {
-                    cx.update_global(|drag: &mut DockDragState, cx| drag.0 = Some(position))
-                })
+                .on_drag(move |cx| cx.build_view(|cx| DraggedDock(position)))
                 .on_click(cx.listener(|v, e: &ClickEvent, cx| {
                     if e.down.button == MouseButton::Left && e.up.click_count == 2 {
                         v.resize_active_panel(None, cx)

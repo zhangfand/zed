@@ -30,11 +30,11 @@ use futures::{
 };
 use gpui::{
     actions, canvas, div, impl_actions, point, size, Action, AnyModel, AnyView, AnyWeakView,
-    AnyWindowHandle, AppContext, AsyncAppContext, AsyncWindowContext, Bounds, Context, Div, Entity,
-    EntityId, EventEmitter, FocusHandle, FocusableView, GlobalPixels, InteractiveElement,
-    KeyContext, ManagedView, Model, ModelContext, MouseMoveEvent, ParentElement, PathPromptOptions,
-    Pixels, Point, PromptLevel, Quad, Render, Size, Styled, Subscription, Task, View, ViewContext,
-    VisualContext, WeakView, WindowBounds, WindowContext, WindowHandle, WindowOptions,
+    AnyWindowHandle, AppContext, AsyncAppContext, AsyncWindowContext, Bounds, Context, Div,
+    DragMoveEvent, Entity, EntityId, EventEmitter, FocusHandle, FocusableView, GlobalPixels,
+    InteractiveElement, KeyContext, ManagedView, Model, ModelContext, ParentElement,
+    PathPromptOptions, Pixels, Point, PromptLevel, Render, Size, Styled, Subscription, Task, View,
+    ViewContext, VisualContext, WeakView, WindowBounds, WindowContext, WindowHandle, WindowOptions,
 };
 use item::{FollowableItem, FollowableItemHandle, Item, ItemHandle, ItemSettings, ProjectItem};
 use itertools::Itertools;
@@ -227,9 +227,6 @@ pub fn init_settings(cx: &mut AppContext) {
 }
 
 pub fn init(app_state: Arc<AppState>, cx: &mut AppContext) {
-    cx.default_global::<DockDragState>();
-    cx.default_global::<DockClickReset>();
-
     init_settings(cx);
     notifications::init(cx);
 
@@ -466,7 +463,7 @@ pub struct Workspace {
     _observe_current_user: Task<Result<()>>,
     _schedule_serialize: Option<Task<()>>,
     pane_history_timestamp: Arc<AtomicUsize>,
-    bounds: Option<Bounds<Pixels>>,
+    bounds: Bounds<Pixels>,
 }
 
 impl EventEmitter<Event> for Workspace {}
@@ -709,7 +706,7 @@ impl Workspace {
             subscriptions,
             pane_history_timestamp,
             workspace_actions: Default::default(),
-            bounds: None,
+            bounds: Default::default(),
         }
     }
 
@@ -3582,9 +3579,8 @@ impl FocusableView for Workspace {
 
 struct WorkspaceBounds(Bounds<Pixels>);
 
-//todo!("remove this when better drag APIs are in GPUI2")
-#[derive(Default, Copy, Clone)]
-struct DockDragState(Option<DockPosition>);
+#[derive(Render)]
+struct DraggedDock(DockPosition);
 
 impl Render for Workspace {
     type Element = Div;
@@ -3632,48 +3628,32 @@ impl Render for Workspace {
                     .border_color(cx.theme().colors().border)
                     .child(
                         canvas(cx.listener(|this, bounds, cx| {
-                            cx.with_z_index(100, |cx| {
-                                cx.paint_quad(Quad::outline(*bounds, gpui::red()));
-                            });
-                            this.bounds = Some(*bounds);
+                            this.bounds = *bounds;
                         }))
                         .absolute()
                         .size_full(),
                     )
-                    .on_mouse_up(gpui::MouseButton::Left, |_, cx| {
-                        cx.update_global(|drag: &mut DockDragState, cx| {
-                            drag.0 = None;
-                        })
-                    })
-                    .on_drag_move::<DraggedDockDivider>(cx.listener(
-                        |workspace, e: &MouseMoveEvent, cx| {
-                            if let Some(types) = cx.global::<DockDragState>().0 {
-                                cx.stop_propagation();
-                                let workspace_bounds = cx.global::<WorkspaceBounds>().0;
-                                match types {
-                                    DockPosition::Left => {
-                                        let size = e.position.x - this.bounds.left();
-                                        workspace.left_dock.update(cx, |left_dock, cx| {
-                                            left_dock.resize_active_panel(Some(size.0), cx);
-                                        });
-                                    }
-                                    DockPosition::Right => {
-                                        let size =
-                                            dbg!(workspace_bounds.size.width) - dbg!(e.position.x);
-                                        dbg!(size);
-                                        workspace.right_dock.update(cx, |right_dock, cx| {
-                                            right_dock.resize_active_panel(Some(size.0), cx);
-                                        });
-                                    }
-                                    DockPosition::Bottom => {
-                                        let size =
-                                            dbg!(dbg!(workspace_bounds.bottom()).size.height)
-                                                - dbg!(e.position.y);
-                                        dbg!(size);
-                                        workspace.bottom_dock.update(cx, |bottom_dock, cx| {
-                                            bottom_dock.resize_active_panel(Some(size.0), cx);
-                                        });
-                                    }
+                    .on_drag_move::<DraggedDock>(cx.listener(
+                        |workspace, e: &DragMoveEvent<DraggedDock>, cx| {
+                            cx.stop_propagation();
+                            match e.drag.read(cx).0 {
+                                DockPosition::Left => {
+                                    let size = e.event.position.x - workspace.bounds.left();
+                                    workspace.left_dock.update(cx, |left_dock, cx| {
+                                        left_dock.resize_active_panel(Some(size.0), cx);
+                                    });
+                                }
+                                DockPosition::Right => {
+                                    let size = workspace.bounds.size.width - e.event.position.x;
+                                    workspace.right_dock.update(cx, |right_dock, cx| {
+                                        right_dock.resize_active_panel(Some(size.0), cx);
+                                    });
+                                }
+                                DockPosition::Bottom => {
+                                    let size = workspace.bounds.bottom() - e.event.position.y;
+                                    workspace.bottom_dock.update(cx, |bottom_dock, cx| {
+                                        bottom_dock.resize_active_panel(Some(size.0), cx);
+                                    });
                                 }
                             }
                         },
@@ -3693,11 +3673,11 @@ impl Render for Workspace {
                                     .child(self.left_dock.clone()),
                             )
                             // divider
-                            .child(div().on_drag(|cx| {
-                                cx.build_view(|cx| DraggedDockDivider {
-                                    side: DockPosition::Left,
-                                })
-                            }))
+                            // .child(div().on_drag(|cx| {
+                            //     cx.build_view(|cx| DraggedDockDivider {
+                            //         side: DockPosition::Left,
+                            //     })
+                            // }))
                             // Panes
                             .child(
                                 div()

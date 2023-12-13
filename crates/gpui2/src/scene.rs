@@ -20,7 +20,7 @@ pub(crate) struct SceneBuilder {
     layers_by_order: BTreeMap<StackingOrder, LayerId>,
     splitter: BspSplitter<(PrimitiveKind, usize)>,
     shadows: Vec<Shadow>,
-    quads: Vec<RenderQuad>,
+    quads: Vec<Quad>,
     paths: Vec<Path<ScaledPixels>>,
     underlines: Vec<Underline>,
     monochrome_sprites: Vec<MonochromeSprite>,
@@ -200,7 +200,7 @@ impl SceneBuilder {
 
 pub struct Scene {
     pub shadows: Vec<Shadow>,
-    pub quads: Vec<RenderQuad>,
+    pub quads: Vec<Quad>,
     pub paths: Vec<Path<ScaledPixels>>,
     pub underlines: Vec<Underline>,
     pub monochrome_sprites: Vec<MonochromeSprite>,
@@ -245,9 +245,9 @@ struct BatchIterator<'a> {
     shadows: &'a [Shadow],
     shadows_start: usize,
     shadows_iter: Peekable<slice::Iter<'a, Shadow>>,
-    quads: &'a [RenderQuad],
+    quads: &'a [Quad],
     quads_start: usize,
-    quads_iter: Peekable<slice::Iter<'a, RenderQuad>>,
+    quads_iter: Peekable<slice::Iter<'a, Quad>>,
     paths: &'a [Path<ScaledPixels>],
     paths_start: usize,
     paths_iter: Peekable<slice::Iter<'a, Path<ScaledPixels>>>,
@@ -431,7 +431,7 @@ pub enum PrimitiveKind {
 
 pub enum Primitive {
     Shadow(Shadow),
-    Quad(RenderQuad),
+    Quad(Quad),
     Path(Path<ScaledPixels>),
     Underline(Underline),
     MonochromeSprite(MonochromeSprite),
@@ -468,7 +468,7 @@ impl Primitive {
 #[derive(Debug)]
 pub(crate) enum PrimitiveBatch<'a> {
     Shadows(&'a [Shadow]),
-    Quads(&'a [RenderQuad]),
+    Quads(&'a [Quad]),
     Paths(&'a [Path<ScaledPixels>]),
     Underlines(&'a [Underline]),
     MonochromeSprites {
@@ -484,7 +484,7 @@ pub(crate) enum PrimitiveBatch<'a> {
 
 #[derive(Default, Debug, Clone, Eq, PartialEq)]
 #[repr(C)]
-pub struct RenderQuad {
+pub struct Quad {
     pub order: u32, // Initially a LayerId, then a DrawOrder.
     pub bounds: Bounds<ScaledPixels>,
     pub content_mask: ContentMask<ScaledPixels>,
@@ -494,20 +494,20 @@ pub struct RenderQuad {
     pub border_widths: Edges<ScaledPixels>,
 }
 
-impl Ord for RenderQuad {
+impl Ord for Quad {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.order.cmp(&other.order)
     }
 }
 
-impl PartialOrd for RenderQuad {
+impl PartialOrd for Quad {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl From<RenderQuad> for Primitive {
-    fn from(quad: RenderQuad) -> Self {
+impl From<Quad> for Primitive {
+    fn from(quad: Quad) -> Self {
         Primitive::Quad(quad)
     }
 }

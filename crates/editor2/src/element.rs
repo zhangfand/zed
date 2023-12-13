@@ -28,7 +28,7 @@ use gpui::{
     ContentMask, Corners, CursorStyle, DispatchPhase, Edges, Element, ElementId,
     ElementInputHandler, Entity, EntityId, Hsla, InteractiveBounds, InteractiveElement,
     IntoElement, LineLayout, ModifiersChangedEvent, MouseButton, MouseDownEvent, MouseMoveEvent,
-    MouseUpEvent, ParentElement, Pixels, Quad, RenderOnce, ScrollWheelEvent, ShapedLine,
+    MouseUpEvent, ParentElement, Pixels, RenderOnce, RenderQuad, ScrollWheelEvent, ShapedLine,
     SharedString, Size, StackingOrder, StatefulInteractiveElement, Style, Styled, TextRun,
     TextStyle, View, ViewContext, WeakView, WindowContext, WrappedLine,
 };

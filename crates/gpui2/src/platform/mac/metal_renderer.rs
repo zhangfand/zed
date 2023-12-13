@@ -1,7 +1,7 @@
 use crate::{
     point, size, AtlasTextureId, AtlasTextureKind, AtlasTile, Bounds, ContentMask, DevicePixels,
     Hsla, MetalAtlas, MonochromeSprite, Path, PathId, PathVertex, PolychromeSprite, PrimitiveBatch,
-    RenderQuad, ScaledPixels, Scene, Shadow, Size, Surface, Underline,
+    Quad, RenderQuad, ScaledPixels, Scene, Shadow, Size, Surface, Underline,
 };
 use cocoa::{
     base::{NO, YES},
@@ -455,7 +455,7 @@ impl MetalRenderer {
 
     fn draw_quads(
         &mut self,
-        quads: &[RenderQuad],
+        quads: &[Quad],
         offset: &mut usize,
         viewport_size: Size<DevicePixels>,
         command_encoder: &metal::RenderCommandEncoderRef,

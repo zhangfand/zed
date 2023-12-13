@@ -482,48 +482,35 @@ impl IntoElement for AnyElement {
     }
 }
 
-// impl<V, E, F> Element for Option<F>
-// where
-//     V: 'static,
-//     E: Element,
-//     F: FnOnce(&mut V, &mut WindowContext<'_, V>) -> E + 'static,
-// {
-//     type State = Option<AnyElement>;
+/// Create a new, empty element which takes up no space and does not render anything.
+pub fn empty() -> Empty {
+    ()
+}
 
-//     fn element_id(&self) -> Option<ElementId> {
-//         None
-//     }
+pub type Empty = ();
 
-//     fn layout(
-//         &mut self,
-//         _: Option<Self::State>,
-//         cx: &mut WindowContext,
-//     ) -> (LayoutId, Self::State) {
-//         let render = self.take().unwrap();
-//         let mut element = (render)(view_state, cx).into_any();
-//         let layout_id = element.layout(view_state, cx);
-//         (layout_id, Some(element))
-//     }
+impl IntoElement for () {
+    type Element = Self;
 
-//     fn paint(
-//         self,
-//         _bounds: Bounds<Pixels>,
-//         rendered_element: &mut Self::State,
-//         cx: &mut WindowContext,
-//     ) {
-//         rendered_element.take().unwrap().paint(view_state, cx);
-//     }
-// }
+    fn element_id(&self) -> Option<ElementId> {
+        None
+    }
 
-// impl<V, E, F> RenderOnce for Option<F>
-// where
-//     V: 'static,
-//     E: Element,
-//     F: FnOnce(&mut V, &mut WindowContext) -> E + 'static,
-// {
-//     type Element = Self;
+    fn into_element(self) -> Self::Element {
+        self
+    }
+}
 
-//     fn render(self) -> Self::Element {
-//         self
-//     }
-// }
+impl Element for () {
+    type State = ();
+
+    fn layout(
+        &mut self,
+        _state: Option<Self::State>,
+        cx: &mut WindowContext,
+    ) -> (LayoutId, Self::State) {
+        (cx.request_layout(&crate::Style::default(), None), ())
+    }
+
+    fn paint(self, _bounds: Bounds<Pixels>, _state: &mut Self::State, _cx: &mut WindowContext) {}
+}
