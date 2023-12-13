@@ -1010,7 +1010,12 @@ impl EditorElement {
                                         .chars_at(cursor_position)
                                         .next()
                                         .and_then(|(character, _)| {
-                                            let text = SharedString::from(character.to_string());
+                                            // todo!() currently shape_line panics if text conatins newlines
+                                            let text = if character == '\n' {
+                                                SharedString::from(" ")
+                                            } else {
+                                                SharedString::from(character.to_string())
+                                            };
                                             let len = text.len();
                                             cx.text_system()
                                                 .shape_line(
@@ -1234,11 +1239,18 @@ impl EditorElement {
         let thumb_bounds = Bounds::from_corners(point(left, thumb_top), point(right, thumb_bottom));
 
         if layout.show_scrollbars {
-            cx.paint_quad(
-                // todo!("style.track.border")
-                filled(track_bounds, cx.theme().colors().scrollbar_track_background)
-                    .border_color(cx.theme().colors().scrollbar_track_border),
-            );
+            cx.paint_quad(quad(
+                track_bounds,
+                Corners::default(),
+                cx.theme().colors().scrollbar_track_background,
+                Edges {
+                    top: Pixels::ZERO,
+                    right: Pixels::ZERO,
+                    bottom: Pixels::ZERO,
+                    left: px(1.),
+                },
+                cx.theme().colors().scrollbar_track_border,
+            ));
             let scrollbar_settings = EditorSettings::get_global(cx).scrollbar;
             if layout.is_singleton && scrollbar_settings.selections {
                 let start_anchor = Anchor::min();
@@ -1261,7 +1273,7 @@ impl EditorElement {
                     cx.paint_quad(quad(
                         bounds,
                         Corners::default(),
-                        cx.theme().colors().scrollbar_thumb_background,
+                        cx.theme().status().info,
                         Edges {
                             top: Pixels::ZERO,
                             right: px(1.),

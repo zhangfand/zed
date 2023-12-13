@@ -19,6 +19,7 @@ mod contact_finder;
 use contact_finder::ContactFinder;
 use menu::{Cancel, Confirm, SelectNext, SelectPrev};
 use rpc::proto::{self, PeerId};
+use smallvec::SmallVec;
 use theme::{ActiveTheme, ThemeSettings};
 // use context_menu::{ContextMenu, ContextMenuItem};
 // use db::kvp::KEY_VALUE_STORE;
@@ -1145,7 +1146,7 @@ impl CollabPanel {
 
     fn render_call_participant(
         &self,
-        user: Arc<User>,
+        user: &Arc<User>,
         peer_id: Option<PeerId>,
         is_pending: bool,
         cx: &mut ViewContext<Self>,
@@ -1155,7 +1156,7 @@ impl CollabPanel {
         let tooltip = format!("Follow {}", user.github_login);
 
         ListItem::new(SharedString::from(user.github_login.clone()))
-            .left_child(Avatar::data(user.avatar.clone().unwrap()))
+            .left_child(Avatar::new(user.avatar_uri.clone()))
             .child(
                 h_stack()
                     .w_full()
@@ -2159,87 +2160,73 @@ impl CollabPanel {
                     .id("scroll")
                     .overflow_y_scroll()
                     .track_scroll(&self.scroll_handle)
-                    .children(
-                        self.entries
-                            .clone()
-                            .into_iter()
-                            .enumerate()
-                            .map(|(ix, entry)| {
-                                let is_selected = self.selection == Some(ix);
-                                match entry {
-                                    ListEntry::Header(section) => {
-                                        let is_collapsed =
-                                            self.collapsed_sections.contains(&section);
-                                        self.render_header(section, is_selected, is_collapsed, cx)
-                                            .into_any_element()
-                                    }
-                                    ListEntry::Contact { contact, calling } => self
-                                        .render_contact(&*contact, calling, is_selected, cx)
-                                        .into_any_element(),
-                                    ListEntry::ContactPlaceholder => self
-                                        .render_contact_placeholder(is_selected, cx)
-                                        .into_any_element(),
-                                    ListEntry::IncomingRequest(user) => self
-                                        .render_contact_request(user, true, is_selected, cx)
-                                        .into_any_element(),
-                                    ListEntry::OutgoingRequest(user) => self
-                                        .render_contact_request(user, false, is_selected, cx)
-                                        .into_any_element(),
-                                    ListEntry::Channel {
-                                        channel,
-                                        depth,
-                                        has_children,
-                                    } => self
-                                        .render_channel(
-                                            &*channel,
-                                            depth,
-                                            has_children,
-                                            is_selected,
-                                            ix,
-                                            cx,
-                                        )
-                                        .into_any_element(),
-                                    ListEntry::ChannelEditor { depth } => {
-                                        self.render_channel_editor(depth, cx).into_any_element()
-                                    }
-                                    ListEntry::CallParticipant {
-                                        user,
-                                        peer_id,
-                                        is_pending,
-                                    } => self
-                                        .render_call_participant(user, peer_id, is_pending, cx)
-                                        .into_any_element(),
-                                    ListEntry::ParticipantProject {
-                                        project_id,
-                                        worktree_root_names,
-                                        host_user_id,
-                                        is_last,
-                                    } => self
-                                        .render_participant_project(
-                                            project_id,
-                                            &worktree_root_names,
-                                            host_user_id,
-                                            is_last,
-                                            cx,
-                                        )
-                                        .into_any_element(),
-                                    ListEntry::ParticipantScreen { peer_id, is_last } => self
-                                        .render_participant_screen(peer_id, is_last, cx)
-                                        .into_any_element(),
-                                    ListEntry::ChannelNotes { channel_id } => {
-                                        self.render_channel_notes(channel_id, cx).into_any_element()
-                                    }
-                                    ListEntry::ChannelChat { channel_id } => {
-                                        self.render_channel_chat(channel_id, cx).into_any_element()
-                                    }
-                                }
-                            }),
-                    ),
+                    .children(self.entries.iter().enumerate().map(|(ix, entry)| {
+                        let is_selected = self.selection == Some(ix);
+                        match entry {
+                            ListEntry::Header(section) => {
+                                let is_collapsed = self.collapsed_sections.contains(section);
+                                self.render_header(*section, is_selected, is_collapsed, cx)
+                                    .into_any_element()
+                            }
+                            ListEntry::Contact { contact, calling } => self
+                                .render_contact(contact, *calling, is_selected, cx)
+                                .into_any_element(),
+                            ListEntry::ContactPlaceholder => self
+                                .render_contact_placeholder(is_selected, cx)
+                                .into_any_element(),
+                            ListEntry::IncomingRequest(user) => self
+                                .render_contact_request(user, true, is_selected, cx)
+                                .into_any_element(),
+                            ListEntry::OutgoingRequest(user) => self
+                                .render_contact_request(user, false, is_selected, cx)
+                                .into_any_element(),
+                            ListEntry::Channel {
+                                channel,
+                                depth,
+                                has_children,
+                            } => self
+                                .render_channel(channel, *depth, *has_children, is_selected, ix, cx)
+                                .into_any_element(),
+                            ListEntry::ChannelEditor { depth } => {
+                                self.render_channel_editor(*depth, cx).into_any_element()
+                            }
+                            ListEntry::CallParticipant {
+                                user,
+                                peer_id,
+                                is_pending,
+                            } => self
+                                .render_call_participant(user, *peer_id, *is_pending, cx)
+                                .into_any_element(),
+                            ListEntry::ParticipantProject {
+                                project_id,
+                                worktree_root_names,
+                                host_user_id,
+                                is_last,
+                            } => self
+                                .render_participant_project(
+                                    *project_id,
+                                    &worktree_root_names,
+                                    *host_user_id,
+                                    *is_last,
+                                    cx,
+                                )
+                                .into_any_element(),
+                            ListEntry::ParticipantScreen { peer_id, is_last } => self
+                                .render_participant_screen(*peer_id, *is_last, cx)
+                                .into_any_element(),
+                            ListEntry::ChannelNotes { channel_id } => self
+                                .render_channel_notes(*channel_id, cx)
+                                .into_any_element(),
+                            ListEntry::ChannelChat { channel_id } => {
+                                self.render_channel_chat(*channel_id, cx).into_any_element()
+                            }
+                        }
+                    })),
             )
     }
 
     fn render_header(
-        &mut self,
+        &self,
         section: Section,
         is_selected: bool,
         is_collapsed: bool,
@@ -2287,7 +2274,7 @@ impl CollabPanel {
         let button = match section {
             Section::ActiveCall => channel_link.map(|channel_link| {
                 let channel_link_copy = channel_link.clone();
-                IconButton::new("channel-link", Icon::Check)
+                IconButton::new("channel-link", Icon::Copy)
                     .on_click(move |_, cx| {
                         let item = ClipboardItem::new(channel_link_copy.clone());
                         cx.write_to_clipboard(item)
@@ -2353,56 +2340,55 @@ impl CollabPanel {
     }
 
     fn render_contact(
-        &mut self,
+        &self,
         contact: &Contact,
         calling: bool,
         is_selected: bool,
         cx: &mut ViewContext<Self>,
     ) -> impl IntoElement {
-        enum ContactTooltip {}
-
         let online = contact.online;
         let busy = contact.busy || calling;
         let user_id = contact.user.id;
         let github_login = SharedString::from(contact.user.github_login.clone());
-        let mut item = ListItem::new(github_login.clone())
-            .on_click(cx.listener(move |this, _, cx| this.call(user_id, cx)))
-            .child(
-                h_stack()
-                    .w_full()
-                    .justify_between()
-                    .child(Label::new(github_login.clone()))
-                    .when(calling, |el| {
-                        el.child(Label::new("Calling").color(Color::Muted))
-                    })
-                    .when(!calling, |el| {
-                        el.child(
-                            div()
-                                .id("remove_contact")
-                                .invisible()
-                                .group_hover("", |style| style.visible())
-                                .child(
-                                    IconButton::new("remove_contact", Icon::Close)
-                                        .icon_color(Color::Muted)
-                                        .tooltip(|cx| Tooltip::text("Remove Contact", cx))
-                                        .on_click(cx.listener({
-                                            let github_login = github_login.clone();
-                                            move |this, _, cx| {
-                                                this.remove_contact(user_id, &github_login, cx);
-                                            }
-                                        })),
-                                ),
-                        )
-                    }),
-            )
-            .left_child(
-                // todo!() handle contacts with no avatar
-                Avatar::data(contact.user.avatar.clone().unwrap())
-                    .availability_indicator(if online { Some(!busy) } else { None }),
-            )
-            .when(online && !busy, |el| {
-                el.on_click(cx.listener(move |this, _, cx| this.call(user_id, cx)))
-            });
+        let mut item =
+            ListItem::new(github_login.clone())
+                .on_click(cx.listener(move |this, _, cx| this.call(user_id, cx)))
+                .child(
+                    h_stack()
+                        .w_full()
+                        .justify_between()
+                        .child(Label::new(github_login.clone()))
+                        .when(calling, |el| {
+                            el.child(Label::new("Calling").color(Color::Muted))
+                        })
+                        .when(!calling, |el| {
+                            el.child(
+                                div()
+                                    .id("remove_contact")
+                                    .invisible()
+                                    .group_hover("", |style| style.visible())
+                                    .child(
+                                        IconButton::new("remove_contact", Icon::Close)
+                                            .icon_color(Color::Muted)
+                                            .tooltip(|cx| Tooltip::text("Remove Contact", cx))
+                                            .on_click(cx.listener({
+                                                let github_login = github_login.clone();
+                                                move |this, _, cx| {
+                                                    this.remove_contact(user_id, &github_login, cx);
+                                                }
+                                            })),
+                                    ),
+                            )
+                        }),
+                )
+                .left_child(
+                    // todo!() handle contacts with no avatar
+                    Avatar::new(contact.user.avatar_uri.clone())
+                        .availability_indicator(if online { Some(!busy) } else { None }),
+                )
+                .when(online && !busy, |el| {
+                    el.on_click(cx.listener(move |this, _, cx| this.call(user_id, cx)))
+                });
 
         div()
             .id(github_login.clone())
@@ -2426,8 +2412,8 @@ impl CollabPanel {
     }
 
     fn render_contact_request(
-        &mut self,
-        user: Arc<User>,
+        &self,
+        user: &Arc<User>,
         is_incoming: bool,
         is_selected: bool,
         cx: &mut ViewContext<Self>,
@@ -2474,7 +2460,7 @@ impl CollabPanel {
                     .child(Label::new(github_login.clone()))
                     .child(h_stack().children(controls)),
             )
-            .when_some(user.avatar.clone(), |el, avatar| el.left_avatar(avatar))
+            .left_avatar(user.avatar_uri.clone())
     }
 
     fn render_contact_placeholder(
@@ -2532,7 +2518,9 @@ impl CollabPanel {
             let result = FacePile {
                 faces: participants
                     .iter()
-                    .filter_map(|user| Some(Avatar::data(user.avatar.clone()?).into_any_element()))
+                    .filter_map(|user| {
+                        Some(Avatar::new(user.avatar_uri.clone()).into_any_element())
+                    })
                     .take(FACEPILE_LIMIT)
                     .chain(if extra_count > 0 {
                         // todo!() @nate - this label looks wrong.
@@ -2540,7 +2528,7 @@ impl CollabPanel {
                     } else {
                         None
                     })
-                    .collect::<Vec<_>>(),
+                    .collect::<SmallVec<_>>(),
             };
 
             Some(result)
@@ -2557,7 +2545,7 @@ impl CollabPanel {
                 let channel = channel.clone();
                 move |cx| {
                     let channel = channel.clone();
-                    cx.build_view({ |cx| DraggedChannelView { channel, width } })
+                    cx.build_view(|cx| DraggedChannelView { channel, width })
                 }
             })
             .drag_over::<DraggedChannelView>(|style| {
@@ -2970,11 +2958,7 @@ impl CollabPanel {
         // .into_any()
     }
 
-    fn render_channel_editor(
-        &mut self,
-        depth: usize,
-        cx: &mut ViewContext<Self>,
-    ) -> impl IntoElement {
+    fn render_channel_editor(&self, depth: usize, cx: &mut ViewContext<Self>) -> impl IntoElement {
         let item = ListItem::new("channel-editor")
             .inset(false)
             .indent_level(depth)

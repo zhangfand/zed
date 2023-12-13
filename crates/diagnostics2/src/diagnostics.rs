@@ -13,10 +13,10 @@ use editor::{
 };
 use futures::future::try_join_all;
 use gpui::{
-    actions, div, AnyElement, AnyView, AppContext, Context, Div, EventEmitter, FocusEvent,
-    FocusHandle, Focusable, FocusableElement, FocusableView, InteractiveElement, IntoElement,
-    Model, ParentElement, Render, SharedString, Styled, Subscription, Task, View, ViewContext,
-    VisualContext, WeakView, WindowContext,
+    actions, div, AnyElement, AnyView, AppContext, Context, Div, EventEmitter, FocusHandle,
+    Focusable, FocusableView, InteractiveElement, IntoElement, Model, ParentElement, Render,
+    SharedString, Styled, Subscription, Task, View, ViewContext, VisualContext, WeakView,
+    WindowContext,
 };
 use language::{
     Anchor, Bias, Buffer, Diagnostic, DiagnosticEntry, DiagnosticSeverity, Point, Selection,
@@ -109,7 +109,6 @@ impl Render for ProjectDiagnosticsEditor {
         div()
             .track_focus(&self.focus_handle)
             .size_full()
-            .on_focus_in(cx.listener(Self::focus_in))
             .on_action(cx.listener(Self::toggle_warnings))
             .child(child)
     }
@@ -149,6 +148,11 @@ impl ProjectDiagnosticsEditor {
                 _ => {}
             });
 
+        let focus_handle = cx.focus_handle();
+
+        let focus_in_subscription =
+            cx.on_focus_in(&focus_handle, |diagnostics, cx| diagnostics.focus_in(cx));
+
         let excerpts = cx.build_model(|cx| MultiBuffer::new(project_handle.read(cx).replica_id()));
         let editor = cx.build_view(|cx| {
             let mut editor =
@@ -171,13 +175,17 @@ impl ProjectDiagnosticsEditor {
             summary,
             workspace,
             excerpts,
-            focus_handle: cx.focus_handle(),
+            focus_handle,
             editor,
             path_states: Default::default(),
             paths_to_update: HashMap::default(),
             include_warnings: ProjectDiagnosticsSettings::get_global(cx).include_warnings,
             current_diagnostics: HashMap::default(),
-            _subscriptions: vec![project_event_subscription, editor_event_subscription],
+            _subscriptions: vec![
+                project_event_subscription,
+                editor_event_subscription,
+                focus_in_subscription,
+            ],
         };
         this.update_excerpts(None, cx);
         this
@@ -202,7 +210,7 @@ impl ProjectDiagnosticsEditor {
         cx.notify();
     }
 
-    fn focus_in(&mut self, _: &FocusEvent, cx: &mut ViewContext<Self>) {
+    fn focus_in(&mut self, cx: &mut ViewContext<Self>) {
         if self.focus_handle.is_focused(cx) && !self.path_states.is_empty() {
             self.editor.focus_handle(cx).focus(cx)
         }
@@ -633,8 +641,44 @@ impl Item for ProjectDiagnosticsEditor {
         Some("Project Diagnostics".into())
     }
 
-    fn tab_content(&self, _detail: Option<usize>, _: &WindowContext) -> AnyElement {
-        render_summary(&self.summary)
+    fn tab_content(&self, _detail: Option<usize>, selected: bool, _: &WindowContext) -> AnyElement {
+        if self.summary.error_count == 0 && self.summary.warning_count == 0 {
+            let label = Label::new("No problems");
+            label.into_any_element()
+        } else {
+            h_stack()
+                .gap_1()
+                .when(self.summary.error_count > 0, |then| {
+                    then.child(
+                        h_stack()
+                            .gap_1()
+                            .child(IconElement::new(Icon::XCircle).color(Color::Error))
+                            .child(Label::new(self.summary.error_count.to_string()).color(
+                                if selected {
+                                    Color::Default
+                                } else {
+                                    Color::Muted
+                                },
+                            )),
+                    )
+                })
+                .when(self.summary.warning_count > 0, |then| {
+                    then.child(
+                        h_stack()
+                            .child(
+                                IconElement::new(Icon::ExclamationTriangle).color(Color::Warning),
+                            )
+                            .child(Label::new(self.summary.warning_count.to_string()).color(
+                                if selected {
+                                    Color::Default
+                                } else {
+                                    Color::Muted
+                                },
+                            )),
+                    )
+                })
+                .into_any_element()
+        }
     }
 
     fn for_each_project_item(
@@ -780,32 +824,6 @@ fn diagnostic_header_renderer(diagnostic: Diagnostic) -> RenderBlock {
             )
             .into_any_element()
     })
-}
-
-pub(crate) fn render_summary(summary: &DiagnosticSummary) -> AnyElement {
-    if summary.error_count == 0 && summary.warning_count == 0 {
-        let label = Label::new("No problems");
-        label.into_any_element()
-    } else {
-        h_stack()
-            .gap_1()
-            .when(summary.error_count > 0, |then| {
-                then.child(
-                    h_stack()
-                        .gap_1()
-                        .child(IconElement::new(Icon::XCircle).color(Color::Error))
-                        .child(Label::new(summary.error_count.to_string())),
-                )
-            })
-            .when(summary.warning_count > 0, |then| {
-                then.child(
-                    h_stack()
-                        .child(IconElement::new(Icon::ExclamationTriangle).color(Color::Warning))
-                        .child(Label::new(summary.warning_count.to_string())),
-                )
-            })
-            .into_any_element()
-    }
 }
 
 fn compare_diagnostics<L: language::ToOffset, R: language::ToOffset>(

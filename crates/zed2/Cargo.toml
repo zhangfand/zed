@@ -49,6 +49,7 @@ lsp = { package = "lsp2", path = "../lsp2" }
 menu = { package = "menu2", path = "../menu2" }
 # language_tools = { path = "../language_tools" }
 node_runtime = { path = "../node_runtime" }
+notifications = { package = "notifications2", path = "../notifications2" }
 assistant = { package = "assistant2", path = "../assistant2" }
 outline = { package = "outline2", path = "../outline2" }
 # plugin_runtime = { path = "../plugin_runtime",optional = true }
@@ -69,7 +70,7 @@ theme = { package = "theme2", path = "../theme2" }
 theme_selector = { package = "theme_selector2", path = "../theme_selector2" }
 util = { path = "../util" }
 semantic_index = { package = "semantic_index2", path = "../semantic_index2" }
-# vim = { path = "../vim" }
+vim = { package = "vim2", path = "../vim2" }
 workspace = { package = "workspace2", path = "../workspace2" }
 welcome = { package = "welcome2", path = "../welcome2" }
 zed_actions = {package = "zed_actions2", path = "../zed_actions2"}

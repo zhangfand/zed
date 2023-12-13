@@ -1753,7 +1753,7 @@ dependencies = [
 
 [[package]]
 name = "collab"
-version = "0.30.1"
+version = "0.31.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1990,7 +1990,7 @@ dependencies = [
 name = "collections"
 version = "0.1.0"
 dependencies = [
- "seahash",
+ "rustc-hash",
 ]
 
 [[package]]
@@ -2046,8 +2046,10 @@ dependencies = [
  "editor2",
  "env_logger 0.9.3",
  "fuzzy2",
+ "go_to_line2",
  "gpui2",
  "language2",
+ "menu2",
  "picker2",
  "project2",
  "serde",
@@ -10887,6 +10889,40 @@ dependencies = [
 ]
 
 [[package]]
+name = "vim2"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-compat",
+ "async-trait",
+ "collections",
+ "command_palette2",
+ "diagnostics2",
+ "editor2",
+ "futures 0.3.28",
+ "gpui2",
+ "indoc",
+ "itertools 0.10.5",
+ "language2",
+ "log",
+ "lsp2",
+ "nvim-rs",
+ "parking_lot 0.11.2",
+ "project2",
+ "search2",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "settings2",
+ "theme2",
+ "tokio",
+ "ui2",
+ "util",
+ "workspace2",
+ "zed_actions2",
+]
+
+[[package]]
 name = "vte"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -11389,6 +11425,7 @@ dependencies = [
  "theme_selector2",
  "ui2",
  "util",
+ "vim2",
  "workspace2",
 ]
 
@@ -11845,7 +11882,7 @@ dependencies = [
 
 [[package]]
 name = "zed"
-version = "0.117.0"
+version = "0.118.0"
 dependencies = [
  "activity_indicator",
  "ai",
@@ -12037,6 +12074,7 @@ dependencies = [
  "lsp2",
  "menu2",
  "node_runtime",
+ "notifications2",
  "num_cpus",
  "outline2",
  "parking_lot 0.11.2",
@@ -12105,6 +12143,7 @@ dependencies = [
  "urlencoding",
  "util",
  "uuid 1.4.1",
+ "vim2",
  "welcome2",
  "workspace2",
  "zed_actions2",
