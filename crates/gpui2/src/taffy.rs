@@ -3,11 +3,14 @@ use crate::{
     WindowContext,
 };
 use collections::{FxHashMap, FxHashSet};
+use refineable::Refineable as _;
 use smallvec::SmallVec;
 use std::fmt::Debug;
 use taffy::{
     geometry::{Point as TaffyPoint, Rect as TaffyRect, Size as TaffySize},
-    style::AvailableSpace as TaffyAvailableSpace,
+    style::{
+        AvailableSpace as TaffyAvailableSpace, Display, FlexDirection, FlexWrap, Overflow, Position,
+    },
     tree::NodeId,
     Taffy,
 };
@@ -245,28 +248,33 @@ trait ToTaffy<Output> {
 impl ToTaffy<taffy::style::Style> for Style {
     fn to_taffy(&self, rem_size: Pixels) -> taffy::style::Style {
         taffy::style::Style {
-            display: self.display,
-            overflow: self.overflow.clone().into(),
-            scrollbar_width: self.scrollbar_width,
-            position: self.position,
-            inset: self.inset.to_taffy(rem_size),
-            size: self.size.to_taffy(rem_size),
-            min_size: self.min_size.to_taffy(rem_size),
-            max_size: self.max_size.to_taffy(rem_size),
-            aspect_ratio: self.aspect_ratio,
-            margin: self.margin.to_taffy(rem_size),
-            padding: self.padding.to_taffy(rem_size),
-            border: self.border_widths.to_taffy(rem_size),
-            align_items: self.align_items,
-            align_self: self.align_self,
-            align_content: self.align_content,
-            justify_content: self.justify_content,
-            gap: self.gap.to_taffy(rem_size),
-            flex_direction: self.flex_direction,
-            flex_wrap: self.flex_wrap,
-            flex_basis: self.flex_basis.to_taffy(rem_size),
-            flex_grow: self.flex_grow,
-            flex_shrink: self.flex_shrink,
+            display: self.display().unwrap_or(Display::Block),
+            overflow: Point {
+                x: Overflow::Visible,
+                y: Overflow::Visible,
+            }
+            .refined(self.overflow())
+            .into(),
+            scrollbar_width: self.scrollbar_width().unwrap_or(0.),
+            position: self.position().unwrap_or(Position::Relative),
+            inset: Edges::auto().refined(self.inset()).to_taffy(rem_size),
+            size: Size::auto().refined(self.size()).to_taffy(rem_size),
+            min_size: Size::auto().refined(self.min_size()).to_taffy(rem_size),
+            max_size: Size::auto().refined(self.max_size()).to_taffy(rem_size),
+            aspect_ratio: self.aspect_ratio(),
+            margin: Edges::default().refined(self.margin()).to_taffy(rem_size),
+            padding: Edges::default().refined(self.padding()).to_taffy(rem_size),
+            border: self.border_widths().to_taffy(rem_size),
+            align_items: self.align_items(),
+            align_self: self.align_self(),
+            align_content: self.align_content(),
+            justify_content: self.justify_content(),
+            gap: Size::default().refined(self.gap()).to_taffy(rem_size),
+            flex_direction: self.flex_direction().unwrap_or(FlexDirection::Row),
+            flex_wrap: self.flex_wrap().unwrap_or(FlexWrap::NoWrap),
+            flex_basis: self.flex_basis().unwrap_or(Length::Auto).to_taffy(rem_size),
+            flex_grow: self.flex_grow().unwrap_or(0.),
+            flex_shrink: self.flex_shrink().unwrap_or(1.),
             ..Default::default() // Ignore grid properties for now
         }
     }

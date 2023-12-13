@@ -28,7 +28,7 @@ impl RenderOnce for Avatar {
         div()
             .size(size + px(2.))
             .map(|mut div| {
-                *div.style().corner_radii_mut() = self.image.style().corner_radii();
+                *div.style().corner_radii_mut() = self.image.style().corner_radii_mut().clone();
                 div
             })
             .when_some(self.border_color, |this, color| {

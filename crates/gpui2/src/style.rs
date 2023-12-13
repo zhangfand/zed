@@ -4,100 +4,15 @@ use crate::{
     black, phi, point, rems, AbsoluteLength, BorrowAppContext, BorrowWindow, Bounds, ContentMask,
     Corners, CornersRefinement, CursorStyle, DefiniteLength, Edges, EdgesRefinement, Font,
     FontFeatures, FontStyle, FontWeight, Hsla, Length, Pixels, Point, PointRefinement, Rgba,
-    SharedString, Size, SizeRefinement, Styled, TextRun, WindowContext,
+    SharedString, SizeRefinement, Styled, TextRun, WindowContext,
 };
 use collections::HashSet;
-use refineable::{Cascade, Refineable};
+use refineable::Refineable;
 use smallvec::SmallVec;
 pub use taffy::style::{
     AlignContent, AlignItems, AlignSelf, Display, FlexDirection, FlexWrap, JustifyContent,
     Overflow, Position,
 };
-
-pub type StyleCascade = Cascade<Style>;
-
-#[derive(Clone, Debug)]
-pub struct Style {
-    /// What layout strategy should be used?
-    pub display: Display,
-
-    /// Should the element be painted on screen?
-    pub visibility: Visibility,
-
-    // Overflow properties
-    /// How children overflowing their container should affect layout
-    pub overflow: Point<Overflow>,
-    /// How much space (in points) should be reserved for the scrollbars of `Overflow::Scroll` and `Overflow::Auto` nodes.
-    pub scrollbar_width: f32,
-
-    // Position properties
-    /// What should the `position` value of this struct use as a base offset?
-    pub position: Position,
-    /// How should the position of this element be tweaked relative to the layout defined?
-    pub inset: Edges<Length>,
-
-    // Size properies
-    /// Sets the initial size of the item
-    pub size: Size<Length>,
-    /// Controls the minimum size of the item
-    pub min_size: Size<Length>,
-    /// Controls the maximum size of the item
-    pub max_size: Size<Length>,
-    /// Sets the preferred aspect ratio for the item. The ratio is calculated as width divided by height.
-    pub aspect_ratio: Option<f32>,
-
-    // Spacing Properties
-    /// How large should the margin be on each side?
-    pub margin: Edges<Length>,
-    /// How large should the padding be on each side?
-    pub padding: Edges<DefiniteLength>,
-    /// How large should the border be on each side?
-    pub border_widths: Edges<AbsoluteLength>,
-
-    // Alignment properties
-    /// How this node's children aligned in the cross/block axis?
-    pub align_items: Option<AlignItems>,
-    /// How this node should be aligned in the cross/block axis. Falls back to the parents [`AlignItems`] if not set
-    pub align_self: Option<AlignSelf>,
-    /// How should content contained within this item be aligned in the cross/block axis
-    pub align_content: Option<AlignContent>,
-    /// How should contained within this item be aligned in the main/inline axis
-    pub justify_content: Option<JustifyContent>,
-    /// How large should the gaps between items in a flex container be?
-    pub gap: Size<DefiniteLength>,
-
-    // Flexbox properies
-    /// Which direction does the main axis flow in?
-    pub flex_direction: FlexDirection,
-    /// Should elements wrap, or stay in a single line?
-    pub flex_wrap: FlexWrap,
-    /// Sets the initial main axis size of the item
-    pub flex_basis: Length,
-    /// The relative rate at which this item grows when it is expanding to fill space, 0.0 is the default value, and this value must be positive.
-    pub flex_grow: f32,
-    /// The relative rate at which this item shrinks when it is contracting to fit into space, 1.0 is the default value, and this value must be positive.
-    pub flex_shrink: f32,
-
-    /// The fill color of this element
-    pub background: Option<Fill>,
-
-    /// The border color of this element
-    pub border_color: Option<Hsla>,
-
-    /// The radius of the corners of this element
-    pub corner_radii: Corners<AbsoluteLength>,
-
-    /// Box Shadow of the element
-    pub box_shadow: SmallVec<[BoxShadow; 2]>,
-
-    /// TEXT
-    pub text: TextStyleRefinement,
-
-    /// The mouse cursor style shown when the mouse pointer is over an element.
-    pub mouse_cursor: Option<CursorStyle>,
-
-    pub z_index: Option<u32>,
-}
 
 #[derive(Clone)]
 enum StyleField {
@@ -134,60 +49,9 @@ enum StyleField {
 }
 
 #[derive(Clone, Default)]
-pub struct StyleRefinement(Vec<StyleField>);
+pub struct Style(Vec<StyleField>);
 
 impl Refineable for Style {
-    type Refinement = StyleRefinement;
-
-    fn refine(&mut self, refinement: &Self::Refinement) {
-        for field in refinement.0.clone() {
-            match field {
-                StyleField::Display(display) => self.display = display,
-                StyleField::Visibility(visibility) => self.visibility = visibility,
-                StyleField::Overflow(overflow) => self.overflow.refine(&overflow),
-                StyleField::ScrollbarWidth(width) => self.scrollbar_width = width,
-                StyleField::Position(position) => self.position = position,
-                StyleField::Inset(inset) => self.inset.refine(&inset),
-                StyleField::Size(size) => self.size.refine(&size),
-                StyleField::MinSize(min_size) => self.min_size.refine(&min_size),
-                StyleField::MaxSize(max_size) => self.max_size.refine(&max_size),
-                StyleField::AspectRatio(aspect_ratio) => self.aspect_ratio = aspect_ratio,
-                StyleField::Margin(margin) => self.margin.refine(&margin),
-                StyleField::Padding(padding) => self.padding.refine(&padding),
-                StyleField::BorderWidths(border_widths) => {
-                    self.border_widths.refine(&border_widths)
-                }
-                StyleField::AlignItems(align_items) => self.align_items = align_items,
-                StyleField::AlignSelf(align_self) => self.align_self = align_self,
-                StyleField::AlignContent(align_content) => self.align_content = align_content,
-                StyleField::JustifyContent(justify_content) => {
-                    self.justify_content = justify_content
-                }
-                StyleField::Gap(gap) => self.gap.refine(&gap),
-                StyleField::FlexDirection(flex_direction) => self.flex_direction = flex_direction,
-                StyleField::FlexWrap(flex_wrap) => self.flex_wrap = flex_wrap,
-                StyleField::FlexBasis(flex_basis) => self.flex_basis = flex_basis,
-                StyleField::FlexGrow(flex_grow) => self.flex_grow = flex_grow,
-                StyleField::FlexShrink(flex_shrink) => self.flex_shrink = flex_shrink,
-                StyleField::Background(background) => self.background = background,
-                StyleField::BorderColor(border_color) => self.border_color = border_color,
-                StyleField::CornerRadii(corner_radii) => self.corner_radii.refine(&corner_radii),
-                StyleField::BoxShadow(box_shadow) => self.box_shadow = box_shadow,
-                StyleField::Text(text) => self.text.refine(&text),
-                StyleField::MouseCursor(mouse_cursor) => self.mouse_cursor = mouse_cursor,
-                StyleField::ZIndex(z_index) => self.z_index = z_index,
-            }
-        }
-    }
-
-    fn refined(self, refinement: Self::Refinement) -> Self {
-        let mut style = self;
-        style.refine(&refinement);
-        style
-    }
-}
-
-impl Refineable for StyleRefinement {
     type Refinement = Self;
 
     fn refine(&mut self, refinement: &Self::Refinement) {
@@ -234,21 +98,18 @@ impl Refineable for StyleRefinement {
     }
 }
 
-impl Styled for StyleRefinement {
-    fn style(&mut self) -> &mut StyleRefinement {
+impl Styled for Style {
+    fn style(&mut self) -> &mut Style {
         self
     }
 }
 
-impl StyleRefinement {
-    pub fn display(&self) -> Display {
-        match self.0.iter().find_map(|field| match field {
+impl Style {
+    pub fn display(&self) -> Option<Display> {
+        self.0.iter().find_map(|field| match field {
             StyleField::Display(value) => Some(*value),
             _ => None,
-        }) {
-            Some(value) => value,
-            None => Display::default(),
-        }
+        })
     }
 
     pub fn visibility(&self) -> Option<Visibility> {
@@ -352,54 +213,56 @@ impl StyleRefinement {
             .unwrap_or_default()
     }
 
-    pub fn border_widths(&self) -> EdgesRefinement<AbsoluteLength> {
+    pub fn border_widths(&self) -> Edges<AbsoluteLength> {
+        Edges::default().refined(
+            self.0
+                .iter()
+                .find_map(|field| match field {
+                    StyleField::BorderWidths(value) => Some(value.clone()),
+                    _ => None,
+                })
+                .unwrap_or_default(),
+        )
+    }
+
+    pub fn align_items(&self) -> Option<AlignItems> {
         self.0
             .iter()
             .find_map(|field| match field {
-                StyleField::BorderWidths(value) => Some(value.clone()),
+                StyleField::AlignItems(value) => Some(*value),
                 _ => None,
             })
             .unwrap_or_default()
     }
 
-    pub fn align_items(&self) -> Option<AlignItems> {
-        match self.0.iter().find_map(|field| match field {
-            StyleField::AlignItems(value) => Some(*value),
-            _ => None,
-        }) {
-            Some(value) => value,
-            None => None,
-        }
-    }
-
     pub fn align_self(&self) -> Option<AlignSelf> {
-        match self.0.iter().find_map(|field| match field {
-            StyleField::AlignSelf(value) => Some(*value),
-            _ => None,
-        }) {
-            Some(value) => value,
-            None => None,
-        }
+        self.0
+            .iter()
+            .find_map(|field| match field {
+                StyleField::AlignSelf(value) => Some(*value),
+                _ => None,
+            })
+            .unwrap_or_default()
     }
 
     pub fn align_content(&self) -> Option<AlignContent> {
-        match self.0.iter().find_map(|field| match field {
-            StyleField::AlignContent(value) => Some(*value),
-            _ => None,
-        }) {
-            Some(value) => value,
-            None => None,
-        }
+        self.0
+            .iter()
+            .find_map(|field| match field {
+                StyleField::AlignContent(value) => Some(*value),
+                _ => None,
+            })
+            .unwrap_or_default()
     }
 
     pub fn justify_content(&self) -> Option<JustifyContent> {
-        match self.0.iter().find_map(|field| match field {
-            StyleField::JustifyContent(value) => Some(*value),
-            _ => None,
-        }) {
-            Some(value) => value,
-            None => None,
-        }
+        self.0
+            .iter()
+            .find_map(|field| match field {
+                StyleField::JustifyContent(value) => Some(*value),
+                _ => None,
+            })
+            .unwrap_or_default()
     }
 
     pub fn gap(&self) -> SizeRefinement<DefiniteLength> {
@@ -412,14 +275,11 @@ impl StyleRefinement {
             .unwrap_or_default()
     }
 
-    pub fn flex_direction(&self) -> FlexDirection {
-        match self.0.iter().find_map(|field| match field {
+    pub fn flex_direction(&self) -> Option<FlexDirection> {
+        self.0.iter().find_map(|field| match field {
             StyleField::FlexDirection(value) => Some(*value),
             _ => None,
-        }) {
-            Some(value) => value,
-            None => FlexDirection::default(),
-        }
+        })
     }
 
     pub fn flex_wrap(&self) -> Option<FlexWrap> {
@@ -470,21 +330,26 @@ impl StyleRefinement {
             .flatten()
     }
 
-    pub fn corner_radii(&self) -> CornersRefinement<AbsoluteLength> {
+    pub fn corner_radii(&self) -> Corners<AbsoluteLength> {
+        Corners::default().refined(
+            self.0
+                .iter()
+                .find_map(|field| match field {
+                    StyleField::CornerRadii(value) => Some(value.clone()),
+                    _ => None,
+                })
+                .unwrap_or_default(),
+        )
+    }
+
+    pub fn box_shadow(&self) -> SmallVec<[BoxShadow; 2]> {
         self.0
             .iter()
             .find_map(|field| match field {
-                StyleField::CornerRadii(value) => Some(value.clone()),
+                StyleField::BoxShadow(value) => Some(value.clone()),
                 _ => None,
             })
             .unwrap_or_default()
-    }
-
-    pub fn box_shadow(&self) -> Option<SmallVec<[BoxShadow; 2]>> {
-        self.0.iter().find_map(|field| match field {
-            StyleField::BoxShadow(value) => Some(value.clone()),
-            _ => None,
-        })
     }
 
     pub fn text(&self) -> TextStyleRefinement {
@@ -1129,27 +994,19 @@ pub struct HighlightStyle {
 impl Eq for HighlightStyle {}
 
 impl Style {
-    pub fn text_style(&self) -> Option<&TextStyleRefinement> {
-        if self.text.is_some() {
-            Some(&self.text)
-        } else {
-            None
-        }
-    }
-
     pub fn overflow_mask(&self, bounds: Bounds<Pixels>) -> Option<ContentMask<Pixels>> {
-        match self.overflow {
-            Point {
-                x: Overflow::Visible,
-                y: Overflow::Visible,
+        match self.overflow() {
+            PointRefinement {
+                x: Some(Overflow::Visible) | None,
+                y: Some(Overflow::Visible) | None,
             } => None,
             _ => {
                 let current_mask = bounds;
                 let min = current_mask.origin;
                 let max = current_mask.lower_right();
                 let bounds = match (
-                    self.overflow.x == Overflow::Visible,
-                    self.overflow.y == Overflow::Visible,
+                    self.overflow().x.map_or(true, |x| x == Overflow::Visible),
+                    self.overflow().y.map_or(true, |x| x == Overflow::Visible),
                 ) {
                     // x and y both visible
                     (true, true) => return None,
@@ -1176,8 +1033,8 @@ impl Style {
         C: BorrowAppContext,
         F: FnOnce(&mut C) -> R,
     {
-        if self.text.is_some() {
-            cx.with_text_style(Some(self.text.clone()), f)
+        if self.text().is_some() {
+            cx.with_text_style(self.text().clone(), f)
         } else {
             f(cx)
         }
@@ -1195,8 +1052,8 @@ impl Style {
         let max = current_mask.bounds.lower_right();
 
         let mask_bounds = match (
-            self.overflow.x == Overflow::Visible,
-            self.overflow.y == Overflow::Visible,
+            self.overflow().x.map_or(true, |x| x == Overflow::Visible),
+            self.overflow().y.map_or(true, |x| x == Overflow::Visible),
         ) {
             // x and y both visible
             (true, true) => return f(cx),
@@ -1227,71 +1084,29 @@ impl Style {
         cx.with_z_index(0, |cx| {
             cx.paint_shadows(
                 bounds,
-                self.corner_radii.to_pixels(bounds.size, rem_size),
-                &self.box_shadow,
+                self.corner_radii().to_pixels(bounds.size, rem_size),
+                &self.box_shadow(),
             );
         });
 
-        let background_color = self.background.as_ref().and_then(Fill::color);
+        let background_color = self.background().as_ref().and_then(Fill::color);
         if background_color.is_some() || self.is_border_visible() {
             cx.with_z_index(1, |cx| {
                 cx.paint_quad(
                     bounds,
-                    self.corner_radii.to_pixels(bounds.size, rem_size),
+                    self.corner_radii().to_pixels(bounds.size, rem_size),
                     background_color.unwrap_or_default(),
-                    self.border_widths.to_pixels(rem_size),
-                    self.border_color.unwrap_or_default(),
+                    self.border_widths().to_pixels(rem_size),
+                    self.border_color().unwrap_or_default(),
                 );
             });
         }
     }
 
     fn is_border_visible(&self) -> bool {
-        self.border_color
+        self.border_color()
             .map_or(false, |color| !color.is_transparent())
-            && self.border_widths.any(|length| !length.is_zero())
-    }
-}
-
-impl Default for Style {
-    fn default() -> Self {
-        Style {
-            display: Display::Block,
-            visibility: Visibility::Visible,
-            overflow: Point {
-                x: Overflow::Visible,
-                y: Overflow::Visible,
-            },
-            scrollbar_width: 0.0,
-            position: Position::Relative,
-            inset: Edges::auto(),
-            margin: Edges::<Length>::zero(),
-            padding: Edges::<DefiniteLength>::zero(),
-            border_widths: Edges::<AbsoluteLength>::zero(),
-            size: Size::auto(),
-            min_size: Size::auto(),
-            max_size: Size::auto(),
-            aspect_ratio: None,
-            gap: Size::default(),
-            // Aligment
-            align_items: None,
-            align_self: None,
-            align_content: None,
-            justify_content: None,
-            // Flexbox
-            flex_direction: FlexDirection::Row,
-            flex_wrap: FlexWrap::NoWrap,
-            flex_grow: 0.0,
-            flex_shrink: 1.0,
-            flex_basis: Length::Auto,
-            background: None,
-            border_color: None,
-            corner_radii: Corners::default(),
-            box_shadow: Default::default(),
-            text: TextStyleRefinement::default(),
-            mouse_cursor: None,
-            z_index: None,
-        }
+            && self.border_widths().any(|length| !length.is_zero())
     }
 }
 

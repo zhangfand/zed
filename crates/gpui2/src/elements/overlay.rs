@@ -72,8 +72,8 @@ impl Element for Overlay {
             .collect::<SmallVec<_>>();
 
         let mut overlay_style = Style::default();
-        overlay_style.position = Position::Absolute;
-        overlay_style.display = Display::Flex;
+        *overlay_style.position_mut() = Position::Absolute;
+        *overlay_style.display_mut() = Display::Flex;
 
         let layout_id = cx.request_layout(&overlay_style, child_layout_ids.iter().copied());
 

@@ -1,14 +1,14 @@
+use crate::BoxShadow;
 use crate::{
     self as gpui, hsla, point, px, relative, rems, AbsoluteLength, AlignItems, CursorStyle,
     DefiniteLength, Display, Fill, FlexDirection, Hsla, JustifyContent, Length, Position,
-    SharedString, StyleRefinement, Visibility, WhiteSpace,
+    SharedString, Style, Visibility, WhiteSpace,
 };
-use crate::{BoxShadow, TextStyleRefinement};
 use smallvec::{smallvec, SmallVec};
 use taffy::style::Overflow;
 
 pub trait Styled: Sized {
-    fn style(&mut self) -> &mut StyleRefinement;
+    fn style(&mut self) -> &mut Style;
 
     gpui2_macros::style_helpers!();
 
@@ -225,14 +225,14 @@ pub trait Styled: Sized {
     /// Sets the whitespace of the element to `normal`.
     /// [Docs](https://tailwindcss.com/docs/whitespace#normal)
     fn whitespace_normal(mut self) -> Self {
-        self.text_style().white_space = Some(WhiteSpace::Normal);
+        self.style().text_mut().white_space = Some(WhiteSpace::Normal);
         self
     }
 
     /// Sets the whitespace of the element to `nowrap`.
     /// [Docs](https://tailwindcss.com/docs/whitespace#nowrap)
     fn whitespace_nowrap(mut self) -> Self {
-        self.text_style().white_space = Some(WhiteSpace::Nowrap);
+        self.style().text_mut().white_space = Some(WhiteSpace::Nowrap);
         self
     }
 
@@ -482,69 +482,65 @@ pub trait Styled: Sized {
         self
     }
 
-    fn text_style(&mut self) -> &mut TextStyleRefinement {
-        let style: &mut StyleRefinement = self.style();
-        style.text_mut()
-    }
-
     fn text_color(mut self, color: impl Into<Hsla>) -> Self {
-        self.text_style().color = Some(color.into());
+        self.style().text_mut().color = Some(color.into());
         self
     }
 
     fn text_bg(mut self, bg: impl Into<Hsla>) -> Self {
-        self.text_style().background_color = Some(bg.into());
+        self.style().text_mut().background_color = Some(bg.into());
         self
     }
 
     fn text_size(mut self, size: impl Into<AbsoluteLength>) -> Self {
-        self.text_style().font_size = Some(size.into());
+        self.style().text_mut().font_size = Some(size.into());
         self
     }
 
     fn text_xs(mut self) -> Self {
-        self.text_style().font_size = Some(rems(0.75).into());
+        self.style().text_mut().font_size = Some(rems(0.75).into());
         self
     }
 
     fn text_sm(mut self) -> Self {
-        self.text_style().font_size = Some(rems(0.875).into());
+        self.style().text_mut().font_size = Some(rems(0.875).into());
         self
     }
 
     fn text_base(mut self) -> Self {
-        self.text_style().font_size = Some(rems(1.0).into());
+        self.style().text_mut().font_size = Some(rems(1.0).into());
         self
     }
 
     fn text_lg(mut self) -> Self {
-        self.text_style().font_size = Some(rems(1.125).into());
+        self.style().text_mut().font_size = Some(rems(1.125).into());
         self
     }
 
     fn text_xl(mut self) -> Self {
-        self.text_style().font_size = Some(rems(1.25).into());
+        self.style().text_mut().font_size = Some(rems(1.25).into());
         self
     }
 
     fn text_2xl(mut self) -> Self {
-        self.text_style().font_size = Some(rems(1.5).into());
+        self.style().text_mut().font_size = Some(rems(1.5).into());
         self
     }
 
     fn text_3xl(mut self) -> Self {
-        self.text_style().font_size = Some(rems(1.875).into());
+        self.style().text_mut().font_size = Some(rems(1.875).into());
         self
     }
 
     fn text_decoration_none(mut self) -> Self {
-        self.text_style().underline = None;
+        self.style().text_mut().underline = None;
         self
     }
 
     fn text_decoration_color(mut self, color: impl Into<Hsla>) -> Self {
         let underline = self
-            .text_style()
+            .style()
+            .text_mut()
             .underline
             .get_or_insert_with(Default::default);
         underline.color = Some(color.into());
@@ -553,7 +549,8 @@ pub trait Styled: Sized {
 
     fn text_decoration_solid(mut self) -> Self {
         let underline = self
-            .text_style()
+            .style()
+            .text_mut()
             .underline
             .get_or_insert_with(Default::default);
         underline.wavy = false;
@@ -562,7 +559,8 @@ pub trait Styled: Sized {
 
     fn text_decoration_wavy(mut self) -> Self {
         let underline = self
-            .text_style()
+            .style()
+            .text_mut()
             .underline
             .get_or_insert_with(Default::default);
         underline.wavy = true;
@@ -571,7 +569,8 @@ pub trait Styled: Sized {
 
     fn text_decoration_0(mut self) -> Self {
         let underline = self
-            .text_style()
+            .style()
+            .text_mut()
             .underline
             .get_or_insert_with(Default::default);
         underline.thickness = px(0.);
@@ -580,7 +579,8 @@ pub trait Styled: Sized {
 
     fn text_decoration_1(mut self) -> Self {
         let underline = self
-            .text_style()
+            .style()
+            .text_mut()
             .underline
             .get_or_insert_with(Default::default);
         underline.thickness = px(1.);
@@ -589,7 +589,8 @@ pub trait Styled: Sized {
 
     fn text_decoration_2(mut self) -> Self {
         let underline = self
-            .text_style()
+            .style()
+            .text_mut()
             .underline
             .get_or_insert_with(Default::default);
         underline.thickness = px(2.);
@@ -598,7 +599,8 @@ pub trait Styled: Sized {
 
     fn text_decoration_4(mut self) -> Self {
         let underline = self
-            .text_style()
+            .style()
+            .text_mut()
             .underline
             .get_or_insert_with(Default::default);
         underline.thickness = px(4.);
@@ -607,7 +609,8 @@ pub trait Styled: Sized {
 
     fn text_decoration_8(mut self) -> Self {
         let underline = self
-            .text_style()
+            .style()
+            .text_mut()
             .underline
             .get_or_insert_with(Default::default);
         underline.thickness = px(8.);
@@ -615,12 +618,12 @@ pub trait Styled: Sized {
     }
 
     fn font(mut self, family_name: impl Into<SharedString>) -> Self {
-        self.text_style().font_family = Some(family_name.into());
+        self.style().text_mut().font_family = Some(family_name.into());
         self
     }
 
     fn line_height(mut self, line_height: impl Into<DefiniteLength>) -> Self {
-        self.text_style().line_height = Some(line_height.into());
+        self.style().text_mut().line_height = Some(line_height.into());
         self
     }
 }

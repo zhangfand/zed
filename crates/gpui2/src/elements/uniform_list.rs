@@ -1,8 +1,9 @@
 use crate::{
-    point, px, size, AnyElement, AvailableSpace, BorrowWindow, Bounds, ContentMask, Element,
+    point, px, size, AnyElement, AvailableSpace, BorrowWindow, Bounds, ContentMask, Edges, Element,
     ElementId, InteractiveElement, InteractiveElementState, Interactivity, IntoElement, LayoutId,
-    Pixels, Point, Render, Size, StyleRefinement, Styled, View, ViewContext, WindowContext,
+    Pixels, Point, Render, Size, Style, Styled, View, ViewContext, WindowContext,
 };
+use refineable::Refineable;
 use smallvec::SmallVec;
 use std::{cell::RefCell, cmp, ops::Range, rc::Rc};
 use taffy::style::Overflow;
@@ -22,7 +23,7 @@ where
     V: Render,
 {
     let id = id.into();
-    let mut base_style = StyleRefinement::default();
+    let mut base_style = Style::default();
     base_style.overflow_mut().y = Some(Overflow::Scroll);
 
     let render_range = move |range, cx: &mut WindowContext| {
@@ -89,7 +90,7 @@ impl UniformListScrollHandle {
 }
 
 impl Styled for UniformList {
-    fn style(&mut self) -> &mut StyleRefinement {
+    fn style(&mut self) -> &mut Style {
         &mut self.interactivity.base_style
     }
 }
@@ -158,8 +159,10 @@ impl Element for UniformList {
         let style =
             self.interactivity
                 .compute_style(Some(bounds), &mut element_state.interactive, cx);
-        let border = style.border_widths.to_pixels(cx.rem_size());
-        let padding = style.padding.to_pixels(bounds.size.into(), cx.rem_size());
+        let border = style.border_widths().to_pixels(cx.rem_size());
+        let padding = Edges::default()
+            .refined(style.padding())
+            .to_pixels(bounds.size.into(), cx.rem_size());
 
         let padded_bounds = Bounds::from_corners(
             bounds.origin + point(border.left + padding.left, border.top + padding.top),
@@ -187,8 +190,10 @@ impl Element for UniformList {
             &mut element_state.interactive,
             cx,
             |style, scroll_offset, cx| {
-                let border = style.border_widths.to_pixels(cx.rem_size());
-                let padding = style.padding.to_pixels(bounds.size.into(), cx.rem_size());
+                let border = style.border_widths().to_pixels(cx.rem_size());
+                let padding = Edges::default()
+                    .refined(style.padding())
+                    .to_pixels(bounds.size.into(), cx.rem_size());
 
                 let padded_bounds = Bounds::from_corners(
                     bounds.origin + point(border.left + padding.left, border.top + padding.top),
@@ -196,7 +201,7 @@ impl Element for UniformList {
                         - point(border.right + padding.right, border.bottom + padding.bottom),
                 );
 
-                cx.with_z_index(style.z_index.unwrap_or(0), |cx| {
+                cx.with_z_index(Style::z_index(&style).unwrap_or(0), |cx| {
                     style.paint(bounds, cx);
 
                     if self.item_count > 0 {

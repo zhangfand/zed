@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::{
     point, size, Bounds, DevicePixels, Element, ImageData, InteractiveElement,
     InteractiveElementState, Interactivity, IntoElement, LayoutId, Pixels, SharedString, Size,
-    StyleRefinement, Styled, WindowContext,
+    Style, Styled, WindowContext,
 };
 use futures::FutureExt;
 use media::core_video::CVImageBuffer;
@@ -92,7 +92,7 @@ impl Element for Img {
             element_state,
             cx,
             |style, _scroll_offset, cx| {
-                let corner_radii = style.corner_radii.to_pixels(bounds.size, cx.rem_size());
+                let corner_radii = style.corner_radii().to_pixels(bounds.size, cx.rem_size());
                 cx.with_z_index(1, |cx| {
                     match self.source {
                         ImageSource::Uri(uri) => {
@@ -147,7 +147,7 @@ impl IntoElement for Img {
 }
 
 impl Styled for Img {
-    fn style(&mut self) -> &mut StyleRefinement {
+    fn style(&mut self) -> &mut Style {
         &mut self.interactivity.base_style
     }
 }

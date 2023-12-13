@@ -2771,9 +2771,10 @@ impl Element for EditorElement {
             let layout_id = match editor.mode {
                 EditorMode::SingleLine => {
                     let rem_size = cx.rem_size();
-                    let mut style = Style::default();
-                    style.size.width = relative(1.).into();
-                    style.size.height = self.style.text.line_height_in_pixels(rem_size).into();
+                    let style = Style::default().w_full().h(self
+                        .style
+                        .text
+                        .line_height_in_pixels(rem_size));
                     cx.request_layout(&style, None)
                 }
                 EditorMode::AutoHeight { max_lines } => {
@@ -2798,9 +2799,7 @@ impl Element for EditorElement {
                     )
                 }
                 EditorMode::Full => {
-                    let mut style = Style::default();
-                    style.size.width = relative(1.).into();
-                    style.size.height = relative(1.).into();
+                    let style = Style::default().full();
                     cx.request_layout(&style, None)
                 }
             };

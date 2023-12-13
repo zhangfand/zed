@@ -3,7 +3,7 @@ use std::{cell::RefCell, rc::Rc};
 use gpui::{
     overlay, point, px, rems, AnchorCorner, AnyElement, Bounds, DismissEvent, DispatchPhase,
     Element, ElementId, InteractiveBounds, IntoElement, LayoutId, ManagedView, MouseDownEvent,
-    ParentElement, Pixels, Point, View, VisualContext, WindowContext,
+    ParentElement, Pixels, Point, Style, View, VisualContext, WindowContext,
 };
 
 use crate::{Clickable, Selectable};
@@ -165,7 +165,7 @@ impl<M: ManagedView> Element for PopoverMenu<M> {
             .map(|child_element| child_element.layout(cx));
 
         let layout_id = cx.request_layout(
-            &gpui::Style::default(),
+            &Style::default(),
             menu_layout_id.into_iter().chain(child_layout_id),
         );
 

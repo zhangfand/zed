@@ -166,7 +166,7 @@ pub enum GlobalKey {
 }
 
 pub trait BorrowAppContext {
-    fn with_text_style<F, R>(&mut self, style: Option<TextStyleRefinement>, f: F) -> R
+    fn with_text_style<F, R>(&mut self, style: TextStyleRefinement, f: F) -> R
     where
         F: FnOnce(&mut Self) -> R;
 
@@ -177,11 +177,11 @@ impl<C> BorrowAppContext for C
 where
     C: BorrowMut<AppContext>,
 {
-    fn with_text_style<F, R>(&mut self, style: Option<TextStyleRefinement>, f: F) -> R
+    fn with_text_style<F, R>(&mut self, style: TextStyleRefinement, f: F) -> R
     where
         F: FnOnce(&mut Self) -> R,
     {
-        if let Some(style) = style {
+        if style.is_some() {
             self.borrow_mut().push_text_style(style);
             let result = f(self);
             self.borrow_mut().pop_text_style();

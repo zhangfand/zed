@@ -1,9 +1,9 @@
 use editor::{Cursor, HighlightedRange, HighlightedRangeLine};
 use gpui::{
-    black, div, point, px, red, relative, transparent_black, AnyElement, AsyncWindowContext,
-    AvailableSpace, Bounds, DispatchPhase, Element, ElementId, ExternalPaths, FocusHandle, Font,
-    FontStyle, FontWeight, HighlightStyle, Hsla, InteractiveElement, InteractiveElementState,
-    IntoElement, LayoutId, Model, ModelContext, ModifiersChangedEvent, MouseButton, Pixels,
+    black, div, point, px, red, transparent_black, AnyElement, AsyncWindowContext, AvailableSpace,
+    Bounds, DispatchPhase, Element, ElementId, ExternalPaths, FocusHandle, Font, FontStyle,
+    FontWeight, HighlightStyle, Hsla, InteractiveElement, InteractiveElementState, IntoElement,
+    LayoutId, Model, ModelContext, ModifiersChangedEvent, MouseButton, Pixels,
     PlatformInputHandler, Point, Rgba, ShapedLine, Size, StatefulInteractiveElement, Styled,
     TextRun, TextStyle, TextSystem, UnderlineStyle, WhiteSpace, WindowContext,
 };
@@ -758,14 +758,9 @@ impl Element for TerminalElement {
         cx: &mut WindowContext<'_>,
     ) -> (LayoutId, Self::State) {
         let (layout_id, interactive_state) =
-            self.interactivity
-                .layout(element_state, cx, |mut style, cx| {
-                    style.size.width = relative(1.).into();
-                    style.size.height = relative(1.).into();
-                    let layout_id = cx.request_layout(&style, None);
-
-                    layout_id
-                });
+            self.interactivity.layout(element_state, cx, |style, cx| {
+                cx.request_layout(&style.full(), None)
+            });
 
         (layout_id, interactive_state)
     }

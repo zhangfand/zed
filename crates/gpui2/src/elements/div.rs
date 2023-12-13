@@ -3,8 +3,7 @@ use crate::{
     BorrowWindow, Bounds, ClickEvent, DispatchPhase, Element, ElementId, FocusEvent, FocusHandle,
     IntoElement, KeyContext, KeyDownEvent, KeyUpEvent, LayoutId, MouseButton, MouseDownEvent,
     MouseMoveEvent, MouseUpEvent, ParentElement, Pixels, Point, Render, ScrollWheelEvent,
-    SharedString, Size, StackingOrder, Style, StyleRefinement, Styled, Task, View, Visibility,
-    WindowContext,
+    SharedString, Size, StackingOrder, Style, Styled, Task, View, Visibility, WindowContext,
 };
 use collections::HashMap;
 use refineable::Refineable;
@@ -26,7 +25,7 @@ const TOOLTIP_DELAY: Duration = Duration::from_millis(500);
 
 pub struct GroupStyle {
     pub group: SharedString,
-    pub style: Box<StyleRefinement>,
+    pub style: Box<Style>,
 }
 
 pub trait InteractiveElement: Sized {
@@ -60,23 +59,23 @@ pub trait InteractiveElement: Sized {
         self
     }
 
-    fn hover(mut self, f: impl FnOnce(StyleRefinement) -> StyleRefinement) -> Self {
+    fn hover(mut self, f: impl FnOnce(Style) -> Style) -> Self {
         debug_assert!(
             self.interactivity().hover_style.is_none(),
             "hover style already set"
         );
-        self.interactivity().hover_style = Some(Box::new(f(StyleRefinement::default())));
+        self.interactivity().hover_style = Some(Box::new(f(Style::default())));
         self
     }
 
     fn group_hover(
         mut self,
         group_name: impl Into<SharedString>,
-        f: impl FnOnce(StyleRefinement) -> StyleRefinement,
+        f: impl FnOnce(Style) -> Style,
     ) -> Self {
         self.interactivity().group_hover_style = Some(GroupStyle {
             group: group_name.into(),
-            style: Box::new(f(StyleRefinement::default())),
+            style: Box::new(f(Style::default())),
         });
         self
     }
@@ -307,23 +306,23 @@ pub trait InteractiveElement: Sized {
         self
     }
 
-    fn drag_over<S: 'static>(mut self, f: impl FnOnce(StyleRefinement) -> StyleRefinement) -> Self {
+    fn drag_over<S: 'static>(mut self, f: impl FnOnce(Style) -> Style) -> Self {
         self.interactivity()
             .drag_over_styles
-            .push((TypeId::of::<S>(), f(StyleRefinement::default())));
+            .push((TypeId::of::<S>(), f(Style::default())));
         self
     }
 
     fn group_drag_over<S: 'static>(
         mut self,
         group_name: impl Into<SharedString>,
-        f: impl FnOnce(StyleRefinement) -> StyleRefinement,
+        f: impl FnOnce(Style) -> Style,
     ) -> Self {
         self.interactivity().group_drag_over_styles.push((
             TypeId::of::<S>(),
             GroupStyle {
                 group: group_name.into(),
-                style: Box::new(f(StyleRefinement::default())),
+                style: Box::new(f(Style::default())),
             },
         ));
         self
@@ -371,25 +370,25 @@ pub trait StatefulInteractiveElement: InteractiveElement {
         self
     }
 
-    fn active(mut self, f: impl FnOnce(StyleRefinement) -> StyleRefinement) -> Self
+    fn active(mut self, f: impl FnOnce(Style) -> Style) -> Self
     where
         Self: Sized,
     {
-        self.interactivity().active_style = Some(Box::new(f(StyleRefinement::default())));
+        self.interactivity().active_style = Some(Box::new(f(Style::default())));
         self
     }
 
     fn group_active(
         mut self,
         group_name: impl Into<SharedString>,
-        f: impl FnOnce(StyleRefinement) -> StyleRefinement,
+        f: impl FnOnce(Style) -> Style,
     ) -> Self
     where
         Self: Sized,
     {
         self.interactivity().group_active_style = Some(GroupStyle {
             group: group_name.into(),
-            style: Box::new(f(StyleRefinement::default())),
+            style: Box::new(f(Style::default())),
         });
         self
     }
@@ -446,19 +445,19 @@ pub trait StatefulInteractiveElement: InteractiveElement {
 }
 
 pub trait FocusableElement: InteractiveElement {
-    fn focus(mut self, f: impl FnOnce(StyleRefinement) -> StyleRefinement) -> Self
+    fn focus(mut self, f: impl FnOnce(Style) -> Style) -> Self
     where
         Self: Sized,
     {
-        self.interactivity().focus_style = Some(Box::new(f(StyleRefinement::default())));
+        self.interactivity().focus_style = Some(Box::new(f(Style::default())));
         self
     }
 
-    fn in_focus(mut self, f: impl FnOnce(StyleRefinement) -> StyleRefinement) -> Self
+    fn in_focus(mut self, f: impl FnOnce(Style) -> Style) -> Self
     where
         Self: Sized,
     {
-        self.interactivity().in_focus_style = Some(Box::new(f(StyleRefinement::default())));
+        self.interactivity().in_focus_style = Some(Box::new(f(Style::default())));
         self
     }
 }
@@ -507,7 +506,7 @@ pub struct Div {
 }
 
 impl Styled for Div {
-    fn style(&mut self) -> &mut StyleRefinement {
+    fn style(&mut self) -> &mut Style {
         &mut self.interactivity.base_style
     }
 }
@@ -537,7 +536,7 @@ impl Element for Div {
             element_state.map(|s| s.interactive_state),
             cx,
             |style, cx| {
-                cx.with_text_style(style.text_style().cloned(), |cx| {
+                cx.with_text_style(style.text(), |cx| {
                     child_layout_ids = self
                         .children
                         .iter_mut()
@@ -601,18 +600,18 @@ impl Element for Div {
             &mut element_state.interactive_state,
             cx,
             |style, scroll_offset, cx| {
-                if style.visibility == Visibility::Hidden {
+                if style.visibility() == Some(Visibility::Hidden) {
                     return;
                 }
 
-                let z_index = style.z_index.unwrap_or(0);
+                let z_index = Style::z_index(&style).unwrap_or(0);
 
                 cx.with_z_index(z_index, |cx| {
                     cx.with_z_index(0, |cx| {
                         style.paint(bounds, cx);
                     });
                     cx.with_z_index(1, |cx| {
-                        cx.with_text_style(style.text_style().cloned(), |cx| {
+                        cx.with_text_style(style.text().clone(), |cx| {
                             cx.with_content_mask(style.overflow_mask(bounds), |cx| {
                                 cx.with_element_offset(scroll_offset, |cx| {
                                     for child in self.children {
@@ -658,14 +657,14 @@ pub struct Interactivity {
     pub tracked_focus_handle: Option<FocusHandle>,
     pub scroll_handle: Option<ScrollHandle>,
     pub group: Option<SharedString>,
-    pub base_style: Box<StyleRefinement>,
-    pub focus_style: Option<Box<StyleRefinement>>,
-    pub in_focus_style: Option<Box<StyleRefinement>>,
-    pub hover_style: Option<Box<StyleRefinement>>,
+    pub base_style: Box<Style>,
+    pub focus_style: Option<Box<Style>>,
+    pub in_focus_style: Option<Box<Style>>,
+    pub hover_style: Option<Box<Style>>,
     pub group_hover_style: Option<GroupStyle>,
-    pub active_style: Option<Box<StyleRefinement>>,
+    pub active_style: Option<Box<Style>>,
     pub group_active_style: Option<GroupStyle>,
-    pub drag_over_styles: Vec<(TypeId, StyleRefinement)>,
+    pub drag_over_styles: Vec<(TypeId, Style)>,
     pub group_drag_over_styles: Vec<(TypeId, GroupStyle)>,
     pub mouse_down_listeners: Vec<MouseDownListener>,
     pub mouse_up_listeners: Vec<MouseUpListener>,
@@ -739,11 +738,13 @@ impl Interactivity {
         let style = self.compute_style(Some(bounds), element_state, cx);
 
         if style
-            .background
+            .background()
             .as_ref()
             .is_some_and(|fill| fill.color().is_some_and(|color| !color.is_transparent()))
         {
-            cx.with_z_index(style.z_index.unwrap_or(0), |cx| cx.add_opaque_layer(bounds))
+            cx.with_z_index(Style::z_index(&style).unwrap_or(0), |cx| {
+                cx.add_opaque_layer(bounds)
+            })
         }
 
         let interactive_bounds = Rc::new(InteractiveBounds {
@@ -751,7 +752,7 @@ impl Interactivity {
             stacking_order: cx.stacking_order().clone(),
         });
 
-        if let Some(mouse_cursor) = style.mouse_cursor {
+        if let Some(mouse_cursor) = style.mouse_cursor() {
             let mouse_position = &cx.mouse_position();
             let hovered = interactive_bounds.visibly_contains(mouse_position, cx);
             if hovered {
@@ -1034,7 +1035,11 @@ impl Interactivity {
             });
         }
 
-        let overflow = style.overflow;
+        let overflow = Point {
+            x: Overflow::Visible,
+            y: Overflow::Visible,
+        }
+        .refined(style.overflow());
         if overflow.x == Overflow::Scroll || overflow.y == Overflow::Scroll {
             if let Some(scroll_handle) = &self.scroll_handle {
                 scroll_handle.0.borrow_mut().overflow = overflow;
@@ -1118,8 +1123,7 @@ impl Interactivity {
         element_state: &mut InteractiveElementState,
         cx: &mut WindowContext,
     ) -> Style {
-        let mut style = Style::default();
-        style.refine(&self.base_style);
+        let mut style = self.base_style.as_ref().clone();
 
         if let Some(focus_handle) = self.tracked_focus_handle.as_ref() {
             if let Some(in_focus_style) = self.in_focus_style.as_ref() {
@@ -1208,7 +1212,7 @@ impl Default for Interactivity {
             scroll_handle: None,
             // scroll_offset: Point::default(),
             group: None,
-            base_style: Box::new(StyleRefinement::default()),
+            base_style: Box::new(Style::default()),
             focus_style: None,
             in_focus_style: None,
             hover_style: None,
@@ -1307,7 +1311,7 @@ impl<E> Styled for Focusable<E>
 where
     E: Styled,
 {
-    fn style(&mut self) -> &mut StyleRefinement {
+    fn style(&mut self) -> &mut Style {
         self.element.style()
     }
 }
@@ -1363,7 +1367,7 @@ impl<E> Styled for Stateful<E>
 where
     E: Styled,
 {
-    fn style(&mut self) -> &mut StyleRefinement {
+    fn style(&mut self) -> &mut Style {
         self.element.style()
     }
 }

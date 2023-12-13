@@ -698,8 +698,8 @@ mod element {
     use std::{cell::RefCell, iter, rc::Rc, sync::Arc};
 
     use gpui::{
-        px, relative, Along, AnyElement, Axis, Bounds, CursorStyle, Element, IntoElement,
-        MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, Pixels, Style, WindowContext,
+        px, Along, AnyElement, Axis, Bounds, CursorStyle, Element, IntoElement, MouseDownEvent,
+        MouseMoveEvent, MouseUpEvent, ParentElement, Pixels, Style, Styled as _, WindowContext,
     };
     use parking_lot::Mutex;
     use smallvec::SmallVec;
@@ -887,9 +887,7 @@ mod element {
             state: Option<Self::State>,
             cx: &mut ui::prelude::WindowContext,
         ) -> (gpui::LayoutId, Self::State) {
-            let mut style = Style::default();
-            style.size.width = relative(1.).into();
-            style.size.height = relative(1.).into();
+            let style = Style::default().size_full();
             let layout_id = cx.request_layout(&style, None);
             let dragged_pane = state.unwrap_or_else(|| Rc::new(RefCell::new(None)));
             (layout_id, dragged_pane)

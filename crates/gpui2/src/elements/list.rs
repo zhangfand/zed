@@ -1,22 +1,21 @@
 use crate::{
     px, AnyElement, AvailableSpace, BorrowAppContext, DispatchPhase, Element, IntoElement, Pixels,
-    Point, ScrollWheelEvent, Size, Style, StyleRefinement, Styled, WindowContext,
+    Point, ScrollWheelEvent, Size, Style, Styled, WindowContext,
 };
 use collections::VecDeque;
-use refineable::Refineable as _;
 use std::{cell::RefCell, ops::Range, rc::Rc};
 use sum_tree::{Bias, SumTree};
 
 pub fn list(state: ListState) -> List {
     List {
         state,
-        style: StyleRefinement::default(),
+        style: Style::default(),
     }
 }
 
 pub struct List {
     state: ListState,
-    style: StyleRefinement,
+    style: Style,
 }
 
 #[derive(Clone)]
@@ -248,11 +247,8 @@ impl Element for List {
         _state: Option<Self::State>,
         cx: &mut crate::WindowContext,
     ) -> (crate::LayoutId, Self::State) {
-        let mut style = Style::default();
-        style.refine(&self.style);
-        let layout_id = cx.with_text_style(style.text_style().cloned(), |cx| {
-            cx.request_layout(&style, None)
-        });
+        let layout_id =
+            cx.with_text_style(self.style.text(), |cx| cx.request_layout(&self.style, None));
         (layout_id, ())
     }
 
@@ -422,7 +418,7 @@ impl IntoElement for List {
 }
 
 impl Styled for List {
-    fn style(&mut self) -> &mut StyleRefinement {
+    fn style(&mut self) -> &mut Style {
         &mut self.style
     }
 }

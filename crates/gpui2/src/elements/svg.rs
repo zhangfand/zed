@@ -1,6 +1,6 @@
 use crate::{
     Bounds, Element, ElementId, InteractiveElement, InteractiveElementState, Interactivity,
-    IntoElement, LayoutId, Pixels, SharedString, StyleRefinement, Styled, WindowContext,
+    IntoElement, LayoutId, Pixels, SharedString, Style, Styled, WindowContext,
 };
 use util::ResultExt;
 
@@ -42,7 +42,7 @@ impl Element for Svg {
     {
         self.interactivity
             .paint(bounds, bounds.size, element_state, cx, |style, _, cx| {
-                if let Some((path, color)) = self.path.as_ref().zip(style.text.color) {
+                if let Some((path, color)) = self.path.as_ref().zip(style.text().color) {
                     cx.paint_svg(bounds, path.clone(), color).log_err();
                 }
             })
@@ -62,7 +62,7 @@ impl IntoElement for Svg {
 }
 
 impl Styled for Svg {
-    fn style(&mut self) -> &mut StyleRefinement {
+    fn style(&mut self) -> &mut Style {
         &mut self.interactivity.base_style
     }
 }
