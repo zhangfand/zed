@@ -177,8 +177,8 @@ use gpui::{
     actions, canvas, div, filled, img, impl_actions, overlay, point, prelude::*, px, rems,
     serde_json, size, Action, AppContext, AsyncWindowContext, Bounds, ClipboardItem, DismissEvent,
     Div, EventEmitter, FocusHandle, Focusable, FocusableView, Hsla, InteractiveElement,
-    IntoElement, Length, Model, MouseDownEvent, ParentElement, Pixels, Point, PromptLevel, Render,
-    RenderOnce, RenderQuad, ScrollHandle, SharedString, Size, Stateful, Styled, Subscription, Task,
+    IntoElement, Length, Model, MouseDownEvent, ParentElement, Pixels, Point, PromptLevel, Quad,
+    Render, RenderOnce, ScrollHandle, SharedString, Size, Stateful, Styled, Subscription, Task,
     View, ViewContext, VisualContext, WeakView,
 };
 use project::{Fs, Project};

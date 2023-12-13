@@ -6,7 +6,7 @@ use crate::{
     Hsla, ImageData, InputEvent, IsZero, KeyBinding, KeyContext, KeyDownEvent, LayoutId, Model,
     ModelContext, Modifiers, MonochromeSprite, MouseButton, MouseMoveEvent, MouseUpEvent, Path,
     Pixels, PlatformAtlas, PlatformDisplay, PlatformInputHandler, PlatformWindow, Point,
-    PolychromeSprite, PromptLevel, Render, RenderGlyphParams, RenderImageParams, RenderQuad,
+    PolychromeSprite, PromptLevel, Quad, Render, RenderGlyphParams, RenderImageParams,
     RenderSvgParams, ScaledPixels, SceneBuilder, Shadow, SharedString, Size, Style, SubscriberSet,
     Subscription, Surface, TaffyLayoutEngine, Task, Underline, UnderlineStyle, View, VisualContext,
     WeakView, WindowBounds, WindowOptions, SUBPIXEL_VARIANTS,
@@ -912,14 +912,14 @@ impl<'a> WindowContext<'a> {
 
     /// Paint one or more quads into the scene for the next frame at the current stacking context.
     /// Quads are colored rectangular regions with an optional background, border, and corner radius.
-    pub fn paint_quad(&mut self, quad: Quad) {
+    pub fn paint_quad(&mut self, quad: PaintQuad) {
         let scale_factor = self.scale_factor();
         let content_mask = self.content_mask();
 
         let window = &mut *self.window;
         window.next_frame.scene_builder.insert(
             &window.next_frame.z_index_stack,
-            RenderQuad {
+            Quad {
                 order: 0,
                 bounds: quad.bounds.scale(scale_factor),
                 content_mask: content_mask.scale(scale_factor),
@@ -2850,7 +2850,7 @@ impl From<(&'static str, u64)> for ElementId {
 }
 
 /// A rectangle, to be rendered on the screen by GPUI at the given position and size.
-pub struct Quad {
+pub struct PaintQuad {
     bounds: Bounds<Pixels>,
     corner_radii: Corners<Pixels>,
     background: Hsla,
@@ -2858,10 +2858,10 @@ pub struct Quad {
     border_color: Hsla,
 }
 
-impl Quad {
+impl PaintQuad {
     /// Create a quad with the given bounds, border color, and a 1px border width
     pub fn outline(bounds: impl Into<Bounds<Pixels>>, border_color: impl Into<Hsla>) -> Self {
-        Quad {
+        PaintQuad {
             bounds: bounds.into(),
             corner_radii: (0.).into(),
             background: transparent_black(),
@@ -2872,7 +2872,7 @@ impl Quad {
 
     /// Create a quad with the given bounds and background color.
     pub fn filled(bounds: impl Into<Bounds<Pixels>>, background: impl Into<Hsla>) -> Self {
-        Quad {
+        PaintQuad {
             bounds: bounds.into(),
             corner_radii: (0.).into(),
             background: background.into(),
@@ -2883,7 +2883,7 @@ impl Quad {
 
     /// Set the corner radii of the quad.
     pub fn corner_radii(self, corner_radii: impl Into<Corners<Pixels>>) -> Self {
-        Quad {
+        PaintQuad {
             corner_radii: corner_radii.into(),
             ..self
         }
@@ -2891,7 +2891,7 @@ impl Quad {
 
     /// Set the border widths of the quad.
     pub fn border_widths(self, border_widths: impl Into<Edges<Pixels>>) -> Self {
-        Quad {
+        PaintQuad {
             border_widths: border_widths.into(),
             ..self
         }
@@ -2899,7 +2899,7 @@ impl Quad {
 
     /// Set the border color of the quad.
     pub fn border_color(self, border_color: impl Into<Hsla>) -> Self {
-        Quad {
+        PaintQuad {
             border_color: border_color.into(),
             ..self
         }
@@ -2907,7 +2907,7 @@ impl Quad {
 
     /// Set the background color of the quad.
     pub fn background(self, background: impl Into<Hsla>) -> Self {
-        Quad {
+        PaintQuad {
             background: background.into(),
             ..self
         }
@@ -2921,7 +2921,7 @@ impl Quad {
         border_widths: impl Into<Edges<Pixels>>,
         border_color: impl Into<Hsla>,
     ) -> Self {
-        Quad {
+        PaintQuad {
             bounds,
             corner_radii: corner_radii.into(),
             background: background.into(),
@@ -2938,8 +2938,8 @@ pub fn quad(
     background: impl Into<Hsla>,
     border_widths: impl Into<Edges<Pixels>>,
     border_color: impl Into<Hsla>,
-) -> Quad {
-    Quad::new(
+) -> PaintQuad {
+    PaintQuad::new(
         bounds,
         corner_radii,
         background,
@@ -2949,11 +2949,11 @@ pub fn quad(
 }
 
 /// Create a filled quad with the given bounds and background color.
-pub fn filled(bounds: impl Into<Bounds<Pixels>>, background: impl Into<Hsla>) -> Quad {
-    Quad::filled(bounds, background)
+pub fn filled(bounds: impl Into<Bounds<Pixels>>, background: impl Into<Hsla>) -> PaintQuad {
+    PaintQuad::filled(bounds, background)
 }
 
 /// Create a rectangle outline with the given bounds, border color, and a 1px border width
-pub fn outline(bounds: impl Into<Bounds<Pixels>>, border_color: impl Into<Hsla>) -> Quad {
-    Quad::outline(bounds, border_color)
+pub fn outline(bounds: impl Into<Bounds<Pixels>>, border_color: impl Into<Hsla>) -> PaintQuad {
+    PaintQuad::outline(bounds, border_color)
 }

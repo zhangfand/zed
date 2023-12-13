@@ -32,9 +32,9 @@ use gpui::{
     actions, canvas, div, impl_actions, point, size, Action, AnyModel, AnyView, AnyWeakView,
     AnyWindowHandle, AppContext, AsyncAppContext, AsyncWindowContext, Bounds, Context, Div, Entity,
     EntityId, EventEmitter, FocusHandle, FocusableView, GlobalPixels, InteractiveElement,
-    KeyContext, ManagedView, Model, ModelContext, MouseMoveEvent, ParentElement, PathPromptOptions,
-    Pixels, Point, PromptLevel, Quad, Render, Size, Styled, Subscription, Task, View, ViewContext,
-    VisualContext, WeakView, WindowBounds, WindowContext, WindowHandle, WindowOptions,
+    KeyContext, ManagedView, Model, ModelContext, MouseMoveEvent, PaintQuad, ParentElement,
+    PathPromptOptions, Pixels, Point, PromptLevel, Render, Size, Styled, Subscription, Task, View,
+    ViewContext, VisualContext, WeakView, WindowBounds, WindowContext, WindowHandle, WindowOptions,
 };
 use item::{FollowableItem, FollowableItemHandle, Item, ItemHandle, ItemSettings, ProjectItem};
 use itertools::Itertools;
@@ -3659,7 +3659,7 @@ impl Render for Workspace {
                         }
                     }))
                     .child(canvas(|bounds, cx| {
-                        cx.paint_quad(Quad::outline(bounds, gpui::red()));
+                        cx.paint_quad(PaintQuad::outline(bounds, gpui::red()));
                         cx.set_global(WorkspaceBounds(bounds))
                     }))
                     .child(self.modal_layer.clone())
