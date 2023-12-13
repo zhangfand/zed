@@ -179,14 +179,14 @@ fn box_prefixes() -> Vec<(&'static str, bool, Vec<TokenStream2>, &'static str)> 
         (
             "w",
             true,
-            vec![quote! { size.width }],
+            vec![quote! { size_mut().width }],
             "Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)",
         ),
-        ("h", true, vec![quote! { size.height }], "Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)"),
+        ("h", true, vec![quote! { size_mut().height }], "Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)"),
         (
             "size",
             true,
-            vec![quote! {size.width}, quote! {size.height}],
+            vec![quote! {size_mut().width}, quote! {size_mut().height}],
             "Sets the width and height of the element."
         ),
         // TODO: These don't use the same size ramp as the others
@@ -194,7 +194,7 @@ fn box_prefixes() -> Vec<(&'static str, bool, Vec<TokenStream2>, &'static str)> 
         (
             "min_w",
             true,
-            vec![quote! { min_size.width }],
+            vec![quote! { min_size_mut().width }],
             "Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)",
         ),
         // TODO: These don't use the same size ramp as the others
@@ -202,7 +202,7 @@ fn box_prefixes() -> Vec<(&'static str, bool, Vec<TokenStream2>, &'static str)> 
         (
             "min_h",
             true,
-            vec![quote! { min_size.height }],
+            vec![quote! { min_size_mut().height }],
             "Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)",
         ),
         // TODO: These don't use the same size ramp as the others
@@ -210,7 +210,7 @@ fn box_prefixes() -> Vec<(&'static str, bool, Vec<TokenStream2>, &'static str)> 
         (
             "max_w",
             true,
-            vec![quote! { max_size.width }],
+            vec![quote! { max_size_mut().width }],
             "Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)",
         ),
         // TODO: These don't use the same size ramp as the others
@@ -218,139 +218,139 @@ fn box_prefixes() -> Vec<(&'static str, bool, Vec<TokenStream2>, &'static str)> 
         (
             "max_h",
             true,
-            vec![quote! { max_size.height }],
+            vec![quote! { max_size_mut().height }],
             "Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)",
         ),
         (
             "m",
             true,
             vec![
-                quote! { margin.top },
-                quote! { margin.bottom },
-                quote! { margin.left },
-                quote! { margin.right },
+                quote! { margin_mut().top },
+                quote! { margin_mut().bottom },
+                quote! { margin_mut().left },
+                quote! { margin_mut().right },
             ],
             "Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)"
         ),
-        ("mt", true, vec![quote! { margin.top }], "Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)"),
+        ("mt", true, vec![quote! { margin_mut().top }], "Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)"),
         (
             "mb",
             true,
-            vec![quote! { margin.bottom }],
+            vec![quote! { margin_mut().bottom }],
             "Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)"
         ),
         (
             "my",
             true,
-            vec![quote! { margin.top }, quote! { margin.bottom }],
+            vec![quote! { margin_mut().top }, quote! { margin_mut().bottom }],
             "Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)"
         ),
         (
             "mx",
             true,
-            vec![quote! { margin.left }, quote! { margin.right }],
+            vec![quote! { margin_mut().left }, quote! { margin_mut().right }],
             "Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)"
         ),
-        ("ml", true, vec![quote! { margin.left }], "Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)"),
+        ("ml", true, vec![quote! { margin_mut().left }], "Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)"),
         (
             "mr",
             true,
-            vec![quote! { margin.right }],
+            vec![quote! { margin_mut().right }],
             "Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)"
         ),
         (
             "p",
             false,
             vec![
-                quote! { padding.top },
-                quote! { padding.bottom },
-                quote! { padding.left },
-                quote! { padding.right },
+                quote! { padding_mut().top },
+                quote! { padding_mut().bottom },
+                quote! { padding_mut().left },
+                quote! { padding_mut().right },
             ],
             "Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)"
         ),
         (
             "pt",
             false,
-            vec![quote! { padding.top }],
+            vec![quote! { padding_mut().top }],
             "Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)"
         ),
         (
             "pb",
             false,
-            vec![quote! { padding.bottom }],
+            vec![quote! { padding_mut().bottom }],
             "Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)"
         ),
         (
             "px",
             false,
-            vec![quote! { padding.left }, quote! { padding.right }],
+            vec![quote! { padding_mut().left }, quote! { padding_mut().right }],
             "Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)"
         ),
         (
             "py",
             false,
-            vec![quote! { padding.top }, quote! { padding.bottom }],
+            vec![quote! { padding_mut().top }, quote! { padding_mut().bottom }],
             "Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)"
         ),
         (
             "pl",
             false,
-            vec![quote! { padding.left }],
+            vec![quote! { padding_mut().left }],
             "Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)"
         ),
         (
             "pr",
             false,
-            vec![quote! { padding.right }],
+            vec![quote! { padding_mut().right }],
             "Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)"
         ),
         (
             "inset",
             true,
-            vec![quote! { inset.top }, quote! { inset.right }, quote! { inset.bottom }, quote! { inset.left }],
+            vec![quote! { inset_mut().top }, quote! { inset_mut().right }, quote! { inset_mut().bottom }, quote! { inset_mut().left }],
             "Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)",
         ),
         (
             "top",
             true,
-            vec![quote! { inset.top }],
+            vec![quote! { inset_mut().top }],
             "Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)",
         ),
         (
             "bottom",
             true,
-            vec![quote! { inset.bottom }],
+            vec![quote! { inset_mut().bottom }],
             "Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)",
         ),
         (
             "left",
             true,
-            vec![quote! { inset.left }],
+            vec![quote! { inset_mut().left }],
             "Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)",
         ),
         (
             "right",
             true,
-            vec![quote! { inset.right }],
+            vec![quote! { inset_mut().right }],
             "Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)",
         ),
         (
             "gap",
             false,
-            vec![quote! { gap.width }, quote! { gap.height }],
+            vec![quote! { gap_mut().width }, quote! { gap_mut().height }],
             "Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)"
         ),
         (
             "gap_x",
             false,
-            vec![quote! { gap.width }],
+            vec![quote! { gap_mut().width }],
             "Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)"
         ),
         (
             "gap_y",
             false,
-            vec![quote! { gap.height }],
+            vec![quote! { gap_mut().height }],
             "Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)"
         ),
     ]
@@ -411,63 +411,63 @@ fn corner_prefixes() -> Vec<(&'static str, Vec<TokenStream2>, &'static str)> {
         (
             "rounded",
             vec![
-                quote! { corner_radii.top_left },
-                quote! { corner_radii.top_right },
-                quote! { corner_radii.bottom_right },
-                quote! { corner_radii.bottom_left },
+                quote! { corner_radii_mut().top_left },
+                quote! { corner_radii_mut().top_right },
+                quote! { corner_radii_mut().bottom_right },
+                quote! { corner_radii_mut().bottom_left },
             ],
             "Sets the border radius of the element. [Docs](https://tailwindcss.com/docs/border-radius)"
         ),
         (
             "rounded_t",
             vec![
-                quote! { corner_radii.top_left },
-                quote! { corner_radii.top_right },
+                quote! { corner_radii_mut().top_left },
+                quote! { corner_radii_mut().top_right },
             ],
             "Sets the border radius of the top side of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-sides-separately)"
         ),
         (
             "rounded_b",
             vec![
-                quote! { corner_radii.bottom_left },
-                quote! { corner_radii.bottom_right },
+                quote! { corner_radii_mut().bottom_left },
+                quote! { corner_radii_mut().bottom_right },
             ],
             "Sets the border radius of the bottom side of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-sides-separately)"
         ),
         (
             "rounded_r",
             vec![
-                quote! { corner_radii.top_right },
-                quote! { corner_radii.bottom_right },
+                quote! { corner_radii_mut().top_right },
+                quote! { corner_radii_mut().bottom_right },
             ],
             "Sets the border radius of the right side of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-sides-separately)"
         ),
         (
             "rounded_l",
             vec![
-                quote! { corner_radii.top_left },
-                quote! { corner_radii.bottom_left },
+                quote! { corner_radii_mut().top_left },
+                quote! { corner_radii_mut().bottom_left },
             ],
             "Sets the border radius of the left side of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-sides-separately)"
         ),
         (
             "rounded_tl",
-            vec![quote! { corner_radii.top_left }],
+            vec![quote! { corner_radii_mut().top_left }],
             "Sets the border radius of the top left corner of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-corners-separately)"
         ),
         (
             "rounded_tr",
-            vec![quote! { corner_radii.top_right }],
+            vec![quote! { corner_radii_mut().top_right }],
             "Sets the border radius of the top right corner of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-corners-separately)"
         ),
         (
             "rounded_bl",
-            vec![quote! { corner_radii.bottom_left }],
+            vec![quote! { corner_radii_mut().bottom_left }],
             "Sets the border radius of the bottom left corner of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-corners-separately)"
         ),
         (
             "rounded_br",
-            vec![quote! { corner_radii.bottom_right }],
+            vec![quote! { corner_radii_mut().bottom_right }],
             "Sets the border radius of the bottom right corner of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-corners-separately)"
         ),
     ]
@@ -491,46 +491,46 @@ fn border_prefixes() -> Vec<(&'static str, Vec<TokenStream2>, &'static str)> {
         (
             "border",
             vec![
-                quote! { border_widths.top },
-                quote! { border_widths.right },
-                quote! { border_widths.bottom },
-                quote! { border_widths.left },
+                quote! { border_widths_mut().top },
+                quote! { border_widths_mut().right },
+                quote! { border_widths_mut().bottom },
+                quote! { border_widths_mut().left },
             ],
             "Sets the border width of the element. [Docs](https://tailwindcss.com/docs/border-width)"
         ),
         (
             "border_t",
-            vec![quote! { border_widths.top }],
+            vec![quote! { border_widths_mut().top }],
             "Sets the border width of the top side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)"
         ),
         (
             "border_b",
-            vec![quote! { border_widths.bottom }],
+            vec![quote! { border_widths_mut().bottom }],
             "Sets the border width of the bottom side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)"
         ),
         (
             "border_r",
-            vec![quote! { border_widths.right }],
+            vec![quote! { border_widths_mut().right }],
             "Sets the border width of the right side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)"
         ),
         (
             "border_l",
-            vec![quote! { border_widths.left }],
+            vec![quote! { border_widths_mut().left }],
             "Sets the border width of the left side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)"
         ),
         (
             "border_x",
             vec![
-                quote! { border_widths.left },
-                quote! { border_widths.right },
+                quote! { border_widths_mut().left },
+                quote! { border_widths_mut().right },
             ],
             "Sets the border width of the vertical sides of the element. [Docs](https://tailwindcss.com/docs/border-width#horizontal-and-vertical-sides)"
         ),
         (
             "border_y",
             vec![
-                quote! { border_widths.top },
-                quote! { border_widths.bottom },
+                quote! { border_widths_mut().top },
+                quote! { border_widths_mut().bottom },
             ],
             "Sets the border width of the horizontal sides of the element. [Docs](https://tailwindcss.com/docs/border-width#horizontal-and-vertical-sides)"
         ),

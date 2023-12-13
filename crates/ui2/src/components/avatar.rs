@@ -19,7 +19,7 @@ impl RenderOnce for Avatar {
     type Rendered = Div;
 
     fn render(mut self, cx: &mut WindowContext) -> Self::Rendered {
-        if self.image.style().corner_radii.top_left.is_none() {
+        if self.image.style().corner_radii_mut().top_left.is_none() {
             self = self.shape(Shape::Circle);
         }
 
@@ -28,7 +28,7 @@ impl RenderOnce for Avatar {
         div()
             .size(size + px(2.))
             .map(|mut div| {
-                div.style().corner_radii = self.image.style().corner_radii.clone();
+                *div.style().corner_radii_mut() = self.image.style().corner_radii();
                 div
             })
             .when_some(self.border_color, |this, color| {

@@ -16,8 +16,7 @@ pub use taffy::style::{
 
 pub type StyleCascade = Cascade<Style>;
 
-#[derive(Clone, Refineable, Debug)]
-#[refineable(Debug)]
+#[derive(Clone, Debug)]
 pub struct Style {
     /// What layout strategy should be used?
     pub display: Display,
@@ -27,7 +26,6 @@ pub struct Style {
 
     // Overflow properties
     /// How children overflowing their container should affect layout
-    #[refineable]
     pub overflow: Point<Overflow>,
     /// How much space (in points) should be reserved for the scrollbars of `Overflow::Scroll` and `Overflow::Auto` nodes.
     pub scrollbar_width: f32,
@@ -36,31 +34,24 @@ pub struct Style {
     /// What should the `position` value of this struct use as a base offset?
     pub position: Position,
     /// How should the position of this element be tweaked relative to the layout defined?
-    #[refineable]
     pub inset: Edges<Length>,
 
     // Size properies
     /// Sets the initial size of the item
-    #[refineable]
     pub size: Size<Length>,
     /// Controls the minimum size of the item
-    #[refineable]
     pub min_size: Size<Length>,
     /// Controls the maximum size of the item
-    #[refineable]
     pub max_size: Size<Length>,
     /// Sets the preferred aspect ratio for the item. The ratio is calculated as width divided by height.
     pub aspect_ratio: Option<f32>,
 
     // Spacing Properties
     /// How large should the margin be on each side?
-    #[refineable]
     pub margin: Edges<Length>,
     /// How large should the padding be on each side?
-    #[refineable]
     pub padding: Edges<DefiniteLength>,
     /// How large should the border be on each side?
-    #[refineable]
     pub border_widths: Edges<AbsoluteLength>,
 
     // Alignment properties
@@ -73,7 +64,6 @@ pub struct Style {
     /// How should contained within this item be aligned in the main/inline axis
     pub justify_content: Option<JustifyContent>,
     /// How large should the gaps between items in a flex container be?
-    #[refineable]
     pub gap: Size<DefiniteLength>,
 
     // Flexbox properies
@@ -95,7 +85,6 @@ pub struct Style {
     pub border_color: Option<Hsla>,
 
     /// The radius of the corners of this element
-    #[refineable]
     pub corner_radii: Corners<AbsoluteLength>,
 
     /// Box Shadow of the element
@@ -110,9 +99,907 @@ pub struct Style {
     pub z_index: Option<u32>,
 }
 
+#[derive(Clone)]
+enum StyleField {
+    Display(Display),
+    Visibility(Visibility),
+    Overflow(PointRefinement<Overflow>),
+    ScrollbarWidth(f32),
+    Position(Position),
+    Inset(EdgesRefinement<Length>),
+    Size(SizeRefinement<Length>),
+    MinSize(SizeRefinement<Length>),
+    MaxSize(SizeRefinement<Length>),
+    AspectRatio(Option<f32>),
+    Margin(EdgesRefinement<Length>),
+    Padding(EdgesRefinement<DefiniteLength>),
+    BorderWidths(EdgesRefinement<AbsoluteLength>),
+    AlignItems(Option<AlignItems>),
+    AlignSelf(Option<AlignSelf>),
+    AlignContent(Option<AlignContent>),
+    JustifyContent(Option<JustifyContent>),
+    Gap(SizeRefinement<DefiniteLength>),
+    FlexDirection(FlexDirection),
+    FlexWrap(FlexWrap),
+    FlexBasis(Length),
+    FlexGrow(f32),
+    FlexShrink(f32),
+    Background(Option<Fill>),
+    BorderColor(Option<Hsla>),
+    CornerRadii(CornersRefinement<AbsoluteLength>),
+    BoxShadow(SmallVec<[BoxShadow; 2]>),
+    Text(TextStyleRefinement),
+    MouseCursor(Option<CursorStyle>),
+    ZIndex(Option<u32>),
+}
+
+#[derive(Clone, Default)]
+pub struct StyleRefinement(Vec<StyleField>);
+
+impl Refineable for Style {
+    type Refinement = StyleRefinement;
+
+    fn refine(&mut self, refinement: &Self::Refinement) {
+        for field in refinement.0.clone() {
+            match field {
+                StyleField::Display(display) => self.display = display,
+                StyleField::Visibility(visibility) => self.visibility = visibility,
+                StyleField::Overflow(overflow) => self.overflow.refine(&overflow),
+                StyleField::ScrollbarWidth(width) => self.scrollbar_width = width,
+                StyleField::Position(position) => self.position = position,
+                StyleField::Inset(inset) => self.inset.refine(&inset),
+                StyleField::Size(size) => self.size.refine(&size),
+                StyleField::MinSize(min_size) => self.min_size.refine(&min_size),
+                StyleField::MaxSize(max_size) => self.max_size.refine(&max_size),
+                StyleField::AspectRatio(aspect_ratio) => self.aspect_ratio = aspect_ratio,
+                StyleField::Margin(margin) => self.margin.refine(&margin),
+                StyleField::Padding(padding) => self.padding.refine(&padding),
+                StyleField::BorderWidths(border_widths) => {
+                    self.border_widths.refine(&border_widths)
+                }
+                StyleField::AlignItems(align_items) => self.align_items = align_items,
+                StyleField::AlignSelf(align_self) => self.align_self = align_self,
+                StyleField::AlignContent(align_content) => self.align_content = align_content,
+                StyleField::JustifyContent(justify_content) => {
+                    self.justify_content = justify_content
+                }
+                StyleField::Gap(gap) => self.gap.refine(&gap),
+                StyleField::FlexDirection(flex_direction) => self.flex_direction = flex_direction,
+                StyleField::FlexWrap(flex_wrap) => self.flex_wrap = flex_wrap,
+                StyleField::FlexBasis(flex_basis) => self.flex_basis = flex_basis,
+                StyleField::FlexGrow(flex_grow) => self.flex_grow = flex_grow,
+                StyleField::FlexShrink(flex_shrink) => self.flex_shrink = flex_shrink,
+                StyleField::Background(background) => self.background = background,
+                StyleField::BorderColor(border_color) => self.border_color = border_color,
+                StyleField::CornerRadii(corner_radii) => self.corner_radii.refine(&corner_radii),
+                StyleField::BoxShadow(box_shadow) => self.box_shadow = box_shadow,
+                StyleField::Text(text) => self.text.refine(&text),
+                StyleField::MouseCursor(mouse_cursor) => self.mouse_cursor = mouse_cursor,
+                StyleField::ZIndex(z_index) => self.z_index = z_index,
+            }
+        }
+    }
+
+    fn refined(self, refinement: Self::Refinement) -> Self {
+        let mut style = self;
+        style.refine(&refinement);
+        style
+    }
+}
+
+impl Refineable for StyleRefinement {
+    type Refinement = Self;
+
+    fn refine(&mut self, refinement: &Self::Refinement) {
+        for field in &refinement.0 {
+            match field {
+                StyleField::Display(value) => *self.display_mut() = *value,
+                StyleField::Visibility(value) => *self.visibility_mut() = *value,
+                StyleField::Overflow(value) => self.overflow_mut().refine(value),
+                StyleField::ScrollbarWidth(value) => *self.scrollbar_width_mut() = *value,
+                StyleField::Position(value) => *self.position_mut() = *value,
+                StyleField::Inset(value) => self.inset_mut().refine(value),
+                StyleField::Size(value) => self.size_mut().refine(value),
+                StyleField::MinSize(value) => self.min_size_mut().refine(value),
+                StyleField::MaxSize(value) => self.max_size_mut().refine(value),
+                StyleField::AspectRatio(value) => *self.aspect_ratio_mut() = *value,
+                StyleField::Margin(value) => self.margin_mut().refine(value),
+                StyleField::Padding(value) => self.padding_mut().refine(value),
+                StyleField::BorderWidths(value) => self.border_widths_mut().refine(value),
+                StyleField::AlignItems(value) => *self.align_items_mut() = *value,
+                StyleField::AlignSelf(value) => *self.align_self_mut() = *value,
+                StyleField::AlignContent(value) => *self.align_content_mut() = *value,
+                StyleField::JustifyContent(value) => *self.justify_content_mut() = *value,
+                StyleField::Gap(value) => self.gap_mut().refine(value),
+                StyleField::FlexDirection(value) => *self.flex_direction_mut() = *value,
+                StyleField::FlexWrap(value) => *self.flex_wrap_mut() = *value,
+                StyleField::FlexBasis(value) => *self.flex_basis_mut() = *value,
+                StyleField::FlexGrow(value) => *self.flex_grow_mut() = *value,
+                StyleField::FlexShrink(value) => *self.flex_shrink_mut() = *value,
+                StyleField::Background(value) => *self.background_mut() = value.clone(),
+                StyleField::BorderColor(value) => *self.border_color_mut() = *value,
+                StyleField::CornerRadii(value) => self.corner_radii_mut().refine(value),
+                StyleField::BoxShadow(value) => *self.box_shadow_mut() = value.clone(),
+                StyleField::Text(value) => self.text_mut().refine(value),
+                StyleField::MouseCursor(value) => *self.mouse_cursor_mut() = *value,
+                StyleField::ZIndex(value) => *self.z_index_mut() = *value,
+            }
+        }
+    }
+
+    fn refined(self, refinement: Self::Refinement) -> Self {
+        let mut style = self;
+        style.refine(&refinement);
+        style
+    }
+}
+
 impl Styled for StyleRefinement {
     fn style(&mut self) -> &mut StyleRefinement {
         self
+    }
+}
+
+impl StyleRefinement {
+    pub fn display(&self) -> Display {
+        match self.0.iter().find_map(|field| match field {
+            StyleField::Display(value) => Some(*value),
+            _ => None,
+        }) {
+            Some(value) => value,
+            None => Display::default(),
+        }
+    }
+
+    pub fn visibility(&self) -> Option<Visibility> {
+        self.0.iter().find_map(|field| match field {
+            StyleField::Visibility(value) => Some(*value),
+            _ => None,
+        })
+    }
+
+    pub fn overflow(&self) -> PointRefinement<Overflow> {
+        self.0
+            .iter()
+            .find_map(|field| match field {
+                StyleField::Overflow(value) => Some(value.clone()),
+                _ => None,
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn scrollbar_width(&self) -> Option<f32> {
+        self.0.iter().find_map(|field| match field {
+            StyleField::ScrollbarWidth(value) => Some(*value),
+            _ => None,
+        })
+    }
+
+    pub fn position(&self) -> Option<Position> {
+        self.0.iter().find_map(|field| match field {
+            StyleField::Position(value) => Some(*value),
+            _ => None,
+        })
+    }
+
+    pub fn inset(&self) -> EdgesRefinement<Length> {
+        self.0
+            .iter()
+            .find_map(|field| match field {
+                StyleField::Inset(value) => Some(value.clone()),
+                _ => None,
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn size(&self) -> SizeRefinement<Length> {
+        self.0
+            .iter()
+            .find_map(|field| match field {
+                StyleField::Size(value) => Some(value.clone()),
+                _ => None,
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn min_size(&self) -> SizeRefinement<Length> {
+        self.0
+            .iter()
+            .find_map(|field| match field {
+                StyleField::MinSize(value) => Some(value.clone()),
+                _ => None,
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn max_size(&self) -> SizeRefinement<Length> {
+        self.0
+            .iter()
+            .find_map(|field| match field {
+                StyleField::MaxSize(value) => Some(value.clone()),
+                _ => None,
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn aspect_ratio(&self) -> Option<f32> {
+        self.0
+            .iter()
+            .find_map(|field| match field {
+                StyleField::AspectRatio(value) => Some(*value),
+                _ => None,
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn margin(&self) -> EdgesRefinement<Length> {
+        self.0
+            .iter()
+            .find_map(|field| match field {
+                StyleField::Margin(value) => Some(value.clone()),
+                _ => None,
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn padding(&self) -> EdgesRefinement<DefiniteLength> {
+        self.0
+            .iter()
+            .find_map(|field| match field {
+                StyleField::Padding(value) => Some(value.clone()),
+                _ => None,
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn border_widths(&self) -> EdgesRefinement<AbsoluteLength> {
+        self.0
+            .iter()
+            .find_map(|field| match field {
+                StyleField::BorderWidths(value) => Some(value.clone()),
+                _ => None,
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn align_items(&self) -> Option<AlignItems> {
+        match self.0.iter().find_map(|field| match field {
+            StyleField::AlignItems(value) => Some(*value),
+            _ => None,
+        }) {
+            Some(value) => value,
+            None => None,
+        }
+    }
+
+    pub fn align_self(&self) -> Option<AlignSelf> {
+        match self.0.iter().find_map(|field| match field {
+            StyleField::AlignSelf(value) => Some(*value),
+            _ => None,
+        }) {
+            Some(value) => value,
+            None => None,
+        }
+    }
+
+    pub fn align_content(&self) -> Option<AlignContent> {
+        match self.0.iter().find_map(|field| match field {
+            StyleField::AlignContent(value) => Some(*value),
+            _ => None,
+        }) {
+            Some(value) => value,
+            None => None,
+        }
+    }
+
+    pub fn justify_content(&self) -> Option<JustifyContent> {
+        match self.0.iter().find_map(|field| match field {
+            StyleField::JustifyContent(value) => Some(*value),
+            _ => None,
+        }) {
+            Some(value) => value,
+            None => None,
+        }
+    }
+
+    pub fn gap(&self) -> SizeRefinement<DefiniteLength> {
+        self.0
+            .iter()
+            .find_map(|field| match field {
+                StyleField::Gap(value) => Some(value.clone()),
+                _ => None,
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn flex_direction(&self) -> FlexDirection {
+        match self.0.iter().find_map(|field| match field {
+            StyleField::FlexDirection(value) => Some(*value),
+            _ => None,
+        }) {
+            Some(value) => value,
+            None => FlexDirection::default(),
+        }
+    }
+
+    pub fn flex_wrap(&self) -> Option<FlexWrap> {
+        self.0.iter().find_map(|field| match field {
+            StyleField::FlexWrap(value) => Some(*value),
+            _ => None,
+        })
+    }
+
+    pub fn flex_basis(&self) -> Option<Length> {
+        self.0.iter().find_map(|field| match field {
+            StyleField::FlexBasis(value) => Some(*value),
+            _ => None,
+        })
+    }
+
+    pub fn flex_grow(&self) -> Option<f32> {
+        self.0.iter().find_map(|field| match field {
+            StyleField::FlexGrow(value) => Some(*value),
+            _ => None,
+        })
+    }
+
+    pub fn flex_shrink(&self) -> Option<f32> {
+        self.0.iter().find_map(|field| match field {
+            StyleField::FlexShrink(value) => Some(*value),
+            _ => None,
+        })
+    }
+
+    pub fn background(&self) -> Option<Fill> {
+        self.0
+            .iter()
+            .find_map(|field| match field {
+                StyleField::Background(value) => Some(value.clone()),
+                _ => None,
+            })
+            .flatten()
+    }
+
+    pub fn border_color(&self) -> Option<Hsla> {
+        self.0
+            .iter()
+            .find_map(|field| match field {
+                StyleField::BorderColor(value) => Some(value.clone()),
+                _ => None,
+            })
+            .flatten()
+    }
+
+    pub fn corner_radii(&self) -> CornersRefinement<AbsoluteLength> {
+        self.0
+            .iter()
+            .find_map(|field| match field {
+                StyleField::CornerRadii(value) => Some(value.clone()),
+                _ => None,
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn box_shadow(&self) -> Option<SmallVec<[BoxShadow; 2]>> {
+        self.0.iter().find_map(|field| match field {
+            StyleField::BoxShadow(value) => Some(value.clone()),
+            _ => None,
+        })
+    }
+
+    pub fn text(&self) -> TextStyleRefinement {
+        match self.0.iter().find_map(|field| match field {
+            StyleField::Text(value) => Some(value.clone()),
+            _ => None,
+        }) {
+            Some(value) => value,
+            None => TextStyleRefinement::default(),
+        }
+    }
+
+    pub fn mouse_cursor(&self) -> Option<CursorStyle> {
+        match self.0.iter().find_map(|field| match field {
+            StyleField::MouseCursor(value) => Some(value.clone()),
+            _ => None,
+        }) {
+            Some(value) => value,
+            None => None,
+        }
+    }
+
+    pub fn z_index(&self) -> Option<u32> {
+        match self.0.iter().find_map(|field| match field {
+            StyleField::ZIndex(value) => Some(value.clone()),
+            _ => None,
+        }) {
+            Some(value) => value,
+            None => None,
+        }
+    }
+
+    pub fn display_mut(&mut self) -> &mut Display {
+        let ix = self
+            .0
+            .iter()
+            .position(|field| matches!(field, StyleField::Display(_)))
+            .unwrap_or_else(|| {
+                self.0.push(StyleField::Display(Display::default()));
+                self.0.len() - 1
+            });
+        if let StyleField::Display(value) = &mut self.0[ix] {
+            value
+        } else {
+            unreachable!()
+        }
+    }
+
+    pub fn visibility_mut(&mut self) -> &mut Visibility {
+        let ix = self
+            .0
+            .iter()
+            .position(|field| matches!(field, StyleField::Visibility(_)))
+            .unwrap_or_else(|| {
+                self.0.push(StyleField::Visibility(Visibility::default()));
+                self.0.len() - 1
+            });
+        if let StyleField::Visibility(value) = &mut self.0[ix] {
+            value
+        } else {
+            unreachable!()
+        }
+    }
+
+    pub fn overflow_mut(&mut self) -> &mut PointRefinement<Overflow> {
+        let ix = self
+            .0
+            .iter()
+            .position(|field| matches!(field, StyleField::Overflow(_)))
+            .unwrap_or_else(|| {
+                self.0
+                    .push(StyleField::Overflow(PointRefinement::default()));
+                self.0.len() - 1
+            });
+        if let StyleField::Overflow(value) = &mut self.0[ix] {
+            value
+        } else {
+            unreachable!()
+        }
+    }
+
+    pub fn scrollbar_width_mut(&mut self) -> &mut f32 {
+        let ix = self
+            .0
+            .iter()
+            .position(|field| matches!(field, StyleField::ScrollbarWidth(_)))
+            .unwrap_or_else(|| {
+                self.0.push(StyleField::ScrollbarWidth(Default::default()));
+                self.0.len() - 1
+            });
+        if let StyleField::ScrollbarWidth(value) = &mut self.0[ix] {
+            value
+        } else {
+            unreachable!()
+        }
+    }
+
+    pub fn position_mut(&mut self) -> &mut Position {
+        let ix = self
+            .0
+            .iter()
+            .position(|field| matches!(field, StyleField::Position(_)))
+            .unwrap_or_else(|| {
+                self.0.push(StyleField::Position(Position::default()));
+                self.0.len() - 1
+            });
+        if let StyleField::Position(value) = &mut self.0[ix] {
+            value
+        } else {
+            unreachable!()
+        }
+    }
+
+    pub fn inset_mut(&mut self) -> &mut EdgesRefinement<Length> {
+        let ix = self
+            .0
+            .iter()
+            .position(|field| matches!(field, StyleField::Inset(_)))
+            .unwrap_or_else(|| {
+                self.0.push(StyleField::Inset(EdgesRefinement::default()));
+                self.0.len() - 1
+            });
+        if let StyleField::Inset(value) = &mut self.0[ix] {
+            value
+        } else {
+            unreachable!()
+        }
+    }
+
+    pub fn size_mut(&mut self) -> &mut SizeRefinement<Length> {
+        let ix = self
+            .0
+            .iter()
+            .position(|field| matches!(field, StyleField::Size(_)))
+            .unwrap_or_else(|| {
+                self.0.push(StyleField::Size(SizeRefinement::default()));
+                self.0.len() - 1
+            });
+        if let StyleField::Size(value) = &mut self.0[ix] {
+            value
+        } else {
+            unreachable!()
+        }
+    }
+
+    pub fn min_size_mut(&mut self) -> &mut SizeRefinement<Length> {
+        let ix = self
+            .0
+            .iter()
+            .position(|field| matches!(field, StyleField::MinSize(_)))
+            .unwrap_or_else(|| {
+                self.0.push(StyleField::MinSize(SizeRefinement::default()));
+                self.0.len() - 1
+            });
+        if let StyleField::MinSize(value) = &mut self.0[ix] {
+            value
+        } else {
+            unreachable!()
+        }
+    }
+
+    pub fn max_size_mut(&mut self) -> &mut SizeRefinement<Length> {
+        let ix = self
+            .0
+            .iter()
+            .position(|field| matches!(field, StyleField::MaxSize(_)))
+            .unwrap_or_else(|| {
+                self.0.push(StyleField::MaxSize(SizeRefinement::default()));
+                self.0.len() - 1
+            });
+        if let StyleField::MaxSize(value) = &mut self.0[ix] {
+            value
+        } else {
+            unreachable!()
+        }
+    }
+
+    pub fn aspect_ratio_mut(&mut self) -> &mut Option<f32> {
+        let ix = self
+            .0
+            .iter()
+            .position(|field| matches!(field, StyleField::AspectRatio(_)))
+            .unwrap_or_else(|| {
+                self.0.push(StyleField::AspectRatio(None));
+                self.0.len() - 1
+            });
+        if let StyleField::AspectRatio(value) = &mut self.0[ix] {
+            value
+        } else {
+            unreachable!()
+        }
+    }
+
+    pub fn margin_mut(&mut self) -> &mut EdgesRefinement<Length> {
+        let ix = self
+            .0
+            .iter()
+            .position(|field| matches!(field, StyleField::Margin(_)))
+            .unwrap_or_else(|| {
+                self.0.push(StyleField::Margin(EdgesRefinement::default()));
+                self.0.len() - 1
+            });
+        if let StyleField::Margin(value) = &mut self.0[ix] {
+            value
+        } else {
+            unreachable!()
+        }
+    }
+
+    pub fn padding_mut(&mut self) -> &mut EdgesRefinement<DefiniteLength> {
+        let ix = self
+            .0
+            .iter()
+            .position(|field| matches!(field, StyleField::Padding(_)))
+            .unwrap_or_else(|| {
+                self.0.push(StyleField::Padding(EdgesRefinement::default()));
+                self.0.len() - 1
+            });
+        if let StyleField::Padding(value) = &mut self.0[ix] {
+            value
+        } else {
+            unreachable!()
+        }
+    }
+
+    pub fn border_widths_mut(&mut self) -> &mut EdgesRefinement<AbsoluteLength> {
+        let ix = self
+            .0
+            .iter()
+            .position(|field| matches!(field, StyleField::BorderWidths(_)))
+            .unwrap_or_else(|| {
+                self.0
+                    .push(StyleField::BorderWidths(EdgesRefinement::default()));
+                self.0.len() - 1
+            });
+        if let StyleField::BorderWidths(value) = &mut self.0[ix] {
+            value
+        } else {
+            unreachable!()
+        }
+    }
+
+    pub fn align_items_mut(&mut self) -> &mut Option<AlignItems> {
+        let ix = self
+            .0
+            .iter()
+            .position(|field| matches!(field, StyleField::AlignItems(_)))
+            .unwrap_or_else(|| {
+                self.0.push(StyleField::AlignItems(None));
+                self.0.len() - 1
+            });
+        if let StyleField::AlignItems(value) = &mut self.0[ix] {
+            value
+        } else {
+            unreachable!()
+        }
+    }
+
+    pub fn align_self_mut(&mut self) -> &mut Option<AlignSelf> {
+        let ix = self
+            .0
+            .iter()
+            .position(|field| matches!(field, StyleField::AlignSelf(_)))
+            .unwrap_or_else(|| {
+                self.0.push(StyleField::AlignSelf(None));
+                self.0.len() - 1
+            });
+        if let StyleField::AlignSelf(value) = &mut self.0[ix] {
+            value
+        } else {
+            unreachable!()
+        }
+    }
+
+    pub fn align_content_mut(&mut self) -> &mut Option<AlignContent> {
+        let ix = self
+            .0
+            .iter()
+            .position(|field| matches!(field, StyleField::AlignContent(_)))
+            .unwrap_or_else(|| {
+                self.0.push(StyleField::AlignContent(None));
+                self.0.len() - 1
+            });
+        if let StyleField::AlignContent(value) = &mut self.0[ix] {
+            value
+        } else {
+            unreachable!()
+        }
+    }
+
+    pub fn justify_content_mut(&mut self) -> &mut Option<JustifyContent> {
+        let ix = self
+            .0
+            .iter()
+            .position(|field| matches!(field, StyleField::JustifyContent(_)))
+            .unwrap_or_else(|| {
+                self.0.push(StyleField::JustifyContent(None));
+                self.0.len() - 1
+            });
+        if let StyleField::JustifyContent(value) = &mut self.0[ix] {
+            value
+        } else {
+            unreachable!()
+        }
+    }
+
+    pub fn gap_mut(&mut self) -> &mut SizeRefinement<DefiniteLength> {
+        let ix = self
+            .0
+            .iter()
+            .position(|field| matches!(field, StyleField::Gap(_)))
+            .unwrap_or_else(|| {
+                self.0.push(StyleField::Gap(SizeRefinement::default()));
+                self.0.len() - 1
+            });
+        if let StyleField::Gap(value) = &mut self.0[ix] {
+            value
+        } else {
+            unreachable!()
+        }
+    }
+
+    pub fn flex_direction_mut(&mut self) -> &mut FlexDirection {
+        let ix = self
+            .0
+            .iter()
+            .position(|field| matches!(field, StyleField::FlexDirection(_)))
+            .unwrap_or_else(|| {
+                self.0
+                    .push(StyleField::FlexDirection(FlexDirection::default()));
+                self.0.len() - 1
+            });
+        if let StyleField::FlexDirection(value) = &mut self.0[ix] {
+            value
+        } else {
+            unreachable!()
+        }
+    }
+
+    pub fn flex_wrap_mut(&mut self) -> &mut FlexWrap {
+        let ix = self
+            .0
+            .iter()
+            .position(|field| matches!(field, StyleField::FlexWrap(_)))
+            .unwrap_or_else(|| {
+                self.0.push(StyleField::FlexWrap(FlexWrap::default()));
+                self.0.len() - 1
+            });
+        if let StyleField::FlexWrap(value) = &mut self.0[ix] {
+            value
+        } else {
+            unreachable!()
+        }
+    }
+
+    pub fn flex_basis_mut(&mut self) -> &mut Length {
+        let ix = self
+            .0
+            .iter()
+            .position(|field| matches!(field, StyleField::FlexBasis(_)))
+            .unwrap_or_else(|| {
+                self.0.push(StyleField::FlexBasis(Length::default()));
+                self.0.len() - 1
+            });
+        if let StyleField::FlexBasis(value) = &mut self.0[ix] {
+            value
+        } else {
+            unreachable!()
+        }
+    }
+
+    pub fn flex_grow_mut(&mut self) -> &mut f32 {
+        let ix = self
+            .0
+            .iter()
+            .position(|field| matches!(field, StyleField::FlexGrow(_)))
+            .unwrap_or_else(|| {
+                self.0.push(StyleField::FlexGrow(Default::default()));
+                self.0.len() - 1
+            });
+        if let StyleField::FlexGrow(value) = &mut self.0[ix] {
+            value
+        } else {
+            unreachable!()
+        }
+    }
+
+    pub fn flex_shrink_mut(&mut self) -> &mut f32 {
+        let ix = self
+            .0
+            .iter()
+            .position(|field| matches!(field, StyleField::FlexShrink(_)))
+            .unwrap_or_else(|| {
+                self.0.push(StyleField::FlexShrink(Default::default()));
+                self.0.len() - 1
+            });
+        if let StyleField::FlexShrink(value) = &mut self.0[ix] {
+            value
+        } else {
+            unreachable!()
+        }
+    }
+
+    pub fn background_mut(&mut self) -> &mut Option<Fill> {
+        let ix = self
+            .0
+            .iter()
+            .position(|field| matches!(field, StyleField::Background(_)))
+            .unwrap_or_else(|| {
+                self.0.push(StyleField::Background(None));
+                self.0.len() - 1
+            });
+        if let StyleField::Background(value) = &mut self.0[ix] {
+            value
+        } else {
+            unreachable!()
+        }
+    }
+
+    pub fn border_color_mut(&mut self) -> &mut Option<Hsla> {
+        let ix = self
+            .0
+            .iter()
+            .position(|field| matches!(field, StyleField::BorderColor(_)))
+            .unwrap_or_else(|| {
+                self.0.push(StyleField::BorderColor(None));
+                self.0.len() - 1
+            });
+        if let StyleField::BorderColor(value) = &mut self.0[ix] {
+            value
+        } else {
+            unreachable!()
+        }
+    }
+
+    pub fn corner_radii_mut(&mut self) -> &mut CornersRefinement<AbsoluteLength> {
+        let ix = self
+            .0
+            .iter()
+            .position(|field| matches!(field, StyleField::CornerRadii(_)))
+            .unwrap_or_else(|| {
+                self.0
+                    .push(StyleField::CornerRadii(CornersRefinement::default()));
+                self.0.len() - 1
+            });
+        if let StyleField::CornerRadii(value) = &mut self.0[ix] {
+            value
+        } else {
+            unreachable!()
+        }
+    }
+
+    pub fn box_shadow_mut(&mut self) -> &mut SmallVec<[BoxShadow; 2]> {
+        let ix = self
+            .0
+            .iter()
+            .position(|field| matches!(field, StyleField::BoxShadow(_)))
+            .unwrap_or_else(|| {
+                self.0.push(StyleField::BoxShadow(SmallVec::new()));
+                self.0.len() - 1
+            });
+        if let StyleField::BoxShadow(value) = &mut self.0[ix] {
+            value
+        } else {
+            unreachable!()
+        }
+    }
+
+    pub fn text_mut(&mut self) -> &mut TextStyleRefinement {
+        let ix = self
+            .0
+            .iter()
+            .position(|field| matches!(field, StyleField::Text(_)))
+            .unwrap_or_else(|| {
+                self.0
+                    .push(StyleField::Text(TextStyleRefinement::default()));
+                self.0.len() - 1
+            });
+        if let StyleField::Text(value) = &mut self.0[ix] {
+            value
+        } else {
+            unreachable!()
+        }
+    }
+
+    pub fn mouse_cursor_mut(&mut self) -> &mut Option<CursorStyle> {
+        let ix = self
+            .0
+            .iter()
+            .position(|field| matches!(field, StyleField::MouseCursor(_)))
+            .unwrap_or_else(|| {
+                self.0.push(StyleField::MouseCursor(None));
+                self.0.len() - 1
+            });
+        if let StyleField::MouseCursor(value) = &mut self.0[ix] {
+            value
+        } else {
+            unreachable!()
+        }
+    }
+
+    pub fn z_index_mut(&mut self) -> &mut Option<u32> {
+        let ix = self
+            .0
+            .iter()
+            .position(|field| matches!(field, StyleField::ZIndex(_)))
+            .unwrap_or_else(|| {
+                self.0.push(StyleField::ZIndex(None));
+                self.0.len() - 1
+            });
+        if let StyleField::ZIndex(value) = &mut self.0[ix] {
+            value
+        } else {
+            unreachable!()
+        }
     }
 }
 

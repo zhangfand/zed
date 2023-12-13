@@ -350,18 +350,19 @@ pub trait StatefulInteractiveElement: InteractiveElement {
     }
 
     fn overflow_scroll(mut self) -> Self {
-        self.interactivity().base_style.overflow.x = Some(Overflow::Scroll);
-        self.interactivity().base_style.overflow.y = Some(Overflow::Scroll);
+        let overflow_mut = self.interactivity().base_style.overflow_mut();
+        overflow_mut.x = Some(Overflow::Scroll);
+        overflow_mut.y = Some(Overflow::Scroll);
         self
     }
 
     fn overflow_x_scroll(mut self) -> Self {
-        self.interactivity().base_style.overflow.x = Some(Overflow::Scroll);
+        self.interactivity().base_style.overflow_mut().x = Some(Overflow::Scroll);
         self
     }
 
     fn overflow_y_scroll(mut self) -> Self {
-        self.interactivity().base_style.overflow.y = Some(Overflow::Scroll);
+        self.interactivity().base_style.overflow_mut().y = Some(Overflow::Scroll);
         self
     }
 
@@ -823,7 +824,7 @@ impl Interactivity {
         }
 
         if self.hover_style.is_some()
-            || self.base_style.mouse_cursor.is_some()
+            || self.base_style.mouse_cursor().is_some()
             || cx.active_drag.is_some() && !self.drag_over_styles.is_empty()
         {
             let bounds = bounds.intersect(&cx.content_mask().bounds);
