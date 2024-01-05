@@ -598,30 +598,43 @@ impl AppContext {
                     }
                 }
             } else {
-                for window in self.windows.values() {
-                    if let Some(window) = window.as_ref() {
-                        if window.dirty {
-                            window.platform_window.invalidate();
-                        }
-                    }
-                }
-
-                #[cfg(any(test, feature = "test-support"))]
-                for window in self
+                let windows = self
                     .windows
                     .values()
                     .filter_map(|window| {
                         let window = window.as_ref()?;
-                        (window.dirty || window.focus_invalidated).then_some(window.handle)
+                        window.dirty.then_some(window.handle)
                     })
-                    .collect::<Vec<_>>()
-                {
-                    self.update_window(window, |_, cx| cx.draw()).unwrap();
-                }
+                    .collect::<Vec<_>>();
 
-                if self.pending_effects.is_empty() {
-                    break;
+                for window in windows {
+                    window
+                        .update(self, |_, cx| {
+                            if cx.window.dirty {
+                                cx.window.platform_window.invalidate();
+                            }
+
+                            #[cfg(any(test, feature = "test-support"))]
+                            {
+                                cx.window.next_scene = Some(cx.draw());
+                            }
+
+                            #[cfg(not(any(test, feature = "test-support")))]
+                            {
+                                if cx.window.cache_next_scene {
+                                    cx.window.next_scene = Some(cx.draw());
+                                    cx.window.cache_next_scene = false;
+                                } else {
+                                    cx.window.next_scene.take();
+                                }
+                            }
+                        })
+                        .log_err();
                 }
+            }
+
+            if self.pending_effects.is_empty() {
+                break;
             }
         }
     }

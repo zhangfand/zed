@@ -273,9 +273,8 @@ pub struct Window {
     activation_observers: SubscriberSet<(), AnyObserver>,
     pub(crate) focus: Option<FocusId>,
     focus_enabled: bool,
-
-    #[cfg(any(test, feature = "test-support"))]
-    pub(crate) focus_invalidated: bool,
+    pub(crate) next_scene: Option<Scene>,
+    pub(crate) cache_next_scene: bool,
 }
 
 pub(crate) struct ElementStateBox {
@@ -339,7 +338,18 @@ impl Window {
             options,
             Box::new({
                 let mut cx = cx.to_async();
-                move || handle.update(&mut cx, |_, cx| cx.draw())
+                move || {
+                    handle.update(&mut cx, |_, cx| {
+                        cx.window.cache_next_scene = true;
+                        if let Some(scene) = cx.window.next_scene.take() {
+                            println!("Using cached scene");
+                            scene
+                        } else {
+                            println!("Rendering in display layer");
+                            cx.draw()
+                        }
+                    })
+                }
             }),
         );
         let display_id = platform_window.display().id();
@@ -421,9 +431,8 @@ impl Window {
             activation_observers: SubscriberSet::new(),
             focus: None,
             focus_enabled: true,
-
-            #[cfg(any(test, feature = "test-support"))]
-            focus_invalidated: false,
+            next_scene: None,
+            cache_next_scene: true,
         }
     }
 }
@@ -506,11 +515,6 @@ impl<'a> WindowContext<'a> {
             .rendered_frame
             .dispatch_tree
             .clear_pending_keystrokes();
-
-        #[cfg(any(test, feature = "test-support"))]
-        {
-            self.window.focus_invalidated = true;
-        }
 
         self.notify();
     }
@@ -1315,11 +1319,6 @@ impl<'a> WindowContext<'a> {
     pub(crate) fn draw(&mut self) -> Scene {
         self.window.dirty = false;
         self.window.drawing = true;
-
-        #[cfg(any(test, feature = "test-support"))]
-        {
-            self.window.focus_invalidated = false;
-        }
 
         self.text_system().start_frame();
         self.window.platform_window.clear_input_handler();
