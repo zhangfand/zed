@@ -1,0 +1,10 @@
+[package]
+name = "delay_time_calculator"
+authors = ["Joseph Lyons <joseph@zed.dev>"]
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tap_tempo = "0.1.1"
+gpui = { version = "0.1.0", path = "./../.." }
+ui = { version = "0.1.0", path = "./../../../ui" }
