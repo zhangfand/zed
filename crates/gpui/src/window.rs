@@ -339,7 +339,16 @@ impl Window {
             options,
             Box::new({
                 let mut cx = cx.to_async();
-                move || handle.update(&mut cx, |_, cx| cx.draw())
+                move || {
+                    handle.update(&mut cx, |_, cx| {
+                        if cx.window.dirty {
+                            Some(cx.draw())
+                        } else {
+                            println!("window isn't dirty, skipping");
+                            None
+                        }
+                    })
+                }
             }),
         );
         let display_id = platform_window.display().id();
@@ -349,6 +358,10 @@ impl Window {
         let content_size = platform_window.content_size();
         let scale_factor = platform_window.scale_factor();
         let bounds = platform_window.bounds();
+
+        cx.platform
+            .set_display_link_output_callback(display_id, Box::new(|_, _| {}));
+        cx.platform.start_display_link(display_id);
 
         platform_window.on_resize(Box::new({
             let mut cx = cx.to_async();
@@ -663,12 +676,12 @@ impl<'a> WindowContext<'a> {
 
                     // Flush effects, then stop the display link if no new next_frame_callbacks have been added.
 
-                    cx.update(|cx| {
-                        if cx.next_frame_callbacks.is_empty() {
-                            cx.platform.stop_display_link(display_id);
-                        }
-                    })
-                    .ok();
+                    // cx.update(|cx| {
+                    //     if cx.next_frame_callbacks.is_empty() {
+                    //         cx.platform.stop_display_link(display_id);
+                    //     }
+                    // })
+                    // .ok();
                 }
             });
             e.insert(consumer_task);

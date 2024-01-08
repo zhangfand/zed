@@ -4,7 +4,7 @@ use crate::{
     FileDropEvent, ForegroundExecutor, GlobalPixels, InputEvent, KeyDownEvent, Keystroke,
     Modifiers, ModifiersChangedEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
     Pixels, PlatformAtlas, PlatformDisplay, PlatformInputHandler, PlatformWindow, Point,
-    PromptLevel, Size, Timer, WindowAppearance, WindowBounds, WindowKind, WindowOptions,
+    PromptLevel, Size, Task, Timer, WindowAppearance, WindowBounds, WindowKind, WindowOptions,
 };
 use block::ConcreteBlock;
 use cocoa::{
@@ -23,7 +23,10 @@ use cocoa::{
 use core_graphics::display::CGRect;
 use ctor::ctor;
 use foreign_types::ForeignTypeRef;
-use futures::channel::oneshot;
+use futures::channel::{
+    mpsc::{unbounded, UnboundedSender},
+    oneshot,
+};
 use objc::{
     class,
     declare::ClassDecl,
@@ -33,6 +36,7 @@ use objc::{
 };
 use parking_lot::Mutex;
 use smallvec::SmallVec;
+use smol::{stream::StreamExt, future::yield_now};
 use std::{
     any::Any,
     cell::{Cell, RefCell},
@@ -161,10 +165,10 @@ unsafe fn build_classes() {
             sel!(setFrameSize:),
             set_frame_size as extern "C" fn(&Object, Sel, NSSize),
         );
-        decl.add_method(
-            sel!(displayLayer:),
-            display_layer as extern "C" fn(&Object, Sel, id),
-        );
+        // decl.add_method(
+        //     sel!(displayLayer:),
+        //     display_layer as extern "C" fn(&Object, Sel, id),
+        // );
 
         decl.add_protocol(Protocol::get("NSTextInputClient").unwrap());
         decl.add_method(
@@ -312,12 +316,13 @@ struct InsertText {
     text: String,
 }
 
-struct MacWindowState {
+pub(super) struct MacWindowState {
     handle: AnyWindowHandle,
     executor: ForegroundExecutor,
     native_window: id,
-    renderer: MetalRenderer,
-    draw: Option<DrawWindow>,
+    renderer: Rc<RefCell<MetalRenderer>>,
+    render_task: Task<()>,
+    pub draw_tx: UnboundedSender<()>,
     kind: WindowKind,
     event_callback: Option<Box<dyn FnMut(InputEvent) -> bool>>,
     activate_callback: Option<Box<dyn FnMut(bool)>>,
@@ -453,7 +458,7 @@ impl MacWindow {
     pub fn open(
         handle: AnyWindowHandle,
         options: WindowOptions,
-        draw: DrawWindow,
+        mut draw: DrawWindow,
         executor: ForegroundExecutor,
     ) -> Self {
         unsafe {
@@ -540,12 +545,32 @@ impl MacWindow {
 
             assert!(!native_view.is_null());
 
+            let renderer = Rc::new(RefCell::new(MetalRenderer::new(true)));
+            let (draw_tx, mut draw_rx) = unbounded();
+            let render_task = executor.spawn({
+                let renderer = renderer.clone();
+                async move {
+                    while let Some(_) = draw_rx.next().await {
+                        let start = std::time::Instant::now();
+                        if let Some(Some(scene)) = draw().log_err() {
+                            println!("rendering took {:?}", start.elapsed());
+                            let start = std::time::Instant::now();
+                            renderer.borrow_mut().draw(&scene);
+                            println!("rasterizing took {:?}", start.elapsed());
+                        }
+                        println!("overall render took {:?}", start.elapsed());
+                        yield_now().await;
+                    }
+                }
+            });
+
             let window = Self(Arc::new(Mutex::new(MacWindowState {
                 handle,
                 executor,
                 native_window,
-                renderer: MetalRenderer::new(true),
-                draw: Some(draw),
+                renderer,
+                render_task,
+                draw_tx,
                 kind: options.kind,
                 event_callback: None,
                 activate_callback: None,
@@ -991,7 +1016,7 @@ impl PlatformWindow for MacWindow {
     }
 
     fn sprite_atlas(&self) -> Arc<dyn PlatformAtlas> {
-        self.0.lock().renderer.sprite_atlas().clone()
+        self.0.lock().renderer.borrow().sprite_atlas().clone()
     }
 }
 
@@ -1002,7 +1027,7 @@ fn get_scale_factor(native_window: id) -> f32 {
     }
 }
 
-unsafe fn get_window_state(object: &Object) -> Arc<Mutex<MacWindowState>> {
+pub(super) unsafe fn get_window_state(object: &Object) -> Arc<Mutex<MacWindowState>> {
     let raw: *mut c_void = *object.get_ivar(WINDOW_STATE_IVAR);
     let rc1 = Arc::from_raw(raw as *mut Mutex<MacWindowState>);
     let rc2 = rc1.clone();
@@ -1391,7 +1416,8 @@ extern "C" fn close_window(this: &Object, _: Sel) {
 extern "C" fn make_backing_layer(this: &Object, _: Sel) -> id {
     let window_state = unsafe { get_window_state(this) };
     let window_state = window_state.as_ref().lock();
-    window_state.renderer.layer().as_ptr() as id
+    let renderer = window_state.renderer.borrow();
+    renderer.layer().as_ptr() as id
 }
 
 extern "C" fn view_did_change_backing_properties(this: &Object, _: Sel) {
@@ -1407,11 +1433,11 @@ extern "C" fn view_did_change_backing_properties(this: &Object, _: Sel) {
         };
 
         let _: () = msg_send![
-            lock.renderer.layer(),
+            lock.renderer.borrow().layer(),
             setContentsScale: scale_factor
         ];
         let _: () = msg_send![
-            lock.renderer.layer(),
+            lock.renderer.borrow().layer(),
             setDrawableSize: drawable_size
         ];
     }
@@ -1445,7 +1471,7 @@ extern "C" fn set_frame_size(this: &Object, _: Sel, size: NSSize) {
 
     unsafe {
         let _: () = msg_send![
-            lock.renderer.layer(),
+            lock.renderer.borrow().layer(),
             setDrawableSize: drawable_size
         ];
     }
@@ -1461,18 +1487,18 @@ extern "C" fn set_frame_size(this: &Object, _: Sel, size: NSSize) {
     };
 }
 
-extern "C" fn display_layer(this: &Object, _: Sel, _: id) {
-    unsafe {
-        let window_state = get_window_state(this);
-        let mut draw = window_state.lock().draw.take().unwrap();
-        let scene = draw().log_err();
-        let mut window_state = window_state.lock();
-        window_state.draw = Some(draw);
-        if let Some(scene) = scene {
-            window_state.renderer.draw(&scene);
-        }
-    }
-}
+// extern "C" fn display_layer(this: &Object, _: Sel, _: id) {
+//     unsafe {
+//         let window_state = get_window_state(this);
+//         let mut draw = window_state.lock().draw.take().unwrap();
+//         let scene = draw().log_err();
+//         let mut window_state = window_state.lock();
+//         window_state.draw = Some(draw);
+//         if let Some(scene) = scene {
+//             window_state.renderer.draw(&scene);
+//         }
+//     }
+// }
 
 extern "C" fn valid_attributes_for_marked_text(_: &Object, _: Sel) -> id {
     unsafe { msg_send![class!(NSArray), array] }

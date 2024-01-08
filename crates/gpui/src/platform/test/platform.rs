@@ -162,7 +162,7 @@ impl Platform for TestPlatform {
         &self,
         handle: AnyWindowHandle,
         options: WindowOptions,
-        _draw: Box<dyn FnMut() -> Result<Scene>>,
+        _draw: Box<dyn FnMut() -> Result<Option<Scene>>>,
     ) -> Box<dyn crate::PlatformWindow> {
         let window = TestWindow::new(
             options,
@@ -194,7 +194,7 @@ impl Platform for TestPlatform {
 
     fn start_display_link(&self, _display_id: DisplayId) {}
 
-    fn stop_display_link(&self, _display_id: DisplayId) {}
+    // fn stop_display_link(&self, _display_id: DisplayId) {}
 
     fn open_url(&self, _url: &str) {
         unimplemented!()

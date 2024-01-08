@@ -44,7 +44,7 @@ pub(crate) fn current_platform() -> Rc<dyn Platform> {
     Rc::new(MacPlatform::new())
 }
 
-pub type DrawWindow = Box<dyn FnMut() -> Result<Scene>>;
+pub type DrawWindow = Box<dyn FnMut() -> Result<Option<Scene>>>;
 
 pub(crate) trait Platform: 'static {
     fn background_executor(&self) -> BackgroundExecutor;
@@ -75,7 +75,7 @@ pub(crate) trait Platform: 'static {
         callback: Box<dyn FnMut(&VideoTimestamp, &VideoTimestamp) + Send>,
     );
     fn start_display_link(&self, display_id: DisplayId);
-    fn stop_display_link(&self, display_id: DisplayId);
+    // fn stop_display_link(&self, display_id: DisplayId);
     // fn add_status_item(&self, _handle: AnyWindowHandle) -> Box<dyn PlatformWindow>;
 
     fn open_url(&self, url: &str);

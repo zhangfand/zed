@@ -4,11 +4,20 @@ use std::{
     sync::{Arc, Weak},
 };
 
-use crate::DisplayId;
+use super::window::get_window_state;
+use crate::{DisplayId, MacWindow};
+use cocoa::{
+    appkit::NSApplication,
+    base::nil,
+    foundation::{NSArray, NSAutoreleasePool},
+};
 use collections::HashMap;
+use futures::{FutureExt, SinkExt};
+use objc::{msg_send, runtime::Object, sel, sel_impl};
 use parking_lot::Mutex;
 pub use sys::CVSMPTETime as SmtpeTime;
 pub use sys::CVTimeStamp as VideoTimestamp;
+use util::ResultExt;
 
 pub(crate) struct MacDisplayLinker {
     links: HashMap<DisplayId, MacDisplayLink>,
@@ -33,10 +42,33 @@ impl MacDisplayLinker {
     pub fn set_output_callback(
         &mut self,
         display_id: DisplayId,
-        output_callback: Box<dyn FnMut(&VideoTimestamp, &VideoTimestamp) + Send>,
+        mut output_callback: Box<dyn FnMut(&VideoTimestamp, &VideoTimestamp) + Send>,
     ) {
         if let Some(mut system_link) = unsafe { sys::DisplayLink::on_display(display_id.0) } {
-            let callback = Arc::new(Mutex::new(output_callback));
+            let callback: Box<dyn FnMut(&VideoTimestamp, &VideoTimestamp) + Send> =
+                Box::new(move |a: &VideoTimestamp, b: &VideoTimestamp| {
+                    let start = std::time::Instant::now();
+                    unsafe {
+                        let pool = NSAutoreleasePool::new(nil);
+
+                        let app = NSApplication::sharedApplication(nil);
+                        let windows: *mut Object = msg_send![app, windows];
+                        for index in 0..NSArray::count(windows) {
+                            let window = NSArray::objectAtIndex(windows, index);
+                            let window_state = get_window_state(&*window);
+
+                            // TODO
+                            smol::block_on(window_state.lock().draw_tx.send(())).unwrap();
+                        }
+
+                        pool.drain();
+                    }
+
+                    output_callback(a, b);
+
+                    // println!("display link took {:?}", start.elapsed());
+                });
+            let callback = Arc::new(Mutex::new(callback));
             let weak_callback_ptr: *const OutputCallback = Arc::downgrade(&callback).into_raw();
             unsafe { system_link.set_output_callback(trampoline, weak_callback_ptr as *mut c_void) }
 
