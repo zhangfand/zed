@@ -136,12 +136,17 @@ pub struct ThemeColors {
     // ===
     // Editor
     // ===
+    /// Text Color. Used for the text of the editor.
     pub editor_foreground: Hsla,
+    /// Background Color. Used for the background of the editor.
     pub editor_background: Hsla,
     // pub editor_inactive_background: Hsla,
+    /// Background Color. Used for the background of the editor gutter.
     pub editor_gutter_background: Hsla,
     pub editor_subheader_background: Hsla,
+    /// Background Color. Indicates the currently focused line in the editor.
     pub editor_active_line_background: Hsla,
+    /// Background Color. Used for the background of an editor line that is highlighted, like a matched section or a range of lines that is being transformed.
     pub editor_highlighted_line_background: Hsla,
     /// Text Color. Used for the text of the line number in the editor gutter.
     pub editor_line_number: Hsla,
