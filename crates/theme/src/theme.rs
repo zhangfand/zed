@@ -86,7 +86,6 @@ pub struct ThemeFamily {
     pub name: SharedString,
     pub author: SharedString,
     pub themes: Vec<Theme>,
-    pub scales: ColorScales,
 }
 
 impl ThemeFamily {}

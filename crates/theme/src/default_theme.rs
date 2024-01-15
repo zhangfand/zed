@@ -3,7 +3,6 @@ use std::sync::Arc;
 use crate::prelude::*;
 
 use crate::{
-    default_color_scales,
     one_themes::{one_dark, one_family},
     Appearance, PlayerColors, StatusColors, SyntaxTheme, SystemColors, Theme, ThemeColors,
     ThemeFamily, ThemeStyles,
@@ -75,7 +74,6 @@ pub fn zed_pro_family() -> ThemeFamily {
         name: "Zed Pro".into(),
         author: "Zed Team".into(),
         themes: vec![zed_pro_daylight(), zed_pro_moonlight()],
-        scales: default_color_scales(),
     }
 }
 

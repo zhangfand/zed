@@ -3,8 +3,8 @@ use std::sync::Arc;
 use gpui::{hsla, FontStyle, FontWeight, HighlightStyle};
 
 use crate::{
-    default_color_scales, Appearance, PlayerColors, StatusColors, SyntaxTheme, SystemColors, Theme,
-    ThemeColors, ThemeFamily, ThemeStyles,
+    Appearance, PlayerColors, StatusColors, SyntaxTheme, SystemColors, Theme, ThemeColors,
+    ThemeFamily, ThemeStyles,
 };
 
 // Note: This theme family is not the one you see in Zed at the moment.
@@ -17,7 +17,6 @@ pub fn one_family() -> ThemeFamily {
         name: "One".into(),
         author: "".into(),
         themes: vec![one_dark()],
-        scales: default_color_scales(),
     }
 }
 
