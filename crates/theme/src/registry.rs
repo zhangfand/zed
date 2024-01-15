@@ -6,8 +6,8 @@ use gpui::{HighlightStyle, SharedString};
 use refineable::Refineable;
 
 use crate::{
-    Appearance, PlayerColors, StatusColors, SyntaxTheme, SystemColors, Theme, ThemeColors,
-    ThemeFamily, ThemeStyles, UserTheme, UserThemeFamily,
+    Appearance, PlayerColors, StatusColors, SyntaxTheme, Theme, ThemeColors, ThemeFamily,
+    ThemeStyles, UserTheme, UserThemeFamily,
 };
 
 #[derive(Debug, Clone)]
@@ -90,7 +90,6 @@ impl ThemeRegistry {
                 name: user_theme.name.into(),
                 appearance: user_theme.appearance,
                 styles: ThemeStyles {
-                    system: SystemColors::default(),
                     colors: theme_colors,
                     status: status_colors,
                     player: player_colors,

@@ -97,7 +97,9 @@ use std::{
 pub use sum_tree::Bias;
 use sum_tree::TreeMap;
 use text::{OffsetUtf16, Rope};
-use theme::{ActiveTheme, PlayerColor, StatusColors, SyntaxTheme, ThemeColors, ThemeSettings};
+use theme::{
+    transparent, ActiveTheme, PlayerColor, StatusColors, SyntaxTheme, ThemeColors, ThemeSettings,
+};
 use ui::{
     h_flex, prelude::*, ButtonSize, ButtonStyle, IconButton, IconName, IconSize, ListItem, Popover,
     Tooltip,
@@ -7685,7 +7687,7 @@ impl Editor {
                                         .child(EditorElement::new(
                                             &rename_editor,
                                             EditorStyle {
-                                                background: cx.theme().system().transparent,
+                                                background: transparent(),
                                                 local_player: cx.editor_style.local_player,
                                                 text: text_style,
                                                 scrollbar_width: cx.editor_style.scrollbar_width,
@@ -9349,8 +9351,8 @@ impl Render for Editor {
         };
 
         let background = match self.mode {
-            EditorMode::SingleLine => cx.theme().system().transparent,
-            EditorMode::AutoHeight { max_lines: _ } => cx.theme().system().transparent,
+            EditorMode::SingleLine => transparent(),
+            EditorMode::AutoHeight { max_lines: _ } => transparent(),
             EditorMode::Full => cx.theme().colors().editor_background,
         };
 

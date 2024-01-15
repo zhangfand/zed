@@ -4,8 +4,8 @@ use crate::prelude::*;
 
 use crate::{
     one_themes::{one_dark, one_family},
-    Appearance, PlayerColors, StatusColors, SyntaxTheme, SystemColors, Theme, ThemeColors,
-    ThemeFamily, ThemeStyles,
+    Appearance, PlayerColors, StatusColors, SyntaxTheme, Theme, ThemeColors, ThemeFamily,
+    ThemeStyles,
 };
 
 fn zed_pro_daylight() -> Theme {
@@ -14,7 +14,6 @@ fn zed_pro_daylight() -> Theme {
         name: "Zed Pro Daylight".into(),
         appearance: Appearance::Light,
         styles: ThemeStyles {
-            system: SystemColors::default(),
             colors: ThemeColors::light(),
             status: StatusColors::light(),
             player: PlayerColors::light(),
@@ -44,7 +43,6 @@ pub(crate) fn zed_pro_moonlight() -> Theme {
         name: "Zed Pro Moonlight".into(),
         appearance: Appearance::Dark,
         styles: ThemeStyles {
-            system: SystemColors::default(),
             colors: ThemeColors::dark(),
             status: StatusColors::dark(),
             player: PlayerColors::dark(),

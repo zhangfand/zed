@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use gpui::{Hsla, Rgba};
 use theme::{
-    color_alpha, Appearance, PlayerColor, PlayerColors, StatusColorsRefinement,
+    color_alpha, transparent, Appearance, PlayerColor, PlayerColors, StatusColorsRefinement,
     ThemeColorsRefinement, UserFontStyle, UserFontWeight, UserHighlightStyle, UserSyntaxTheme,
     UserTheme, UserThemeStylesRefinement,
 };
@@ -190,7 +190,7 @@ impl Zed1ThemeConverter {
             border_variant: convert(middle.variant.default.border),
             border_focused: convert(lowest.accent.hovered.border),
             border_selected: convert(lowest.accent.default.border),
-            border_transparent: Some(gpui::transparent_black()),
+            border_transparent: Some(transparent()),
             border_disabled: convert(lowest.base.disabled.border),
             elevated_surface_background: convert(middle.base.default.background),
             surface_background: convert(middle.base.default.background),
@@ -201,7 +201,7 @@ impl Zed1ThemeConverter {
             element_selected: convert(lowest.on.active.background), // TODO: Check what this should be
             element_disabled: convert(lowest.on.disabled.background),
             drop_target_background: convert(self.theme.workspace.drop_target_overlay_color),
-            ghost_element_background: Some(gpui::transparent_black()),
+            ghost_element_background: Some(transparent()),
             ghost_element_hover: convert(lowest.on.hovered.background),
             ghost_element_active: convert(lowest.on.active.background),
             ghost_element_selected: convert(lowest.on.active.background), // TODO: Check what this should be
@@ -230,7 +230,7 @@ impl Zed1ThemeConverter {
                 .map(|color| color_alpha(color, 0.3)),
             scrollbar_thumb_hover_background: convert(middle.base.hovered.background),
             scrollbar_thumb_border: convert(middle.base.default.border),
-            scrollbar_track_background: Some(gpui::transparent_black()),
+            scrollbar_track_background: Some(transparent()),
             scrollbar_track_border: convert(highest.variant.default.border),
             editor_foreground: convert(editor.text_color),
             editor_background: convert(editor.background),

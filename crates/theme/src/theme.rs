@@ -31,7 +31,7 @@ pub use styles::*;
 pub use themes::*;
 pub use user_theme::*;
 
-use gpui::{AppContext, Hsla, SharedString};
+use gpui::{hsla, AppContext, Hsla, SharedString};
 use serde::Deserialize;
 
 #[derive(Debug, PartialEq, Clone, Copy, Deserialize)]
@@ -98,12 +98,6 @@ pub struct Theme {
 }
 
 impl Theme {
-    /// Returns the [`SystemColors`] for the theme.
-    #[inline(always)]
-    pub fn system(&self) -> &SystemColors {
-        &self.styles.system
-    }
-
     /// Returns the [`PlayerColors`] for the theme.
     #[inline(always)]
     pub fn players(&self) -> &PlayerColors {
@@ -139,6 +133,10 @@ impl Theme {
     pub fn appearance(&self) -> Appearance {
         self.appearance
     }
+}
+
+pub fn transparent() -> Hsla {
+    hsla(0.0, 0.0, 0.0, 0.0)
 }
 
 pub fn color_alpha(color: Hsla, alpha: f32) -> Hsla {

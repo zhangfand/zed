@@ -1,7 +1,7 @@
 use gpui::{Hsla, Rgba};
 
 use crate::scale::{ColorScaleSet, ColorScales};
-use crate::ColorScale;
+use crate::{transparent, ColorScale};
 use crate::{SystemColors, ThemeColors};
 
 pub(crate) fn neutral() -> ColorScaleSet {
@@ -60,8 +60,8 @@ impl ThemeColors {
             pane_focused_border: blue().light().step_5(),
             scrollbar_thumb_background: neutral().light_alpha().step_3(),
             scrollbar_thumb_hover_background: neutral().light_alpha().step_4(),
-            scrollbar_thumb_border: gpui::transparent_black(),
-            scrollbar_track_background: gpui::transparent_black(),
+            scrollbar_thumb_border: transparent(),
+            scrollbar_track_background: transparent(),
             scrollbar_track_border: neutral().light().step_5(),
             editor_foreground: neutral().light().step_12(),
             editor_background: neutral().light().step_1(),
@@ -143,8 +143,8 @@ impl ThemeColors {
             pane_focused_border: blue().dark().step_5(),
             scrollbar_thumb_background: neutral().dark_alpha().step_3(),
             scrollbar_thumb_hover_background: neutral().dark_alpha().step_4(),
-            scrollbar_thumb_border: gpui::transparent_black(),
-            scrollbar_track_background: gpui::transparent_black(),
+            scrollbar_thumb_border: transparent(),
+            scrollbar_track_background: transparent(),
             scrollbar_track_border: neutral().dark().step_5(),
             editor_foreground: neutral().dark().step_12(),
             editor_background: neutral().dark().step_1(),

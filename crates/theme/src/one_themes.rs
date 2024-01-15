@@ -3,8 +3,8 @@ use std::sync::Arc;
 use gpui::{hsla, FontStyle, FontWeight, HighlightStyle};
 
 use crate::{
-    Appearance, PlayerColors, StatusColors, SyntaxTheme, SystemColors, Theme, ThemeColors,
-    ThemeFamily, ThemeStyles,
+    transparent, Appearance, PlayerColors, StatusColors, SyntaxTheme, SystemColors, Theme,
+    ThemeColors, ThemeFamily, ThemeStyles,
 };
 
 // Note: This theme family is not the one you see in Zed at the moment.
@@ -40,7 +40,6 @@ pub(crate) fn one_dark() -> Theme {
         appearance: Appearance::Dark,
 
         styles: ThemeStyles {
-            system: SystemColors::default(),
             colors: ThemeColors {
                 border: hsla(225. / 360., 13. / 100., 12. / 100., 1.),
                 border_variant: hsla(228. / 360., 8. / 100., 25. / 100., 1.),
@@ -119,10 +118,10 @@ pub(crate) fn one_dark() -> Theme {
                 panel_background: bg,
                 panel_focused_border: blue,
                 pane_focused_border: blue,
-                scrollbar_thumb_background: gpui::transparent_black(),
+                scrollbar_thumb_background: transparent(),
                 scrollbar_thumb_hover_background: hsla(225.0 / 360., 11.8 / 100., 26.7 / 100., 1.0),
                 scrollbar_thumb_border: hsla(228. / 360., 8. / 100., 25. / 100., 1.),
-                scrollbar_track_background: gpui::transparent_black(),
+                scrollbar_track_background: transparent(),
                 scrollbar_track_border: hsla(228. / 360., 8. / 100., 25. / 100., 1.),
                 editor_foreground: hsla(218. / 360., 14. / 100., 71. / 100., 1.),
                 link_text_hover: blue,

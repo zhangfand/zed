@@ -2,7 +2,7 @@ use gpui::Hsla;
 use refineable::Refineable;
 use std::sync::Arc;
 
-use crate::{PlayerColors, StatusColors, StatusColorsRefinement, SyntaxTheme, SystemColors};
+use crate::{PlayerColors, StatusColors, StatusColorsRefinement, SyntaxTheme};
 
 #[derive(Refineable, Clone, Debug)]
 #[refineable(Debug, serde::Deserialize)]
@@ -212,7 +212,6 @@ pub struct ThemeColors {
 
 #[derive(Refineable, Clone)]
 pub struct ThemeStyles {
-    pub system: SystemColors,
     /// An array of colors used for theme elements that iterrate through a series of colors.
     ///
     /// Example: Player colors, rainbow brackets and indent guides, etc.
