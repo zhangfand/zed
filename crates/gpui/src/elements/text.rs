@@ -70,6 +70,18 @@ impl IntoElement for SharedString {
     }
 }
 
+impl IntoElement for String {
+    type Element = SharedString;
+
+    fn element_id(&self) -> Option<ElementId> {
+        None
+    }
+
+    fn into_element(self) -> Self::Element {
+        SharedString::from(self).into()
+    }
+}
+
 /// Renders text with runs of different styles.
 ///
 /// Callers are responsible for setting the correct style for each run.
