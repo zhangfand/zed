@@ -16,7 +16,7 @@
 
 # Contributing to Zed
 
-- [How to Contribute]()
+- [How to Contribute](../CONTRIBUTING.md)
 - [Building from Source](./developing_zed__building_zed.md)
 - [Local Collaboration](./developing_zed__local_collaboration.md)
 - [Adding Languages](./developing_zed__adding_languages.md)

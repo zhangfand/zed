@@ -4,6 +4,8 @@
 
 Zed collects anonymous telemetry data to help the team understand how people are using the application and to see what sort of issues they are experiencing.
 
+You can audit the metrics data that Zed has reported by running the command `zed: open telemetry log` from the command palette, or clicking `Help > View Telemetry Log` in the application menu.
+
 ## Dataflow
 
 Telemetry is sent from the application to zed.dev. Data is proxied through our servers to enable us to easily switch analytics services; we never store this data. The data is then sent off to various services:
@@ -126,8 +128,6 @@ The following data is sent:
         - `open`
         - `close`
     - `milliseconds_since_first_event`: Same as above
-
-You can audit the metrics data that Zed has reported by running the command `zed: open telemetry log` from the command palette, or clicking `Help > View Telemetry Log` in the application menu.
 
 ### Configuring Telemetry Settings
 
