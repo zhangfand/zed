@@ -2338,8 +2338,12 @@ impl Editor {
                 if !text.is_empty() {
                     // `text` can be empty when a user is using IME (e.g. Chinese Wubi Simplified)
                     //  and they are removing the character that triggered IME popup.
-                    for (pair, enabled) in scope.brackets() {
-                        if enabled && pair.close && pair.start.ends_with(text.as_ref()) {
+                    for brackets_pair in scope.brackets() {
+                        let pair = brackets_pair.pair;
+                        if brackets_pair.enabled
+                            && brackets_pair.close_enabled
+                            && pair.start.ends_with(text.as_ref())
+                        {
                             bracket_pair = Some(pair.clone());
                             is_bracket_pair_start = true;
                             break;
@@ -2541,23 +2545,21 @@ impl Editor {
                                 .map(|c| c.len_utf8())
                                 .sum::<usize>();
 
-                            let insert_extra_newline =
-                                language.brackets().any(|(pair, enabled)| {
-                                    let pair_start = pair.start.trim_end();
-                                    let pair_end = pair.end.trim_start();
+                            let insert_extra_newline = language.brackets().any(|bracket_pair| {
+                                let pair = &bracket_pair.pair;
+                                let pair_start = pair.start.trim_end();
+                                let pair_end = pair.end.trim_start();
 
-                                    enabled
-                                        && pair.newline
-                                        && buffer.contains_str_at(
-                                            end + trailing_whitespace_len,
-                                            pair_end,
-                                        )
-                                        && buffer.contains_str_at(
-                                            (start - leading_whitespace_len)
-                                                .saturating_sub(pair_start.len()),
-                                            pair_start,
-                                        )
-                                });
+                                bracket_pair.enabled
+                                    && pair.newline
+                                    && buffer
+                                        .contains_str_at(end + trailing_whitespace_len, pair_end)
+                                    && buffer.contains_str_at(
+                                        (start - leading_whitespace_len)
+                                            .saturating_sub(pair_start.len()),
+                                        pair_start,
+                                    )
+                            });
                             // Comment extension on newline is allowed only for cursor selections
                             let comment_delimiter = language.line_comment_prefixes().filter(|_| {
                                 let is_comment_extension_enabled =

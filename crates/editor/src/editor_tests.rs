@@ -22,8 +22,8 @@ use parking_lot::Mutex;
 use project::project_settings::{LspSettings, ProjectSettings};
 use project::FakeFs;
 use serde_json::{self, json};
-use std::sync::atomic;
 use std::sync::atomic::AtomicUsize;
+use std::sync::{atomic, Arc};
 use std::{cell::RefCell, future::Future, rc::Rc, time::Instant};
 use unindent::Unindent;
 use util::{
@@ -4362,6 +4362,77 @@ async fn test_autoclose_pairs(cx: &mut gpui::TestAppContext) {
 }
 
 #[gpui::test]
+async fn test_autoclose_pairs_exclusions(cx: &mut gpui::TestAppContext) {
+    init_test(cx, |_| {});
+
+    let mut cx = EditorTestContext::new(cx).await;
+    let language = Arc::new(
+        Language::new(
+            LanguageConfig {
+                name: "Rust".into(),
+                brackets: BracketPairConfig {
+                    pairs: vec![BracketPair {
+                        start: "<".into(),
+                        end: ">".into(),
+                        close: true,
+                        newline: true,
+                    }],
+                    disabled_scopes_by_bracket_ix: vec![vec![
+                        "string".to_string(),
+                        "comment".to_string(),
+                    ]],
+                    disabled_close_scopes_by_bracket_ix: vec![vec!["operator".to_string()]],
+                },
+                ..Default::default()
+            },
+            Some(tree_sitter_rust::language()),
+        )
+        .with_override_query(
+            r#"[
+        (string_literal)
+        (raw_string_literal)
+        ] @string
+        [
+        (line_comment)
+        (block_comment)
+        ] @comment"#,
+        )
+        .unwrap(),
+    );
+
+    let registry = Arc::new(LanguageRegistry::test());
+    registry.add(language.clone());
+    cx.update_buffer(|buffer, cx| {
+        buffer.set_language_registry(registry);
+        buffer.set_language(Some(language), cx);
+    });
+
+    cx.set_state(
+        &r#"
+            🏀ˇ
+            εˇ
+            ❤️ˇ
+        "#
+        .unindent(),
+    );
+
+    // autoclose multiple nested brackets at multiple cursors
+    cx.update_editor(|view, cx| {
+        view.handle_input("<", cx);
+        view.handle_input("<", cx);
+        view.handle_input("<", cx);
+    });
+    cx.assert_editor_state(
+        &"
+            🏀<<<ˇ>
+            ε<<<ˇ>
+            ❤️<<<ˇ>
+        "
+        .unindent(),
+    );
+}
+
+#[gpui::test]
 async fn test_autoclose_with_embedded_language(cx: &mut gpui::TestAppContext) {
     init_test(cx, |_| {});
 
@@ -7768,7 +7839,7 @@ async fn test_on_type_formatting_not_triggered(cx: &mut gpui::TestAppContext) {
                     close: true,
                     newline: true,
                 }],
-                disabled_scopes_by_bracket_ix: Vec::new(),
+                ..Default::default()
             },
             ..Default::default()
         },

@@ -176,7 +176,7 @@ impl EditorLspTestContext {
                         close: true,
                         newline: true,
                     }],
-                    disabled_scopes_by_bracket_ix: Default::default(),
+                    ..Default::default()
                 },
                 word_characters,
                 ..Default::default()
