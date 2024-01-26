@@ -1466,15 +1466,38 @@ impl<'a> SyntaxLayer<'a> {
     }
 
     pub(crate) fn override_id(&self, offset: usize, text: &text::BufferSnapshot) -> Option<u32> {
+        let zz = text.text();
+        let zz2 = text.as_rope().clone();
         let text = TextProvider(text.as_rope());
         let config = self.language.grammar.as_ref()?.override_config.as_ref()?;
 
         let mut query_cursor = QueryCursorHandle::new();
         query_cursor.set_byte_range(offset..offset);
 
+        // dbg!("???", zz, offset, self.node());
+        // {
+        //     // TODO kb self.node() is a text file due to the offset, we need to have a -1 in order to capture the
+        //     // correct node for bracket completions
+        //     let mut query_cursor_2 = QueryCursorHandle::new();
+        //     query_cursor_2.set_byte_range(offset - 1..offset);
+        //     for ooo in query_cursor_2.matches(&config.query, self.node(), TextProvider(&zz2)) {
+        //         dbg!(&ooo);
+        //     }
+        // }
         let mut smallest_match: Option<(u32, Range<usize>)> = None;
+        // dbg!(&config.query);
+        let mut smallest_node = None;
+
+        let mut cursor = self.tree.walk();
+        dbg!("~~~~~~~~~", cursor.node());
+        while cursor.goto_next_sibling() {
+            dbg!(cursor.node());
+        }
+        // dbg!(self.tree);
         for mat in query_cursor.matches(&config.query, self.node(), text) {
+            dbg!("looping");
             for capture in mat.captures {
+                // dbg!(&capture);
                 if !config.values.contains_key(&capture.index) {
                     continue;
                 }
@@ -1491,10 +1514,11 @@ impl<'a> SyntaxLayer<'a> {
                     continue;
                 }
 
-                smallest_match = Some((capture.index, range));
+                smallest_node = Some(capture.node.clone());
             }
         }
 
+        dbg!(smallest_node);
         smallest_match.map(|(index, _)| index)
     }
 }

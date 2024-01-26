@@ -489,7 +489,7 @@ pub struct LanguageQueries {
 /// several nested scopes.
 #[derive(Clone, Debug)]
 pub struct LanguageScope {
-    language: Arc<Language>,
+    pub language: Arc<Language>,
     override_id: Option<u32>,
 }
 
@@ -510,7 +510,7 @@ pub struct LanguageConfigOverride {
     #[serde(skip_deserializing)]
     pub disabled_bracket_ixs: Vec<u16>,
     #[serde(skip_deserializing)]
-    pub disabled_bracket_close_ixs: Vec<u16>,
+    pub forced_bracket_close_ixs: Vec<u16>,
     #[serde(default)]
     pub word_characters: Override<HashSet<char>>,
     #[serde(default)]
@@ -609,7 +609,7 @@ pub struct BracketPairConfig {
     /// N-th entry in `[Self::disabled_scopes_by_bracket_ix]` contains a list of disabled scopes for an n-th entry in `[Self::pairs]`
     pub disabled_scopes_by_bracket_ix: Vec<Vec<String>>,
     // TODO kb comment
-    pub disabled_close_scopes_by_bracket_ix: Vec<Vec<String>>,
+    pub forced_close_scopes_by_bracket_ix: Vec<Vec<String>>,
 }
 
 impl<'de> Deserialize<'de> for BracketPairConfig {
@@ -624,23 +624,23 @@ impl<'de> Deserialize<'de> for BracketPairConfig {
             #[serde(default)]
             not_in: Vec<String>,
             #[serde(default)]
-            pub close_not_in: Vec<String>,
+            close_only_in: Vec<String>,
         }
 
         let result = Vec::<Entry>::deserialize(deserializer)?;
         let mut brackets = Vec::with_capacity(result.len());
         let mut disabled_scopes_by_bracket_ix = Vec::with_capacity(result.len());
-        let mut disabled_close_scopes_by_bracket_ix = Vec::with_capacity(result.len());
+        let mut forced_close_scopes_by_bracket_ix = Vec::with_capacity(result.len());
         for entry in result {
             brackets.push(entry.bracket_pair);
             disabled_scopes_by_bracket_ix.push(entry.not_in);
-            disabled_close_scopes_by_bracket_ix.push(entry.close_not_in);
+            forced_close_scopes_by_bracket_ix.push(entry.close_only_in);
         }
 
         Ok(BracketPairConfig {
             pairs: brackets,
             disabled_scopes_by_bracket_ix,
-            disabled_close_scopes_by_bracket_ix,
+            forced_close_scopes_by_bracket_ix,
         })
     }
 }
@@ -725,6 +725,7 @@ struct RedactionConfig {
     pub redaction_capture_ix: u32,
 }
 
+#[derive(Debug)]
 struct OverrideConfig {
     query: Query,
     values: HashMap<u32, (String, LanguageConfigOverride)>,
@@ -1773,14 +1774,14 @@ impl Language {
                     }
                 })
                 .collect();
-            override_config.disabled_bracket_close_ixs = self
+            override_config.forced_bracket_close_ixs = self
                 .config
                 .brackets
-                .disabled_close_scopes_by_bracket_ix
+                .forced_close_scopes_by_bracket_ix
                 .iter()
                 .enumerate()
-                .filter_map(|(ix, disabled_close_scope_names)| {
-                    if disabled_close_scope_names.contains(name) {
+                .filter_map(|(ix, forced_close_scope_names)| {
+                    if forced_close_scope_names.contains(name) {
                         Some(ix as u16)
                     } else {
                         None
@@ -1982,13 +1983,14 @@ impl LanguageScope {
     }
 
     /// Returns a list of bracket pairs for a given language with an additional
-    /// piece of information about whether the particular bracket pair is currently active for a given language.
+    /// piece of information about whether the particular bracket pair is currently
+    /// active for a given language and syntax position.
     pub fn brackets<'a>(&'a self) -> impl Iterator<Item = Brackets<'a>> + 'a {
-        let (mut disabled_ids, mut disabled_close_ids) =
-            self.config_override().map_or((&[] as _, &[] as _), |o| {
+        let (mut disabled_ids, mut forced_close_ids) =
+            dbg!(self.config_override()).map_or((&[] as _, &[] as _), |o| {
                 (
                     o.disabled_bracket_ixs.as_slice(),
-                    o.disabled_bracket_close_ixs.as_slice(),
+                    o.forced_bracket_close_ixs.as_slice(),
                 )
             });
         let bracket_config = &self.language.config.brackets;
@@ -2004,16 +2006,19 @@ impl LanguageScope {
                         enabled = false;
                     }
                 }
-                let mut close_enabled = pair.close;
-                if close_enabled {
-                    if let Some(next_disabled_close_ix) = disabled_close_ids.first() {
-                        if ix == *next_disabled_close_ix as usize {
-                            dbg!("!!!!!!!!!!!!");
-                            disabled_close_ids = &disabled_close_ids[1..];
-                            close_enabled = false;
-                        }
+
+                let forced_close_scopes = &bracket_config.forced_close_scopes_by_bracket_ix[ix];
+                dbg!(&forced_close_ids, &forced_close_scopes);
+                // let mut close_enabled = pair.close && forced_close_scopes.is_empty();
+                let mut close_enabled = pair.close && forced_close_scopes.is_empty();
+                if let Some(next_forced_close_ix) = forced_close_ids.first() {
+                    if ix == *next_forced_close_ix as usize {
+                        dbg!("!!!!!!!!!!!!");
+                        forced_close_ids = &forced_close_ids[1..];
+                        close_enabled = true;
                     }
                 }
+                dbg!(close_enabled);
 
                 Brackets {
                     pair,
