@@ -15,7 +15,9 @@ use std::{
 };
 use sum_tree::{Bias, SeekTarget, SumTree};
 use text::{Anchor, BufferSnapshot, OffsetRangeExt, Point, Rope, ToOffset, ToPoint};
-use tree_sitter::{Node, Query, QueryCapture, QueryCaptures, QueryCursor, QueryMatches, Tree};
+use tree_sitter::{
+    Node, Query, QueryCapture, QueryCaptures, QueryCursor, QueryMatches, Tree, TreeCursor,
+};
 
 use super::PARSER;
 
@@ -1465,14 +1467,10 @@ impl<'a> SyntaxLayer<'a> {
             .root_node_with_offset(self.offset.0, self.offset.1)
     }
 
+    // Option<{override_id, previous_override_id }>
     pub(crate) fn override_id(&self, offset: usize, text: &text::BufferSnapshot) -> Option<u32> {
-        let zz = text.text();
-        let zz2 = text.as_rope().clone();
         let text = TextProvider(text.as_rope());
         let config = self.language.grammar.as_ref()?.override_config.as_ref()?;
-
-        let mut query_cursor = QueryCursorHandle::new();
-        query_cursor.set_byte_range(offset..offset);
 
         // dbg!("???", zz, offset, self.node());
         // {
@@ -1488,12 +1486,48 @@ impl<'a> SyntaxLayer<'a> {
         // dbg!(&config.query);
         let mut smallest_node = None;
 
-        let mut cursor = self.tree.walk();
-        dbg!("~~~~~~~~~", cursor.node());
-        while cursor.goto_next_sibling() {
-            dbg!(cursor.node());
+        dbg!(offset);
+        fn indent(depth: u32) {
+            for _ in 0..depth {
+                print!("  ");
+            }
         }
-        // dbg!(self.tree);
+
+        fn recurse(cursor: &mut TreeCursor, mut depth: u32) {
+            indent(depth);
+            println!("{:?}", cursor.node());
+
+            if !cursor.goto_first_child() {
+                return;
+            }
+            depth += 1;
+
+            loop {
+                recurse(&mut cursor.clone(), depth);
+                if !cursor.goto_next_sibling() {
+                    break;
+                }
+            }
+        }
+
+        recurse(&mut self.tree.walk(), 0);
+
+        // dbg!("~~~~~~~", self.tree);
+        // let mut cursor = self.tree.walk();
+        // cursor.goto_first_child();
+        // recurse(cursor);
+        let previous_node = self.node().prev_sibling().or_else(|| self.node().parent());
+
+        let mut query_cursor = QueryCursorHandle::new();
+        match previous_node {
+            Some(_) => {
+                query_cursor.set_byte_range(offset.saturating_sub(1)..offset);
+            }
+
+            _ => {}
+        }
+
+        let mut query_cursor = QueryCursorHandle::new();
         for mat in query_cursor.matches(&config.query, self.node(), text) {
             dbg!("looping");
             for capture in mat.captures {
@@ -1517,7 +1551,6 @@ impl<'a> SyntaxLayer<'a> {
                 smallest_node = Some(capture.node.clone());
             }
         }
-
         dbg!(smallest_node);
         smallest_match.map(|(index, _)| index)
     }

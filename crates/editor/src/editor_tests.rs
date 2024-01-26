@@ -4440,11 +4440,12 @@ async fn test_autoclose_pairs_exclusions(cx: &mut gpui::TestAppContext) {
     // );
 
     // autoclose the generic param near the type
-    cx.set_state(&r#"struct Fooˇ{}"#.unindent());
+    // cx.set_state(&r#"struct Fooˇ"#.unindent());
+    // cx.set_state(&r#"struct Fooˇ{}"#.unindent());
+    cx.set_state(&r#" fn main() { let foo = "struct Fooˇ{}"; } "#.unindent());
     cx.update_editor(|view, cx| {
         view.handle_input("<", cx);
     });
-    panic!();
     cx.assert_editor_state(&"struct Foo<ˇ>\n".unindent());
 
     // // autoclose the generic param near `fn foo`
