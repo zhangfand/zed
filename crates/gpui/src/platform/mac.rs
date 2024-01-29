@@ -4,8 +4,15 @@ mod dispatcher;
 mod display;
 mod display_linker;
 mod events;
-mod metal_atlas;
-mod metal_renderer;
+
+// #[cfg(not(feature = "wgpu"))]
+// mod metal_atlas;
+// #[cfg(not(feature = "wgpu"))]
+// mod metal_renderer;
+
+mod wgpu_atlas;
+mod wgpu_renderer;
+
 mod open_type;
 mod platform;
 mod text_system;
