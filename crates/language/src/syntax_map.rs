@@ -1469,24 +1469,10 @@ impl<'a> SyntaxLayer<'a> {
 
     // Option<{override_id, previous_override_id }>
     pub(crate) fn override_id(&self, offset: usize, text: &text::BufferSnapshot) -> Option<u32> {
+        let zz = text.clone();
         let text = TextProvider(text.as_rope());
         let config = self.language.grammar.as_ref()?.override_config.as_ref()?;
 
-        // dbg!("???", zz, offset, self.node());
-        // {
-        //     // TODO kb self.node() is a text file due to the offset, we need to have a -1 in order to capture the
-        //     // correct node for bracket completions
-        //     let mut query_cursor_2 = QueryCursorHandle::new();
-        //     query_cursor_2.set_byte_range(offset - 1..offset);
-        //     for ooo in query_cursor_2.matches(&config.query, self.node(), TextProvider(&zz2)) {
-        //         dbg!(&ooo);
-        //     }
-        // }
-        let mut smallest_match: Option<(u32, Range<usize>)> = None;
-        // dbg!(&config.query);
-        let mut smallest_node = None;
-
-        dbg!(offset);
         fn indent(depth: u32) {
             for _ in 0..depth {
                 print!("  ");
@@ -1510,26 +1496,71 @@ impl<'a> SyntaxLayer<'a> {
             }
         }
 
-        recurse(&mut self.tree.walk(), 0);
-
-        // dbg!("~~~~~~~", self.tree);
-        // let mut cursor = self.tree.walk();
-        // cursor.goto_first_child();
-        // recurse(cursor);
         let previous_node = self.node().prev_sibling().or_else(|| self.node().parent());
 
-        let mut query_cursor = QueryCursorHandle::new();
-        match previous_node {
-            Some(_) => {
-                query_cursor.set_byte_range(offset.saturating_sub(1)..offset);
-            }
+        // TODO kb remove
+        recurse(&mut self.tree.walk(), 0);
+        if true || dbg!(config.close_bracket_only_in.is_some()) {
+            let mut aa_smallest_match: Option<(u32, Range<usize>)> = None;
+            let mut aa_smallest_node = None;
+            if config
+                .query
+                .capture_names()
+                .contains(&"angle_bracket_close")
+            {
+                let mut query_cursor = QueryCursorHandle::new();
+                // TODO kb self.node() is a text file due to the offset, we need to have a -1 in order to capture the
+                // correct node for bracket completions.
+                let start_offset = offset.saturating_sub(1);
+                query_cursor.set_byte_range(start_offset..offset);
+                // TODO kbWe seem not to need the parent node?
+                //
+                // let node = match previous_node {
+                //     Some(previous_node) => {
+                //         dbg!("got a previous node");
+                //         query_cursor.set_byte_range(offset.saturating_sub(1)..offset);
+                //         previous_node
+                //     }
+                //     None => {
+                //         query_cursor.set_byte_range(offset..offset);
+                //         self.node()
+                //     }
+                // };
 
-            _ => {}
+                for mat in
+                    query_cursor.matches(&config.query, self.node(), TextProvider(zz.as_rope()))
+                {
+                    dbg!("looping aaaa");
+                    for capture in mat.captures {
+                        dbg!(("!!!", &capture));
+                        if !config.values.contains_key(&capture.index) {
+                            continue;
+                        }
+
+                        let range = capture.node.byte_range();
+                        if start_offset <= range.start || start_offset >= range.end {
+                            continue;
+                        }
+
+                        if let Some((_, smallest_range)) = &aa_smallest_match {
+                            if range.len() < smallest_range.len() {
+                                aa_smallest_match = Some((capture.index, range))
+                            }
+                            continue;
+                        }
+
+                        aa_smallest_node = Some(capture.node.clone());
+                    }
+                }
+                dbg!(aa_smallest_node);
+                dbg!(aa_smallest_match.as_ref().map(|(index, _)| index));
+            }
         }
 
+        let mut smallest_match: Option<(u32, Range<usize>)> = None;
+        let mut smallest_node = None;
         let mut query_cursor = QueryCursorHandle::new();
         for mat in query_cursor.matches(&config.query, self.node(), text) {
-            dbg!("looping");
             for capture in mat.captures {
                 // dbg!(&capture);
                 if !config.values.contains_key(&capture.index) {

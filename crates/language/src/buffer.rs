@@ -1024,7 +1024,7 @@ impl Buffer {
     /// for the same buffer, we only initiate a new parse if we are not already
     /// parsing in the background.
     pub fn reparse(&mut self, cx: &mut ModelContext<Self>) {
-        if dbg!(self.parsing_in_background) {
+        if self.parsing_in_background {
             return;
         }
         let language = if let Some(language) = self.language.clone() {
@@ -1057,7 +1057,6 @@ impl Buffer {
         {
             Ok(new_syntax_snapshot) => {
                 self.did_finish_parsing(new_syntax_snapshot, cx);
-                println!("did finish parsing");
                 return;
             }
             Err(parse_task) => {
