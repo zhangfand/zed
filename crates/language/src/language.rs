@@ -731,8 +731,9 @@ struct RedactionConfig {
 #[derive(Debug)]
 struct OverrideConfig {
     query: Query,
-    step_back_query: Option<Query>,
     values: HashMap<u32, (String, LanguageConfigOverride)>,
+    step_back_query: Option<Query>,
+    step_back_values: HashMap<u32, (String, LanguageConfigOverride)>,
 }
 
 #[derive(Default, Clone)]
@@ -1731,7 +1732,7 @@ impl Language {
         for (ix, name) in query
             .capture_names()
             .iter()
-            .chain(step_back_query.iter().flat_map(|q| q.capture_names()))
+            // .chain(step_back_query.iter().flat_map(|q| q.capture_names()))
             .enumerate()
         {
             if !name.starts_with('_') {
@@ -1749,15 +1750,6 @@ impl Language {
                 override_configs_by_id.insert(ix as u32, (name.to_string(), value));
             }
         }
-
-        if !self.config.overrides.is_empty() {
-            let keys = self.config.overrides.keys().collect::<Vec<_>>();
-            Err(anyhow!(
-                "language {:?} has overrides in config not in query: {keys:?}",
-                self.config.name
-            ))?;
-        }
-
         for disabled_scope_name in self
             .config
             .brackets
@@ -1776,6 +1768,36 @@ impl Language {
             }
         }
 
+        let mut step_back_override_configs_by_id = HashMap::default();
+        for (ix, name) in step_back_query
+            .iter()
+            .flat_map(|q| q.capture_names())
+            .enumerate()
+        {
+            if !name.starts_with('_') {
+                let value = self.config.overrides.remove(*name).unwrap_or_default();
+                for server_name in &value.opt_into_language_servers {
+                    if !self
+                        .config
+                        .scope_opt_in_language_servers
+                        .contains(server_name)
+                    {
+                        util::debug_panic!("Server {server_name:?} has been opted-in by scope {name:?} but has not been marked as an opt-in server");
+                    }
+                }
+
+                step_back_override_configs_by_id.insert(ix as u32, (name.to_string(), value));
+            }
+        }
+
+        if !self.config.overrides.is_empty() {
+            let keys = self.config.overrides.keys().collect::<Vec<_>>();
+            Err(anyhow!(
+                "language {:?} has overrides in config not in query: {keys:?}",
+                self.config.name
+            ))?;
+        }
+
         for (name, override_config) in override_configs_by_id.values_mut() {
             override_config.disabled_bracket_ixs = self
                 .config
@@ -1791,6 +1813,9 @@ impl Language {
                     }
                 })
                 .collect();
+        }
+
+        for (name, override_config) in step_back_override_configs_by_id.values_mut() {
             override_config.forced_bracket_close_ixs = self
                 .config
                 .brackets
@@ -1810,7 +1835,8 @@ impl Language {
         self.config.brackets.disabled_scopes_by_bracket_ix.clear();
         self.grammar_mut().override_config = Some(OverrideConfig {
             query,
-            values: dbg!(override_configs_by_id),
+            values: override_configs_by_id,
+            step_back_values: step_back_override_configs_by_id,
             step_back_query,
         });
         Ok(self)
@@ -2006,8 +2032,7 @@ impl LanguageScope {
     /// active for a given language and syntax position.
     pub fn brackets<'a>(&'a self) -> impl Iterator<Item = Brackets<'a>> + 'a {
         let (mut disabled_ids, mut forced_close_ids) =
-            // TODO kb here, we receive wrong config override with `disabled_bracket_ixs` set to `0` (id of the bracket pair)
-            dbg!(self.config_override()).map_or((&[] as _, &[] as _), |o| {
+            self.config_override().map_or((&[] as _, &[] as _), |o| {
                 (
                     o.disabled_bracket_ixs.as_slice(),
                     o.forced_bracket_close_ixs.as_slice(),
@@ -2028,19 +2053,13 @@ impl LanguageScope {
                 }
 
                 let forced_close_scopes = &bracket_config.forced_close_scopes_by_bracket_ix[ix];
-                dbg!((&forced_close_ids, &forced_close_scopes));
                 // let mut close_enabled = pair.close && forced_close_scopes.is_empty();
                 let mut close_enabled = pair.close && forced_close_scopes.is_empty();
                 if let Some(next_forced_close_ix) = forced_close_ids.first() {
                     if ix == *next_forced_close_ix as usize {
-                        dbg!("!!!!!!!!!!!!");
                         forced_close_ids = &forced_close_ids[1..];
                         close_enabled = true;
                     }
-                }
-                dbg!(close_enabled);
-                if !close_enabled {
-                    dbg!("((((((((((((((((((((((((((((((((((((");
                 }
 
                 Brackets {
@@ -2071,15 +2090,26 @@ impl LanguageScope {
 
     fn config_override(&self) -> Option<&LanguageConfigOverride> {
         self.override_id
-            .and_then(|id| self.override_for_id(id))
-            .or_else(|| self.override_for_id(dbg!(self.stepback_override_id?)))
+            .and_then(|id| self.override_for_id(id, false))
+            .or_else(|| self.override_for_id(self.stepback_override_id?, true))
     }
 
-    fn override_for_id(&self, override_id: u32) -> Option<&LanguageConfigOverride> {
+    fn override_for_id(
+        &self,
+        override_id: u32,
+        step_back: bool,
+    ) -> Option<&LanguageConfigOverride> {
         let grammar = self.language.grammar.as_ref()?;
         let override_config = grammar.override_config.as_ref()?;
 
-        override_config.values.get(&override_id).map(|e| &e.1)
+        if step_back {
+            override_config
+                .step_back_values
+                .get(&override_id)
+                .map(|e| &e.1)
+        } else {
+            override_config.values.get(&override_id).map(|e| &e.1)
+        }
     }
 }
 

@@ -2544,7 +2544,7 @@ impl BufferSnapshot {
                     .map_or(true, |smallest_range| range.len() < smallest_range.len())
                 {
                     smallest_range = Some(range);
-                    let override_ids = dbg!(layer.override_ids(offset, &self.text));
+                    let override_ids = layer.override_ids(offset, &self.text);
                     scope = Some(LanguageScope {
                         language: layer.language.clone(),
                         override_id: override_ids.override_id,
