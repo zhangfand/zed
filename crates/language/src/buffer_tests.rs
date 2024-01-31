@@ -1722,6 +1722,7 @@ fn test_language_scope_at_with_javascript(cx: &mut AppContext) {
                     (jsx_expression)
                 ] @default
             "#,
+            None,
         )
         .unwrap();
 
@@ -1850,6 +1851,7 @@ fn test_language_scope_at_with_rust(cx: &mut AppContext) {
             r#"
                 (string_literal) @string
             "#,
+            None,
         )
         .unwrap();
 

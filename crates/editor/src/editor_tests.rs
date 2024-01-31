@@ -4398,11 +4398,13 @@ async fn test_autoclose_pairs_exclusions(cx: &mut gpui::TestAppContext) {
 [
     (line_comment)
     (block_comment)
-] @comment
-[
+] @comment"#,
+            Some(
+                r#"[
     (identifier)
     (type_identifier)
 ] @angle_bracket_close"#,
+            ),
         )
         .unwrap(),
     );
@@ -4729,7 +4731,7 @@ async fn test_autoclose_with_overrides(cx: &mut gpui::TestAppContext) {
             },
             Some(tree_sitter_rust::language()),
         )
-        .with_override_query("(string_literal) @string")
+        .with_override_query("(string_literal) @string", None)
         .unwrap(),
     );
 
@@ -8231,7 +8233,7 @@ async fn test_completions_in_languages_with_extra_word_characters(cx: &mut gpui:
             },
             Some(tree_sitter_typescript::language_tsx()),
         )
-        .with_override_query("(jsx_self_closing_element) @element")
+        .with_override_query("(jsx_self_closing_element) @element", None)
         .unwrap(),
         lsp::ServerCapabilities {
             completion_provider: Some(lsp::CompletionOptions {

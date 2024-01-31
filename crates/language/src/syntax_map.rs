@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod syntax_map_tests;
 
-use crate::{Grammar, InjectionConfig, Language, LanguageRegistry};
+use crate::{Grammar, InjectionConfig, Language, LanguageRegistry, OverrideConfig};
 use collections::HashMap;
 use futures::FutureExt;
 use parking_lot::Mutex;
@@ -15,9 +15,7 @@ use std::{
 };
 use sum_tree::{Bias, SeekTarget, SumTree};
 use text::{Anchor, BufferSnapshot, OffsetRangeExt, Point, Rope, ToOffset, ToPoint};
-use tree_sitter::{
-    Node, Query, QueryCapture, QueryCaptures, QueryCursor, QueryMatches, Tree, TreeCursor,
-};
+use tree_sitter::{Node, Query, QueryCapture, QueryCaptures, QueryCursor, QueryMatches, Tree};
 
 use super::PARSER;
 
@@ -1467,124 +1465,70 @@ impl<'a> SyntaxLayer<'a> {
             .root_node_with_offset(self.offset.0, self.offset.1)
     }
 
-    // Option<{override_id, previous_override_id }>
-    pub(crate) fn override_id(&self, offset: usize, text: &text::BufferSnapshot) -> Option<u32> {
-        let zz = text.clone();
-        let text = TextProvider(text.as_rope());
-        let config = self.language.grammar.as_ref()?.override_config.as_ref()?;
-
-        fn indent(depth: u32) {
-            for _ in 0..depth {
-                print!("  ");
-            }
+    pub(crate) fn override_ids(&self, offset: usize, text: &text::BufferSnapshot) -> OverrideIds {
+        let Some(config) = self
+            .language
+            .grammar
+            .as_ref()
+            .and_then(|g| g.override_config.as_ref())
+        else {
+            return OverrideIds::default();
+        };
+        OverrideIds {
+            override_id: smallest_matcth(config, false, text, self.node(), offset)
+                .map(|(index, _)| index),
+            stepback_override_id: smallest_matcth(config, true, text, self.node(), offset)
+                .map(|(index, _)| index),
         }
-
-        fn recurse(cursor: &mut TreeCursor, mut depth: u32) {
-            indent(depth);
-            println!("{:?}", cursor.node());
-
-            if !cursor.goto_first_child() {
-                return;
-            }
-            depth += 1;
-
-            loop {
-                recurse(&mut cursor.clone(), depth);
-                if !cursor.goto_next_sibling() {
-                    break;
-                }
-            }
-        }
-
-        let previous_node = self.node().prev_sibling().or_else(|| self.node().parent());
-
-        // TODO kb remove
-        recurse(&mut self.tree.walk(), 0);
-        if true || dbg!(config.close_bracket_only_in.is_some()) {
-            let mut aa_smallest_match: Option<(u32, Range<usize>)> = None;
-            let mut aa_smallest_node = None;
-            if config
-                .query
-                .capture_names()
-                .contains(&"angle_bracket_close")
-            {
-                let mut query_cursor = QueryCursorHandle::new();
-                // TODO kb self.node() is a text file due to the offset, we need to have a -1 in order to capture the
-                // correct node for bracket completions.
-                let start_offset = offset.saturating_sub(1);
-                query_cursor.set_byte_range(start_offset..offset);
-                // TODO kbWe seem not to need the parent node?
-                //
-                // let node = match previous_node {
-                //     Some(previous_node) => {
-                //         dbg!("got a previous node");
-                //         query_cursor.set_byte_range(offset.saturating_sub(1)..offset);
-                //         previous_node
-                //     }
-                //     None => {
-                //         query_cursor.set_byte_range(offset..offset);
-                //         self.node()
-                //     }
-                // };
-
-                for mat in
-                    query_cursor.matches(&config.query, self.node(), TextProvider(zz.as_rope()))
-                {
-                    dbg!("looping aaaa");
-                    for capture in mat.captures {
-                        dbg!(("!!!", &capture));
-                        if !config.values.contains_key(&capture.index) {
-                            continue;
-                        }
-
-                        let range = capture.node.byte_range();
-                        if start_offset <= range.start || start_offset >= range.end {
-                            continue;
-                        }
-
-                        if let Some((_, smallest_range)) = &aa_smallest_match {
-                            if range.len() < smallest_range.len() {
-                                aa_smallest_match = Some((capture.index, range))
-                            }
-                            continue;
-                        }
-
-                        aa_smallest_node = Some(capture.node.clone());
-                    }
-                }
-                dbg!(aa_smallest_node);
-                dbg!(aa_smallest_match.as_ref().map(|(index, _)| index));
-            }
-        }
-
-        let mut smallest_match: Option<(u32, Range<usize>)> = None;
-        let mut smallest_node = None;
-        let mut query_cursor = QueryCursorHandle::new();
-        for mat in query_cursor.matches(&config.query, self.node(), text) {
-            for capture in mat.captures {
-                // dbg!(&capture);
-                if !config.values.contains_key(&capture.index) {
-                    continue;
-                }
-
-                let range = capture.node.byte_range();
-                if offset <= range.start || offset >= range.end {
-                    continue;
-                }
-
-                if let Some((_, smallest_range)) = &smallest_match {
-                    if range.len() < smallest_range.len() {
-                        smallest_match = Some((capture.index, range))
-                    }
-                    continue;
-                }
-
-                smallest_node = Some(capture.node.clone());
-            }
-        }
-        dbg!(smallest_node);
-        smallest_match.map(|(index, _)| index)
     }
+}
+
+#[derive(Default, Debug)]
+pub(crate) struct OverrideIds {
+    pub(crate) override_id: Option<u32>,
+    pub(crate) stepback_override_id: Option<u32>,
+}
+
+fn smallest_matcth<'a>(
+    config: &'a OverrideConfig,
+    step_back: bool,
+    text: &text::BufferSnapshot,
+    node: Node<'a>,
+    offset: usize,
+) -> Option<(u32, Range<usize>)> {
+    let mut smallest_match: Option<(u32, Range<usize>)> = None;
+    let mut query_cursor = QueryCursorHandle::new();
+    let (start_offset, query) = if step_back {
+        let start_offset = offset.saturating_sub(1);
+        query_cursor.set_byte_range(start_offset..offset);
+        (start_offset, config.step_back_query.as_ref()?)
+    } else {
+        (offset, &config.query)
+    };
+    for mat in query_cursor.matches(&query, node, TextProvider(text.as_rope())) {
+        for capture in mat.captures {
+            if !config.values.contains_key(&capture.index) {
+                continue;
+            }
+
+            let range = capture.node.byte_range();
+            if start_offset <= range.start || offset >= range.end {
+                if !step_back {
+                    continue;
+                }
+            }
+
+            if let Some((_, smallest_range)) = &smallest_match {
+                if range.len() < smallest_range.len() {
+                    smallest_match = Some((capture.index, range))
+                }
+                continue;
+            }
+
+            smallest_match = Some((capture.index, range));
+        }
+    }
+    smallest_match
 }
 
 impl std::ops::Deref for SyntaxMap {

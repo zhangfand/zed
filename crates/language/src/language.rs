@@ -469,6 +469,7 @@ pub const QUERY_FILENAME_PREFIXES: &[(
     ("injections", |q| &mut q.injections),
     ("overrides", |q| &mut q.overrides),
     ("redactions", |q| &mut q.redactions),
+    ("step_back_overrides", |q| &mut q.step_back_overrides),
 ];
 
 /// Tree-sitter language queries for a given language.
@@ -482,6 +483,7 @@ pub struct LanguageQueries {
     pub injections: Option<Cow<'static, str>>,
     pub overrides: Option<Cow<'static, str>>,
     pub redactions: Option<Cow<'static, str>>,
+    pub step_back_overrides: Option<Cow<'static, str>>,
 }
 
 /// Represents a language for the given range. Some languages (e.g. HTML)
@@ -491,6 +493,7 @@ pub struct LanguageQueries {
 pub struct LanguageScope {
     pub language: Arc<Language>,
     override_id: Option<u32>,
+    stepback_override_id: Option<u32>,
 }
 
 // TODO kb docs
@@ -728,7 +731,7 @@ struct RedactionConfig {
 #[derive(Debug)]
 struct OverrideConfig {
     query: Query,
-    close_bracket_only_in: Option<Query>,
+    step_back_query: Option<Query>,
     values: HashMap<u32, (String, LanguageConfigOverride)>,
 }
 
@@ -1547,7 +1550,7 @@ impl Language {
         }
         if let Some(query) = queries.overrides {
             self = self
-                .with_override_query(query.as_ref())
+                .with_override_query(query.as_ref(), queries.step_back_overrides.as_deref())
                 .context("Error loading override query")?;
         }
         if let Some(query) = queries.redactions {
@@ -1713,13 +1716,24 @@ impl Language {
         Ok(self)
     }
 
-    pub fn with_override_query(mut self, source: &str) -> anyhow::Result<Self> {
-        // TODO kb this comes with all overrides, but we need to split them by step-back/not-step-back criteria
-        dbg!(source);
-        let query = Query::new(&self.grammar_mut().ts_language, source)?;
+    pub fn with_override_query(
+        mut self,
+        override_query: &str,
+        // TODO kb document why this combination makes sense, what are step back queries
+        step_back_query: Option<&str>,
+    ) -> anyhow::Result<Self> {
+        let query = Query::new(&self.grammar_mut().ts_language, override_query)?;
+        let step_back_query = step_back_query
+            .map(|q| Query::new(&self.grammar_mut().ts_language, q))
+            .transpose()?;
 
         let mut override_configs_by_id = HashMap::default();
-        for (ix, name) in query.capture_names().iter().enumerate() {
+        for (ix, name) in query
+            .capture_names()
+            .iter()
+            .chain(step_back_query.iter().flat_map(|q| q.capture_names()))
+            .enumerate()
+        {
             if !name.starts_with('_') {
                 let value = self.config.overrides.remove(*name).unwrap_or_default();
                 for server_name in &value.opt_into_language_servers {
@@ -1796,8 +1810,8 @@ impl Language {
         self.config.brackets.disabled_scopes_by_bracket_ix.clear();
         self.grammar_mut().override_config = Some(OverrideConfig {
             query,
-            values: override_configs_by_id,
-            close_bracket_only_in: None, // TODO kb
+            values: dbg!(override_configs_by_id),
+            step_back_query,
         });
         Ok(self)
     }
@@ -1944,6 +1958,7 @@ impl Language {
         LanguageScope {
             language: self.clone(),
             override_id: None,
+            stepback_override_id: None,
         }
     }
 
@@ -1991,6 +2006,7 @@ impl LanguageScope {
     /// active for a given language and syntax position.
     pub fn brackets<'a>(&'a self) -> impl Iterator<Item = Brackets<'a>> + 'a {
         let (mut disabled_ids, mut forced_close_ids) =
+            // TODO kb here, we receive wrong config override with `disabled_bracket_ixs` set to `0` (id of the bracket pair)
             dbg!(self.config_override()).map_or((&[] as _, &[] as _), |o| {
                 (
                     o.disabled_bracket_ixs.as_slice(),
@@ -2023,6 +2039,9 @@ impl LanguageScope {
                     }
                 }
                 dbg!(close_enabled);
+                if !close_enabled {
+                    dbg!("((((((((((((((((((((((((((((((((((((");
+                }
 
                 Brackets {
                     pair,
@@ -2051,10 +2070,16 @@ impl LanguageScope {
     }
 
     fn config_override(&self) -> Option<&LanguageConfigOverride> {
-        let id = self.override_id?;
+        self.override_id
+            .and_then(|id| self.override_for_id(id))
+            .or_else(|| self.override_for_id(dbg!(self.stepback_override_id?)))
+    }
+
+    fn override_for_id(&self, override_id: u32) -> Option<&LanguageConfigOverride> {
         let grammar = self.language.grammar.as_ref()?;
         let override_config = grammar.override_config.as_ref()?;
-        override_config.values.get(&id).map(|e| &e.1)
+
+        override_config.values.get(&override_id).map(|e| &e.1)
     }
 }
 
