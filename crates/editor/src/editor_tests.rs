@@ -4403,6 +4403,8 @@ async fn test_autoclose_pairs_exclusions(cx: &mut gpui::TestAppContext) {
                 r#"[
     (identifier)
     (type_identifier)
+    ((scoped_identifier) "::")
+    ((field_identifier) "::")
 ] @angle_bracket_close"#,
             ),
         )
@@ -4435,7 +4437,7 @@ async fn test_autoclose_pairs_exclusions(cx: &mut gpui::TestAppContext) {
     cx.assert_editor_state(
         &"
             🏀<<<ˇ
-            ε<<<ˇ>
+            ε<<<ˇ>>>
             ❤️<<<ˇ
         "
         .unindent(),
@@ -4478,7 +4480,101 @@ async fn test_autoclose_pairs_exclusions(cx: &mut gpui::TestAppContext) {
         "#
         .unindent(),
     );
-    // TODO kb enumerate all other cases: for<'a>, etc.
+
+    cx.set_state(
+        &r#"
+        fn foo() {
+            let tuple: (Pointˇ
+        }
+        "#
+        .unindent(),
+    );
+    cx.update_editor(|view, cx| {
+        view.handle_input("<", cx);
+    });
+    cx.assert_editor_state(
+        &r#"
+        fn foo() {
+            let tuple: (Point<ˇ>
+        }
+        "#
+        .unindent(),
+    );
+
+    // TODO kb
+    // cx.set_state(
+    //     &r#"
+    //     fn foo() {
+    //         let string = vec![1, 2, 3].into_iter().collect::ˇ()
+    //     }
+    //     "#
+    //     .unindent(),
+    // );
+    // cx.update_editor(|view, cx| {
+    //     view.handle_input("<", cx);
+    // });
+    // cx.assert_editor_state(
+    //     &r#"
+    //     fn foo() {
+    //         let string = vec![1, 2, 3].into_iter().collect::<ˇ>()
+    //     }
+    //     "#
+    //     .unindent(),
+    // );
+
+    cx.set_state(
+        &r#"
+        fn foo() {
+            let string = vec![1, 2, 3].into_iter().collect::<Vecˇ>()
+        }
+        "#
+        .unindent(),
+    );
+    cx.update_editor(|view, cx| {
+        view.handle_input("<", cx);
+    });
+    cx.assert_editor_state(
+        &r#"
+        fn foo() {
+            let string = vec![1, 2, 3].into_iter().collect::<Vec<ˇ>>()
+        }
+        "#
+        .unindent(),
+    );
+
+    // TODO kb `type Key` is an error
+    // cx.set_state(&r#"type Key = ˇ"#.unindent());
+    // cx.update_editor(|view, cx| {
+    //     view.handle_input("<", cx);
+    // });
+    // cx.assert_editor_state(&"type Key = <ˇ>\n".unindent());
+
+    // TODO kb `for` is an error node
+    // cx.set_state(&r#"for ˇ"#.unindent());
+    // cx.update_editor(|view, cx| {
+    //     view.handle_input("<", cx);
+    // });
+    // cx.assert_editor_state(&"for <ˇ>\n".unindent());
+
+    cx.set_state(
+        &r#"
+        fn foo() {
+            let _: i32 = Vec::ˇ
+        }
+        "#
+        .unindent(),
+    );
+    cx.update_editor(|view, cx| {
+        view.handle_input("<", cx);
+    });
+    cx.assert_editor_state(
+        &r#"
+        fn foo() {
+            let _: i32 = Vec::<ˇ>
+        }
+        "#
+        .unindent(),
+    );
 }
 
 #[gpui::test]
