@@ -1499,14 +1499,13 @@ fn smallest_matcth<'a>(
     let mut smallest_match: Option<(u32, Range<usize>)> = None;
     let mut query_cursor = QueryCursorHandle::new();
     let (start_offset, query) = if dbg!(step_back) {
-        let start_offset = offset.saturating_sub(3);
+        let start_offset = offset.saturating_sub(1);
         query_cursor.set_byte_range(start_offset..offset);
-        (start_offset, config.step_back_query.as_ref()?)
+        (start_offset, dbg!(config.step_back_query.as_ref()?))
     } else {
         (offset, &config.query)
     };
     for mat in query_cursor.matches(&query, node, TextProvider(text.as_rope())) {
-        dbg!(&mat);
         for capture in mat.captures {
             if !config.values.contains_key(&capture.index) {
                 continue;
@@ -1528,6 +1527,10 @@ fn smallest_matcth<'a>(
 
             smallest_match = Some((capture.index, range));
         }
+    }
+
+    if let Some(smallest_match) = &smallest_match {
+        dbg!(&text.as_rope().to_string()[smallest_match.1.start..smallest_match.1.end]);
     }
     smallest_match
 }

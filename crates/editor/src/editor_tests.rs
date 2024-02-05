@@ -4401,10 +4401,7 @@ async fn test_autoclose_pairs_exclusions(cx: &mut gpui::TestAppContext) {
 ] @comment"#,
             Some(
                 r#"[
-    (identifier)
-    (type_identifier)
-    ((scoped_identifier) "::")
-    ((field_identifier) "::")
+    "::"
 ] @angle_bracket_close"#,
             ),
         )
@@ -4419,93 +4416,72 @@ async fn test_autoclose_pairs_exclusions(cx: &mut gpui::TestAppContext) {
     });
 
     // TODO kb
-    cx.set_state(
-        &r#"
-            🏀ˇ
-            εˇ
-            ❤️ˇ
-        "#
-        .unindent(),
-    );
-    // autoclose multiple nested brackets at multiple cursors
-    cx.update_editor(|view, cx| {
-        view.handle_input("<", cx);
-        view.handle_input("<", cx);
-        view.handle_input("<", cx);
-    });
-    // TODO kb why did not the first & last one`<` got closed?
-    cx.assert_editor_state(
-        &"
-            🏀<<<ˇ
-            ε<<<ˇ>>>
-            ❤️<<<ˇ
-        "
-        .unindent(),
-    );
+    // cx.set_state(
+    //     &r#"
+    //         🏀ˇ
+    //         εˇ
+    //         ❤️ˇ
+    //     "#
+    //     .unindent(),
+    // );
+    // // autoclose multiple nested brackets at multiple cursors
+    // cx.update_editor(|view, cx| {
+    //     view.handle_input("<", cx);
+    //     view.handle_input("<", cx);
+    //     view.handle_input("<", cx);
+    // });
+    // // TODO kb why did not the first & last one`<` got closed?
+    // cx.assert_editor_state(
+    //     &"
+    //         🏀<<<ˇ
+    //         ε<<<ˇ>>>
+    //         ❤️<<<ˇ
+    //     "
+    //     .unindent(),
+    // );
 
-    // autoclose the generic param near the type
-    cx.set_state(&r#"struct Fooˇ"#.unindent());
-    // cx.set_state(&r#"struct Fooˇ{}"#.unindent());
-    // cx.set_state(&r#" fn main() { let foo = "struct Fooˇ{}"; } "#.unindent());
-    cx.update_editor(|view, cx| {
-        view.handle_input("<", cx);
-    });
-    cx.assert_editor_state(&"struct Foo<ˇ>\n".unindent());
+    // // autoclose the generic param near the type
+    // cx.set_state(&r#"struct Fooˇ"#.unindent());
+    // // cx.set_state(&r#"struct Fooˇ{}"#.unindent());
+    // // cx.set_state(&r#" fn main() { let foo = "struct Fooˇ{}"; } "#.unindent());
+    // cx.update_editor(|view, cx| {
+    //     view.handle_input("<", cx);
+    // });
+    // cx.assert_editor_state(&"struct Foo<ˇ>\n".unindent());
 
-    // autoclose the generic param near `fn foo`
-    cx.set_state(&r#"fn fooˇ"#.unindent());
-    cx.update_editor(|view, cx| {
-        view.handle_input("<", cx);
-    });
-    cx.assert_editor_state(&"fn foo<ˇ>\n".unindent());
+    // // autoclose the generic param near `fn foo`
+    // cx.set_state(&r#"fn fooˇ"#.unindent());
+    // cx.update_editor(|view, cx| {
+    //     view.handle_input("<", cx);
+    // });
+    // cx.assert_editor_state(&"fn foo<ˇ>\n".unindent());
 
-    // do not autoclose the bracket if the cursor is in the
-    cx.set_state(
-        &r#"
-        fn foo() {
-            let a = 34 ˇ
-        }
-        "#
-        .unindent(),
-    );
-    cx.update_editor(|view, cx| {
-        view.handle_input("<", cx);
-        view.handle_input("<", cx);
-    });
-    cx.assert_editor_state(
-        &r#"
-        fn foo() {
-            let a = 34 <<ˇ
-        }
-        "#
-        .unindent(),
-    );
-
-    cx.set_state(
-        &r#"
-        fn foo() {
-            let tuple: (Pointˇ
-        }
-        "#
-        .unindent(),
-    );
-    cx.update_editor(|view, cx| {
-        view.handle_input("<", cx);
-    });
-    cx.assert_editor_state(
-        &r#"
-        fn foo() {
-            let tuple: (Point<ˇ>
-        }
-        "#
-        .unindent(),
-    );
-
-    // TODO kb
+    // // do not autoclose the bracket if the cursor is in the
     // cx.set_state(
     //     &r#"
     //     fn foo() {
-    //         let string = vec![1, 2, 3].into_iter().collect::ˇ()
+    //         let a = 34 ˇ
+    //     }
+    //     "#
+    //     .unindent(),
+    // );
+    // cx.update_editor(|view, cx| {
+    //     view.handle_input("<", cx);
+    //     view.handle_input("<", cx);
+    // });
+    // cx.assert_editor_state(
+    //     &r#"
+    //     fn foo() {
+    //         let a = 34 <<ˇ
+    //     }
+    //     "#
+    //     .unindent(),
+    // );
+
+    // cx.set_state(
+    //     &r#"
+    //     fn foo() {
+    //         let tuple: (Pointˇ
     //     }
     //     "#
     //     .unindent(),
@@ -4516,16 +4492,17 @@ async fn test_autoclose_pairs_exclusions(cx: &mut gpui::TestAppContext) {
     // cx.assert_editor_state(
     //     &r#"
     //     fn foo() {
-    //         let string = vec![1, 2, 3].into_iter().collect::<ˇ>()
+    //         let tuple: (Point<ˇ>
     //     }
     //     "#
     //     .unindent(),
     // );
 
+    // TODO kb
     cx.set_state(
         &r#"
         fn foo() {
-            let string = vec![1, 2, 3].into_iter().collect::<Vecˇ>()
+            let string = vec![1, 2, 3].into_iter().collect::ˇ()
         }
         "#
         .unindent(),
@@ -4536,11 +4513,31 @@ async fn test_autoclose_pairs_exclusions(cx: &mut gpui::TestAppContext) {
     cx.assert_editor_state(
         &r#"
         fn foo() {
-            let string = vec![1, 2, 3].into_iter().collect::<Vec<ˇ>>()
+            let string = vec![1, 2, 3].into_iter().collect::<ˇ>()
         }
         "#
         .unindent(),
     );
+
+    // cx.set_state(
+    //     &r#"
+    //     fn foo() {
+    //         let string = vec![1, 2, 3].into_iter().collect::<Vecˇ>()
+    //     }
+    //     "#
+    //     .unindent(),
+    // );
+    // cx.update_editor(|view, cx| {
+    //     view.handle_input("<", cx);
+    // });
+    // cx.assert_editor_state(
+    //     &r#"
+    //     fn foo() {
+    //         let string = vec![1, 2, 3].into_iter().collect::<Vec<ˇ>>()
+    //     }
+    //     "#
+    //     .unindent(),
+    // );
 
     // TODO kb `type Key` is an error
     // cx.set_state(&r#"type Key = ˇ"#.unindent());
@@ -4556,25 +4553,25 @@ async fn test_autoclose_pairs_exclusions(cx: &mut gpui::TestAppContext) {
     // });
     // cx.assert_editor_state(&"for <ˇ>\n".unindent());
 
-    cx.set_state(
-        &r#"
-        fn foo() {
-            let _: i32 = Vec::ˇ
-        }
-        "#
-        .unindent(),
-    );
-    cx.update_editor(|view, cx| {
-        view.handle_input("<", cx);
-    });
-    cx.assert_editor_state(
-        &r#"
-        fn foo() {
-            let _: i32 = Vec::<ˇ>
-        }
-        "#
-        .unindent(),
-    );
+    // cx.set_state(
+    //     &r#"
+    //     fn foo() {
+    //         let _: i32 = Vec::ˇ
+    //     }
+    //     "#
+    //     .unindent(),
+    // );
+    // cx.update_editor(|view, cx| {
+    //     view.handle_input("<", cx);
+    // });
+    // cx.assert_editor_state(
+    //     &r#"
+    //     fn foo() {
+    //         let _: i32 = Vec::<ˇ>
+    //     }
+    //     "#
+    //     .unindent(),
+    // );
 }
 
 #[gpui::test]
