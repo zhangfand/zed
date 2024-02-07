@@ -1506,12 +1506,21 @@ fn smallest_matcth<'a>(
         (offset, &config.query)
     };
     for mat in query_cursor.matches(&query, node, TextProvider(text.as_rope())) {
+        let is_stepback = query
+            .property_settings(mat.pattern_index)
+            .iter()
+            .any(|s| s.key.as_ref() == "include-end");
         for capture in mat.captures {
             if !config.values.contains_key(&capture.index) {
                 continue;
             }
 
             let range = capture.node.byte_range();
+
+            if !is_stepback && range.end < offset {
+                continue;
+            }
+
             if start_offset <= range.start || offset >= range.end {
                 if !step_back {
                     continue;
@@ -1530,6 +1539,7 @@ fn smallest_matcth<'a>(
     }
 
     if let Some(smallest_match) = &smallest_match {
+        eprintln!("{}", std::backtrace::Backtrace::force_capture());
         dbg!(&text.as_rope().to_string()[smallest_match.1.start..smallest_match.1.end]);
     }
     smallest_match

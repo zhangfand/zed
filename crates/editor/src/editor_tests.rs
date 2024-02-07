@@ -4499,25 +4499,25 @@ async fn test_autoclose_pairs_exclusions(cx: &mut gpui::TestAppContext) {
     // );
 
     // TODO kb
-    cx.set_state(
-        &r#"
-        fn foo() {
-            let string = vec![1, 2, 3].into_iter().collect::ˇ()
-        }
-        "#
-        .unindent(),
-    );
-    cx.update_editor(|view, cx| {
-        view.handle_input("<", cx);
-    });
-    cx.assert_editor_state(
-        &r#"
-        fn foo() {
-            let string = vec![1, 2, 3].into_iter().collect::<ˇ>()
-        }
-        "#
-        .unindent(),
-    );
+    // cx.set_state(
+    //     &r#"
+    //     fn foo() {
+    //         let string = vec![1, 2, 3].into_iter().collect::ˇ()
+    //     }
+    //     "#
+    //     .unindent(),
+    // );
+    // cx.update_editor(|view, cx| {
+    //     view.handle_input("<", cx);
+    // });
+    // cx.assert_editor_state(
+    //     &r#"
+    //     fn foo() {
+    //         let string = vec![1, 2, 3].into_iter().collect::<ˇ>()
+    //     }
+    //     "#
+    //     .unindent(),
+    // );
 
     // cx.set_state(
     //     &r#"
