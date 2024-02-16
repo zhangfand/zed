@@ -12,7 +12,7 @@ use util::github::{latest_github_release, GitHubLspBinaryVersion};
 pub struct ExtensionLspAdapter {
     config: ExtensionLspAdapterConfig,
     script: String,
-    script_module: Mutex<Option<ScriptModule>>,
+    // script_module: Mutex<Option<ScriptModule>>,
     // node: Arc<dyn NodeRuntime>,
 }
 
@@ -54,7 +54,8 @@ impl LspAdapter for ExtensionLspAdapter {
     }
 
     fn short_name(&self) -> &'static str {
-        &self.config.short_name
+        "todo!()"
+        // &self.config.short_name
     }
 
     async fn fetch_latest_server_version(
@@ -82,12 +83,14 @@ impl LspAdapter for ExtensionLspAdapter {
 
                 Ok(Box::new(GitHubLspBinaryVersion {
                     name: release.tag_name,
-                    url: asset.browser_download_url.clone(),
+                    url: "todo!()".to_string(), // url: asset.browser_download_url.clone(),
                 }))
             }
             ExtensionLspAdapterInstall::NpmPackage { name } => {
-                let version = self.node.npm_package_latest_version(name).await?;
-                Ok(Box::new(version))
+                todo!()
+
+                // let version = self.node.npm_package_latest_version(name).await?;
+                // Ok(Box::new(version))
             }
         };
     }
@@ -98,12 +101,9 @@ impl LspAdapter for ExtensionLspAdapter {
         container_dir: PathBuf,
         delegate: &dyn LspAdapterDelegate,
     ) -> Result<LanguageServerBinary> {
-        match &self.source {
+        match &self.config.install {
             ExtensionLspAdapterInstall::None => {}
-            ExtensionLspAdapterInstall::GitHubRelease {
-                repository,
-                asset_name,
-            } => {
+            ExtensionLspAdapterInstall::GitHubRelease { repository, asset } => {
                 let version = version.downcast::<GitHubLspBinaryVersion>().unwrap();
                 //
             }
@@ -143,19 +143,23 @@ impl LspAdapter for ExtensionLspAdapter {
         container_dir: PathBuf,
         _: &dyn LspAdapterDelegate,
     ) -> Option<LanguageServerBinary> {
-        get_cached_server_binary(container_dir).await
+        None
+
+        // get_cached_server_binary(container_dir).await
     }
 
     async fn installation_test_binary(
         &self,
         container_dir: PathBuf,
     ) -> Option<LanguageServerBinary> {
-        get_cached_server_binary(container_dir)
-            .await
-            .map(|mut binary| {
-                binary.arguments = vec!["--help".into()];
-                binary
-            })
+        None
+
+        // get_cached_server_binary(container_dir)
+        //     .await
+        //     .map(|mut binary| {
+        //         binary.arguments = vec!["--help".into()];
+        //         binary
+        //     })
     }
 
     fn disk_based_diagnostic_sources(&self) -> Vec<String> {
@@ -167,23 +171,23 @@ impl LspAdapter for ExtensionLspAdapter {
     }
 
     fn process_diagnostics(&self, params: &mut lsp::PublishDiagnosticsParams) {
-        lazy_static! {
-            static ref REGEX: Regex = Regex::new("(?m)`([^`]+)\n`$").unwrap();
-        }
+        // lazy_static! {
+        //     static ref REGEX: Regex = Regex::new("(?m)`([^`]+)\n`$").unwrap();
+        // }
 
-        for diagnostic in &mut params.diagnostics {
-            for message in diagnostic
-                .related_information
-                .iter_mut()
-                .flatten()
-                .map(|info| &mut info.message)
-                .chain([&mut diagnostic.message])
-            {
-                if let Cow::Owned(sanitized) = REGEX.replace_all(message, "`$1`") {
-                    *message = sanitized;
-                }
-            }
-        }
+        // for diagnostic in &mut params.diagnostics {
+        //     for message in diagnostic
+        //         .related_information
+        //         .iter_mut()
+        //         .flatten()
+        //         .map(|info| &mut info.message)
+        //         .chain([&mut diagnostic.message])
+        //     {
+        //         if let Cow::Owned(sanitized) = REGEX.replace_all(message, "`$1`") {
+        //             *message = sanitized;
+        //         }
+        //     }
+        // }
     }
 
     async fn label_for_completion(
@@ -191,83 +195,83 @@ impl LspAdapter for ExtensionLspAdapter {
         completion: &lsp::CompletionItem,
         language: &Arc<Language>,
     ) -> Option<CodeLabel> {
-        match completion.kind {
-            Some(lsp::CompletionItemKind::FIELD) if completion.detail.is_some() => {
-                let detail = completion.detail.as_ref().unwrap();
-                let name = &completion.label;
-                let text = format!("{}: {}", name, detail);
-                let source = Rope::from(format!("struct S {{ {} }}", text).as_str());
-                let runs = language.highlight_text(&source, 11..11 + text.len());
-                return Some(CodeLabel {
-                    text,
-                    runs,
-                    filter_range: 0..name.len(),
-                });
-            }
-            Some(lsp::CompletionItemKind::CONSTANT | lsp::CompletionItemKind::VARIABLE)
-                if completion.detail.is_some()
-                    && completion.insert_text_format != Some(lsp::InsertTextFormat::SNIPPET) =>
-            {
-                let detail = completion.detail.as_ref().unwrap();
-                let name = &completion.label;
-                let text = format!("{}: {}", name, detail);
-                let source = Rope::from(format!("let {} = ();", text).as_str());
-                let runs = language.highlight_text(&source, 4..4 + text.len());
-                return Some(CodeLabel {
-                    text,
-                    runs,
-                    filter_range: 0..name.len(),
-                });
-            }
-            Some(lsp::CompletionItemKind::FUNCTION | lsp::CompletionItemKind::METHOD)
-                if completion.detail.is_some() =>
-            {
-                lazy_static! {
-                    static ref REGEX: Regex = Regex::new("\\(…?\\)").unwrap();
-                }
-                let detail = completion.detail.as_ref().unwrap();
-                const FUNCTION_PREFIXES: [&'static str; 2] = ["async fn", "fn"];
-                let prefix = FUNCTION_PREFIXES
-                    .iter()
-                    .find_map(|prefix| detail.strip_prefix(*prefix).map(|suffix| (prefix, suffix)));
-                // fn keyword should be followed by opening parenthesis.
-                if let Some((prefix, suffix)) = prefix {
-                    if suffix.starts_with('(') {
-                        let text = REGEX.replace(&completion.label, suffix).to_string();
-                        let source = Rope::from(format!("{prefix} {} {{}}", text).as_str());
-                        let run_start = prefix.len() + 1;
-                        let runs =
-                            language.highlight_text(&source, run_start..run_start + text.len());
-                        return Some(CodeLabel {
-                            filter_range: 0..completion.label.find('(').unwrap_or(text.len()),
-                            text,
-                            runs,
-                        });
-                    }
-                }
-            }
-            Some(kind) => {
-                let highlight_name = match kind {
-                    lsp::CompletionItemKind::STRUCT
-                    | lsp::CompletionItemKind::INTERFACE
-                    | lsp::CompletionItemKind::ENUM => Some("type"),
-                    lsp::CompletionItemKind::ENUM_MEMBER => Some("variant"),
-                    lsp::CompletionItemKind::KEYWORD => Some("keyword"),
-                    lsp::CompletionItemKind::VALUE | lsp::CompletionItemKind::CONSTANT => {
-                        Some("constant")
-                    }
-                    _ => None,
-                };
-                let highlight_id = language.grammar()?.highlight_id_for_name(highlight_name?)?;
-                let mut label = CodeLabel::plain(completion.label.clone(), None);
-                label.runs.push((
-                    0..label.text.rfind('(').unwrap_or(label.text.len()),
-                    highlight_id,
-                ));
-                return Some(label);
-            }
-            _ => {}
-        }
+        // match completion.kind {
+        //     Some(lsp::CompletionItemKind::FIELD) if completion.detail.is_some() => {
+        //         let detail = completion.detail.as_ref().unwrap();
+        //         let name = &completion.label;
+        //         let text = format!("{}: {}", name, detail);
+        //         let source = Rope::from(format!("struct S {{ {} }}", text).as_str());
+        //         let runs = language.highlight_text(&source, 11..11 + text.len());
+        //         return Some(CodeLabel {
+        //             text,
+        //             runs,
+        //             filter_range: 0..name.len(),
+        //         });
+        //     }
+        //     Some(lsp::CompletionItemKind::CONSTANT | lsp::CompletionItemKind::VARIABLE)
+        //         if completion.detail.is_some()
+        //             && completion.insert_text_format != Some(lsp::InsertTextFormat::SNIPPET) =>
+        //     {
+        //         let detail = completion.detail.as_ref().unwrap();
+        //         let name = &completion.label;
+        //         let text = format!("{}: {}", name, detail);
+        //         let source = Rope::from(format!("let {} = ();", text).as_str());
+        //         let runs = language.highlight_text(&source, 4..4 + text.len());
+        //         return Some(CodeLabel {
+        //             text,
+        //             runs,
+        //             filter_range: 0..name.len(),
+        //         });
+        //     }
+        //     Some(lsp::CompletionItemKind::FUNCTION | lsp::CompletionItemKind::METHOD)
+        //         if completion.detail.is_some() =>
+        //     {
+        //         lazy_static! {
+        //             static ref REGEX: Regex = Regex::new("\\(…?\\)").unwrap();
+        //         }
+        //         let detail = completion.detail.as_ref().unwrap();
+        //         const FUNCTION_PREFIXES: [&'static str; 2] = ["async fn", "fn"];
+        //         let prefix = FUNCTION_PREFIXES
+        //             .iter()
+        //             .find_map(|prefix| detail.strip_prefix(*prefix).map(|suffix| (prefix, suffix)));
+        //         // fn keyword should be followed by opening parenthesis.
+        //         if let Some((prefix, suffix)) = prefix {
+        //             if suffix.starts_with('(') {
+        //                 let text = REGEX.replace(&completion.label, suffix).to_string();
+        //                 let source = Rope::from(format!("{prefix} {} {{}}", text).as_str());
+        //                 let run_start = prefix.len() + 1;
+        //                 let runs =
+        //                     language.highlight_text(&source, run_start..run_start + text.len());
+        //                 return Some(CodeLabel {
+        //                     filter_range: 0..completion.label.find('(').unwrap_or(text.len()),
+        //                     text,
+        //                     runs,
+        //                 });
+        //             }
+        //         }
+        //     }
+        //     Some(kind) => {
+        //         let highlight_name = match kind {
+        //             lsp::CompletionItemKind::STRUCT
+        //             | lsp::CompletionItemKind::INTERFACE
+        //             | lsp::CompletionItemKind::ENUM => Some("type"),
+        //             lsp::CompletionItemKind::ENUM_MEMBER => Some("variant"),
+        //             lsp::CompletionItemKind::KEYWORD => Some("keyword"),
+        //             lsp::CompletionItemKind::VALUE | lsp::CompletionItemKind::CONSTANT => {
+        //                 Some("constant")
+        //             }
+        //             _ => None,
+        //         };
+        //         let highlight_id = language.grammar()?.highlight_id_for_name(highlight_name?)?;
+        //         let mut label = CodeLabel::plain(completion.label.clone(), None);
+        //         label.runs.push((
+        //             0..label.text.rfind('(').unwrap_or(label.text.len()),
+        //             highlight_id,
+        //         ));
+        //         return Some(label);
+        //     }
+        //     _ => {}
+        // }
         None
     }
 

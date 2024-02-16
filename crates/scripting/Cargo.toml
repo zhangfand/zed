@@ -10,6 +10,7 @@ path = "src/scripting.rs"
 doctest = false
 
 [dependencies]
-v8 = "0.83"
+anyhow.workspace = true
 gpui.workspace = true
+v8 = "0.83"
 # rust_jsc = "0.1.0"
