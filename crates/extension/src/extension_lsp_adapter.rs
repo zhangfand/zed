@@ -4,7 +4,6 @@ use gpui::AppContext;
 use language::{CodeLabel, Language, LanguageServerName, LspAdapter, LspAdapterDelegate};
 use lsp::LanguageServerBinary;
 use parking_lot::Mutex;
-use scripting::ScriptModule;
 use serde::{Deserialize, Serialize};
 use std::{any::Any, borrow::Cow, path::PathBuf, str, sync::Arc};
 use util::github::{latest_github_release, GitHubLspBinaryVersion, GithubReleaseAsset};
