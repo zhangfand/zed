@@ -1,10 +1,12 @@
 name = "Rust Analyzer"
 short-name = "rust-analyzer"
 
-[source.github_release]
+[install.github_release]
 repository = "rust-lang/rust-analyzer"
 # prerelease = false
 gzip = true
+asset.function = "findReleaseAsset"
+# find_release_asset = "findReleaseAsset"
 
 # [source.npm]
 # package = "vscode-html-languageserver"

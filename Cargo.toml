@@ -154,6 +154,7 @@ release_channel = { path = "crates/release_channel" }
 rich_text = { path = "crates/rich_text" }
 rope = { path = "crates/rope" }
 rpc = { path = "crates/rpc" }
+scripting = { path = "crates/scripting" }
 search = { path = "crates/search" }
 semantic_index = { path = "crates/semantic_index" }
 settings = { path = "crates/settings" }

@@ -90,6 +90,7 @@ rpc.workspace = true
 rsa = "0.4"
 rust-embed.workspace = true
 schemars.workspace = true
+scripting.workspace = true
 search.workspace = true
 semantic_index.workspace = true
 serde.workspace = true

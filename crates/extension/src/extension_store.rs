@@ -29,6 +29,8 @@ use util::{http::HttpClient, paths::EXTENSIONS_DIR, ResultExt};
 #[cfg(test)]
 mod extension_store_test;
 
+mod extension_lsp_adapter;
+
 #[derive(Deserialize)]
 pub struct ExtensionsApiResponse {
     pub data: Vec<Extension>,

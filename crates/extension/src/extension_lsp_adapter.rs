@@ -1,69 +1,91 @@
-use crate::{CodeLabel, Language, LanguageServerName, LspAdapter, LspAdapterDelegate};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
+use gpui::AppContext;
+use language::{CodeLabel, Language, LanguageServerName, LspAdapter, LspAdapterDelegate};
 use lsp::LanguageServerBinary;
-use node_runtime::NodeRuntime;
+use parking_lot::Mutex;
+use scripting::ScriptModule;
+use serde::Deserialize;
 use std::{any::Any, borrow::Cow, path::PathBuf, str, sync::Arc};
 use util::github::{latest_github_release, GitHubLspBinaryVersion};
 
-pub struct GenericLspAdapter {
-    name: Arc<str>,
-    short_name: &'static str,
-    source: GenericLspAdapterSource,
-    node: Arc<dyn NodeRuntime>,
+pub struct ExtensionLspAdapter {
+    config: ExtensionLspAdapterConfig,
+    script: String,
+    script_module: Mutex<Option<ScriptModule>>,
+    // node: Arc<dyn NodeRuntime>,
 }
 
-pub enum GenericLspAdapterSource {
+#[derive(Deserialize)]
+pub struct ExtensionLspAdapterConfig {
+    name: Arc<str>,
+    short_name: Arc<str>,
+    install: ExtensionLspAdapterInstall,
+}
+
+#[derive(Deserialize)]
+enum ExtensionLspAdapterInstall {
     None,
     GitHubRelease {
         repository: String,
-        asset_name: String,
+        asset: ExtensionLspAdapterAsset,
     },
     NpmPackage {
         name: String,
     },
 }
 
+#[derive(Deserialize)]
+enum ExtensionLspAdapterAsset {
+    Function(String),
+    Name(String),
+}
+
+impl ExtensionLspAdapter {
+    pub fn new(config: ExtensionLspAdapterConfig, script: String, cx: &mut AppContext) -> Self {
+        Self { config, script }
+    }
+}
+
 #[async_trait]
-impl LspAdapter for GenericLspAdapter {
+impl LspAdapter for ExtensionLspAdapter {
     fn name(&self) -> LanguageServerName {
-        LanguageServerName(self.name.clone())
+        LanguageServerName(self.config.name.clone())
     }
 
     fn short_name(&self) -> &'static str {
-        self.short_name
+        &self.config.short_name
     }
 
     async fn fetch_latest_server_version(
         &self,
         delegate: &dyn LspAdapterDelegate,
     ) -> Result<Box<dyn 'static + Send + Any>> {
-        return match &self.source {
-            GenericLspAdapterSource::None => Ok(Box::new(())),
-            GenericLspAdapterSource::GitHubRelease {
-                repository,
-                asset_name,
-            } => {
-                let release = latest_github_release(
-                    repo_name_with_owner,
-                    true,
-                    false,
-                    delegate.http_client(),
-                )
-                .await?;
+        return match &self.config.install {
+            ExtensionLspAdapterInstall::None => Ok(Box::new(())),
+            ExtensionLspAdapterInstall::GitHubRelease { repository, asset } => {
+                let release =
+                    latest_github_release(repository, true, false, delegate.http_client()).await?;
 
-                let asset = release
-                    .assets
-                    .iter()
-                    .find(|asset| &asset.name == asset_name)
-                    .ok_or_else(|| anyhow!("no asset found matching {:?}", asset_name))?;
+                match asset {
+                    ExtensionLspAdapterAsset::Function(function_name) => {
+                        //
+                    }
+                    ExtensionLspAdapterAsset::Name(asset_name) => {
+                        let asset = release
+                            .assets
+                            .iter()
+                            .find(|asset| &asset.name == asset_name)
+                            .ok_or_else(|| anyhow!("no asset found matching {:?}", asset_name))?;
+                    }
+                }
 
                 Ok(Box::new(GitHubLspBinaryVersion {
                     name: release.tag_name,
                     url: asset.browser_download_url.clone(),
                 }))
             }
-            GenericLspAdapterSource::NpmPackage { name } => {
+            ExtensionLspAdapterInstall::NpmPackage { name } => {
                 let version = self.node.npm_package_latest_version(name).await?;
                 Ok(Box::new(version))
             }
@@ -77,15 +99,15 @@ impl LspAdapter for GenericLspAdapter {
         delegate: &dyn LspAdapterDelegate,
     ) -> Result<LanguageServerBinary> {
         match &self.source {
-            GenericLspAdapterSource::None => {}
-            GenericLspAdapterSource::GitHubRelease {
+            ExtensionLspAdapterInstall::None => {}
+            ExtensionLspAdapterInstall::GitHubRelease {
                 repository,
                 asset_name,
             } => {
                 let version = version.downcast::<GitHubLspBinaryVersion>().unwrap();
                 //
             }
-            GenericLspAdapterSource::NpmPackage { name } => todo!(),
+            ExtensionLspAdapterInstall::NpmPackage { name } => todo!(),
         }
 
         // let destination_path = container_dir.join(format!("rust-analyzer-{}", version.name));

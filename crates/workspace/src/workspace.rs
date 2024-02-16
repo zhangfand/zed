@@ -2811,6 +2811,7 @@ impl Workspace {
                                 } else {
                                     None
                                 };
+                            // state.items_by_leader_view_id.
                         }
                     }
                     anyhow::Ok(())
