@@ -1,10 +1,14 @@
 use anyhow::{anyhow, Result};
+use async_compression::futures::bufread::GzipDecoder;
+use async_tar::Archive;
 use async_trait::async_trait;
+use futures::io::BufReader;
 use gpui::AppContext;
 use language::{CodeLabel, Language, LanguageServerName, LspAdapter, LspAdapterDelegate};
 use lsp::LanguageServerBinary;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
+use smol::fs;
 use std::{any::Any, borrow::Cow, path::PathBuf, str, sync::Arc};
 use util::github::{latest_github_release, GitHubLspBinaryVersion, GithubReleaseAsset};
 
@@ -127,7 +131,25 @@ impl LspAdapter for ExtensionLspAdapter {
             None => {}
             Some(ExtensionLspAdapterInstall::GithubRelease { repository, asset }) => {
                 let version = version.downcast::<GitHubLspBinaryVersion>().unwrap();
-                //
+                let binary_path = container_dir.join(&self.config.short_name);
+
+                println!("Download LSP: {:?}", &version.url);
+
+                if fs::metadata(&binary_path).await.is_err() {
+                    let mut response = delegate
+                        .http_client()
+                        .get(&version.url, Default::default(), true)
+                        .await
+                        .map_err(|err| anyhow!("error downloading release: {}", err))?;
+                    let decompressed_bytes = GzipDecoder::new(BufReader::new(response.body_mut()));
+                    let archive = Archive::new(decompressed_bytes);
+                    archive.unpack(container_dir).await?;
+                }
+
+                return Ok(LanguageServerBinary {
+                    path: binary_path,
+                    arguments: vec!["lsp".into()],
+                });
             }
             Some(ExtensionLspAdapterInstall::NpmPackage { name }) => todo!(),
         }
