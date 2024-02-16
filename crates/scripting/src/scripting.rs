@@ -94,11 +94,47 @@ pub fn run_script(script: &str, entrypoint: &str) -> Result<String> {
     let entrypoint = v8::Local::<v8::Function>::try_from(entrypoint)
         .with_context(|| format!("entrypoint function '{entrypoint_name}' is not a function"))?;
 
+    #[derive(Debug)]
+    pub struct GithubReleaseAsset {
+        pub name: String,
+        pub browser_download_url: String,
+    }
+
+    let release_assets = vec![
+        GithubReleaseAsset {
+            name: "0.0.1".into(),
+            browser_download_url: "https://github.com/releases/0.0.1".into(),
+        },
+        GithubReleaseAsset {
+            name: "0.0.2".into(),
+            browser_download_url: "https://github.com/releases/0.0.2".into(),
+        },
+    ];
+
+    let assets_array = v8::Array::new(scope, release_assets.len() as i32);
+    for (i, asset) in release_assets.iter().enumerate() {
+        let asset_obj = v8::Object::new(scope);
+
+        let name_key = v8::String::new(scope, "name").unwrap().into();
+        let name_value = v8::String::new(scope, &asset.name).unwrap().into();
+        asset_obj.set(scope, name_key, name_value);
+
+        let url_key = v8::String::new(scope, "browser_download_url")
+            .unwrap()
+            .into();
+        let url_value = v8::String::new(scope, &asset.browser_download_url)
+            .unwrap()
+            .into();
+        asset_obj.set(scope, url_key, url_value);
+
+        assets_array.set_index(scope, i as u32, asset_obj.into());
+    }
+
     let arg_a = v8::String::new(scope, "foo").unwrap();
     let arg_b = v8::Boolean::new(scope, false);
 
     let result = entrypoint
-        .call(scope, global.into(), &[arg_a.into(), arg_b.into()])
+        .call(scope, global.into(), &[assets_array.into(), arg_b.into()])
         .ok_or_else(|| anyhow!("failed to call entrypoint"))?;
 
     Ok(result.to_rust_string_lossy(scope))
