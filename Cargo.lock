@@ -4731,6 +4731,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-broadcast",
+ "async-compression",
  "async-trait",
  "client",
  "clock",
@@ -4746,6 +4747,7 @@ dependencies = [
  "lazy_static",
  "log",
  "lsp",
+ "node_runtime",
  "parking_lot 0.11.2",
  "postage",
  "pulldown-cmark",
@@ -7864,6 +7866,24 @@ name = "scopeguard"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
+
+[[package]]
+name = "scripting"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-compression",
+ "async-tar",
+ "async-trait",
+ "futures 0.3.28",
+ "log",
+ "parking_lot 0.11.2",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "smol",
+ "util",
+]
 
 [[package]]
 name = "scrypt"

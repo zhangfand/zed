@@ -8,6 +8,7 @@
 //! Notably we do *not* assign a single language to a single file; in real world a single file can consist of multiple programming languages - HTML is a good example of that - and `language` crate tends to reflect that status quo in it's API.
 mod buffer;
 mod diagnostic_set;
+mod generic_lsp_adapter;
 mod highlight_map;
 mod language_registry;
 pub mod language_settings;

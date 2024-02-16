@@ -1,0 +1,10 @@
+name = "Rust Analyzer"
+short-name = "rust-analyzer"
+
+[source.github_release]
+repository = "rust-lang/rust-analyzer"
+# prerelease = false
+gzip = true
+
+# [source.npm]
+# package = "vscode-html-languageserver"

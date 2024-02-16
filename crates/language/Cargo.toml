@@ -11,20 +11,21 @@ doctest = false
 
 [features]
 test-support = [
-    "rand",
-    "client/test-support",
-    "collections/test-support",
-    "lsp/test-support",
-    "text/test-support",
-    "tree-sitter-rust",
-    "tree-sitter-typescript",
-    "settings/test-support",
-    "util/test-support",
+  "rand",
+  "client/test-support",
+  "collections/test-support",
+  "lsp/test-support",
+  "text/test-support",
+  "tree-sitter-rust",
+  "tree-sitter-typescript",
+  "settings/test-support",
+  "util/test-support",
 ]
 
 [dependencies]
 anyhow.workspace = true
 async-broadcast = "0.4"
+async-compression.workspace = true
 async-trait.workspace = true
 clock.workspace = true
 collections.workspace = true
@@ -36,6 +37,7 @@ gpui.workspace = true
 lazy_static.workspace = true
 log.workspace = true
 lsp.workspace = true
+node_runtime.workspace = true
 parking_lot.workspace = true
 postage.workspace = true
 rand = { workspace = true, optional = true }
