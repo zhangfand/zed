@@ -73,7 +73,20 @@ impl LspAdapter for ExtensionLspAdapter {
                     ExtensionLspAdapterAsset::Function(function_name) => {
                         println!("Execute function: {function_name}");
 
-                        let result = scripting::run_script(&self.script, function_name)?;
+                        #[derive(Serialize)]
+                        struct PlatformInfo {
+                            pub arch: &'static str,
+                        }
+
+                        let platform_info = PlatformInfo {
+                            arch: std::env::consts::ARCH,
+                        };
+
+                        let result = scripting::run_script(
+                            &self.script,
+                            function_name,
+                            vec![Box::new(release.assets), Box::new(platform_info)],
+                        )?;
 
                         dbg!(&result);
                     }

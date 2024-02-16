@@ -1,7 +1,7 @@
 use crate::http::HttpClient;
 use anyhow::{anyhow, bail, Context, Result};
 use futures::AsyncReadExt;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 pub struct GitHubLspBinaryVersion {
@@ -19,7 +19,7 @@ pub struct GithubRelease {
     pub zipball_url: String,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct GithubReleaseAsset {
     pub name: String,
     pub browser_download_url: String,

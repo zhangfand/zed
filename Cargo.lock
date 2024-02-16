@@ -5941,6 +5941,7 @@ dependencies = [
  "autocfg",
  "num-integer",
  "num-traits",
+ "rand 0.8.5",
 ]
 
 [[package]]
@@ -8093,6 +8094,8 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "gpui",
+ "serde",
+ "serde_v8",
  "v8",
 ]
 
@@ -8436,6 +8439,21 @@ dependencies = [
  "itoa",
  "ryu",
  "serde",
+]
+
+[[package]]
+name = "serde_v8"
+version = "0.171.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "88a2746b1f9e4015ee5f325bb87ab0f1891b76c38dfb1675bc83857eaf6451d0"
+dependencies = [
+ "bytes 1.5.0",
+ "derive_more",
+ "num-bigint 0.4.4",
+ "serde",
+ "smallvec",
+ "thiserror",
+ "v8",
 ]
 
 [[package]]
