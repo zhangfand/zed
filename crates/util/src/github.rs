@@ -19,7 +19,7 @@ pub struct GithubRelease {
     pub zipball_url: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct GithubReleaseAsset {
     pub name: String,
     pub browser_download_url: String,

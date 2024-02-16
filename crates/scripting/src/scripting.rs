@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Context, Result};
 use gpui::{AppContext, Global};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_v8::Serializable;
 
 // https://github.com/matejkoncal/v8-experiments/blob/master/src/main.rs
@@ -71,7 +71,7 @@ pub fn init(cx: &mut AppContext) {
     let args: Vec<Box<dyn Serializable>> =
         vec![Box::new(TestObj { age: 73 }), Box::new(TestObj { age: 42 })];
 
-    let result = run_script("function foo(a, b) { return a.age; }", "foo", args).unwrap();
+    let result: u32 = run_script("function foo(a, b) { return a.age; }", "foo", args).unwrap();
 
     dbg!(&result);
 
@@ -81,11 +81,11 @@ pub fn init(cx: &mut AppContext) {
     // cx.set_global(Arc::new())
 }
 
-pub fn run_script(
+pub fn run_script<'de, T: Deserialize<'de>>(
     script: &str,
     entrypoint: &str,
     args: Vec<Box<dyn Serializable>>,
-) -> Result<String> {
+) -> Result<T> {
     let isolate = &mut v8::Isolate::new(Default::default());
     let scope = &mut v8::HandleScope::new(isolate);
     let context = v8::Context::new(scope);
@@ -119,5 +119,8 @@ pub fn run_script(
         .call(scope, global.into(), &v8_args)
         .ok_or_else(|| anyhow!("failed to call entrypoint"))?;
 
-    Ok(result.to_rust_string_lossy(scope))
+    let return_value: T = serde_v8::from_v8(scope, result)
+        .with_context(|| format!("failed to deserialize return value"))?;
+
+    Ok(return_value)
 }

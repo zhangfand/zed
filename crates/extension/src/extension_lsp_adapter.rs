@@ -7,7 +7,7 @@ use parking_lot::Mutex;
 use scripting::ScriptModule;
 use serde::{Deserialize, Serialize};
 use std::{any::Any, borrow::Cow, path::PathBuf, str, sync::Arc};
-use util::github::{latest_github_release, GitHubLspBinaryVersion};
+use util::github::{latest_github_release, GitHubLspBinaryVersion, GithubReleaseAsset};
 
 pub struct ExtensionLspAdapter {
     config: ExtensionLspAdapterConfig,
@@ -69,7 +69,7 @@ impl LspAdapter for ExtensionLspAdapter {
                 let release =
                     latest_github_release(repository, true, false, delegate.http_client()).await?;
 
-                match asset {
+                let asset = match asset {
                     ExtensionLspAdapterAsset::Function(function_name) => {
                         println!("Execute function: {function_name}");
 
@@ -82,26 +82,25 @@ impl LspAdapter for ExtensionLspAdapter {
                             arch: std::env::consts::ARCH,
                         };
 
-                        let result = scripting::run_script(
+                        let asset: Option<GithubReleaseAsset> = scripting::run_script(
                             &self.script,
                             function_name,
                             vec![Box::new(release.assets), Box::new(platform_info)],
                         )?;
 
-                        dbg!(&result);
+                        asset.ok_or_else(|| anyhow!("no asset returned from {function_name}"))?
                     }
-                    ExtensionLspAdapterAsset::Name(asset_name) => {
-                        let asset = release
-                            .assets
-                            .iter()
-                            .find(|asset| &asset.name == asset_name)
-                            .ok_or_else(|| anyhow!("no asset found matching {:?}", asset_name))?;
-                    }
-                }
+                    ExtensionLspAdapterAsset::Name(asset_name) => release
+                        .assets
+                        .iter()
+                        .find(|asset| &asset.name == asset_name)
+                        .ok_or_else(|| anyhow!("no asset found matching {:?}", asset_name))
+                        .cloned()?,
+                };
 
                 Ok(Box::new(GitHubLspBinaryVersion {
                     name: release.tag_name,
-                    url: "todo!()".to_string(), // url: asset.browser_download_url.clone(),
+                    url: asset.browser_download_url.clone(),
                 }))
             }
             Some(ExtensionLspAdapterInstall::NpmPackage { name }) => {
