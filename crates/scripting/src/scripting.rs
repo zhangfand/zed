@@ -69,7 +69,7 @@ pub fn init(cx: &mut AppContext) {
     // cx.set_global(Arc::new())
 }
 
-pub fn run_script(script: &str, entrypoint: &str) -> Result<()> {
+pub fn run_script(script: &str, entrypoint: &str) -> Result<String> {
     let isolate = &mut v8::Isolate::new(Default::default());
     let scope = &mut v8::HandleScope::new(isolate);
     let context = v8::Context::new(scope);
@@ -101,17 +101,5 @@ pub fn run_script(script: &str, entrypoint: &str) -> Result<()> {
         .call(scope, global.into(), &[arg_a.into(), arg_b.into()])
         .ok_or_else(|| anyhow!("failed to call entrypoint"))?;
 
-    println!(
-        "Function call result: {}",
-        result.to_rust_string_lossy(scope)
-    );
-
-    // let function_name = v8::String::new(scope, "myFunctionName").unwrap();
-    // let global = context.global(scope);
-    // let value = global.get(scope, function_name.into()).unwrap();
-    // let function = v8::Local::<v8::Function>::try_from(value).unwrap();
-    // let result = function.call(scope, global.into(), &[]).unwrap();
-    // println!("Function call result: {}", result.to_rust_string_lossy(scope));
-
-    Ok(())
+    Ok(result.to_rust_string_lossy(scope))
 }

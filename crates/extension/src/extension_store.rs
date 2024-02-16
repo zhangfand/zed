@@ -9,12 +9,14 @@ use futures::StreamExt as _;
 use futures::{io::BufReader, AsyncReadExt as _};
 use gpui::{actions, AppContext, Context, Global, Model, ModelContext, Task};
 use language::{
-    LanguageConfig, LanguageMatcher, LanguageQueries, LanguageRegistry, QUERY_FILENAME_PREFIXES,
+    LanguageConfig, LanguageMatcher, LanguageQueries, LanguageRegistry, LspAdapter,
+    QUERY_FILENAME_PREFIXES,
 };
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use settings::Settings as _;
 use std::cmp::Ordering;
+use std::io::ErrorKind;
 use std::{
     ffi::OsStr,
     path::{Path, PathBuf},
@@ -25,6 +27,11 @@ use theme::{ThemeRegistry, ThemeSettings};
 use util::http::AsyncBody;
 use util::TryFutureExt;
 use util::{http::HttpClient, paths::EXTENSIONS_DIR, ResultExt};
+
+use crate::extension_lsp_adapter::{
+    ExtensionLspAdapter, ExtensionLspAdapterAsset, ExtensionLspAdapterConfig,
+    ExtensionLspAdapterInstall,
+};
 
 #[cfg(test)]
 mod extension_store_test;
@@ -411,11 +418,51 @@ impl ExtensionStore {
             let language = manifest.languages.get(language_name.as_ref()).unwrap();
             let mut language_path = self.extensions_dir.clone();
             language_path.extend([language.extension.as_ref(), language.path.as_path()]);
+
+            let mut lsp_adapters: Vec<Arc<dyn LspAdapter + 'static>> = Vec::new();
+
+            let lsp_config = match std::fs::read(language_path.join("server.toml")) {
+                Ok(bytes) => {
+                    util::maybe!({
+                        // let config: ExtensionLspAdapterConfig = ::toml::from_slice(&bytes)?;
+                        let config = ExtensionLspAdapterConfig {
+                            name: "Gloop".into(),
+                            short_name: "gloop".into(),
+                            install: Some(ExtensionLspAdapterInstall::GithubRelease {
+                                repository: "gleam-lang/gleam".to_string(),
+                                asset: ExtensionLspAdapterAsset::Function("findReleaseAsset".to_string())
+                            }),
+                        };
+
+                        // println!("{}", ::toml::to_string_pretty(&config).unwrap());
+
+                        Ok(Some(config))
+                    })
+                }
+                Err(err) => {
+                    if err.kind() == std::io::ErrorKind::NotFound {
+                        Ok(None)
+                    } else {
+                        Err(err)
+                    }
+                }
+            }
+            .log_err()
+            .flatten();
+
+            if let Some(lsp_config) = lsp_config {
+                let script = std::fs::read_to_string(language_path.join("server.js")).unwrap();
+
+                let lsp_adapter = ExtensionLspAdapter::new(lsp_config, script, cx);
+
+                lsp_adapters.push(Arc::new(lsp_adapter));
+            }
+
             self.language_registry.register_language(
                 language_name.clone(),
                 language.grammar.clone(),
                 language.matcher.clone(),
-                vec![],
+                lsp_adapters,
                 move || {
                     let config = std::fs::read(language_path.join("config.toml"))?;
                     let config: LanguageConfig = ::toml::from_slice(&config)?;

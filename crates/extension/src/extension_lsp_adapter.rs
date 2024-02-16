@@ -5,7 +5,7 @@ use language::{CodeLabel, Language, LanguageServerName, LspAdapter, LspAdapterDe
 use lsp::LanguageServerBinary;
 use parking_lot::Mutex;
 use scripting::ScriptModule;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::{any::Any, borrow::Cow, path::PathBuf, str, sync::Arc};
 use util::github::{latest_github_release, GitHubLspBinaryVersion};
 
@@ -16,17 +16,17 @@ pub struct ExtensionLspAdapter {
     // node: Arc<dyn NodeRuntime>,
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct ExtensionLspAdapterConfig {
-    name: Arc<str>,
-    short_name: Arc<str>,
-    install: ExtensionLspAdapterInstall,
+    pub name: String,
+    pub short_name: String,
+    pub install: Option<ExtensionLspAdapterInstall>,
 }
 
-#[derive(Deserialize)]
-enum ExtensionLspAdapterInstall {
-    None,
-    GitHubRelease {
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "source", rename_all = "snake_case")]
+pub enum ExtensionLspAdapterInstall {
+    GithubRelease {
         repository: String,
         asset: ExtensionLspAdapterAsset,
     },
@@ -35,8 +35,9 @@ enum ExtensionLspAdapterInstall {
     },
 }
 
-#[derive(Deserialize)]
-enum ExtensionLspAdapterAsset {
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "foo", content = "bar")]
+pub enum ExtensionLspAdapterAsset {
     Function(String),
     Name(String),
 }
@@ -50,7 +51,7 @@ impl ExtensionLspAdapter {
 #[async_trait]
 impl LspAdapter for ExtensionLspAdapter {
     fn name(&self) -> LanguageServerName {
-        LanguageServerName(self.config.name.clone())
+        LanguageServerName(self.config.name.clone().into())
     }
 
     fn short_name(&self) -> &'static str {
@@ -63,14 +64,18 @@ impl LspAdapter for ExtensionLspAdapter {
         delegate: &dyn LspAdapterDelegate,
     ) -> Result<Box<dyn 'static + Send + Any>> {
         return match &self.config.install {
-            ExtensionLspAdapterInstall::None => Ok(Box::new(())),
-            ExtensionLspAdapterInstall::GitHubRelease { repository, asset } => {
+            None => Ok(Box::new(())),
+            Some(ExtensionLspAdapterInstall::GithubRelease { repository, asset }) => {
                 let release =
                     latest_github_release(repository, true, false, delegate.http_client()).await?;
 
                 match asset {
                     ExtensionLspAdapterAsset::Function(function_name) => {
-                        //
+                        println!("Execute function: {function_name}");
+
+                        let result = scripting::run_script(&self.script, function_name)?;
+
+                        dbg!(&result);
                     }
                     ExtensionLspAdapterAsset::Name(asset_name) => {
                         let asset = release
@@ -86,7 +91,7 @@ impl LspAdapter for ExtensionLspAdapter {
                     url: "todo!()".to_string(), // url: asset.browser_download_url.clone(),
                 }))
             }
-            ExtensionLspAdapterInstall::NpmPackage { name } => {
+            Some(ExtensionLspAdapterInstall::NpmPackage { name }) => {
                 todo!()
 
                 // let version = self.node.npm_package_latest_version(name).await?;
@@ -102,12 +107,12 @@ impl LspAdapter for ExtensionLspAdapter {
         delegate: &dyn LspAdapterDelegate,
     ) -> Result<LanguageServerBinary> {
         match &self.config.install {
-            ExtensionLspAdapterInstall::None => {}
-            ExtensionLspAdapterInstall::GitHubRelease { repository, asset } => {
+            None => {}
+            Some(ExtensionLspAdapterInstall::GithubRelease { repository, asset }) => {
                 let version = version.downcast::<GitHubLspBinaryVersion>().unwrap();
                 //
             }
-            ExtensionLspAdapterInstall::NpmPackage { name } => todo!(),
+            Some(ExtensionLspAdapterInstall::NpmPackage { name }) => todo!(),
         }
 
         // let destination_path = container_dir.join(format!("rust-analyzer-{}", version.name));
