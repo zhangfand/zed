@@ -15,14 +15,14 @@ pub struct ExtensionLspAdapter {
     // node: Arc<dyn NodeRuntime>,
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Deserialize)]
 pub struct ExtensionLspAdapterConfig {
     pub name: String,
     pub short_name: String,
     pub install: Option<ExtensionLspAdapterInstall>,
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ExtensionLspAdapterInstall {
     GithubRelease {
@@ -34,7 +34,7 @@ pub enum ExtensionLspAdapterInstall {
     },
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ExtensionLspAdapterAsset {
     Function(String),

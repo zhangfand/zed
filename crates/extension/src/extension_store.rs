@@ -421,22 +421,11 @@ impl ExtensionStore {
 
             let mut lsp_adapters: Vec<Arc<dyn LspAdapter + 'static>> = Vec::new();
 
-            let lsp_config = match std::fs::read(language_path.join("server.toml")) {
-                Ok(bytes) => {
+            let lsp_config = match std::fs::read_to_string(language_path.join("server.toml")) {
+                Ok(server_toml) => {
                     util::maybe!({
-                        // let config: ExtensionLspAdapterConfig = ::toml::from_slice(&bytes)?;
-                        let config = ExtensionLspAdapterConfig {
-                            name: "Gloop".into(),
-                            short_name: "gloop".into(),
-                            install: Some(ExtensionLspAdapterInstall::GithubRelease {
-                                repository: "gleam-lang/gleam".to_string(),
-                                asset: ExtensionLspAdapterAsset::Function(
-                                    "findReleaseAsset".to_string(),
-                                ),
-                            }),
-                        };
-
-                        // println!("{}", ::toml::to_string_pretty(&config).unwrap());
+                        let config: ExtensionLspAdapterConfig = ::toml::from_str(&server_toml)?;
+                        dbg!(&config);
 
                         Ok(Some(config))
                     })
@@ -445,7 +434,7 @@ impl ExtensionStore {
                     if err.kind() == std::io::ErrorKind::NotFound {
                         Ok(None)
                     } else {
-                        Err(err)
+                        Err(anyhow!(err))
                     }
                 }
             }
