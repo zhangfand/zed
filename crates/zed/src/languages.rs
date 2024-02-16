@@ -337,10 +337,14 @@ pub async fn language(
 }
 
 fn load_config(name: &str) -> LanguageConfig {
-    ::toml::from_slice(
-        &LanguageDir::get(&format!("{}/config.toml", name))
-            .unwrap()
-            .data,
+    ::toml::from_str(
+        &String::from_utf8(
+            LanguageDir::get(&format!("{}/config.toml", name))
+                .unwrap()
+                .data
+                .to_vec(),
+        )
+        .unwrap(),
     )
     .with_context(|| format!("failed to load config.toml for language {name:?}"))
     .unwrap()

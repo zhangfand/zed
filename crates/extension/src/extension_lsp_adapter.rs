@@ -15,15 +15,15 @@ pub struct ExtensionLspAdapter {
     // node: Arc<dyn NodeRuntime>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct ExtensionLspAdapterConfig {
     pub name: String,
     pub short_name: String,
     pub install: Option<ExtensionLspAdapterInstall>,
 }
 
-#[derive(Serialize, Deserialize)]
-#[serde(tag = "source", rename_all = "snake_case")]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ExtensionLspAdapterInstall {
     GithubRelease {
         repository: String,
@@ -34,11 +34,17 @@ pub enum ExtensionLspAdapterInstall {
     },
 }
 
-#[derive(Serialize, Deserialize)]
-#[serde(tag = "foo", content = "bar")]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ExtensionLspAdapterAsset {
     Function(String),
     Name(String),
+}
+
+impl Default for ExtensionLspAdapterAsset {
+    fn default() -> Self {
+        Self::Function("Foo".into())
+    }
 }
 
 impl ExtensionLspAdapter {
@@ -348,5 +354,61 @@ impl LspAdapter for ExtensionLspAdapter {
             text: text[display_range].to_string(),
             filter_range,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use indoc::indoc;
+    use pretty_assertions::assert_eq;
+
+    use super::*;
+
+    #[test]
+    fn test_deserialize_extension_lsp_adapter_config_with_github_release_from_toml() {
+        let toml_config = indoc! {r#"
+            name = "Rust Analyzer"
+            short_name = "rust-analyzer"
+
+            [install.github_release]
+            repository = "rust-lang/rust-analyzer"
+            asset.function = "findReleaseAsset"
+        "#};
+
+        let config: ExtensionLspAdapterConfig = ::toml::from_str(&toml_config).unwrap();
+        assert_eq!(
+            config,
+            ExtensionLspAdapterConfig {
+                name: "Rust Analyzer".into(),
+                short_name: "rust-analyzer".into(),
+                install: Some(ExtensionLspAdapterInstall::GithubRelease {
+                    repository: "rust-lang/rust-analyzer".into(),
+                    asset: ExtensionLspAdapterAsset::Function("findReleaseAsset".into())
+                })
+            }
+        );
+    }
+
+    #[test]
+    fn test_deserialize_extension_lsp_adapter_config_with_npm_package_from_toml() {
+        let toml_config = indoc! {r#"
+            name = "purescript-language-server"
+            short_name = "purescript"
+
+            [install.npm_package]
+            name = "purescript-language-server"
+        "#};
+
+        let config: ExtensionLspAdapterConfig = ::toml::from_str(&toml_config).unwrap();
+        assert_eq!(
+            config,
+            ExtensionLspAdapterConfig {
+                name: "purescript-language-server".into(),
+                short_name: "purescript".into(),
+                install: Some(ExtensionLspAdapterInstall::NpmPackage {
+                    name: "purescript-language-server".into()
+                })
+            }
+        );
     }
 }

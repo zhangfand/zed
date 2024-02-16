@@ -430,7 +430,9 @@ impl ExtensionStore {
                             short_name: "gloop".into(),
                             install: Some(ExtensionLspAdapterInstall::GithubRelease {
                                 repository: "gleam-lang/gleam".to_string(),
-                                asset: ExtensionLspAdapterAsset::Function("findReleaseAsset".to_string())
+                                asset: ExtensionLspAdapterAsset::Function(
+                                    "findReleaseAsset".to_string(),
+                                ),
                             }),
                         };
 
@@ -464,8 +466,8 @@ impl ExtensionStore {
                 language.matcher.clone(),
                 lsp_adapters,
                 move || {
-                    let config = std::fs::read(language_path.join("config.toml"))?;
-                    let config: LanguageConfig = ::toml::from_slice(&config)?;
+                    let config = std::fs::read_to_string(language_path.join("config.toml"))?;
+                    let config: LanguageConfig = ::toml::from_str(&config)?;
                     let queries = load_plugin_queries(&language_path);
                     Ok((config, queries))
                 },
