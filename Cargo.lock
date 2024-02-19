@@ -8082,9 +8082,12 @@ name = "scripting"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "collections",
+ "futures 0.3.28",
  "gpui",
  "serde",
  "serde_v8",
+ "util",
  "v8",
 ]
 

@@ -1,7 +1,10 @@
 use anyhow::{anyhow, Context, Result};
-use serde::Deserialize;
+use collections::HashMap;
+use futures::{channel::oneshot, Future};
+use serde::{de::DeserializeOwned, Deserialize};
 use serde_v8::Serializable;
-use std::sync::Once;
+use std::sync::{mpsc, Arc, Once};
+use util::post_inc;
 
 #[cfg(test)]
 mod scripting_test;
@@ -18,16 +21,149 @@ pub fn init() {
 pub fn run_script<'de, T: Deserialize<'de>>(
     source: &str,
     export_name: &str,
-    args: Vec<Box<dyn Serializable>>,
+    args: Vec<Box<dyn Send + Serializable>>,
 ) -> Result<T> {
     let mut isolate = Isolate::new();
     let mut module = isolate.compile_module("the-script.js", source)?;
     module.call_export(export_name, args, &mut isolate)
 }
 
+pub struct Engine {
+    operations: mpsc::Sender<Operation>,
+    _worker_thread: std::thread::JoinHandle<()>,
+}
+
+pub struct ModuleHandle {
+    operations: mpsc::Sender<Operation>,
+    id: ModuleId,
+}
+
 pub struct Isolate(v8::OwnedIsolate);
 
 pub struct Module(v8::Global<v8::Object>);
+
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
+struct ModuleId(usize);
+
+enum Operation {
+    CompileModule {
+        name: String,
+        source: String,
+        callback: oneshot::Sender<Result<ModuleId>>,
+    },
+    DropModule {
+        module_id: ModuleId,
+    },
+    Invoke {
+        module_id: ModuleId,
+        callback: Box<dyn 'static + Send + FnOnce(Option<&mut Module>, &mut Isolate)>,
+    },
+}
+
+impl Engine {
+    pub fn new() -> Self {
+        let (ops_tx, ops_rx) = mpsc::channel();
+
+        let thread = std::thread::spawn(move || {
+            let mut isolate = Isolate::new();
+            let mut next_module_id = 0;
+            let mut modules = HashMap::default();
+            while let Ok(operation) = ops_rx.recv() {
+                match operation {
+                    Operation::CompileModule {
+                        name,
+                        source,
+                        callback,
+                    } => {
+                        let module_id = ModuleId(post_inc(&mut next_module_id));
+                        let module = isolate.compile_module(&name, &source);
+                        match module {
+                            Ok(module) => {
+                                modules.insert(module_id, module);
+                                callback.send(Ok(module_id)).ok();
+                            }
+                            Err(error) => {
+                                callback.send(Err(error)).ok();
+                            }
+                        }
+                    }
+                    Operation::DropModule { module_id } => {
+                        modules.remove(&module_id);
+                    }
+                    Operation::Invoke {
+                        module_id,
+                        callback,
+                    } => {
+                        let module = modules.get_mut(&module_id);
+                        callback(module, &mut isolate);
+                    }
+                }
+            }
+        });
+
+        Self {
+            operations: ops_tx,
+            _worker_thread: thread,
+        }
+    }
+
+    pub fn compile_module(
+        &self,
+        name: String,
+        source: String,
+    ) -> impl Future<Output = Result<ModuleHandle>> {
+        let (tx, rx) = oneshot::channel();
+        let operations = self.operations.clone();
+        self.operations
+            .send(Operation::CompileModule {
+                name,
+                source,
+                callback: tx,
+            })
+            .ok();
+        async move {
+            Ok(ModuleHandle {
+                id: rx.await??,
+                operations,
+            })
+        }
+    }
+}
+
+impl ModuleHandle {
+    pub fn call_export<T>(
+        &self,
+        function_name: Arc<str>,
+        args: Vec<Box<dyn Send + Serializable>>,
+    ) -> impl Future<Output = Result<T>>
+    where
+        T: 'static + Send + DeserializeOwned,
+    {
+        let (tx, rx) = oneshot::channel();
+        self.operations
+            .send(Operation::Invoke {
+                module_id: self.id,
+                callback: Box::new(move |module, isolate| {
+                    if let Some(module) = module {
+                        tx.send(module.call_export(function_name.as_ref(), args, isolate))
+                            .ok();
+                    } else {
+                        tx.send(Err(anyhow!("module was dropped"))).ok();
+                    }
+                }),
+            })
+            .ok();
+        async move { rx.await? }
+    }
+}
+
+impl Drop for ModuleHandle {
+    fn drop(&mut self) {
+        self.operations
+            .send(Operation::DropModule { module_id: self.id })
+            .ok();
+    }
+}
 
 impl Isolate {
     pub fn new() -> Self {
@@ -84,7 +220,7 @@ impl Module {
     pub fn call_export<'de, T: Deserialize<'de>>(
         &mut self,
         export_name: &str,
-        args: Vec<Box<dyn Serializable>>,
+        args: Vec<Box<dyn Send + Serializable>>,
         isolate: &mut Isolate,
     ) -> Result<T> {
         let scope = &mut v8::HandleScope::new(&mut isolate.0);
