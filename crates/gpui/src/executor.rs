@@ -135,6 +135,32 @@ impl BackgroundExecutor {
         self.spawn_internal::<R>(Box::pin(future), None)
     }
 
+    /// Enqueues the given async function to execute on a fixed background thread.
+    /// Unlike [`spawn`](Self::spawn), the future need not be Send.
+    pub fn spawn_local<Fut, F>(&self, f: F)
+    where
+        F: 'static + Send + FnOnce() -> Fut,
+        Fut: Future<Output = ()> + 'static,
+    {
+        let dispatcher = self.dispatcher.clone();
+
+        #[cfg(any(test, feature = "test-support"))]
+        if dispatcher.as_test().is_some() {
+            let future = f();
+            let (runnable, task) = async_task::spawn_local(future, move |runnable| {
+                dispatcher.dispatch_on_main_thread(runnable)
+            });
+            runnable.schedule();
+            task.detach();
+            return;
+        }
+
+        let this = self.clone();
+        std::thread::spawn(move || {
+            this.block(f());
+        });
+    }
+
     /// Enqueues the given future to be run to completion on a background thread.
     /// The given label can be used to control the priority of the task in tests.
     pub fn spawn_labeled<R>(

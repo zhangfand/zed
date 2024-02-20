@@ -2,21 +2,21 @@ use anyhow::{anyhow, bail, Context as _, Result};
 use async_compression::futures::bufread::GzipDecoder;
 use async_tar::Archive;
 use client::ClientSettings;
-use collections::{BTreeMap, HashSet};
+use collections::{BTreeMap, HashMap, HashSet};
 use fs::{Fs, RemoveOptions};
 use futures::channel::mpsc::unbounded;
 use futures::StreamExt as _;
 use futures::{io::BufReader, AsyncReadExt as _};
 use gpui::{actions, AppContext, Context, Global, Model, ModelContext, Task};
 use language::{
-    LanguageConfig, LanguageMatcher, LanguageQueries, LanguageRegistry, LspAdapter,
-    QUERY_FILENAME_PREFIXES,
+    LanguageConfig, LanguageMatcher, LanguageQueries, LanguageRegistry, QUERY_FILENAME_PREFIXES,
 };
+use node_runtime::NodeRuntime;
 use parking_lot::RwLock;
+use scripting::{Engine, ModuleHandle};
 use serde::{Deserialize, Serialize};
 use settings::Settings as _;
 use std::cmp::Ordering;
-use std::io::ErrorKind;
 use std::{
     ffi::OsStr,
     path::{Path, PathBuf},
@@ -27,11 +27,6 @@ use theme::{ThemeRegistry, ThemeSettings};
 use util::http::AsyncBody;
 use util::TryFutureExt;
 use util::{http::HttpClient, paths::EXTENSIONS_DIR, ResultExt};
-
-use crate::extension_lsp_adapter::{
-    ExtensionLspAdapter, ExtensionLspAdapterAsset, ExtensionLspAdapterConfig,
-    ExtensionLspAdapterInstall,
-};
 
 #[cfg(test)]
 mod extension_store_test;
@@ -74,9 +69,21 @@ pub struct ExtensionStore {
     language_registry: Arc<LanguageRegistry>,
     theme_registry: Arc<ThemeRegistry>,
     extension_changes: ExtensionChanges,
+    language_server_modules: HashMap<Arc<str>, LanguageServerExtension>,
     reload_task: Option<Task<Option<()>>>,
     needs_reload: bool,
     _watch_extensions_dir: [Task<()>; 2],
+}
+
+struct LanguageServerExtension {
+    config: LanguageServerConfig,
+    module: ModuleHandle,
+}
+
+#[derive(Deserialize)]
+struct LanguageServerConfig {
+    name: String,
+    // short_name: String,
 }
 
 struct GlobalExtensionStore(Model<ExtensionStore>);
@@ -88,10 +95,11 @@ pub struct Manifest {
     pub extensions: BTreeMap<Arc<str>, Arc<str>>,
     pub grammars: BTreeMap<Arc<str>, GrammarManifestEntry>,
     pub languages: BTreeMap<Arc<str>, LanguageManifestEntry>,
+    pub language_servers: BTreeMap<Arc<str>, GrammarManifestEntry>,
     pub themes: BTreeMap<Arc<str>, ThemeManifestEntry>,
 }
 
-#[derive(PartialEq, Eq, Debug, PartialOrd, Ord, Deserialize, Serialize)]
+#[derive(Clone, PartialEq, Eq, Debug, PartialOrd, Ord, Deserialize, Serialize)]
 pub struct GrammarManifestEntry {
     extension: String,
     path: PathBuf,
@@ -105,6 +113,9 @@ pub struct LanguageManifestEntry {
     grammar: Option<Arc<str>>,
 }
 
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Deserialize, Serialize)]
+pub struct LanguageServerManifestEntry {}
+
 #[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
 pub struct ThemeManifestEntry {
     extension: String,
@@ -116,6 +127,7 @@ struct ExtensionChanges {
     languages: HashSet<Arc<str>>,
     grammars: HashSet<Arc<str>>,
     themes: HashSet<Arc<str>>,
+    language_servers: HashSet<Arc<str>>,
 }
 
 actions!(zed, [ReloadExtensions]);
@@ -155,6 +167,7 @@ impl ExtensionStore {
         extensions_dir: PathBuf,
         fs: Arc<dyn Fs>,
         http_client: Arc<dyn HttpClient>,
+        // node_runtime: Arc<dyn NodeRuntime>,
         language_registry: Arc<LanguageRegistry>,
         theme_registry: Arc<ThemeRegistry>,
         cx: &mut ModelContext<Self>,
@@ -168,6 +181,7 @@ impl ExtensionStore {
             reload_task: None,
             needs_reload: false,
             extension_changes: ExtensionChanges::default(),
+            language_server_modules: HashMap::default(),
             fs,
             http_client,
             language_registry,
@@ -191,7 +205,7 @@ impl ExtensionStore {
 
         if let Some(manifest_content) = manifest_content.log_err() {
             if let Some(manifest) = serde_json::from_str(&manifest_content).log_err() {
-                self.manifest_updated(manifest, cx);
+                self.manifest_updated(manifest, cx).detach();
             }
         }
 
@@ -335,7 +349,7 @@ impl ExtensionStore {
     /// no longer in the manifest, or whose files have changed on disk.
     /// Then it loads any themes, languages, or grammars that are newly
     /// added to the manifest, or whose files have changed on disk.
-    fn manifest_updated(&mut self, manifest: Manifest, cx: &mut ModelContext<Self>) {
+    fn manifest_updated(&mut self, manifest: Manifest, cx: &mut ModelContext<Self>) -> Task<()> {
         fn diff<'a, T, I1, I2>(
             old_keys: I1,
             new_keys: I2,
@@ -395,6 +409,11 @@ impl ExtensionStore {
             manifest.themes.iter(),
             &self.extension_changes.themes,
         );
+        let (language_server_modules_to_remove, language_server_modules_to_add) = diff(
+            old_manifest.language_servers.iter(),
+            manifest.language_servers.iter(),
+            &self.extension_changes.language_servers,
+        );
         self.extension_changes.clear();
         drop(old_manifest);
 
@@ -419,41 +438,11 @@ impl ExtensionStore {
             let mut language_path = self.extensions_dir.clone();
             language_path.extend([language.extension.as_ref(), language.path.as_path()]);
 
-            let mut lsp_adapters: Vec<Arc<dyn LspAdapter + 'static>> = Vec::new();
-
-            let lsp_config = match std::fs::read_to_string(language_path.join("server.toml")) {
-                Ok(server_toml) => {
-                    util::maybe!({
-                        let config: ExtensionLspAdapterConfig = ::toml::from_str(&server_toml)?;
-                        dbg!(&config);
-
-                        Ok(Some(config))
-                    })
-                }
-                Err(err) => {
-                    if err.kind() == std::io::ErrorKind::NotFound {
-                        Ok(None)
-                    } else {
-                        Err(anyhow!(err))
-                    }
-                }
-            }
-            .log_err()
-            .flatten();
-
-            if let Some(lsp_config) = lsp_config {
-                let script = std::fs::read_to_string(language_path.join("server.js")).unwrap();
-
-                let lsp_adapter = ExtensionLspAdapter::new(lsp_config, script, cx);
-
-                lsp_adapters.push(Arc::new(lsp_adapter));
-            }
-
             self.language_registry.register_language(
                 language_name.clone(),
                 language.grammar.clone(),
                 language.matcher.clone(),
-                lsp_adapters,
+                Vec::new(),
                 move || {
                     let config = std::fs::read_to_string(language_path.join("config.toml"))?;
                     let config: LanguageConfig = ::toml::from_str(&config)?;
@@ -463,7 +452,9 @@ impl ExtensionStore {
             );
         }
 
-        let (reload_theme_tx, mut reload_theme_rx) = unbounded();
+        self.language_server_modules
+            .retain(|key, _| !language_server_modules_to_remove.contains(&key));
+
         let fs = self.fs.clone();
         let root_dir = self.extensions_dir.clone();
         let theme_registry = self.theme_registry.clone();
@@ -471,36 +462,84 @@ impl ExtensionStore {
             .iter()
             .filter_map(|name| manifest.themes.get(name).cloned())
             .collect::<Vec<_>>();
-        cx.background_executor()
-            .spawn(async move {
-                for theme in &themes {
-                    let mut theme_path = root_dir.clone();
-                    theme_path.extend([theme.extension.as_ref(), theme.path.as_path()]);
-
-                    theme_registry
-                        .load_user_theme(&theme_path, fs.clone())
-                        .await
-                        .log_err();
-                }
-
-                reload_theme_tx.unbounded_send(()).ok();
-            })
-            .detach();
-
-        cx.spawn(|_, cx| async move {
-            while let Some(_) = reload_theme_rx.next().await {
-                if cx
-                    .update(|cx| ThemeSettings::reload_current_theme(cx))
-                    .is_err()
-                {
-                    break;
-                }
-            }
-        })
-        .detach();
+        let language_servers = language_server_modules_to_add
+            .iter()
+            .filter_map(|name| manifest.language_servers.get(name).cloned())
+            .collect::<Vec<_>>();
+        let engine = Engine::global(cx);
 
         *self.manifest.write() = manifest;
         cx.notify();
+
+        cx.spawn(|this, mut cx| async move {
+            cx.background_executor()
+                .spawn({
+                    let root_dir = root_dir.clone();
+                    let fs = fs.clone();
+                    async move {
+                        for theme in &themes {
+                            let mut theme_path = root_dir.clone();
+                            theme_path.extend([theme.extension.as_ref(), theme.path.as_path()]);
+
+                            theme_registry
+                                .load_user_theme(&theme_path, fs.clone())
+                                .await
+                                .log_err();
+                        }
+                    }
+                })
+                .await;
+
+            let mut modules = Vec::new();
+            for module in language_servers {
+                let mut server_path = root_dir.clone();
+                server_path.extend([module.extension.as_ref(), module.path.as_path()]);
+
+                let Some(lsp_config) = fs.load(&server_path.join("config.toml")).await.log_err()
+                else {
+                    continue;
+                };
+                let Some(lsp_module) = fs.load(&server_path.join("server.js")).await.log_err()
+                else {
+                    continue;
+                };
+
+                let Some(lsp_config) = toml::from_str(&lsp_config).log_err() else {
+                    continue;
+                };
+
+                let Some(module) = engine
+                    .compile_module("the-name".into(), lsp_module)
+                    .await
+                    .log_err()
+                else {
+                    println!("Did not compile module");
+                    continue;
+                };
+
+                dbg!("compiled module");
+
+                let version: Option<String> = module
+                    .call_export("getServerVersionInfo".into(), vec![])
+                    .await
+                    .log_err();
+
+                modules.push(LanguageServerExtension {
+                    config: lsp_config,
+                    module,
+                });
+            }
+
+            this.update(&mut cx, |this, cx| {
+                this.language_server_modules.extend(
+                    modules
+                        .into_iter()
+                        .map(|module| (module.config.name.clone().into(), module)),
+                );
+                ThemeSettings::reload_current_theme(cx)
+            })
+            .ok();
+        })
     }
 
     fn watch_extensions_dir(&self, cx: &mut ModelContext<Self>) -> [Task<()>; 2] {
@@ -516,6 +555,7 @@ impl ExtensionStore {
                 let mut changed_grammars = HashSet::default();
                 let mut changed_languages = HashSet::default();
                 let mut changed_themes = HashSet::default();
+                let mut changed_language_servers = HashSet::default();
 
                 {
                     let manifest = manifest.read();
@@ -546,6 +586,14 @@ impl ExtensionStore {
                                 changed_themes.insert(theme_name.clone());
                             }
                         }
+
+                        for (name, server) in &manifest.language_servers {
+                            let mut server_path = extensions_dir.clone();
+                            server_path.extend([server.extension.as_ref(), server.path.as_path()]);
+                            if event.path.starts_with(&server_path) || event.path == server_path {
+                                changed_language_servers.insert(name.clone());
+                            }
+                        }
                     }
                 }
 
@@ -554,6 +602,7 @@ impl ExtensionStore {
                         languages: changed_languages,
                         grammars: changed_grammars,
                         themes: changed_themes,
+                        language_servers: changed_language_servers,
                     })
                     .ok();
             }
@@ -626,8 +675,13 @@ impl ExtensionStore {
                     })
                     .await;
 
+                if let Ok(task) =
+                    this.update(&mut cx, |this, cx| this.manifest_updated(manifest, cx))
+                {
+                    task.await;
+                }
+
                 this.update(&mut cx, |this, cx| {
-                    this.manifest_updated(manifest, cx);
                     this.reload_task.take();
                     if this.needs_reload {
                         this.reload(cx);
@@ -730,6 +784,29 @@ impl ExtensionStore {
                 }
             }
         }
+
+        if let Ok(mut language_server_paths) =
+            fs.read_dir(&extension_dir.join("language_servers")).await
+        {
+            while let Some(language_server_path) = language_server_paths.next().await {
+                let path = language_server_path?;
+                let Ok(relative_path) = path.strip_prefix(&extension_dir) else {
+                    continue;
+                };
+                let Some(server_name) = relative_path.file_stem().and_then(OsStr::to_str) else {
+                    continue;
+                };
+                manifest.language_servers.insert(
+                    server_name.into(),
+                    GrammarManifestEntry {
+                        extension: extension_name.into(),
+                        path: relative_path.into(),
+                    },
+                );
+            }
+        }
+
+        dbg!(&manifest);
 
         Ok(())
     }

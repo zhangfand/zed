@@ -10,13 +10,16 @@ use std::{path::PathBuf, sync::Arc};
 use theme::ThemeRegistry;
 use util::http::FakeHttpClient;
 
+#[ctor::ctor]
+fn init_logger() {
+    if std::env::var("RUST_LOG").is_ok() {
+        env_logger::init();
+    }
+}
+
 #[gpui::test]
 async fn test_extension_store(cx: &mut TestAppContext) {
-    cx.update(|cx| {
-        let store = SettingsStore::test(cx);
-        cx.set_global(store);
-        theme::init(theme::LoadThemes::JustBase, cx);
-    });
+    init_test(cx);
 
     let fs = FakeFs::new(cx.executor());
     let http_client = FakeHttpClient::with_200_response();
@@ -185,6 +188,7 @@ async fn test_extension_store(cx: &mut TestAppContext) {
         ]
         .into_iter()
         .collect(),
+        language_servers: Default::default(),
     };
 
     let language_registry = Arc::new(LanguageRegistry::test());
@@ -347,5 +351,116 @@ async fn test_extension_store(cx: &mut TestAppContext) {
 
         assert_eq!(language_registry.language_names(), ["Plain Text"]);
         assert_eq!(language_registry.grammar_names(), []);
+    });
+}
+
+#[gpui::test]
+async fn test_extension_with_language_server(cx: &mut TestAppContext) {
+    init_test(cx);
+
+    let fs = FakeFs::new(cx.executor());
+    let http_client = FakeHttpClient::with_200_response();
+
+    // name = "gloop"
+    // short_name = "gloop"
+
+    // [install.github_release]
+    // repository = "gleam-lang/gleam"
+    // # gzip = true
+    // asset = { function = "findReleaseAsset" }
+    //
+    //
+    // languages
+    //      go
+    //          gopls-1.22-go-1.12
+    //              gopls
+    //          gopls-1.22-go-1.12
+    //
+    //      rust-analyzer
+    //           1.76
+    //              rust-analyzer
+    //
+    // mixpanel-browser:
+    //   specifier: 2.45.0
+    //   version: 2.45.0
+    // next:
+    //   specifier: 14.0.4
+    //   version: 14.0.4(@babel/core@7.20.2)(react-dom@18.2.0)(react@18.2.0)(sass@1.56.1)
+    //
+    // version-detection methods:
+    // * latest GitHub release
+    // * latest npm package version(s)
+    // * read file in the worktree (.go-version, package.json)
+    //
+    // 4 installation methods:
+    // * download a compressed binary, extract it and make it executable
+    // * download a zip directory and extract it
+    // * npm install package(s)
+    // * go install
+
+    fs.insert_tree(
+        "/the-extension-dir",
+        json!({
+            "installed": {
+                "the-lsp-extension": {
+                    "extension.json": r#"{
+                        "id": "the-lsp-extension",
+                        "name": "The LSP Extension",
+                        "version": "1.0.0"
+                    }"#,
+                    "language_servers": {
+                        "the-server": {
+                            "config.toml": r#"
+                                language = "TypeScript"
+                                name = ""
+                            "#,
+                            "server.js": r#"
+                                import {latestNpmPackageVersion} from 'zed/language-server'
+
+                                export async function getServerVersionInfo({rootDirectory}) {
+                                    const version = await latestNpmPackageVersion('typescript-language-server');
+                                    return {'typescript-language-server': version}
+                                }
+
+                                export function commandForLanguageServer(version, directory) {
+                                    return {command: '', args: []}
+                                }
+
+                                export function installLanguageServer(version, directory) {
+                                    // return { npm: { 'typescript-language-server', version: '1.0.0'} }
+                                }
+                            "#
+                        }
+                    }
+                }
+            }
+        }),
+    )
+    .await;
+
+    let language_registry = Arc::new(LanguageRegistry::test());
+    let theme_registry = Arc::new(ThemeRegistry::new(Box::new(())));
+
+    let _store = cx.new_model(|cx| {
+        ExtensionStore::new(
+            PathBuf::from("/the-extension-dir"),
+            fs.clone(),
+            http_client.clone(),
+            language_registry.clone(),
+            theme_registry.clone(),
+            cx,
+        )
+    });
+
+    cx.executor().run_until_parked();
+}
+
+fn init_test(cx: &mut TestAppContext) {
+    cx.update(|cx| {
+        let store = SettingsStore::test(cx);
+        cx.set_global(store);
+        theme::init(theme::LoadThemes::JustBase, cx);
+        scripting::init(cx);
+        // env_lo
     });
 }

@@ -3273,6 +3273,8 @@ dependencies = [
  "async-trait",
  "client",
  "collections",
+ "ctor",
+ "env_logger",
  "fs",
  "futures 0.3.28",
  "gpui",

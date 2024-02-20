@@ -173,7 +173,7 @@ fn main() {
         );
         assistant::init(cx);
 
-        scripting::init();
+        scripting::init(cx);
 
         extension::init(
             fs.clone(),
