@@ -1,8 +1,12 @@
+use assets::Assets;
 use gpui::{
-    div, hsla, prelude::*, px, rems, AnyElement, Div, ElementId, Hsla, SharedString, WindowContext,
+    div, hsla, prelude::*, px, rems, AnyElement, App, AppContext, Div, ElementId, Hsla,
+    SharedString, WindowContext, WindowOptions,
 };
 use itertools::Itertools;
+use settings::{default_settings, Settings, SettingsStore};
 use smallvec::SmallVec;
+use theme::ThemeSettings;
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -375,4 +379,39 @@ impl ParentElement for StorySection {
     fn extend(&mut self, elements: impl Iterator<Item = AnyElement>) {
         self.children.extend(elements)
     }
+}
+
+pub fn run_story<V: 'static + Render>(make_story: impl 'static + FnOnce(&mut ViewContext<V>) -> V) {
+    App::new().run(move |cx| {
+        cx.open_window(WindowOptions::default(), |cx| {
+            load_embedded_fonts(cx).unwrap();
+
+            let mut store = SettingsStore::default();
+            store
+                .set_default_settings(default_settings().as_ref(), cx)
+                .unwrap();
+            cx.set_global(store);
+
+            theme::init(theme::LoadThemes::All(Box::new(Assets)), cx);
+
+            let ui_font_size = ThemeSettings::get_global(cx).ui_font_size;
+            cx.set_rem_size(ui_font_size);
+
+            cx.new_view(make_story)
+        });
+        cx.activate(true);
+    });
+}
+
+pub fn load_embedded_fonts(cx: &AppContext) -> gpui::Result<()> {
+    let font_paths = cx.asset_source().list("fonts")?;
+    let mut embedded_fonts = Vec::new();
+    for font_path in font_paths {
+        if font_path.ends_with(".ttf") {
+            let font_bytes = cx.asset_source().load(&font_path)?;
+            embedded_fonts.push(font_bytes);
+        }
+    }
+
+    cx.text_system().add_fonts(embedded_fonts)
 }

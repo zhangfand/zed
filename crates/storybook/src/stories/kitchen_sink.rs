@@ -1,7 +1,6 @@
 use gpui::{prelude::*, Render, View};
 use story::Story;
 use strum::IntoEnumIterator;
-use ui::prelude::*;
 
 use crate::story_selector::ComponentStory;
 

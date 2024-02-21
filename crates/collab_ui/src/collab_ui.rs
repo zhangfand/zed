@@ -6,12 +6,10 @@ mod face_pile;
 pub mod notification_panel;
 pub mod notifications;
 mod panel_settings;
-
-use std::{rc::Rc, sync::Arc};
-
 use call::{report_call_event_for_room, ActiveCall};
 pub use collab_panel::CollabPanel;
 pub use collab_titlebar_item::CollabTitlebarItem;
+pub use face_pile::*;
 use gpui::{
     actions, point, AppContext, GlobalPixels, Pixels, PlatformDisplay, Size, Task, WindowBounds,
     WindowContext, WindowKind, WindowOptions,
@@ -20,6 +18,7 @@ pub use panel_settings::{
     ChatPanelSettings, CollaborationPanelSettings, NotificationPanelSettings,
 };
 use settings::Settings;
+use std::{rc::Rc, sync::Arc};
 use workspace::{notifications::DetachAndPromptErr, AppState};
 
 actions!(

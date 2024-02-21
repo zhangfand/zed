@@ -135,6 +135,7 @@ pub use scene::*;
 use seal::Sealed;
 pub use shared_string::*;
 pub use shared_uri::*;
+pub use smallvec;
 pub use smol::Timer;
 pub use style::*;
 pub use styled::*;

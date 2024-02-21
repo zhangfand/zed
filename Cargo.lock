@@ -2139,9 +2139,7 @@ dependencies = [
 name = "color"
 version = "0.1.0"
 dependencies = [
- "itertools 0.11.0",
  "palette",
- "story",
 ]
 
 [[package]]
@@ -9038,9 +9036,12 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 name = "story"
 version = "0.1.0"
 dependencies = [
+ "assets",
  "gpui",
  "itertools 0.10.5",
+ "settings",
  "smallvec",
+ "theme",
 ]
 
 [[package]]
@@ -9526,7 +9527,6 @@ dependencies = [
  "serde_json_lenient",
  "serde_repr",
  "settings",
- "story",
  "toml 0.8.10",
  "util",
  "uuid 1.4.1",

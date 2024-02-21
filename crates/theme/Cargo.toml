@@ -7,7 +7,6 @@ license = "GPL-3.0-or-later"
 
 [features]
 default = []
-stories = ["dep:itertools", "dep:story"]
 test-support = ["gpui/test-support", "fs/test-support", "settings/test-support"]
 
 [lib]
@@ -34,7 +33,6 @@ serde_json.workspace = true
 serde_json_lenient.workspace = true
 serde_repr.workspace = true
 settings.workspace = true
-story = { workspace = true, optional = true }
 toml.workspace = true
 util.workspace = true
 uuid.workspace = true

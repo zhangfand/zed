@@ -39,7 +39,7 @@ use crate::{
     Pixels, Point, Size, ViewContext, WindowContext, ELEMENT_ARENA,
 };
 use derive_more::{Deref, DerefMut};
-pub(crate) use smallvec::SmallVec;
+use smallvec::SmallVec;
 use std::{any::Any, fmt::Debug, ops::DerefMut};
 
 /// Implemented by types that participate in laying out and painting the contents of a window.

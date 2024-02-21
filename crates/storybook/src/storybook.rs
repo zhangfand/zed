@@ -5,12 +5,12 @@ mod story_selector;
 use clap::Parser;
 use dialoguer::FuzzySelect;
 use gpui::{
-    div, px, size, AnyView, AppContext, Bounds, Render, ViewContext, VisualContext, WindowBounds,
-    WindowOptions,
+    div, px, size, AnyView, Bounds, Render, ViewContext, VisualContext, WindowBounds, WindowOptions,
 };
 use log::LevelFilter;
 use settings::{default_settings, Settings, SettingsStore};
 use simplelog::SimpleLogger;
+use story::load_embedded_fonts;
 use strum::IntoEnumIterator;
 use theme::{ThemeRegistry, ThemeSettings};
 use ui::prelude::*;
@@ -119,17 +119,4 @@ impl Render for StoryWrapper {
             .font("Zed Mono")
             .child(self.story.clone())
     }
-}
-
-fn load_embedded_fonts(cx: &AppContext) -> gpui::Result<()> {
-    let font_paths = cx.asset_source().list("fonts")?;
-    let mut embedded_fonts = Vec::new();
-    for font_path in font_paths {
-        if font_path.ends_with(".ttf") {
-            let font_bytes = cx.asset_source().load(&font_path)?;
-            embedded_fonts.push(font_bytes);
-        }
-    }
-
-    cx.text_system().add_fonts(embedded_fonts)
 }

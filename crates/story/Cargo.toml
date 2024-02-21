@@ -5,7 +5,13 @@ edition = "2021"
 publish = false
 license = "GPL-3.0-or-later"
 
+[lib]
+path = "src/story.rs"
+
 [dependencies]
+assets.workspace = true
 gpui.workspace = true
+theme.workspace = true
 itertools = { package = "itertools", version = "0.10" }
+settings.workspace = true
 smallvec.workspace = true
