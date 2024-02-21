@@ -1,4 +1,4 @@
-use crate::{init, Engine, Isolate};
+use crate::{init, Engine};
 use gpui::{AppContext, TestAppContext};
 
 #[gpui::test]

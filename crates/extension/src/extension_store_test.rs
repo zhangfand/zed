@@ -1,6 +1,7 @@
 use crate::{
     ExtensionStore, GrammarManifestEntry, LanguageManifestEntry, Manifest, ThemeManifestEntry,
 };
+use collections::HashMap;
 use fs::FakeFs;
 use gpui::{Context, TestAppContext};
 use language::{LanguageMatcher, LanguageRegistry};
@@ -412,14 +413,14 @@ async fn test_extension_with_language_server(cx: &mut TestAppContext) {
                         "the-server": {
                             "config.toml": r#"
                                 language = "TypeScript"
-                                name = ""
+                                name = "the-server"
                             "#,
                             "server.js": r#"
-                                import {latestNpmPackageVersion} from 'zed/language-server'
+                                // import {latestNpmPackageVersion} from 'zed'
 
-                                export async function getServerVersionInfo({rootDirectory}) {
-                                    const version = await latestNpmPackageVersion('typescript-language-server');
-                                    return {'typescript-language-server': version}
+                                export async function getServerVersionInfo() {
+                                    const version = await zed.latestNpmPackageVersion('typescript-language-server');
+                                    return {"v": version}
                                 }
 
                                 export function commandForLanguageServer(version, directory) {
@@ -441,7 +442,7 @@ async fn test_extension_with_language_server(cx: &mut TestAppContext) {
     let language_registry = Arc::new(LanguageRegistry::test());
     let theme_registry = Arc::new(ThemeRegistry::new(Box::new(())));
 
-    let _store = cx.new_model(|cx| {
+    let store = cx.new_model(|cx| {
         ExtensionStore::new(
             PathBuf::from("/the-extension-dir"),
             fs.clone(),
@@ -453,6 +454,20 @@ async fn test_extension_with_language_server(cx: &mut TestAppContext) {
     });
 
     cx.executor().run_until_parked();
+
+    let result = store
+        .update(cx, |store, cx| {
+            store
+                .language_server_modules
+                .get("the-server")
+                .unwrap()
+                .module
+                .call_export::<HashMap<String, String>>("getServerVersionInfo".into(), vec![])
+        })
+        .await
+        .unwrap();
+
+    dbg!(result);
 }
 
 fn init_test(cx: &mut TestAppContext) {

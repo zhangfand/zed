@@ -11,9 +11,8 @@ use gpui::{actions, AppContext, Context, Global, Model, ModelContext, Task};
 use language::{
     LanguageConfig, LanguageMatcher, LanguageQueries, LanguageRegistry, QUERY_FILENAME_PREFIXES,
 };
-use node_runtime::NodeRuntime;
 use parking_lot::RwLock;
-use scripting::{Engine, ModuleHandle};
+use scripting::{Engine, Module};
 use serde::{Deserialize, Serialize};
 use settings::Settings as _;
 use std::cmp::Ordering;
@@ -77,7 +76,7 @@ pub struct ExtensionStore {
 
 struct LanguageServerExtension {
     config: LanguageServerConfig,
-    module: ModuleHandle,
+    module: Module,
 }
 
 #[derive(Deserialize)]
