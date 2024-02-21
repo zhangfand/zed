@@ -3,6 +3,7 @@ use async_compression::futures::bufread::GzipDecoder;
 use async_tar::Archive;
 use client::ClientSettings;
 use collections::{BTreeMap, HashMap, HashSet};
+use deno_core::Op;
 use fs::{Fs, RemoveOptions};
 use futures::channel::mpsc::unbounded;
 use futures::StreamExt as _;
@@ -31,6 +32,7 @@ use util::{http::HttpClient, paths::EXTENSIONS_DIR, ResultExt};
 mod extension_store_test;
 
 mod extension_lsp_adapter;
+mod language_server_ops;
 
 #[derive(Deserialize)]
 pub struct ExtensionsApiResponse {
@@ -138,6 +140,14 @@ pub fn init(
     theme_registry: Arc<ThemeRegistry>,
     cx: &mut AppContext,
 ) {
+    scripting::register_extension(
+        "Language Server API",
+        "zed/language-server",
+        include_str!("./language_server.js"),
+        &[language_server_ops::op_language_server_latest_npm_package_version::DECL],
+        cx,
+    );
+
     let store = cx.new_model(|cx| {
         ExtensionStore::new(
             EXTENSIONS_DIR.clone(),
@@ -493,13 +503,13 @@ impl ExtensionStore {
             for module in language_servers {
                 let mut server_path = root_dir.clone();
                 server_path.extend([module.extension.as_ref(), module.path.as_path()]);
+                let config_path = server_path.join("config.toml");
+                let js_path = server_path.join("server.js");
 
-                let Some(lsp_config) = fs.load(&server_path.join("config.toml")).await.log_err()
-                else {
+                let Some(lsp_config) = fs.load(&config_path).await.log_err() else {
                     continue;
                 };
-                let Some(lsp_module) = fs.load(&server_path.join("server.js")).await.log_err()
-                else {
+                let Some(lsp_module) = fs.load(&js_path).await.log_err() else {
                     continue;
                 };
 
@@ -507,21 +517,11 @@ impl ExtensionStore {
                     continue;
                 };
 
-                let Some(module) = engine
-                    .compile_module("the-name".into(), lsp_module)
-                    .await
-                    .log_err()
+                let Some(module) = engine.compile_module(js_path, lsp_module).await.log_err()
                 else {
                     println!("Did not compile module");
                     continue;
                 };
-
-                dbg!("compiled module");
-
-                let version: Option<String> = module
-                    .call_export("getServerVersionInfo".into(), vec![])
-                    .await
-                    .log_err();
 
                 modules.push(LanguageServerExtension {
                     config: lsp_config,

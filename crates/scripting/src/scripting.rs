@@ -1,6 +1,9 @@
 use anyhow::{anyhow, Context, Result};
 use collections::HashMap;
-use deno_core::{error::AnyError, JsRuntime, ModuleSpecifier, PollEventLoopOptions};
+use deno_core::{
+    error::AnyError, FastString, JsRuntime, ModuleLoadResponse, ModuleSource, ModuleSourceCode,
+    ModuleSpecifier, ModuleType, OpState, PollEventLoopOptions,
+};
 use futures::{
     channel::{mpsc, oneshot},
     Future, StreamExt,
@@ -8,25 +11,39 @@ use futures::{
 use gpui::{AppContext, Global};
 use serde::de::DeserializeOwned;
 use serde_v8::Serializable;
-use std::sync::Arc;
-use std::vec::Vec;
+use std::{path::PathBuf, vec::Vec};
+use std::{rc::Rc, sync::Arc};
 use util::maybe;
 
 #[cfg(test)]
 mod scripting_test;
 
-#[deno_core::op2(async)]
-#[string]
-pub async fn op_latest_npm_package_version() -> Result<String, AnyError> {
-    Ok("the-version".into())
+#[derive(Clone)]
+struct Extension {
+    name: &'static str,
+    import_specifier: &'static str,
+    source: &'static str,
+    op_state: Option<Arc<dyn Any>>,
+    ops: &'static [deno_core::OpDecl],
 }
 
-deno_core::extension!(
-    zed_ops,
-    ops = [op_latest_npm_package_version],
-    esm_entry_point = "ext:zed_ops/zed.js",
-    esm = ["zed.js"],
-);
+unsafe impl Send for Extension {}
+
+pub fn register_extension(
+    name: &'static str,
+    import_specifier: &'static str,
+    source: &'static str,
+    ops: &'static [deno_core::OpDecl],
+    cx: &mut AppContext,
+) {
+    let list = cx.default_global::<GlobalExtensionList>();
+    list.0.push(Extension {
+        name,
+        import_specifier,
+        source,
+        ops,
+    });
+}
 
 pub fn init(cx: &mut AppContext) {
     let engine = Engine::new(cx);
@@ -42,6 +59,11 @@ struct GlobalEngine(Engine);
 
 impl Global for GlobalEngine {}
 
+#[derive(Default)]
+struct GlobalExtensionList(Vec<Extension>);
+
+impl Global for GlobalExtensionList {}
+
 pub struct Module {
     operations: mpsc::UnboundedSender<Operation>,
     id: ModuleId,
@@ -52,7 +74,7 @@ struct ModuleId(usize);
 
 enum Operation {
     CompileModule {
-        name: String,
+        path: PathBuf,
         source: String,
         callback: oneshot::Sender<Result<ModuleId>>,
     },
@@ -73,25 +95,27 @@ impl Engine {
         cx.global::<GlobalEngine>().0.clone()
     }
 
-    pub fn new(cx: &AppContext) -> Self {
+    pub fn new(cx: &mut AppContext) -> Self {
         let (ops_tx, ops_rx) = mpsc::unbounded();
 
+        let extensions = cx.default_global::<GlobalExtensionList>().0.clone();
+
         cx.background_executor()
-            .spawn_local(move || Self::run(ops_rx));
+            .spawn_local(move || Self::run(extensions, ops_rx));
 
         Self { operations: ops_tx }
     }
 
     pub fn compile_module(
         &self,
-        name: String,
+        path: PathBuf,
         source: String,
     ) -> impl Future<Output = Result<Module>> {
         let (tx, rx) = oneshot::channel();
         let operations = self.operations.clone();
         self.operations
             .unbounded_send(Operation::CompileModule {
-                name,
+                path,
                 source,
                 callback: tx,
             })
@@ -104,10 +128,25 @@ impl Engine {
         }
     }
 
-    async fn run(mut rx: mpsc::UnboundedReceiver<Operation>) {
+    async fn run(extensions: Vec<Extension>, mut rx: mpsc::UnboundedReceiver<Operation>) {
         let mut runtime = deno_core::JsRuntime::new(deno_core::RuntimeOptions {
-            extensions: vec![zed_ops::init_ops_and_esm()],
-            module_loader: None,
+            extensions: extensions
+                .iter()
+                .map(|extension| deno_core::Extension {
+                    name: extension.name,
+                    ops: extension.ops.into(),
+                    op_state_fn: extension.op_state.map(|state| Box::new(|op_state| {
+                        *op_state = state;
+                    })
+                    ..Default::default()
+                })
+                .collect(),
+            module_loader: Some(Rc::new(ModuleLoader {
+                extension_sources_by_import_specifier: extensions
+                    .iter()
+                    .map(|extension| (extension.import_specifier.to_string(), extension.source))
+                    .collect(),
+            })),
             ..Default::default()
         });
 
@@ -116,14 +155,14 @@ impl Engine {
         while let Some(operation) = rx.next().await {
             match operation {
                 Operation::CompileModule {
-                    name,
+                    path,
                     source,
                     callback,
                 } => {
                     let result = (|| async {
                         let module_id = runtime
-                            .load_side_module(
-                                &ModuleSpecifier::from_file_path("/foo").unwrap(),
+                            .load_main_module(
+                                &ModuleSpecifier::from_file_path(&path).unwrap(),
                                 Some(source.into()),
                             )
                             .await?;
@@ -230,5 +269,58 @@ impl Drop for Module {
         self.operations
             .unbounded_send(Operation::DropModule { module_id: self.id })
             .ok();
+    }
+}
+
+struct ModuleLoader {
+    extension_sources_by_import_specifier: HashMap<String, &'static str>,
+}
+
+const EXTENSION_SCHEME: &'static str = "scripting-extension";
+
+impl deno_core::ModuleLoader for ModuleLoader {
+    fn resolve(
+        &self,
+        specifier: &str,
+        _referrer: &str,
+        _kind: deno_core::ResolutionKind,
+    ) -> Result<ModuleSpecifier> {
+        Ok(
+            if self
+                .extension_sources_by_import_specifier
+                .contains_key(specifier)
+            {
+                ModuleSpecifier::parse(&format!("{EXTENSION_SCHEME}:///{specifier}"))?
+            } else {
+                ModuleSpecifier::parse(specifier)?
+            },
+        )
+    }
+
+    fn load(
+        &self,
+        module_specifier: &ModuleSpecifier,
+        _maybe_referrer: Option<&ModuleSpecifier>,
+        _is_dyn_import: bool,
+        _requested_module_type: deno_core::RequestedModuleType,
+    ) -> ModuleLoadResponse {
+        ModuleLoadResponse::Sync(if module_specifier.scheme() == EXTENSION_SCHEME {
+            let path = module_specifier.path();
+            if let Some(source) = self
+                .extension_sources_by_import_specifier
+                .get(path)
+                .copied()
+            {
+                Ok(ModuleSource::new(
+                    ModuleType::JavaScript,
+                    ModuleSourceCode::String(FastString::from_static(source)),
+                    module_specifier,
+                ))
+            } else {
+                Err(anyhow!("unknown extension '{path}'"))
+            }
+        } else {
+            Err(anyhow!("failed to load module"))
+        })
     }
 }

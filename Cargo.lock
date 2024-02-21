@@ -3357,6 +3357,7 @@ dependencies = [
  "client",
  "collections",
  "ctor",
+ "deno_core",
  "env_logger",
  "fs",
  "futures 0.3.28",

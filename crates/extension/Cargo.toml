@@ -19,6 +19,7 @@ async-tar.workspace = true
 async-trait.workspace = true
 client.workspace = true
 collections.workspace = true
+deno_core.workspace = true
 fs.workspace = true
 futures.workspace = true
 gpui.workspace = true

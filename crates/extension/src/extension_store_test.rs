@@ -416,10 +416,10 @@ async fn test_extension_with_language_server(cx: &mut TestAppContext) {
                                 name = "the-server"
                             "#,
                             "server.js": r#"
-                                // import {latestNpmPackageVersion} from 'zed'
+                                import {latestNpmPackageVersion} from 'zed/language-server'
 
                                 export async function getServerVersionInfo() {
-                                    const version = await zed.latestNpmPackageVersion('typescript-language-server');
+                                    const version = await latestNpmPackageVersion('typescript-language-server');
                                     return {"v": version}
                                 }
 
