@@ -1,5 +1,5 @@
 use collab_ui::FacePile;
-use gpui::{smallvec::smallvec, App, AppContext, WindowOptions};
+use gpui::smallvec::smallvec;
 use story::run_story;
 use ui::{prelude::*, Avatar};
 

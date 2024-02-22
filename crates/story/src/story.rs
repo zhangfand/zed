@@ -1,6 +1,6 @@
 use assets::Assets;
 use gpui::{
-    div, hsla, prelude::*, px, rems, AnyElement, App, AppContext, Div, ElementId, Hsla,
+    div, hsla, prelude::*, px, rems, size, AnyElement, App, AppContext, Div, ElementId, Hsla,
     SharedString, WindowContext, WindowOptions,
 };
 use itertools::Itertools;
@@ -383,22 +383,25 @@ impl ParentElement for StorySection {
 
 pub fn run_story<V: 'static + Render>(make_story: impl 'static + FnOnce(&mut ViewContext<V>) -> V) {
     App::new().run(move |cx| {
-        cx.open_window(WindowOptions::default(), |cx| {
-            load_embedded_fonts(cx).unwrap();
+        cx.open_window(
+            WindowOptions::centered(size(px(800.), px(600.))).with_title("Story"),
+            |cx| {
+                load_embedded_fonts(cx).unwrap();
 
-            let mut store = SettingsStore::default();
-            store
-                .set_default_settings(default_settings().as_ref(), cx)
-                .unwrap();
-            cx.set_global(store);
+                let mut store = SettingsStore::default();
+                store
+                    .set_default_settings(default_settings().as_ref(), cx)
+                    .unwrap();
+                cx.set_global(store);
 
-            theme::init(theme::LoadThemes::All(Box::new(Assets)), cx);
+                theme::init(theme::LoadThemes::All(Box::new(Assets)), cx);
 
-            let ui_font_size = ThemeSettings::get_global(cx).ui_font_size;
-            cx.set_rem_size(ui_font_size);
+                let ui_font_size = ThemeSettings::get_global(cx).ui_font_size;
+                cx.set_rem_size(ui_font_size);
 
-            cx.new_view(make_story)
-        });
+                cx.new_view(make_story)
+            },
+        );
         cx.activate(true);
     });
 }

@@ -488,6 +488,26 @@ pub trait InputHandler: 'static {
     ) -> Option<Bounds<Pixels>>;
 }
 
+impl WindowOptions {
+    /// Construct options to center the window, giving it the specified size.
+    /// It uses 0,0 as the origin of the bounds, since the window will be centered anyway.
+    pub fn centered(size: Size<Pixels>) -> Self {
+        Self {
+            center: true,
+            bounds: WindowBounds::Fixed(Bounds::new(Point::default(), size.into())),
+            ..Default::default()
+        }
+    }
+
+    /// Assign a title to the window
+    pub fn with_title(mut self, title: impl Into<SharedString>) -> Self {
+        self.titlebar
+            .get_or_insert(TitlebarOptions::default())
+            .title = Some(title.into());
+        self
+    }
+}
+
 /// The variables that can be configured when creating a new window
 #[derive(Debug)]
 pub struct WindowOptions {
