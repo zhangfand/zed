@@ -2,13 +2,14 @@ use std::path::PathBuf;
 
 use crate::Project;
 use gpui::{AnyWindowHandle, Context, Entity, Model, ModelContext, WeakModel};
-use python::{self, python_settings::PythonSettings};
+use python::{self, python_settings::PythonSettings, Interpreter};
 use settings::Settings;
 use smol::channel::bounded;
 use terminal::{
     terminal_settings::{Shell, TerminalSettings},
     SpawnTask, TaskState, Terminal, TerminalBuilder,
 };
+use util::ResultExt;
 
 // #[cfg(target_os = "macos")]
 // use std::os::unix::ffi::OsStrExt;
@@ -87,48 +88,25 @@ impl Project {
             })
             .detach();
 
-            // TODO INTERPRETER
             if activate_venv_on_launch {
-                // Check to make sure path exists, show toast if not
-                // logic should account for absolute and relative paths
-                // if let Some(venv_settings) = &venv_settings.as_option() {
-                //     let interpreter_path = python::retrieve_interpreter_path_from_local_settings();
-                //     let activate_command = python::get_activate_command(venv_settings);
-                //     let activate_script_path =
-                //         python::find_activate_script_path(venv_settings, working_directory);
-                //     self.activate_python_virtual_environment(
-                //         activate_command,
-                //         activate_script_path,
-                //         &terminal_handle,
-                //         cx,
-                //     );
-                // }
+                // TODO INTERPRETER
+                let worktree_path =
+                    PathBuf::from("/Users/josephlyons/Desktop/pydantic_test".to_string());
+                if let Some(interpreter) =
+                    Interpreter::retrieve_from_local_settings(worktree_path.into()).log_err()
+                {
+                    if let Some(command) = interpreter
+                        .activation_script_command(&python_settings)
+                        .log_err()
+                    {
+                        terminal_handle.update(cx, |this, _| this.input_bytes(command));
+                    };
+                };
             }
             terminal_handle
         });
 
         terminal
-    }
-
-    fn activate_python_virtual_environment(
-        &mut self,
-        activate_command: &'static str,
-        activate_script: Option<PathBuf>,
-        terminal_handle: &Model<Terminal>,
-        cx: &mut ModelContext<Project>,
-    ) {
-        if let Some(activate_script) = activate_script {
-            // Paths are not strings so we need to jump through some hoops to format the command without `format!`
-            let mut command = Vec::from(activate_command.as_bytes());
-            command.push(b' ');
-            // Wrapping path in double quotes to catch spaces in folder name
-            command.extend_from_slice(b"\"");
-            command.extend_from_slice(activate_script.as_os_str().as_encoded_bytes());
-            command.extend_from_slice(b"\"");
-            command.push(b'\n');
-
-            terminal_handle.update(cx, |this, _| this.input_bytes(command));
-        }
     }
 
     pub fn local_terminal_handles(&self) -> &Vec<WeakModel<terminal::Terminal>> {

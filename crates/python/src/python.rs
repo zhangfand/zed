@@ -15,7 +15,14 @@ pub struct Interpreter {
     interpreter_path: PathBuf,
 }
 
-// TODO INTERPRETER
+impl TryFrom<String> for Interpreter {
+    type Error = anyhow::Error;
+
+    fn try_from(path: String) -> anyhow::Result<Self> {
+        Self::new(PathBuf::from(path))
+    }
+}
+
 // In this implementation, the interpreter is the single source of truth.
 // activatation_script paths and venv paths are derived from it, but may not exist
 // if the interpreter is not associated with a venv.
@@ -41,12 +48,36 @@ impl Interpreter {
             .interpreter_path
             .parent()
             .ok_or_else(|| anyhow!("failed to find the parent directory of the interpreter"))?;
-        let user_activation_script = Self::user_activation_script(settings);
-        let activation_script_path = parent.join(user_activation_script);
+        let activation_script = match settings.venv_activation_script {
+            python_settings::ActivateScript::Default => "activate",
+            python_settings::ActivateScript::Csh => "activate.csh",
+            python_settings::ActivateScript::Fish => "activate.fish",
+            python_settings::ActivateScript::Nushell => "activate.nu",
+        };
+        let activation_script_path = parent.join(activation_script);
         if !activation_script_path.exists() {
             bail!("could not find activation script");
         }
         Ok(activation_script_path)
+    }
+
+    pub fn activation_script_command(&self, settings: &PythonSettings) -> anyhow::Result<Vec<u8>> {
+        let activate_command = match settings.venv_activation_script {
+            python_settings::ActivateScript::Nushell => "overlay use",
+            _ => "source",
+        };
+        let activation_script_path = self.activation_script_path(settings)?;
+
+        // Paths are not strings so we need to jump through some hoops to format the command without `format!`
+        let mut command = Vec::from(activate_command.as_bytes());
+        command.push(b' ');
+        // Wrapping path in double quotes to catch spaces in folder name
+        command.extend_from_slice(b"\"");
+        command.extend_from_slice(activation_script_path.as_os_str().as_encoded_bytes());
+        command.extend_from_slice(b"\"");
+        command.push(b'\n');
+
+        Ok(command)
     }
 
     pub fn venv_path(&self, settings: &PythonSettings) -> anyhow::Result<PathBuf> {
@@ -69,10 +100,8 @@ impl Interpreter {
         Ok(venv_path.to_path_buf())
     }
 
-    // TODO INTERPRETER - store in project-specific data (default_interpreter_path) - this is temp for testing
+    // TODO INTERPRETER - store in local settings
     pub fn store_in_local_settings(&self, cx: &mut AppContext) -> anyhow::Result<()> {
-        // selections from find_local_interpreters() will be stored as relative
-        // selections from find_global_interpreters() will be stored as absolute
         let interpreter_path = self.interpreter_path.to_string_lossy().to_string();
 
         cx.spawn(|_| async move {
@@ -86,7 +115,7 @@ impl Interpreter {
         Ok(())
     }
 
-    // TODO INTERPRETER - store in project-specific data (default_interpreter_path) - this is temp for testing
+    // TODO INTERPRETER - store in local settings
     pub fn retrieve_from_local_settings(worktree_path: Arc<Path>) -> anyhow::Result<Self> {
         let path_string = KEY_VALUE_STORE
             .read_kvp("interpreter_path")?
@@ -97,9 +126,8 @@ impl Interpreter {
 
         // Reconstruct any local paths, that were stored as relative to the project,
         // as absolute paths. Not sure this is the best way to handle this.
-        // We might want to save a piece of state into the settings "is_local"
         if !path.starts_with(&worktree_path) && path.is_relative() {
-            path = path.join(worktree_path)
+            path = worktree_path.join(path)
         }
 
         if !path.exists() {
@@ -110,16 +138,6 @@ impl Interpreter {
         }
 
         Self::new(path)
-        // Interpreter::try_from(path_string)
-    }
-
-    pub fn user_activation_script(settings: &PythonSettings) -> &'static str {
-        match settings.venv_activation_script {
-            python_settings::ActivateScript::Default => "activate",
-            python_settings::ActivateScript::Csh => "activate.csh",
-            python_settings::ActivateScript::Fish => "activate.fish",
-            python_settings::ActivateScript::Nushell => "activate.nu",
-        }
     }
 
     pub fn find_interpreters(worktree_path: Arc<Path>, settings: &PythonSettings) -> Vec<Self> {
@@ -128,11 +146,11 @@ impl Interpreter {
         interpreters
     }
 
+    /// Returns Interpreters that contain relative paths to discovered local interpreters
     pub fn find_local_interpreters(
         worktree_path: Arc<Path>,
         settings: &PythonSettings,
     ) -> Vec<Self> {
-        // Should only return relative paths
         // TODO INTERPRETER - Add decorations to local venv ("recommended - see VS Code")
         let paths = settings
             .venv_detection_directories
@@ -152,32 +170,22 @@ impl Interpreter {
         paths
     }
 
+    /// Returns Interpreters that contain absolute paths to discovered global interpreters
     pub fn find_global_interpreters(
         _worktree_path: Arc<Path>,
         _settings: &PythonSettings,
     ) -> Vec<Self> {
-        // TODO INTERPRETER - this will require different logic than find_local_interpreters(),
-        // since interpreters can exist outside of venvs.
         // TODO INTERPRETER - Add decorations to global venv ("global" - see VS Code")
-        // Should only return absolute paths
         Vec::new()
     }
-
-    pub fn get_activate_command(settings: &PythonSettings) -> &'static str {
-        match settings.venv_activation_script {
-            python_settings::ActivateScript::Nushell => "overlay use",
-            _ => "source",
-        }
-    }
 }
 
-impl TryFrom<String> for Interpreter {
-    type Error = anyhow::Error;
-
-    fn try_from(path: String) -> anyhow::Result<Self> {
-        Self::new(PathBuf::from(path))
-    }
-}
+// pub fn activation_command(settings: &PythonSettings) -> &'static str {
+//     match settings.venv_activation_script {
+//         python_settings::ActivateScript::Nushell => "overlay use",
+//         _ => "source",
+//     }
+// }
 
 // TODO INTERPRETER
 #[cfg(test)]
@@ -210,6 +218,8 @@ mod tests {
 
     #[cfg(any(test, feature = "test-support"))]
     fn init_local_interpreter_in_venv_test(cx: &mut TestAppContext) -> PythonSettings {
+        // TODO INTERPRETER - these are literally the default settings provided in default.json
+        // Any way to not have to rewrite this multiple times
         let settings = PythonSettings {
             interpreter_path: PathBuf::from(".venv/bin/python".to_string()),
             venv_activation_script: ActivateScript::Default,
