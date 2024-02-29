@@ -8,7 +8,6 @@ use schemars::{
 use serde_derive::{Deserialize, Serialize};
 use serde_json::Value;
 use settings::SettingsJsonSchemaParams;
-use std::path::PathBuf;
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -34,52 +33,8 @@ pub struct TerminalSettings {
     pub dock: TerminalDockPosition,
     pub default_width: Pixels,
     pub default_height: Pixels,
-    pub detect_venv: VenvSettings,
+    pub activate_venv_on_launch: bool,
     pub max_scroll_history_lines: Option<usize>,
-}
-
-#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum VenvSettings {
-    #[default]
-    Off,
-    On {
-        /// Default directories to search for virtual environments, relative
-        /// to the current working directory. We recommend overriding this
-        /// in your project's settings, rather than globally.
-        activate_script: Option<ActivateScript>,
-        directories: Option<Vec<PathBuf>>,
-    },
-}
-
-pub struct VenvSettingsContent<'a> {
-    pub activate_script: ActivateScript,
-    pub directories: &'a [PathBuf],
-}
-
-impl VenvSettings {
-    pub fn as_option(&self) -> Option<VenvSettingsContent> {
-        match self {
-            VenvSettings::Off => None,
-            VenvSettings::On {
-                activate_script,
-                directories,
-            } => Some(VenvSettingsContent {
-                activate_script: activate_script.unwrap_or(ActivateScript::Default),
-                directories: directories.as_deref().unwrap_or(&[]),
-            }),
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum ActivateScript {
-    #[default]
-    Default,
-    Csh,
-    Fish,
-    Nushell,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
@@ -141,12 +96,8 @@ pub struct TerminalSettingsContent {
     ///
     /// Default: 320
     pub default_height: Option<f32>,
-    /// Activates the python virtual environment, if one is found, in the
-    /// terminal's working directory (as resolved by the working_directory
-    /// setting). Set this to "off" to disable this behavior.
-    ///
-    /// Default: on
-    pub detect_venv: Option<VenvSettings>,
+    /// TODO INTERPRETER - documentation
+    pub activate_venv_on_launch: Option<bool>,
     /// The maximum number of lines to keep in the scrollback history.
     /// Maximum allowed value is 100_000, all values above that will be treated as 100_000.
     /// 0 disables the scrolling.

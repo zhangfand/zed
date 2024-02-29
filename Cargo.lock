@@ -4530,6 +4530,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "interpreter_selector"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "editor",
+ "fuzzy",
+ "gpui",
+ "picker",
+ "project",
+ "python",
+ "settings",
+ "ui",
+ "util",
+ "workspace",
+]
+
+[[package]]
 name = "io-lifetimes"
 version = "1.0.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6703,6 +6720,7 @@ dependencies = [
  "prettier",
  "pretty_assertions",
  "project_core",
+ "python",
  "rand 0.8.5",
  "regex",
  "release_channel",
@@ -6949,6 +6967,20 @@ dependencies = [
  "bitflags 2.4.1",
  "memchr",
  "unicase",
+]
+
+[[package]]
+name = "python"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "db",
+ "fs",
+ "gpui",
+ "schemars",
+ "serde",
+ "serde_json",
+ "settings",
 ]
 
 [[package]]
@@ -11638,6 +11670,7 @@ dependencies = [
  "go_to_line",
  "gpui",
  "install_cli",
+ "interpreter_selector",
  "isahc",
  "itertools 0.11.0",
  "journal",
@@ -11657,6 +11690,7 @@ dependencies = [
  "project",
  "project_panel",
  "project_symbols",
+ "python",
  "quick_action_bar",
  "recent_projects",
  "release_channel",

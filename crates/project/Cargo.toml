@@ -42,6 +42,7 @@ parking_lot.workspace = true
 postage.workspace = true
 prettier.workspace = true
 project_core.workspace = true
+python.workspace = true
 rand.workspace = true
 regex.workspace = true
 rpc.workspace = true

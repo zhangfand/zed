@@ -1,10 +1,12 @@
+use std::path::PathBuf;
+
 use crate::Project;
 use gpui::{AnyWindowHandle, Context, Entity, Model, ModelContext, WeakModel};
+use python::{self, python_settings::PythonSettings};
 use settings::Settings;
 use smol::channel::bounded;
-use std::path::{Path, PathBuf};
 use terminal::{
-    terminal_settings::{self, Shell, TerminalSettings, VenvSettingsContent},
+    terminal_settings::{Shell, TerminalSettings},
     SpawnTask, TaskState, Terminal, TerminalBuilder,
 };
 
@@ -28,10 +30,10 @@ impl Project {
             "creating terminals as a guest is not supported yet"
         );
 
-        let settings = TerminalSettings::get_global(cx);
-        let python_settings = settings.detect_venv.clone();
+        let terminal_settings = TerminalSettings::get_global(cx);
+        let python_settings = PythonSettings::get_global(cx);
         let (completion_tx, completion_rx) = bounded(1);
-        let mut env = settings.env.clone();
+        let mut env = terminal_settings.env.clone();
         let (spawn_task, shell) = if let Some(spawn_task) = spawn_task {
             env.extend(spawn_task.env);
             (
@@ -47,17 +49,20 @@ impl Project {
                 },
             )
         } else {
-            (None, settings.shell.clone())
+            (None, terminal_settings.shell.clone())
         };
+
+        let activate_venv_on_launch = terminal_settings.activate_venv_on_launch;
+        let python_settings = python_settings.clone();
 
         let terminal = TerminalBuilder::new(
             working_directory.clone(),
             spawn_task,
             shell,
             env,
-            Some(settings.blinking.clone()),
-            settings.alternate_scroll,
-            settings.max_scroll_history_lines,
+            Some(terminal_settings.blinking.clone()),
+            terminal_settings.alternate_scroll,
+            terminal_settings.max_scroll_history_lines,
             window,
             completion_tx,
         )
@@ -82,57 +87,27 @@ impl Project {
             })
             .detach();
 
-            if let Some(python_settings) = &python_settings.as_option() {
-                let activate_command = Project::get_activate_command(python_settings);
-                let activate_script_path =
-                    self.find_activate_script_path(python_settings, working_directory);
-                self.activate_python_virtual_environment(
-                    activate_command,
-                    activate_script_path,
-                    &terminal_handle,
-                    cx,
-                );
+            // TODO INTERPRETER
+            if activate_venv_on_launch {
+                // Check to make sure path exists, show toast if not
+                // logic should account for absolute and relative paths
+                // if let Some(venv_settings) = &venv_settings.as_option() {
+                //     let interpreter_path = python::retrieve_interpreter_path_from_local_settings();
+                //     let activate_command = python::get_activate_command(venv_settings);
+                //     let activate_script_path =
+                //         python::find_activate_script_path(venv_settings, working_directory);
+                //     self.activate_python_virtual_environment(
+                //         activate_command,
+                //         activate_script_path,
+                //         &terminal_handle,
+                //         cx,
+                //     );
+                // }
             }
             terminal_handle
         });
 
         terminal
-    }
-
-    pub fn find_activate_script_path(
-        &mut self,
-        settings: &VenvSettingsContent,
-        working_directory: Option<PathBuf>,
-    ) -> Option<PathBuf> {
-        // When we are unable to resolve the working directory, the terminal builder
-        // defaults to '/'. We should probably encode this directly somewhere, but for
-        // now, let's just hard code it here.
-        let working_directory = working_directory.unwrap_or_else(|| Path::new("/").to_path_buf());
-        let activate_script_name = match settings.activate_script {
-            terminal_settings::ActivateScript::Default => "activate",
-            terminal_settings::ActivateScript::Csh => "activate.csh",
-            terminal_settings::ActivateScript::Fish => "activate.fish",
-            terminal_settings::ActivateScript::Nushell => "activate.nu",
-        };
-
-        for virtual_environment_name in settings.directories {
-            let mut path = working_directory.join(virtual_environment_name);
-            path.push("bin/");
-            path.push(activate_script_name);
-
-            if path.exists() {
-                return Some(path);
-            }
-        }
-
-        None
-    }
-
-    fn get_activate_command(settings: &VenvSettingsContent) -> &'static str {
-        match settings.activate_script {
-            terminal_settings::ActivateScript::Nushell => "overlay use",
-            _ => "source",
-        }
     }
 
     fn activate_python_virtual_environment(

@@ -1,0 +1,25 @@
+[package]
+name = "interpreter_selector"
+version = "0.1.0"
+edition = "2021"
+publish = false
+license = "GPL-3.0-or-later"
+
+[lib]
+path = "src/interpreter_selector.rs"
+doctest = false
+
+[dependencies]
+anyhow.workspace = true
+fuzzy.workspace = true
+gpui.workspace = true
+picker.workspace = true
+project.workspace = true
+python.workspace = true
+settings.workspace = true
+ui.workspace = true
+util.workspace = true
+workspace.workspace = true
+
+[dev-dependencies]
+editor = { workspace = true, features = ["test-support"] }

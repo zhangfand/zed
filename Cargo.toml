@@ -35,6 +35,7 @@ members = [
     "crates/gpui",
     "crates/gpui_macros",
     "crates/install_cli",
+    "crates/interpreter_selector",
     "crates/journal",
     "crates/language",
     "crates/language_selector",
@@ -56,6 +57,7 @@ members = [
     "crates/project_core",
     "crates/project_panel",
     "crates/project_symbols",
+    "crates/python",
     "crates/quick_action_bar",
     "crates/recent_projects",
     "crates/refineable",
@@ -64,8 +66,6 @@ members = [
     "crates/rich_text",
     "crates/rope",
     "crates/rpc",
-    "crates/task",
-    "crates/tasks_ui",
     "crates/search",
     "crates/semantic_index",
     "crates/settings",
@@ -75,13 +75,15 @@ members = [
     "crates/story",
     "crates/storybook",
     "crates/sum_tree",
+    "crates/task",
+    "crates/tasks_ui",
+    "crates/telemetry_events",
     "crates/terminal",
     "crates/terminal_view",
     "crates/text",
     "crates/theme",
     "crates/theme_importer",
     "crates/theme_selector",
-    "crates/telemetry_events",
     "crates/time_format",
     "crates/ui",
     "crates/util",
@@ -132,6 +134,7 @@ go_to_line = { path = "crates/go_to_line" }
 gpui = { path = "crates/gpui" }
 gpui_macros = { path = "crates/gpui_macros" }
 install_cli = { path = "crates/install_cli" }
+interpreter_selector = { path = "crates/interpreter_selector" }
 journal = { path = "crates/journal" }
 language = { path = "crates/language" }
 language_selector = { path = "crates/language_selector" }
@@ -155,14 +158,13 @@ project = { path = "crates/project" }
 project_core = { path = "crates/project_core" }
 project_panel = { path = "crates/project_panel" }
 project_symbols = { path = "crates/project_symbols" }
+python = { path = "crates/python" }
 quick_action_bar = { path = "crates/quick_action_bar" }
 recent_projects = { path = "crates/recent_projects" }
 release_channel = { path = "crates/release_channel" }
 rich_text = { path = "crates/rich_text" }
 rope = { path = "crates/rope" }
 rpc = { path = "crates/rpc" }
-task = { path = "crates/task" }
-tasks_ui = { path = "crates/tasks_ui" }
 search = { path = "crates/search" }
 semantic_index = { path = "crates/semantic_index" }
 settings = { path = "crates/settings" }
@@ -172,13 +174,15 @@ sqlez_macros = { path = "crates/sqlez_macros" }
 story = { path = "crates/story" }
 storybook = { path = "crates/storybook" }
 sum_tree = { path = "crates/sum_tree" }
+task = { path = "crates/task" }
+tasks_ui = { path = "crates/tasks_ui" }
+telemetry_events = { path = "crates/telemetry_events" }
 terminal = { path = "crates/terminal" }
 terminal_view = { path = "crates/terminal_view" }
 text = { path = "crates/text" }
 theme = { path = "crates/theme" }
 theme_importer = { path = "crates/theme_importer" }
 theme_selector = { path = "crates/theme_selector" }
-telemetry_events = { path = "crates/telemetry_events" }
 time_format = { path = "crates/time_format" }
 ui = { path = "crates/ui" }
 util = { path = "crates/util" }

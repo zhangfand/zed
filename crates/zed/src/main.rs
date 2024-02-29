@@ -253,6 +253,7 @@ fn main() {
         terminal_view::init(cx);
 
         journal::init(app_state.clone(), cx);
+        interpreter_selector::init(cx);
         language_selector::init(cx);
         theme_selector::init(cx);
         language_tools::init(cx);

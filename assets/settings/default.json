@@ -446,19 +446,10 @@
     //           "custom": 2
     //         },
     "line_height": "comfortable",
-    // Activate the python virtual environment, if one is found, in the
-    // terminal's working directory (as resolved by the working_directory
-    // setting). Set this to "off" to disable this behavior.
-    "detect_venv": {
-      "on": {
-        // Default directories to search for virtual environments, relative
-        // to the current working directory. We recommend overriding this
-        // in your project's settings, rather than globally.
-        "directories": [".env", "env", ".venv", "venv"],
-        // Can also be 'csh', 'fish', and `nushell`
-        "activate_script": "default"
-      }
-    }
+    // Whether or not to automatically activate the interpreter as defined by the
+    // `python.interpreter_path` setting.
+    // TODO INTERPRETER - documentation
+    "activate_venv_on_launch": true
     // Set the terminal's font size. If this option is not included,
     // the terminal will default to matching the buffer's font size.
     // "font_size": 15,
@@ -596,5 +587,13 @@
   // Mostly useful for developers who are managing multiple instances of Zed.
   "dev": {
     // "theme": "Andromeda"
+  },
+  "python": {
+    // TODO
+    "interpreter_path": "./.venv/bin/python",
+    // TODO
+    "venv_activation_script": "default",
+    // TODO
+    "venv_detection_directories": [".env", "env", ".venv", "venv"]
   }
 }
