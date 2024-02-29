@@ -590,7 +590,7 @@
   },
   "python": {
     // TODO
-    "interpreter_path": "./.venv/bin/python",
+    "interpreter_path": ".venv/bin/python",
     // TODO
     "venv_activation_script": "default",
     // TODO

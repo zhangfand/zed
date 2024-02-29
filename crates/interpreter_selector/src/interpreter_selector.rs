@@ -7,7 +7,7 @@ use picker::{Picker, PickerDelegate};
 use project::Worktree;
 use python::{python_settings::PythonSettings, Interpreter};
 use settings::Settings;
-use std::{path::PathBuf, sync::Arc};
+use std::sync::Arc;
 use ui::{prelude::*, HighlightedLabel, ListItem, ListItemSpacing};
 use util::ResultExt;
 use workspace::{ModalView, Workspace};
@@ -66,7 +66,6 @@ impl EventEmitter<DismissEvent> for InterpreterSelector {}
 impl ModalView for InterpreterSelector {}
 
 pub struct InterpreterSelectorDelegate {
-    worktree: Model<Worktree>,
     interpreter_selector: WeakView<InterpreterSelector>,
     candidates: Vec<StringMatchCandidate>,
     matches: Vec<StringMatch>,
@@ -95,7 +94,6 @@ impl InterpreterSelectorDelegate {
             .collect::<Vec<_>>();
 
         Self {
-            worktree,
             interpreter_selector,
             candidates,
             matches: vec![],
@@ -117,10 +115,10 @@ impl PickerDelegate for InterpreterSelectorDelegate {
 
     fn confirm(&mut self, _: bool, cx: &mut ViewContext<Picker<Self>>) {
         if let Some(mat) = self.matches.get(self.selected_index) {
-            let interpreter_path_string = self.candidates[mat.candidate_id].string.clone();
-            let interpeter_path = PathBuf::from(interpreter_path_string);
-            let worktree_path = self.worktree.update(cx, |worktree, _| worktree.abs_path());
-            Interpreter::store_in_local_settings(worktree_path, interpeter_path, cx);
+            let interpreter_path = self.candidates[mat.candidate_id].string.clone();
+            if let Some(interpreter) = Interpreter::try_from(interpreter_path).log_err() {
+                interpreter.store_in_local_settings(cx).log_err();
+            }
         }
         self.dismissed(cx);
     }
