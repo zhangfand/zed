@@ -44,6 +44,7 @@ lazy_static::lazy_static! {
     pub static ref LOG: PathBuf = LOGS_DIR.join("Zed.log");
     pub static ref OLD_LOG: PathBuf = LOGS_DIR.join("Zed.log.old");
     pub static ref LOCAL_SETTINGS_RELATIVE_PATH: &'static Path = Path::new(".zed/settings.json");
+    pub static ref LOCAL_TASKS_RELATIVE_PATH: &'static Path = Path::new(".zed/tasks.json");
     pub static ref TEMP_DIR: PathBuf = HOME.join(".cache").join("zed");
 }
 
@@ -458,7 +459,7 @@ mod tests {
         let path = Path::new("/work/node_modules");
         let path_matcher = PathMatcher::new("**/node_modules/**").unwrap();
         assert!(
-            path_matcher.is_match(&path),
+            path_matcher.is_match(path),
             "Path matcher {path_matcher} should match {path:?}"
         );
     }
@@ -468,7 +469,7 @@ mod tests {
         let path = Path::new("/Users/someonetoignore/work/zed/zed.dev/node_modules");
         let path_matcher = PathMatcher::new("**/node_modules/**").unwrap();
         assert!(
-            path_matcher.is_match(&path),
+            path_matcher.is_match(path),
             "Path matcher {path_matcher} should match {path:?}"
         );
     }

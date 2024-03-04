@@ -228,15 +228,29 @@
     "default_width": 640,
     // Default height when the assistant is docked to the bottom.
     "default_height": 320,
+    // Deprecated: Please use `provider.api_url` instead.
     // The default OpenAI API endpoint to use when starting new conversations.
     "openai_api_url": "https://api.openai.com/v1",
+    // Deprecated: Please use `provider.default_model` instead.
     // The default OpenAI model to use when starting new conversations. This
     // setting can take three values:
     //
     // 1. "gpt-3.5-turbo-0613""
     // 2. "gpt-4-0613""
     // 3. "gpt-4-1106-preview"
-    "default_open_ai_model": "gpt-4-1106-preview"
+    "default_open_ai_model": "gpt-4-1106-preview",
+    "provider": {
+      "type": "openai",
+      // The default OpenAI API endpoint to use when starting new conversations.
+      "api_url": "https://api.openai.com/v1",
+      // The default OpenAI model to use when starting new conversations. This
+      // setting can take three values:
+      //
+      // 1. "gpt-3.5-turbo-0613""
+      // 2. "gpt-4-0613""
+      // 3. "gpt-4-1106-preview"
+      "default_model": "gpt-4-1106-preview"
+    }
   },
   // Whether the screen sharing icon is shown in the os status bar.
   "show_call_status_icon": true,
@@ -449,7 +463,11 @@
     // Whether or not to automatically activate the interpreter as defined by the
     // `python.interpreter_path` setting.
     // TODO INTERPRETER - documentation
-    "activate_venv_on_launch": true
+    "activate_venv_on_launch": true,
+    "toolbar": {
+      // Whether to display the terminal title in its toolbar.
+      "title": true
+    }
     // Set the terminal's font size. If this option is not included,
     // the terminal will default to matching the buffer's font size.
     // "font_size": 15,

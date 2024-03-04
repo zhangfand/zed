@@ -121,7 +121,6 @@ actions!(
         ToggleRightDock,
         ToggleBottomDock,
         CloseAllDocks,
-        ToggleGraphicsProfiler,
     ]
 );
 
@@ -680,8 +679,7 @@ impl Workspace {
         let mut active_call = None;
         if let Some(call) = ActiveCall::try_global(cx) {
             let call = call.clone();
-            let mut subscriptions = Vec::new();
-            subscriptions.push(cx.subscribe(&call, Self::on_active_call_event));
+            let subscriptions = vec![cx.subscribe(&call, Self::on_active_call_event)];
             active_call = Some((call, subscriptions));
         }
 
@@ -872,7 +870,6 @@ impl Workspace {
 
                 cx.open_window(options, {
                     let app_state = app_state.clone();
-                    let workspace_id = workspace_id.clone();
                     let project_handle = project_handle.clone();
                     move |cx| {
                         cx.new_view(|cx| {
@@ -1245,11 +1242,10 @@ impl Workspace {
                 }
             }
 
-            Ok(this
-                .update(&mut cx, |this, cx| {
-                    this.save_all_internal(SaveIntent::Close, cx)
-                })?
-                .await?)
+            this.update(&mut cx, |this, cx| {
+                this.save_all_internal(SaveIntent::Close, cx)
+            })?
+            .await
         })
     }
 
@@ -1261,7 +1257,7 @@ impl Workspace {
     fn send_keystrokes(&mut self, action: &SendKeystrokes, cx: &mut ViewContext<Self>) {
         let mut keystrokes: Vec<Keystroke> = action
             .0
-            .split(" ")
+            .split(' ')
             .flat_map(|k| Keystroke::parse(k).log_err())
             .collect();
         keystrokes.reverse();
@@ -1629,8 +1625,11 @@ impl Workspace {
         action: &CloseInactiveTabsAndPanes,
         cx: &mut ViewContext<Self>,
     ) {
-        self.close_all_internal(true, action.save_intent.unwrap_or(SaveIntent::Close), cx)
-            .map(|task| task.detach_and_log_err(cx));
+        if let Some(task) =
+            self.close_all_internal(true, action.save_intent.unwrap_or(SaveIntent::Close), cx)
+        {
+            task.detach_and_log_err(cx)
+        }
     }
 
     pub fn close_all_items_and_panes(
@@ -1638,8 +1637,11 @@ impl Workspace {
         action: &CloseAllItemsAndPanes,
         cx: &mut ViewContext<Self>,
     ) {
-        self.close_all_internal(false, action.save_intent.unwrap_or(SaveIntent::Close), cx)
-            .map(|task| task.detach_and_log_err(cx));
+        if let Some(task) =
+            self.close_all_internal(false, action.save_intent.unwrap_or(SaveIntent::Close), cx)
+        {
+            task.detach_and_log_err(cx)
+        }
     }
 
     fn close_all_internal(
@@ -1886,15 +1888,23 @@ impl Workspace {
         }
     }
 
-    pub fn add_item(&mut self, item: Box<dyn ItemHandle>, cx: &mut WindowContext) {
+    pub fn add_item_to_active_pane(&mut self, item: Box<dyn ItemHandle>, cx: &mut WindowContext) {
+        self.add_item(self.active_pane.clone(), item, cx)
+    }
+
+    pub fn add_item(
+        &mut self,
+        pane: View<Pane>,
+        item: Box<dyn ItemHandle>,
+        cx: &mut WindowContext,
+    ) {
         if let Some(text) = item.telemetry_event_text(cx) {
             self.client()
                 .telemetry()
                 .report_app_event(format!("{}: open", text));
         }
 
-        self.active_pane
-            .update(cx, |pane, cx| pane.add_item(item, true, true, None, cx));
+        pane.update(cx, |pane, cx| pane.add_item(item, true, true, None, cx));
     }
 
     pub fn split_item(
@@ -1904,9 +1914,7 @@ impl Workspace {
         cx: &mut ViewContext<Self>,
     ) {
         let new_pane = self.split_pane(self.active_pane.clone(), split_direction, cx);
-        new_pane.update(cx, move |new_pane, cx| {
-            new_pane.add_item(item, true, true, None, cx)
-        })
+        self.add_item(new_pane, item, cx);
     }
 
     pub fn open_abs_path(
@@ -2048,6 +2056,7 @@ impl Workspace {
 
     pub fn open_project_item<T>(
         &mut self,
+        pane: View<Pane>,
         project_item: Model<T::Item>,
         cx: &mut ViewContext<Self>,
     ) -> View<T>
@@ -2058,7 +2067,7 @@ impl Workspace {
 
         let entry_id = project_item.read(cx).entry_id(cx);
         if let Some(item) = entry_id
-            .and_then(|entry_id| self.active_pane().read(cx).item_for_entry(entry_id, cx))
+            .and_then(|entry_id| pane.read(cx).item_for_entry(entry_id, cx))
             .and_then(|item| item.downcast())
         {
             self.activate_item(&item, cx);
@@ -2066,31 +2075,7 @@ impl Workspace {
         }
 
         let item = cx.new_view(|cx| T::for_project_item(self.project().clone(), project_item, cx));
-        self.add_item(Box::new(item.clone()), cx);
-        item
-    }
-
-    pub fn split_project_item<T>(
-        &mut self,
-        project_item: Model<T::Item>,
-        cx: &mut ViewContext<Self>,
-    ) -> View<T>
-    where
-        T: ProjectItem,
-    {
-        use project::Item as _;
-
-        let entry_id = project_item.read(cx).entry_id(cx);
-        if let Some(item) = entry_id
-            .and_then(|entry_id| self.active_pane().read(cx).item_for_entry(entry_id, cx))
-            .and_then(|item| item.downcast())
-        {
-            self.activate_item(&item, cx);
-            return item;
-        }
-
-        let item = cx.new_view(|cx| T::for_project_item(self.project().clone(), project_item, cx));
-        self.split_item(SplitDirection::Right, Box::new(item.clone()), cx);
+        self.add_item(pane, Box::new(item.clone()), cx);
         item
     }
 
@@ -2499,6 +2484,13 @@ impl Workspace {
         &self.active_pane
     }
 
+    pub fn adjacent_pane(&mut self, cx: &mut ViewContext<Self>) -> View<Pane> {
+        self.find_pane_in_direction(SplitDirection::Right, cx)
+            .or_else(|| self.find_pane_in_direction(SplitDirection::Left, cx))
+            .unwrap_or_else(|| self.split_pane(self.active_pane.clone(), SplitDirection::Right, cx))
+            .clone()
+    }
+
     pub fn pane_for(&self, handle: &dyn ItemHandle) -> Option<View<Pane>> {
         let weak_pane = self.panes_by_item.get(&handle.item_id())?;
         weak_pane.upgrade()
@@ -2611,8 +2603,9 @@ impl Workspace {
         if Some(leader_id) == self.unfollow(&pane, cx) {
             return;
         }
-        self.start_following(leader_id, cx)
-            .map(|task| task.detach_and_log_err(cx));
+        if let Some(task) = self.start_following(leader_id, cx) {
+            task.detach_and_log_err(cx)
+        }
     }
 
     pub fn follow(&mut self, leader_id: PeerId, cx: &mut ViewContext<Self>) {
@@ -2654,8 +2647,9 @@ impl Workspace {
         }
 
         // Otherwise, follow.
-        self.start_following(leader_id, cx)
-            .map(|task| task.detach_and_log_err(cx));
+        if let Some(task) = self.start_following(leader_id, cx) {
+            task.detach_and_log_err(cx)
+        }
     }
 
     pub fn unfollow(&mut self, pane: &View<Pane>, cx: &mut ViewContext<Self>) -> Option<PeerId> {
@@ -2966,7 +2960,7 @@ impl Workspace {
         })?;
 
         let Some(id) = view.id.clone() else {
-            return Err(anyhow!("no id for view")).into();
+            return Err(anyhow!("no id for view"));
         };
         let id = ViewId::from_proto(id)?;
 
@@ -3366,7 +3360,7 @@ impl Workspace {
             let left_visible = left_dock.is_open();
             let left_active_panel = left_dock
                 .visible_panel()
-                .and_then(|panel| Some(panel.persistent_name().to_string()));
+                .map(|panel| panel.persistent_name().to_string());
             let left_dock_zoom = left_dock
                 .visible_panel()
                 .map(|panel| panel.is_zoomed(cx))
@@ -3376,7 +3370,7 @@ impl Workspace {
             let right_visible = right_dock.is_open();
             let right_active_panel = right_dock
                 .visible_panel()
-                .and_then(|panel| Some(panel.persistent_name().to_string()));
+                .map(|panel| panel.persistent_name().to_string());
             let right_dock_zoom = right_dock
                 .visible_panel()
                 .map(|panel| panel.is_zoomed(cx))
@@ -3386,7 +3380,7 @@ impl Workspace {
             let bottom_visible = bottom_dock.is_open();
             let bottom_active_panel = bottom_dock
                 .visible_panel()
-                .and_then(|panel| Some(panel.persistent_name().to_string()));
+                .map(|panel| panel.persistent_name().to_string());
             let bottom_dock_zoom = bottom_dock
                 .visible_panel()
                 .map(|panel| panel.is_zoomed(cx))
@@ -3583,7 +3577,6 @@ impl Workspace {
                     workspace.reopen_closed_item(cx).detach();
                 }),
             )
-            .on_action(|_: &ToggleGraphicsProfiler, cx| cx.toggle_graphics_profiler())
     }
 
     #[cfg(any(test, feature = "test-support"))]
@@ -3725,7 +3718,7 @@ fn open_items(
             project_paths_to_open
                 .into_iter()
                 .enumerate()
-                .map(|(i, (abs_path, project_path))| {
+                .map(|(ix, (abs_path, project_path))| {
                     let workspace = workspace.clone();
                     cx.spawn(|mut cx| {
                         let fs = app_state.fs.clone();
@@ -3733,7 +3726,7 @@ fn open_items(
                             let file_project_path = project_path?;
                             if fs.is_file(&abs_path).await {
                                 Some((
-                                    i,
+                                    ix,
                                     workspace
                                         .update(&mut cx, |workspace, cx| {
                                             workspace.open_path(file_project_path, None, true, cx)
@@ -3750,11 +3743,9 @@ fn open_items(
 
         let tasks = tasks.collect::<Vec<_>>();
 
-        let tasks = futures::future::join_all(tasks.into_iter());
-        for maybe_opened_path in tasks.await.into_iter() {
-            if let Some((i, path_open_result)) = maybe_opened_path {
-                opened_items[i] = Some(path_open_result);
-            }
+        let tasks = futures::future::join_all(tasks);
+        for (ix, path_open_result) in tasks.await.into_iter().flatten() {
+            opened_items[ix] = Some(path_open_result);
         }
 
         Ok(opened_items)
@@ -3802,7 +3793,7 @@ impl Render for Workspace {
             let theme_settings = ThemeSettings::get_global(cx);
             (
                 theme_settings.ui_font.family.clone(),
-                theme_settings.ui_font_size.clone(),
+                theme_settings.ui_font_size,
             )
         };
 
@@ -4405,7 +4396,7 @@ pub fn open_paths(
     cx.spawn(move |mut cx| async move {
         if let Some(existing) = existing {
             Ok((
-                existing.clone(),
+                existing,
                 existing
                     .update(&mut cx, |workspace, cx| {
                         workspace.open_paths(abs_paths, OpenVisible::All, None, cx)
@@ -4704,7 +4695,7 @@ mod tests {
             item
         });
         workspace.update(cx, |workspace, cx| {
-            workspace.add_item(Box::new(item1.clone()), cx);
+            workspace.add_item_to_active_pane(Box::new(item1.clone()), cx);
         });
         item1.update(cx, |item, _| assert_eq!(item.tab_detail.get(), Some(0)));
 
@@ -4716,7 +4707,7 @@ mod tests {
             item
         });
         workspace.update(cx, |workspace, cx| {
-            workspace.add_item(Box::new(item2.clone()), cx);
+            workspace.add_item_to_active_pane(Box::new(item2.clone()), cx);
         });
         item1.update(cx, |item, _| assert_eq!(item.tab_detail.get(), Some(1)));
         item2.update(cx, |item, _| assert_eq!(item.tab_detail.get(), Some(1)));
@@ -4730,7 +4721,7 @@ mod tests {
             item
         });
         workspace.update(cx, |workspace, cx| {
-            workspace.add_item(Box::new(item3.clone()), cx);
+            workspace.add_item_to_active_pane(Box::new(item3.clone()), cx);
         });
         item1.update(cx, |item, _| assert_eq!(item.tab_detail.get(), Some(1)));
         item2.update(cx, |item, _| assert_eq!(item.tab_detail.get(), Some(3)));
@@ -4773,7 +4764,9 @@ mod tests {
         });
 
         // Add an item to an empty pane
-        workspace.update(cx, |workspace, cx| workspace.add_item(Box::new(item1), cx));
+        workspace.update(cx, |workspace, cx| {
+            workspace.add_item_to_active_pane(Box::new(item1), cx)
+        });
         project.update(cx, |project, cx| {
             assert_eq!(
                 project.active_entry(),
@@ -4785,7 +4778,9 @@ mod tests {
         assert_eq!(cx.window_title().as_deref(), Some("one.txt — root1"));
 
         // Add a second item to a non-empty pane
-        workspace.update(cx, |workspace, cx| workspace.add_item(Box::new(item2), cx));
+        workspace.update(cx, |workspace, cx| {
+            workspace.add_item_to_active_pane(Box::new(item2), cx)
+        });
         assert_eq!(cx.window_title().as_deref(), Some("two.txt — root1"));
         project.update(cx, |project, cx| {
             assert_eq!(
@@ -4838,7 +4833,9 @@ mod tests {
 
         // When there are no dirty items, there's nothing to do.
         let item1 = cx.new_view(|cx| TestItem::new(cx));
-        workspace.update(cx, |w, cx| w.add_item(Box::new(item1.clone()), cx));
+        workspace.update(cx, |w, cx| {
+            w.add_item_to_active_pane(Box::new(item1.clone()), cx)
+        });
         let task = workspace.update(cx, |w, cx| w.prepare_to_close(false, cx));
         assert!(task.await.unwrap());
 
@@ -4851,8 +4848,8 @@ mod tests {
                 .with_project_items(&[TestProjectItem::new(1, "1.txt", cx)])
         });
         workspace.update(cx, |w, cx| {
-            w.add_item(Box::new(item2.clone()), cx);
-            w.add_item(Box::new(item3.clone()), cx);
+            w.add_item_to_active_pane(Box::new(item2.clone()), cx);
+            w.add_item_to_active_pane(Box::new(item3.clone()), cx);
         });
         let task = workspace.update(cx, |w, cx| w.prepare_to_close(false, cx));
         cx.executor().run_until_parked();
@@ -4896,10 +4893,10 @@ mod tests {
                 .with_project_items(&[TestProjectItem::new_untitled(cx)])
         });
         let pane = workspace.update(cx, |workspace, cx| {
-            workspace.add_item(Box::new(item1.clone()), cx);
-            workspace.add_item(Box::new(item2.clone()), cx);
-            workspace.add_item(Box::new(item3.clone()), cx);
-            workspace.add_item(Box::new(item4.clone()), cx);
+            workspace.add_item_to_active_pane(Box::new(item1.clone()), cx);
+            workspace.add_item_to_active_pane(Box::new(item2.clone()), cx);
+            workspace.add_item_to_active_pane(Box::new(item3.clone()), cx);
+            workspace.add_item_to_active_pane(Box::new(item4.clone()), cx);
             workspace.active_pane().clone()
         });
 
@@ -5021,9 +5018,9 @@ mod tests {
         //     multi-entry items:   (3, 4)
         let left_pane = workspace.update(cx, |workspace, cx| {
             let left_pane = workspace.active_pane().clone();
-            workspace.add_item(Box::new(item_2_3.clone()), cx);
+            workspace.add_item_to_active_pane(Box::new(item_2_3.clone()), cx);
             for item in single_entry_items {
-                workspace.add_item(Box::new(item), cx);
+                workspace.add_item_to_active_pane(Box::new(item), cx);
             }
             left_pane.update(cx, |pane, cx| {
                 pane.activate_item(2, true, true, cx);
@@ -5094,7 +5091,7 @@ mod tests {
         });
         let item_id = item.entity_id();
         workspace.update(cx, |workspace, cx| {
-            workspace.add_item(Box::new(item.clone()), cx);
+            workspace.add_item_to_active_pane(Box::new(item.clone()), cx);
         });
 
         // Autosave on window change.
@@ -5176,7 +5173,7 @@ mod tests {
 
         // Add the item again, ensuring autosave is prevented if the underlying file has been deleted.
         workspace.update(cx, |workspace, cx| {
-            workspace.add_item(Box::new(item.clone()), cx);
+            workspace.add_item_to_active_pane(Box::new(item.clone()), cx);
         });
         item.update(cx, |item, cx| {
             item.project_items[0].update(cx, |item, _| {
@@ -5214,7 +5211,7 @@ mod tests {
         let toolbar_notify_count = Rc::new(RefCell::new(0));
 
         workspace.update(cx, |workspace, cx| {
-            workspace.add_item(Box::new(item.clone()), cx);
+            workspace.add_item_to_active_pane(Box::new(item.clone()), cx);
             let toolbar_notification_count = toolbar_notify_count.clone();
             cx.observe(&toolbar, move |_, _, _| {
                 *toolbar_notification_count.borrow_mut() += 1
@@ -5495,7 +5492,7 @@ mod tests {
         workspace.update(cx, |workspace, cx| {
             // Since panel_2 was not visible on the right, we don't open the left dock.
             assert!(!workspace.left_dock().read(cx).is_open());
-            // And the right dock is unaffected in it's displaying of panel_1
+            // And the right dock is unaffected in its displaying of panel_1
             assert!(workspace.right_dock().read(cx).is_open());
             assert_eq!(
                 workspace
