@@ -2,7 +2,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use settings::Settings;
 
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize)]
 pub struct EditorSettings {
     pub cursor_blink: bool,
     pub hover_popover_enabled: bool,

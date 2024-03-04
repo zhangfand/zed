@@ -7,13 +7,11 @@ use crate::{
     SavedMessage, Split, ToggleFocus, ToggleIncludeConversation, ToggleRetrieveContext,
 };
 use ai::prompts::repository_context::PromptCodeSnippet;
+use ai::providers::open_ai::OPEN_AI_API_URL;
 use ai::{
     auth::ProviderCredential,
     completion::{CompletionProvider, CompletionRequest},
-    providers::open_ai::{
-        OpenAiCompletionProvider, OpenAiCompletionProviderKind, OpenAiRequest, RequestMessage,
-        OPEN_AI_API_URL,
-    },
+    providers::open_ai::{OpenAiCompletionProvider, OpenAiRequest, RequestMessage},
 };
 use anyhow::{anyhow, Result};
 use chrono::{DateTime, Local};
@@ -124,18 +122,15 @@ impl AssistantPanel {
                 .await
                 .log_err()
                 .unwrap_or_default();
-            let (provider_kind, api_url, model_name) = cx.update(|cx| {
+            let (api_url, model_name) = cx.update(|cx| {
                 let settings = AssistantSettings::get_global(cx);
-                anyhow::Ok((
-                    settings.provider_kind()?,
-                    settings.provider_api_url()?,
-                    settings.provider_model_name()?,
-                ))
-            })??;
-
+                (
+                    settings.openai_api_url.clone(),
+                    settings.default_open_ai_model.full_name().to_string(),
+                )
+            })?;
             let completion_provider = OpenAiCompletionProvider::new(
                 api_url,
-                provider_kind,
                 model_name,
                 cx.background_executor().clone(),
             )
@@ -695,29 +690,24 @@ impl AssistantPanel {
             Task::ready(Ok(Vec::new()))
         };
 
-        let Some(mut model_name) = AssistantSettings::get_global(cx)
-            .provider_model_name()
-            .log_err()
-        else {
-            return;
-        };
+        let mut model = AssistantSettings::get_global(cx)
+            .default_open_ai_model
+            .clone();
+        let model_name = model.full_name();
 
-        let prompt = cx.background_executor().spawn({
-            let model_name = model_name.clone();
-            async move {
-                let snippets = snippets.await?;
+        let prompt = cx.background_executor().spawn(async move {
+            let snippets = snippets.await?;
 
-                let language_name = language_name.as_deref();
-                generate_content_prompt(
-                    user_prompt,
-                    language_name,
-                    buffer,
-                    range,
-                    snippets,
-                    &model_name,
-                    project_name,
-                )
-            }
+            let language_name = language_name.as_deref();
+            generate_content_prompt(
+                user_prompt,
+                language_name,
+                buffer,
+                range,
+                snippets,
+                model_name,
+                project_name,
+            )
         });
 
         let mut messages = Vec::new();
@@ -729,7 +719,7 @@ impl AssistantPanel {
                     .messages(cx)
                     .map(|message| message.to_open_ai_message(buffer)),
             );
-            model_name = conversation.model.full_name().to_string();
+            model = conversation.model.clone();
         }
 
         cx.spawn(|_, mut cx| async move {
@@ -742,7 +732,7 @@ impl AssistantPanel {
             });
 
             let request = Box::new(OpenAiRequest {
-                model: model_name,
+                model: model.full_name().into(),
                 messages,
                 stream: true,
                 stop: vec!["|END|>".to_string()],
@@ -781,7 +771,7 @@ impl AssistantPanel {
             } else {
                 editor.highlight_background::<PendingInlineAssist>(
                     background_ranges,
-                    |theme| theme.editor_active_line_background, // todo("use the appropriate color")
+                    |theme| theme.editor_active_line_background, // todo!("use the appropriate color")
                     cx,
                 );
             }
@@ -1461,14 +1451,8 @@ impl Conversation {
         });
 
         let settings = AssistantSettings::get_global(cx);
-        let model = settings
-            .provider_model()
-            .log_err()
-            .unwrap_or(OpenAiModel::FourTurbo);
-        let api_url = settings
-            .provider_api_url()
-            .log_err()
-            .unwrap_or_else(|| OPEN_AI_API_URL.to_string());
+        let model = settings.default_open_ai_model.clone();
+        let api_url = settings.openai_api_url.clone();
 
         let mut this = Self {
             id: Some(Uuid::new_v4().to_string()),
@@ -1549,7 +1533,6 @@ impl Conversation {
                 api_url
                     .clone()
                     .unwrap_or_else(|| OPEN_AI_API_URL.to_string()),
-                OpenAiCompletionProviderKind::OpenAi,
                 model.full_name().into(),
                 cx.background_executor().clone(),
             )
@@ -3668,9 +3651,9 @@ fn report_assistant_event(
     let client = workspace.read(cx).project().read(cx).client();
     let telemetry = client.telemetry();
 
-    let Ok(model_name) = AssistantSettings::get_global(cx).provider_model_name() else {
-        return;
-    };
+    let model = AssistantSettings::get_global(cx)
+        .default_open_ai_model
+        .clone();
 
-    telemetry.report_assistant_event(conversation_id, assistant_kind, &model_name)
+    telemetry.report_assistant_event(conversation_id, assistant_kind, model.full_name())
 }

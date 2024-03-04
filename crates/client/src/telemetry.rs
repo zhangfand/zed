@@ -263,7 +263,7 @@ impl Telemetry {
         self: &Arc<Self>,
         conversation_id: Option<String>,
         kind: AssistantKind,
-        model: &str,
+        model: &'static str,
     ) {
         let event = Event::Assistant(AssistantEvent {
             conversation_id,

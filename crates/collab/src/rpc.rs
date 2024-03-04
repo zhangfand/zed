@@ -35,6 +35,7 @@ use futures::{
     stream::FuturesUnordered,
     FutureExt, SinkExt, StreamExt, TryStreamExt,
 };
+use lazy_static::lazy_static;
 use prometheus::{register_int_gauge, IntGauge};
 use rpc::{
     proto::{
@@ -55,7 +56,7 @@ use std::{
     rc::Rc,
     sync::{
         atomic::{AtomicBool, Ordering::SeqCst},
-        Arc, OnceLock,
+        Arc,
     },
     time::{Duration, Instant},
 };
@@ -71,6 +72,16 @@ pub const CLEANUP_TIMEOUT: Duration = Duration::from_secs(10);
 const MESSAGE_COUNT_PER_PAGE: usize = 100;
 const MAX_MESSAGE_LEN: usize = 1024;
 const NOTIFICATION_COUNT_PER_PAGE: usize = 50;
+
+lazy_static! {
+    static ref METRIC_CONNECTIONS: IntGauge =
+        register_int_gauge!("connections", "number of connections").unwrap();
+    static ref METRIC_SHARED_PROJECTS: IntGauge = register_int_gauge!(
+        "shared_projects",
+        "number of open projects with one or more guests"
+    )
+    .unwrap();
+}
 
 type MessageHandler =
     Box<dyn Send + Sync + Fn(Box<dyn AnyTypedEnvelope>, Session) -> BoxFuture<'static, ()>>;
@@ -782,12 +793,16 @@ fn broadcast<F>(
     }
 }
 
+lazy_static! {
+    static ref ZED_PROTOCOL_VERSION: HeaderName = HeaderName::from_static("x-zed-protocol-version");
+    static ref ZED_APP_VERSION: HeaderName = HeaderName::from_static("x-zed-app-version");
+}
+
 pub struct ProtocolVersion(u32);
 
 impl Header for ProtocolVersion {
     fn name() -> &'static HeaderName {
-        static ZED_PROTOCOL_VERSION: OnceLock<HeaderName> = OnceLock::new();
-        ZED_PROTOCOL_VERSION.get_or_init(|| HeaderName::from_static("x-zed-protocol-version"))
+        &ZED_PROTOCOL_VERSION
     }
 
     fn decode<'i, I>(values: &mut I) -> Result<Self, axum::headers::Error>
@@ -813,8 +828,7 @@ impl Header for ProtocolVersion {
 pub struct AppVersionHeader(SemanticVersion);
 impl Header for AppVersionHeader {
     fn name() -> &'static HeaderName {
-        static ZED_APP_VERSION: OnceLock<HeaderName> = OnceLock::new();
-        ZED_APP_VERSION.get_or_init(|| HeaderName::from_static("x-zed-app-version"))
+        &ZED_APP_VERSION
     }
 
     fn decode<'i, I>(values: &mut I) -> Result<Self, axum::headers::Error>
@@ -908,29 +922,17 @@ pub async fn handle_websocket_request(
 }
 
 pub async fn handle_metrics(Extension(server): Extension<Arc<Server>>) -> Result<String> {
-    static CONNECTIONS_METRIC: OnceLock<IntGauge> = OnceLock::new();
-    let connections_metric = CONNECTIONS_METRIC
-        .get_or_init(|| register_int_gauge!("connections", "number of connections").unwrap());
-
     let connections = server
         .connection_pool
         .lock()
         .connections()
         .filter(|connection| !connection.admin)
         .count();
-    connections_metric.set(connections as _);
 
-    static SHARED_PROJECTS_METRIC: OnceLock<IntGauge> = OnceLock::new();
-    let shared_projects_metric = SHARED_PROJECTS_METRIC.get_or_init(|| {
-        register_int_gauge!(
-            "shared_projects",
-            "number of open projects with one or more guests"
-        )
-        .unwrap()
-    });
+    METRIC_CONNECTIONS.set(connections as _);
 
     let shared_projects = server.app_state.db.project_count_excluding_admins().await?;
-    shared_projects_metric.set(shared_projects as _);
+    METRIC_SHARED_PROJECTS.set(shared_projects as _);
 
     let encoder = prometheus::TextEncoder::new();
     let metric_families = prometheus::gather();

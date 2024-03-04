@@ -1,19 +1,17 @@
 [
-  (AsmExpr)
-  (AssignExpr)
   (Block)
-  (BlockExpr)
   (ContainerDecl)
-  (ErrorUnionExpr)
-  (InitList)
   (SwitchExpr)
-  (TestDecl)
+  (InitList)
 ] @indent.begin
 
 [
-  "}"
-  "]"
+  "("
   ")"
+  "["
+  "]"
+  "{"
+  "}"
 ] @indent.branch
 
 [

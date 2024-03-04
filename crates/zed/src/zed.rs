@@ -14,25 +14,24 @@ use gpui::{
 pub use only_instance::*;
 pub use open_listener::*;
 
-use anyhow::Context as _;
+use anyhow::{anyhow, Context as _};
 use assets::Assets;
 use futures::{channel::mpsc, select_biased, StreamExt};
-use project::TaskSourceKind;
 use project_panel::ProjectPanel;
 use quick_action_bar::QuickActionBar;
 use release_channel::{AppCommitSha, ReleaseChannel};
 use rope::Rope;
 use search::project_search::ProjectSearchBar;
 use settings::{
-    initial_local_settings_content, initial_tasks_content, watch_config_file, KeymapFile, Settings,
-    SettingsStore, DEFAULT_KEYMAP_PATH,
+    initial_local_settings_content, watch_config_file, KeymapFile, Settings, SettingsStore,
+    DEFAULT_KEYMAP_PATH,
 };
 use std::{borrow::Cow, ops::Deref, path::Path, sync::Arc};
 use task::{oneshot_source::OneshotSource, static_source::StaticSource};
 use terminal_view::terminal_panel::{self, TerminalPanel};
 use util::{
     asset_str,
-    paths::{self, LOCAL_SETTINGS_RELATIVE_PATH, LOCAL_TASKS_RELATIVE_PATH},
+    paths::{self, LOCAL_SETTINGS_RELATIVE_PATH},
     ResultExt,
 };
 use uuid::Uuid;
@@ -60,7 +59,6 @@ actions!(
         OpenKeymap,
         OpenLicenses,
         OpenLocalSettings,
-        OpenLocalTasks,
         OpenLog,
         OpenTasks,
         OpenTelemetryLog,
@@ -157,26 +155,18 @@ pub fn initialize_workspace(app_state: Arc<AppState>, cx: &mut AppContext) {
 
         let project = workspace.project().clone();
         if project.read(cx).is_local() {
+            let tasks_file_rx = watch_config_file(
+                &cx.background_executor(),
+                app_state.fs.clone(),
+                paths::TASKS.clone(),
+            );
+            let static_source = StaticSource::new(tasks_file_rx, cx);
+            let oneshot_source = OneshotSource::new(cx);
+
             project.update(cx, |project, cx| {
-                let fs = app_state.fs.clone();
                 project.task_inventory().update(cx, |inventory, cx| {
-                    inventory.add_source(
-                        TaskSourceKind::UserInput,
-                        |cx| OneshotSource::new(cx),
-                        cx,
-                    );
-                    inventory.add_source(
-                        TaskSourceKind::AbsPath(paths::TASKS.clone()),
-                        |cx| {
-                            let tasks_file_rx = watch_config_file(
-                                &cx.background_executor(),
-                                fs,
-                                paths::TASKS.clone(),
-                            );
-                            StaticSource::new("global_tasks", tasks_file_rx, cx)
-                        },
-                        cx,
-                    );
+                    inventory.add_source(oneshot_source, cx);
+                    inventory.add_source(static_source, cx);
                 })
             });
         }
@@ -293,7 +283,6 @@ pub fn initialize_workspace(app_state: Arc<AppState>, cx: &mut AppContext) {
                 },
             )
             .register_action(open_local_settings_file)
-            .register_action(open_local_tasks_file)
             .register_action(
                 move |workspace: &mut Workspace,
                       _: &OpenDefaultKeymap,
@@ -531,7 +520,7 @@ fn open_log_file(workspace: &mut Workspace, cx: &mut ViewContext<Workspace>) {
                         let buffer = cx.new_model(|cx| {
                             MultiBuffer::singleton(buffer, cx).with_title("Log".into())
                         });
-                        workspace.add_item_to_active_pane(
+                        workspace.add_item(
                             Box::new(
                                 cx.new_view(|cx| {
                                     Editor::for_multibuffer(buffer, Some(project), cx)
@@ -614,33 +603,6 @@ fn open_local_settings_file(
     _: &OpenLocalSettings,
     cx: &mut ViewContext<Workspace>,
 ) {
-    open_local_file(
-        workspace,
-        &LOCAL_SETTINGS_RELATIVE_PATH,
-        initial_local_settings_content(),
-        cx,
-    )
-}
-
-fn open_local_tasks_file(
-    workspace: &mut Workspace,
-    _: &OpenLocalTasks,
-    cx: &mut ViewContext<Workspace>,
-) {
-    open_local_file(
-        workspace,
-        &LOCAL_TASKS_RELATIVE_PATH,
-        initial_tasks_content(),
-        cx,
-    )
-}
-
-fn open_local_file(
-    workspace: &mut Workspace,
-    settings_relative_path: &'static Path,
-    initial_contents: Cow<'static, str>,
-    cx: &mut ViewContext<Workspace>,
-) {
     let project = workspace.project().clone();
     let worktree = project
         .read(cx)
@@ -649,7 +611,9 @@ fn open_local_file(
     if let Some(worktree) = worktree {
         let tree_id = worktree.read(cx).id();
         cx.spawn(|workspace, mut cx| async move {
-            if let Some(dir_path) = settings_relative_path.parent() {
+            let file_path = &*LOCAL_SETTINGS_RELATIVE_PATH;
+
+            if let Some(dir_path) = file_path.parent() {
                 if worktree.update(&mut cx, |tree, _| tree.entry_for_path(dir_path).is_none())? {
                     project
                         .update(&mut cx, |project, cx| {
@@ -660,12 +624,10 @@ fn open_local_file(
                 }
             }
 
-            if worktree.update(&mut cx, |tree, _| {
-                tree.entry_for_path(settings_relative_path).is_none()
-            })? {
+            if worktree.update(&mut cx, |tree, _| tree.entry_for_path(file_path).is_none())? {
                 project
                     .update(&mut cx, |project, cx| {
-                        project.create_entry((tree_id, settings_relative_path), false, cx)
+                        project.create_entry((tree_id, file_path), false, cx)
                     })?
                     .await
                     .context("worktree was removed")?;
@@ -673,11 +635,11 @@ fn open_local_file(
 
             let editor = workspace
                 .update(&mut cx, |workspace, cx| {
-                    workspace.open_path((tree_id, settings_relative_path), None, true, cx)
+                    workspace.open_path((tree_id, file_path), None, true, cx)
                 })?
                 .await?
                 .downcast::<Editor>()
-                .context("unexpected item type: expected editor item")?;
+                .ok_or_else(|| anyhow!("unexpected item type"))?;
 
             editor
                 .downgrade()
@@ -685,7 +647,7 @@ fn open_local_file(
                     if let Some(buffer) = editor.buffer().read(cx).as_singleton() {
                         if buffer.read(cx).is_empty() {
                             buffer.update(cx, |buffer, cx| {
-                                buffer.edit([(0..0, initial_contents)], None, cx)
+                                buffer.edit([(0..0, initial_local_settings_content())], None, cx)
                             });
                         }
                     }
@@ -747,7 +709,7 @@ fn open_telemetry_log_file(workspace: &mut Workspace, cx: &mut ViewContext<Works
                 let buffer = cx.new_model(|cx| {
                     MultiBuffer::singleton(buffer, cx).with_title("Telemetry Log".into())
                 });
-                workspace.add_item_to_active_pane(
+                workspace.add_item(
                     Box::new(cx.new_view(|cx| Editor::for_multibuffer(buffer, Some(project), cx))),
                     cx,
                 );
@@ -781,7 +743,7 @@ fn open_bundled_file(
                     let buffer = cx.new_model(|cx| {
                         MultiBuffer::singleton(buffer, cx).with_title(title.into())
                     });
-                    workspace.add_item_to_active_pane(
+                    workspace.add_item(
                         Box::new(cx.new_view(|cx| {
                             Editor::for_multibuffer(buffer, Some(project.clone()), cx)
                         })),
