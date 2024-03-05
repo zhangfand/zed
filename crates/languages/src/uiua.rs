@@ -12,6 +12,10 @@ impl LspAdapter for UiuaLanguageServer {
         LanguageServerName("uiua".into())
     }
 
+    fn short_name(&self) -> &'static str {
+        "uiua"
+    }
+
     async fn fetch_latest_server_version(
         &self,
         _: &dyn LspAdapterDelegate,

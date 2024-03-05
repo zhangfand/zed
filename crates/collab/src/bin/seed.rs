@@ -88,9 +88,9 @@ async fn fetch_github<T: DeserializeOwned>(client: &reqwest::Client, url: &str) 
         .header("user-agent", "zed")
         .send()
         .await
-        .unwrap_or_else(|_| panic!("failed to fetch '{}'", url));
+        .expect(&format!("failed to fetch '{}'", url));
     response
         .json()
         .await
-        .unwrap_or_else(|_| panic!("failed to deserialize github user from '{}'", url))
+        .expect(&format!("failed to deserialize github user from '{}'", url))
 }

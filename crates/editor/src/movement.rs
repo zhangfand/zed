@@ -688,30 +688,31 @@ mod tests {
         // add all kinds of inlays between two word boundaries: we should be able to cross them all, when looking for another boundary
         let mut id = 0;
         let inlays = (0..buffer_snapshot.len())
-            .flat_map(|offset| {
+            .map(|offset| {
                 [
                     Inlay {
                         id: InlayId::Suggestion(post_inc(&mut id)),
                         position: buffer_snapshot.anchor_at(offset, Bias::Left),
-                        text: "test".into(),
+                        text: format!("test").into(),
                     },
                     Inlay {
                         id: InlayId::Suggestion(post_inc(&mut id)),
                         position: buffer_snapshot.anchor_at(offset, Bias::Right),
-                        text: "test".into(),
+                        text: format!("test").into(),
                     },
                     Inlay {
                         id: InlayId::Hint(post_inc(&mut id)),
                         position: buffer_snapshot.anchor_at(offset, Bias::Left),
-                        text: "test".into(),
+                        text: format!("test").into(),
                     },
                     Inlay {
                         id: InlayId::Hint(post_inc(&mut id)),
                         position: buffer_snapshot.anchor_at(offset, Bias::Right),
-                        text: "test".into(),
+                        text: format!("test").into(),
                     },
                 ]
             })
+            .flatten()
             .collect();
         let snapshot = display_map.update(cx, |map, cx| {
             map.splice_inlays(Vec::new(), inlays, cx);
@@ -840,7 +841,7 @@ mod tests {
                 surrounding_word(&snapshot, display_points[1]),
                 display_points[0]..display_points[2],
                 "{}",
-                marked_text
+                marked_text.to_string()
             );
         }
 
@@ -862,7 +863,7 @@ mod tests {
 
         let mut cx = EditorTestContext::new(cx).await;
         let editor = cx.editor.clone();
-        let window = cx.window;
+        let window = cx.window.clone();
         _ = cx.update_window(window, |_, cx| {
             let text_layout_details =
                 editor.update(cx, |editor, cx| editor.text_layout_details(cx));

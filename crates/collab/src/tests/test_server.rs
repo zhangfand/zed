@@ -138,7 +138,7 @@ impl TestServer {
         (server, client_a, client_b, channel_id)
     }
 
-    pub async fn start1(cx: &mut TestAppContext) -> TestClient {
+    pub async fn start1<'a>(cx: &'a mut TestAppContext) -> TestClient {
         let mut server = Self::start(cx.executor().clone()).await;
         server.create_client(cx, "user_a").await
     }
@@ -240,12 +240,7 @@ impl TestServer {
                                 Executor::Deterministic(cx.background_executor().clone()),
                             ))
                             .detach();
-                        let connection_id = connection_id_rx.await.map_err(|e| {
-                            EstablishConnectionError::Other(anyhow!(
-                                "{} (is server shutting down?)",
-                                e
-                            ))
-                        })?;
+                        let connection_id = connection_id_rx.await.unwrap();
                         connection_killers
                             .lock()
                             .insert(connection_id.into(), killed);
@@ -466,7 +461,7 @@ impl TestServer {
         let active_call_a = cx_a.read(ActiveCall::global);
 
         for (client_b, cx_b) in right {
-            let user_id_b = client_b.current_user_id(cx_b).to_proto();
+            let user_id_b = client_b.current_user_id(*cx_b).to_proto();
             active_call_a
                 .update(*cx_a, |call, cx| call.invite(user_id_b, None, cx))
                 .await
@@ -589,19 +584,19 @@ impl TestClient {
             .await;
     }
 
-    pub fn local_projects(&self) -> impl Deref<Target = Vec<Model<Project>>> + '_ {
+    pub fn local_projects<'a>(&'a self) -> impl Deref<Target = Vec<Model<Project>>> + 'a {
         Ref::map(self.state.borrow(), |state| &state.local_projects)
     }
 
-    pub fn remote_projects(&self) -> impl Deref<Target = Vec<Model<Project>>> + '_ {
+    pub fn remote_projects<'a>(&'a self) -> impl Deref<Target = Vec<Model<Project>>> + 'a {
         Ref::map(self.state.borrow(), |state| &state.remote_projects)
     }
 
-    pub fn local_projects_mut(&self) -> impl DerefMut<Target = Vec<Model<Project>>> + '_ {
+    pub fn local_projects_mut<'a>(&'a self) -> impl DerefMut<Target = Vec<Model<Project>>> + 'a {
         RefMut::map(self.state.borrow_mut(), |state| &mut state.local_projects)
     }
 
-    pub fn remote_projects_mut(&self) -> impl DerefMut<Target = Vec<Model<Project>>> + '_ {
+    pub fn remote_projects_mut<'a>(&'a self) -> impl DerefMut<Target = Vec<Model<Project>>> + 'a {
         RefMut::map(self.state.borrow_mut(), |state| &mut state.remote_projects)
     }
 
@@ -614,14 +609,16 @@ impl TestClient {
         })
     }
 
-    pub fn buffers(
-        &self,
-    ) -> impl DerefMut<Target = HashMap<Model<Project>, HashSet<Model<language::Buffer>>>> + '_
+    pub fn buffers<'a>(
+        &'a self,
+    ) -> impl DerefMut<Target = HashMap<Model<Project>, HashSet<Model<language::Buffer>>>> + 'a
     {
         RefMut::map(self.state.borrow_mut(), |state| &mut state.buffers)
     }
 
-    pub fn channel_buffers(&self) -> impl DerefMut<Target = HashSet<Model<ChannelBuffer>>> + '_ {
+    pub fn channel_buffers<'a>(
+        &'a self,
+    ) -> impl DerefMut<Target = HashSet<Model<ChannelBuffer>>> + 'a {
         RefMut::map(self.state.borrow_mut(), |state| &mut state.channel_buffers)
     }
 

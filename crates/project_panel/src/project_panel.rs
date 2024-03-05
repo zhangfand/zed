@@ -34,7 +34,7 @@ use workspace::{
     Workspace,
 };
 
-const PROJECT_PANEL_KEY: &str = "ProjectPanel";
+const PROJECT_PANEL_KEY: &'static str = "ProjectPanel";
 const NEW_ENTRY_ID: ProjectEntryId = ProjectEntryId::MAX;
 
 pub struct ProjectPanel {
@@ -166,7 +166,13 @@ impl ProjectPanel {
     fn new(workspace: &mut Workspace, cx: &mut ViewContext<Workspace>) -> View<Self> {
         let project = workspace.project().clone();
         let project_panel = cx.new_view(|cx: &mut ViewContext<Self>| {
+            cx.observe(&project, |this, _, cx| {
+                this.update_visible_entries(None, cx);
+                cx.notify();
+            })
+            .detach();
             let focus_handle = cx.focus_handle();
+
             cx.on_focus(&focus_handle, Self::focus_in).detach();
 
             cx.subscribe(&project, |this, project, event, cx| match event {
@@ -184,10 +190,6 @@ impl ProjectPanel {
                 }
                 project::Event::WorktreeRemoved(id) => {
                     this.expanded_dir_ids.remove(id);
-                    this.update_visible_entries(None, cx);
-                    cx.notify();
-                }
-                project::Event::WorktreeUpdatedEntries(_, _) | project::Event::WorktreeAdded => {
                     this.update_visible_entries(None, cx);
                     cx.notify();
                 }
@@ -605,7 +607,7 @@ impl ProjectPanel {
                 worktree_id,
                 entry_id: NEW_ENTRY_ID,
             });
-            let new_path = entry.path.join(&filename.trim_start_matches('/'));
+            let new_path = entry.path.join(&filename.trim_start_matches("/"));
             if path_already_exists(new_path.as_path()) {
                 return None;
             }
@@ -1026,7 +1028,7 @@ impl ProjectPanel {
                 cx.foreground_executor().spawn(task).detach_and_log_err(cx);
             }
 
-            project.worktree_id_for_entry(destination, cx)
+            Some(project.worktree_id_for_entry(destination, cx)?)
         });
 
         if let Some(destination_worktree) = destination_worktree {

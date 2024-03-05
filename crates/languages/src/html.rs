@@ -14,7 +14,7 @@ use std::{
 };
 use util::{async_maybe, ResultExt};
 
-const SERVER_PATH: &str =
+const SERVER_PATH: &'static str =
     "node_modules/vscode-langservers-extracted/bin/vscode-html-language-server";
 
 fn server_binary_arguments(server_path: &Path) -> Vec<OsString> {
@@ -35,6 +35,10 @@ impl HtmlLspAdapter {
 impl LspAdapter for HtmlLspAdapter {
     fn name(&self) -> LanguageServerName {
         LanguageServerName("vscode-html-language-server".into())
+    }
+
+    fn short_name(&self) -> &'static str {
+        "html"
     }
 
     async fn fetch_latest_server_version(

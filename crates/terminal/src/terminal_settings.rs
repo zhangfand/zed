@@ -18,11 +18,6 @@ pub enum TerminalDockPosition {
     Right,
 }
 
-#[derive(Copy, Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
-pub struct Toolbar {
-    pub title: bool,
-}
-
 #[derive(Deserialize)]
 pub struct TerminalSettings {
     pub shell: Shell,
@@ -41,7 +36,6 @@ pub struct TerminalSettings {
     pub default_height: Pixels,
     pub detect_venv: VenvSettings,
     pub max_scroll_history_lines: Option<usize>,
-    pub toolbar: Toolbar,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
@@ -161,8 +155,6 @@ pub struct TerminalSettingsContent {
     ///
     /// Default: 10_000
     pub max_scroll_history_lines: Option<usize>,
-    /// Toolbar related settings
-    pub toolbar: Option<ToolbarContent>,
 }
 
 impl settings::Settings for TerminalSettings {
@@ -281,13 +273,4 @@ pub enum WorkingDirectory {
     /// If this path is not a valid directory the terminal will default to
     /// this platform's home directory  (if it can be found).
     Always { directory: String },
-}
-
-// Toolbar related settings
-#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
-pub struct ToolbarContent {
-    /// Whether to display the terminal title in its toolbar.
-    ///
-    /// Default: true
-    pub title: Option<bool>,
 }

@@ -87,7 +87,8 @@ async fn test_get_or_create_user_by_github_account(db: &Arc<Database>) {
         },
     )
     .await
-    .unwrap();
+    .unwrap()
+    .user_id;
     let user_id2 = db
         .create_user(
             "user2@example.com",
@@ -494,7 +495,7 @@ async fn test_project_count(db: &Arc<Database>) {
 
     let user1 = db
         .create_user(
-            "admin@example.com",
+            &format!("admin@example.com"),
             true,
             NewUserParams {
                 github_login: "admin".into(),
@@ -505,7 +506,7 @@ async fn test_project_count(db: &Arc<Database>) {
         .unwrap();
     let user2 = db
         .create_user(
-            "user@example.com",
+            &format!("user@example.com"),
             false,
             NewUserParams {
                 github_login: "user".into(),

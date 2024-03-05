@@ -2,7 +2,7 @@ use anyhow::Context;
 use collections::{HashMap, HashSet};
 use fs::Fs;
 use gpui::{AsyncAppContext, Model};
-use language::{language_settings::language_settings, Buffer, Diff, LanguageRegistry};
+use language::{language_settings::language_settings, Buffer, Diff};
 use lsp::{LanguageServer, LanguageServerId};
 use node_runtime::NodeRuntime;
 use serde::{Deserialize, Serialize};
@@ -25,7 +25,6 @@ pub struct RealPrettier {
     default: bool,
     prettier_dir: PathBuf,
     server: Arc<LanguageServer>,
-    language_registry: Arc<LanguageRegistry>,
 }
 
 #[cfg(any(test, feature = "test-support"))]
@@ -156,7 +155,6 @@ impl Prettier {
         _: LanguageServerId,
         prettier_dir: PathBuf,
         _: Arc<dyn NodeRuntime>,
-        _: Arc<LanguageRegistry>,
         _: AsyncAppContext,
     ) -> anyhow::Result<Self> {
         Ok(Self::Test(TestPrettier {
@@ -170,7 +168,6 @@ impl Prettier {
         server_id: LanguageServerId,
         prettier_dir: PathBuf,
         node: Arc<dyn NodeRuntime>,
-        language_registry: Arc<LanguageRegistry>,
         cx: AsyncAppContext,
     ) -> anyhow::Result<Self> {
         use lsp::LanguageServerBinary;
@@ -197,7 +194,7 @@ impl Prettier {
                 arguments: vec![prettier_server.into(), prettier_dir.as_path().into()],
                 env: None,
             },
-            &prettier_dir,
+            Path::new("/"),
             None,
             cx.clone(),
         )
@@ -209,7 +206,6 @@ impl Prettier {
         Ok(Self::Real(RealPrettier {
             server,
             default: prettier_dir == DEFAULT_PRETTIER_DIR.as_path(),
-            language_registry,
             prettier_dir,
         }))
     }
@@ -227,12 +223,10 @@ impl Prettier {
                         let buffer_language = buffer.language();
                         let parser_with_plugins = buffer_language.and_then(|l| {
                             let prettier_parser = l.prettier_parser_name()?;
-                            let mut prettier_plugins = local
-                                .language_registry
-                                .lsp_adapters(l)
+                            let mut prettier_plugins = l
+                                .lsp_adapters()
                                 .iter()
                                 .flat_map(|adapter| adapter.prettier_plugins())
-                                .copied()
                                 .collect::<Vec<_>>();
                             prettier_plugins.dedup();
                             Some((prettier_parser, prettier_plugins))
@@ -245,7 +239,7 @@ impl Prettier {
                         );
                         let plugin_name_into_path = |plugin_name: &str| {
                             let prettier_plugin_dir = prettier_node_modules.join(plugin_name);
-                            [
+                            for possible_plugin_path in [
                                 prettier_plugin_dir.join("dist").join("index.mjs"),
                                 prettier_plugin_dir.join("dist").join("index.js"),
                                 prettier_plugin_dir.join("dist").join("plugin.js"),
@@ -255,9 +249,12 @@ impl Prettier {
                                 // this one is for @prettier/plugin-php
                                 prettier_plugin_dir.join("standalone.js"),
                                 prettier_plugin_dir,
-                            ]
-                            .into_iter()
-                            .find(|possible_plugin_path| possible_plugin_path.is_file())
+                            ] {
+                                if possible_plugin_path.is_file() {
+                                    return Some(possible_plugin_path);
+                                }
+                            }
+                            None
                         };
                         let (parser, located_plugins) = match parser_with_plugins {
                             Some((parser, plugins)) => {
@@ -267,7 +264,7 @@ impl Prettier {
 
                                 let mut plugins = plugins
                                     .into_iter()
-                                    .filter(|&plugin_name| {
+                                    .filter(|&&plugin_name| {
                                         if plugin_name == TAILWIND_PRETTIER_PLUGIN_PACKAGE_NAME {
                                             add_tailwind_back = true;
                                             false
@@ -335,9 +332,9 @@ impl Prettier {
                             .collect();
                         log::debug!(
                             "Formatting file {:?} with prettier, plugins :{:?}, options: {:?}",
-                            buffer.file().map(|f| f.full_path(cx)),
                             plugins,
                             prettier_options,
+                            buffer.file().map(|f| f.full_path(cx))
                         );
 
                         anyhow::Ok(FormatParams {

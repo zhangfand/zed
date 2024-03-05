@@ -208,8 +208,8 @@ impl BufferDiff {
         }
     }
 
-    fn process_patch_hunk(
-        patch: &GitPatch<'_>,
+    fn process_patch_hunk<'a>(
+        patch: &GitPatch<'a>,
         hunk_index: usize,
         buffer: &text::BufferSnapshot,
         buffer_row_divergence: &mut i64,

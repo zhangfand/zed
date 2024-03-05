@@ -164,34 +164,6 @@ struct Error {
     message: String,
 }
 
-/// Experimental: Informs the end user about the state of the server
-///
-/// [Rust Analyzer Specification](https://github.com/rust-lang/rust-analyzer/blob/master/docs/dev/lsp-extensions.md#server-status)
-#[derive(Debug)]
-pub enum ServerStatus {}
-
-/// Other(String) variant to handle unknown values due to this still being experimental
-#[derive(Debug, PartialEq, Deserialize, Serialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub enum ServerHealthStatus {
-    Ok,
-    Warning,
-    Error,
-    Other(String),
-}
-
-#[derive(Debug, PartialEq, Deserialize, Serialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct ServerStatusParams {
-    pub health: ServerHealthStatus,
-    pub message: Option<String>,
-}
-
-impl lsp_types::notification::Notification for ServerStatus {
-    type Params = ServerStatusParams;
-    const METHOD: &'static str = "experimental/serverStatus";
-}
-
 impl LanguageServer {
     /// Starts a language server process.
     pub fn new(
@@ -229,7 +201,7 @@ impl LanguageServer {
         let stdout = server.stdout.take().unwrap();
         let stderr = server.stderr.take().unwrap();
         let mut server = Self::new_internal(
-            server_id,
+            server_id.clone(),
             stdin,
             stdout,
             Some(stderr),
@@ -261,7 +233,6 @@ impl LanguageServer {
         Ok(server)
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn new_internal<Stdin, Stdout, Stderr, F>(
         server_id: LanguageServerId,
         stdin: Stdin,
@@ -341,7 +312,7 @@ impl LanguageServer {
             io_tasks: Mutex::new(Some((input_task, output_task))),
             output_done_rx: Mutex::new(Some(output_done_rx)),
             root_path: root_path.to_path_buf(),
-            server: Arc::new(Mutex::new(server)),
+            server: Arc::new(Mutex::new(server.map(|server| server))),
         }
     }
 
@@ -378,7 +349,7 @@ impl LanguageServer {
             let headers = std::str::from_utf8(&buffer)?;
 
             let message_len = headers
-                .split('\n')
+                .split("\n")
                 .find(|line| line.starts_with(CONTENT_LEN_HEADER))
                 .and_then(|line| line.strip_prefix(CONTENT_LEN_HEADER))
                 .ok_or_else(|| anyhow!("invalid LSP message header {headers:?}"))?
@@ -645,11 +616,11 @@ impl LanguageServer {
                 uri: root_uri,
                 name: Default::default(),
             }]),
-            client_info: release_channel::ReleaseChannel::try_global(cx).map(|release_channel| {
-                ClientInfo {
-                    name: release_channel.display_name().to_string(),
-                    version: Some(release_channel::AppVersion::global(cx).to_string()),
-                }
+            client_info: Some(ClientInfo {
+                name: release_channel::ReleaseChannel::global(cx)
+                    .display_name()
+                    .to_string(),
+                version: Some(release_channel::AppVersion::global(cx).to_string()),
             }),
             locale: None,
         };
@@ -978,7 +949,7 @@ impl LanguageServer {
                     Self::notify_internal::<notification::Cancel>(
                         &outbound_tx,
                         CancelParams {
-                            id: NumberOrString::Number(id),
+                            id: NumberOrString::Number(id as i32),
                         },
                     )
                     .log_err();
@@ -1084,7 +1055,6 @@ impl Drop for Subscription {
 #[cfg(any(test, feature = "test-support"))]
 #[derive(Clone)]
 pub struct FakeLanguageServer {
-    pub binary: LanguageServerBinary,
     pub server: Arc<LanguageServer>,
     notifications_rx: channel::Receiver<(String, String)>,
 }
@@ -1093,7 +1063,6 @@ pub struct FakeLanguageServer {
 impl FakeLanguageServer {
     /// Construct a fake language server.
     pub fn new(
-        binary: LanguageServerBinary,
         name: String,
         capabilities: ServerCapabilities,
         cx: AsyncAppContext,
@@ -1115,7 +1084,6 @@ impl FakeLanguageServer {
             |_| {},
         );
         let fake = FakeLanguageServer {
-            binary,
             server: Arc::new(LanguageServer::new_internal(
                 LanguageServerId(0),
                 stdout_writer,
@@ -1334,16 +1302,8 @@ mod tests {
         cx.update(|cx| {
             release_channel::init("0.0.0", cx);
         });
-        let (server, mut fake) = FakeLanguageServer::new(
-            LanguageServerBinary {
-                path: "path/to/language-server".into(),
-                arguments: vec![],
-                env: None,
-            },
-            "the-lsp".to_string(),
-            Default::default(),
-            cx.to_async(),
-        );
+        let (server, mut fake) =
+            FakeLanguageServer::new("the-lsp".to_string(), Default::default(), cx.to_async());
 
         let (message_tx, message_rx) = channel::unbounded();
         let (diagnostics_tx, diagnostics_rx) = channel::unbounded();

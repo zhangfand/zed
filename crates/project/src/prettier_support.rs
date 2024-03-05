@@ -14,7 +14,7 @@ use futures::{
 use gpui::{AsyncAppContext, Model, ModelContext, Task, WeakModel};
 use language::{
     language_settings::{Formatter, LanguageSettings},
-    Buffer, Language, LanguageRegistry, LanguageServerName, LocalFile,
+    Buffer, Language, LanguageServerName, LocalFile,
 };
 use lsp::{LanguageServer, LanguageServerId};
 use node_runtime::NodeRuntime;
@@ -26,8 +26,7 @@ use crate::{
 };
 
 pub fn prettier_plugins_for_language(
-    language_registry: &Arc<LanguageRegistry>,
-    language: &Arc<Language>,
+    language: &Language,
     language_settings: &LanguageSettings,
 ) -> Option<HashSet<&'static str>> {
     match &language_settings.formatter {
@@ -39,8 +38,8 @@ pub fn prettier_plugins_for_language(
         prettier_plugins
             .get_or_insert_with(|| HashSet::default())
             .extend(
-                language_registry
-                    .lsp_adapters(language)
+                language
+                    .lsp_adapters()
                     .iter()
                     .flat_map(|adapter| adapter.prettier_plugins()),
             )
@@ -304,20 +303,15 @@ fn start_prettier(
 ) -> PrettierTask {
     cx.spawn(|project, mut cx| async move {
         log::info!("Starting prettier at path {prettier_dir:?}");
-        let language_registry = project.update(&mut cx, |project, _| project.languages.clone())?;
-        let new_server_id = language_registry.next_language_server_id();
+        let new_server_id = project.update(&mut cx, |project, _| {
+            project.languages.next_language_server_id()
+        })?;
 
-        let new_prettier = Prettier::start(
-            new_server_id,
-            prettier_dir,
-            node,
-            language_registry,
-            cx.clone(),
-        )
-        .await
-        .context("default prettier spawn")
-        .map(Arc::new)
-        .map_err(Arc::new)?;
+        let new_prettier = Prettier::start(new_server_id, prettier_dir, node, cx.clone())
+            .await
+            .context("default prettier spawn")
+            .map(Arc::new)
+            .map_err(Arc::new)?;
         register_new_prettier(&project, &new_prettier, worktree_id, new_server_id, &mut cx);
         Ok(new_prettier)
     })

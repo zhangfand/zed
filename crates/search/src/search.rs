@@ -41,7 +41,7 @@ actions!(
 );
 
 bitflags! {
-    #[derive(Debug, PartialEq, Eq, Clone, Copy, Default)]
+    #[derive(Default)]
     pub struct SearchOptions: u8 {
         const NONE = 0b000;
         const WHOLE_WORD = 0b001;

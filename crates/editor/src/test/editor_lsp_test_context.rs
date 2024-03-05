@@ -32,7 +32,7 @@ pub struct EditorLspTestContext {
 
 impl EditorLspTestContext {
     pub async fn new(
-        language: Language,
+        mut language: Language,
         capabilities: lsp::ServerCapabilities,
         cx: &mut gpui::TestAppContext,
     ) -> EditorLspTestContext {
@@ -53,17 +53,16 @@ impl EditorLspTestContext {
                 .expect("language must have a path suffix for EditorLspTestContext")
         );
 
-        let project = Project::test(app_state.fs.clone(), [], cx).await;
-
-        let language_registry = project.read_with(cx, |project, _| project.languages().clone());
-        let mut fake_servers = language_registry.register_fake_lsp_adapter(
-            language.name().as_ref(),
-            FakeLspAdapter {
+        let mut fake_servers = language
+            .set_fake_lsp_adapter(Arc::new(FakeLspAdapter {
                 capabilities,
                 ..Default::default()
-            },
-        );
-        language_registry.add(Arc::new(language));
+            }))
+            .await;
+
+        let project = Project::test(app_state.fs.clone(), [], cx).await;
+
+        project.update(cx, |project, _| project.languages().add(Arc::new(language)));
 
         app_state
             .fs

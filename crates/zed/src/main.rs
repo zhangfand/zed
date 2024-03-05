@@ -5,7 +5,7 @@ use anyhow::{anyhow, Context as _, Result};
 use backtrace::Backtrace;
 use chrono::Utc;
 use cli::FORCE_CLI_MODE_ENV_VAR_NAME;
-use client::{parse_zed_link, Client, UserStore};
+use client::{Client, UserStore};
 use collab_ui::channel_view::ChannelView;
 use db::kvp::KEY_VALUE_STORE;
 use editor::Editor;
@@ -23,7 +23,7 @@ use assets::Assets;
 use mimalloc::MiMalloc;
 use node_runtime::RealNodeRuntime;
 use parking_lot::Mutex;
-use release_channel::{AppCommitSha, ReleaseChannel, RELEASE_CHANNEL};
+use release_channel::{parse_zed_link, AppCommitSha, ReleaseChannel, RELEASE_CHANNEL};
 use serde::{Deserialize, Serialize};
 use settings::{
     default_settings, handle_settings_file_changes, watch_config_file, Settings, SettingsStore,
@@ -106,9 +106,11 @@ fn main() {
     let (listener, mut open_rx) = OpenListener::new();
     let listener = Arc::new(listener);
     let open_listener = listener.clone();
-    app.on_open_urls(move |urls, cx| open_listener.open_urls(&urls, cx));
+    app.on_open_urls(move |urls, _| open_listener.open_urls(&urls));
     app.on_reopen(move |cx| {
-        if let Some(app_state) = AppState::try_global(cx).and_then(|app_state| app_state.upgrade())
+        if let Some(app_state) = AppState::try_global(cx)
+            .map(|app_state| app_state.upgrade())
+            .flatten()
         {
             workspace::open_new(&app_state, cx, |workspace, cx| {
                 Editor::new_file(workspace, &Default::default(), cx)
@@ -176,7 +178,6 @@ fn main() {
         extension::init(
             fs.clone(),
             http.clone(),
-            node_runtime.clone(),
             languages.clone(),
             ThemeRegistry::global(cx),
             cx,
@@ -267,13 +268,13 @@ fn main() {
         initialize_workspace(app_state.clone(), cx);
 
         if stdout_is_a_pty() {
-            // todo(linux): unblock this
+            //todo!(linux): unblock this
             #[cfg(not(target_os = "linux"))]
             upload_panics_and_crashes(http.clone(), cx);
             cx.activate(true);
-            let urls = collect_url_args(cx);
+            let urls = collect_url_args();
             if !urls.is_empty() {
-                listener.open_urls(&urls, cx)
+                listener.open_urls(&urls)
             }
         } else {
             upload_panics_and_crashes(http.clone(), cx);
@@ -282,7 +283,7 @@ fn main() {
             if std::env::var(FORCE_CLI_MODE_ENV_VAR_NAME).ok().is_some()
                 && !listener.triggered.load(Ordering::Acquire)
             {
-                listener.open_urls(&collect_url_args(cx), cx)
+                listener.open_urls(&collect_url_args())
             }
         }
 
@@ -296,9 +297,9 @@ fn main() {
             let task = workspace::open_paths(&paths, &app_state, None, cx);
             cx.spawn(|_| async move {
                 if let Some((_window, results)) = task.await.log_err() {
-                    for result in results.into_iter().flatten() {
-                        if let Err(err) = result {
-                            log::error!("Error opening path: {err}",);
+                    for result in results {
+                        if let Some(Err(e)) = result {
+                            log::error!("Error opening path: {}", e);
                         }
                     }
                 }
@@ -662,7 +663,7 @@ fn init_panic_hook(app: &App, installation_id: Option<String>, session_id: Strin
 
         let panic_data = Panic {
             thread: thread_name.into(),
-            payload,
+            payload: payload.into(),
             location_data: info.location().map(|location| LocationData {
                 file: location.file().into(),
                 line: location.line(),
@@ -921,13 +922,13 @@ fn stdout_is_a_pty() -> bool {
     std::env::var(FORCE_CLI_MODE_ENV_VAR_NAME).ok().is_none() && std::io::stdout().is_terminal()
 }
 
-fn collect_url_args(cx: &AppContext) -> Vec<String> {
+fn collect_url_args() -> Vec<String> {
     env::args()
         .skip(1)
         .filter_map(|arg| match std::fs::canonicalize(Path::new(&arg)) {
             Ok(path) => Some(format!("file://{}", path.to_string_lossy())),
             Err(error) => {
-                if let Some(_) = parse_zed_link(&arg, cx) {
+                if let Some(_) = parse_zed_link(&arg) {
                     Some(arg)
                 } else {
                     log::error!("error parsing path argument: {}", error);
@@ -996,7 +997,7 @@ fn load_user_themes_in_background(fs: Arc<dyn fs::Fs>, cx: &mut AppContext) {
     .detach_and_log_err(cx);
 }
 
-// todo(linux): Port fsevents to linux
+//todo!(linux): Port fsevents to linux
 /// Spawns a background task to watch the themes directory for changes.
 #[cfg(target_os = "macos")]
 fn watch_themes(fs: Arc<dyn fs::Fs>, cx: &mut AppContext) {

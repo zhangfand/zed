@@ -242,7 +242,7 @@ fn view_release_notes_locally(workspace: &mut Workspace, cx: &mut ViewContext<Wo
                                 Some(tab_description),
                                 cx,
                             );
-                            workspace.add_item_to_active_pane(Box::new(view.clone()), cx);
+                            workspace.add_item(Box::new(view.clone()), cx);
                             cx.notify();
                         })
                         .log_err();
@@ -343,7 +343,8 @@ impl AutoUpdater {
         ));
         cx.update(|cx| {
             if let Some(param) = ReleaseChannel::try_global(cx)
-                .and_then(|release_channel| release_channel.release_query_param())
+                .map(|release_channel| release_channel.release_query_param())
+                .flatten()
             {
                 url_string += "&";
                 url_string += param;

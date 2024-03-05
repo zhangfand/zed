@@ -93,7 +93,7 @@ pub fn init(cx: &mut AppContext) {
         workspace.register_action(move |workspace, _: &OpenLanguageServerLogs, cx| {
             let project = workspace.project().read(cx);
             if project.is_local() {
-                workspace.add_item_to_active_pane(
+                workspace.add_item(
                     Box::new(cx.new_view(|cx| {
                         LspLogView::new(workspace.project().clone(), log_store.clone(), cx)
                     })),
@@ -756,8 +756,8 @@ impl Render for LspLogToolbarItemView {
             .trigger(Button::new(
                 "language_server_menu_header",
                 current_server
-                    .map(|row| {
-                        Cow::Owned(format!(
+                    .and_then(|row| {
+                        Some(Cow::Owned(format!(
                             "{} ({}) - {}",
                             row.server_name.0,
                             row.worktree_root_name,
@@ -766,7 +766,7 @@ impl Render for LspLogToolbarItemView {
                             } else {
                                 SERVER_LOGS
                             },
-                        ))
+                        )))
                     })
                     .unwrap_or_else(|| "No server selected".into()),
             ))

@@ -72,9 +72,7 @@ pub fn run_test(
                         if is_randomized {
                             eprintln!("failing seed: {}", seed);
                         }
-                        if let Some(f) = on_fail_fn {
-                            f()
-                        }
+                        on_fail_fn.map(|f| f());
                         panic::resume_unwind(error);
                     }
                 }

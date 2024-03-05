@@ -176,10 +176,7 @@ impl AppState {
             db: Arc::new(db),
             live_kit_client,
             blob_store_client: build_blob_store_client(&config).await.log_err(),
-            clickhouse_client: config
-                .clickhouse_url
-                .as_ref()
-                .and_then(|_| build_clickhouse_client(&config).log_err()),
+            clickhouse_client: build_clickhouse_client(&config).log_err(),
             config,
         };
         Ok(Arc::new(this))

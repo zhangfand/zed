@@ -24,9 +24,6 @@ impl std::fmt::Display for ChannelId {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
-pub struct HostedProjectId(pub u64);
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ParticipantIndex(pub u32);
 
@@ -656,7 +653,7 @@ impl UserStore {
                 let users = response
                     .users
                     .into_iter()
-                    .map(User::new)
+                    .map(|user| User::new(user))
                     .collect::<Vec<_>>();
 
                 this.update(&mut cx, |this, _| {

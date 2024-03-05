@@ -26,7 +26,6 @@ extend-ignore-re = [
     "COLUMN enviroment",
     # Typo in ClickHouse column name.
     # crates/collab/src/api/events.rs
-    "rename = \"sesssion_id\"",
-    "doas",
+    "rename = \"sesssion_id\""
 ]
 check-filename = true

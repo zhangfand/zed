@@ -7,9 +7,6 @@ version = "0.44.0"
 publish = false
 license = "AGPL-3.0-or-later"
 
-[lints]
-workspace = true
-
 [[bin]]
 name = "collab"
 
@@ -17,7 +14,6 @@ name = "collab"
 name = "seed"
 
 [dependencies]
-console-subscriber = "0.2"
 anyhow.workspace = true
 async-tungstenite = "0.16"
 aws-config = { version = "1.1.5" }
@@ -33,6 +29,7 @@ envy = "0.4.2"
 futures.workspace = true
 hex.workspace = true
 hyper = "0.14"
+lazy_static.workspace = true
 live_kit_server.workspace = true
 log.workspace = true
 nanoid = "0.4"

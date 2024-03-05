@@ -27,6 +27,10 @@ impl LspAdapter for GleamLspAdapter {
         LanguageServerName("gleam".into())
     }
 
+    fn short_name(&self) -> &'static str {
+        "gleam"
+    }
+
     async fn fetch_latest_server_version(
         &self,
         delegate: &dyn LspAdapterDelegate,

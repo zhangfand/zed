@@ -1,6 +1,9 @@
 //! A source of tasks, based on a static configuration, deserialized from the tasks config file, and related infrastructure for tracking changes to the file.
 
-use std::{borrow::Cow, path::Path, sync::Arc};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use collections::HashMap;
 use futures::StreamExt;
@@ -9,7 +12,7 @@ use schemars::{gen::SchemaSettings, JsonSchema};
 use serde::{Deserialize, Serialize};
 use util::ResultExt;
 
-use crate::{SpawnInTerminal, Task, TaskContext, TaskId, TaskSource};
+use crate::{SpawnInTerminal, Task, TaskId, TaskSource};
 use futures::channel::mpsc::UnboundedReceiver;
 
 /// A single config file entry with the deserialized task definition.
@@ -19,17 +22,17 @@ struct StaticTask {
     definition: Definition,
 }
 
+impl StaticTask {
+    pub(super) fn new(id: usize, task_definition: Definition) -> Self {
+        Self {
+            id: TaskId(format!("static_{}_{}", task_definition.label, id)),
+            definition: task_definition,
+        }
+    }
+}
+
 impl Task for StaticTask {
-    fn exec(&self, cx: TaskContext) -> Option<SpawnInTerminal> {
-        let TaskContext { cwd, env } = cx;
-        let cwd = self
-            .definition
-            .cwd
-            .clone()
-            .and_then(|path| subst::substitute(&path, &env).map(Into::into).ok())
-            .or(cwd);
-        let mut definition_env = self.definition.env.clone();
-        definition_env.extend(env);
+    fn exec(&self, cwd: Option<PathBuf>) -> Option<SpawnInTerminal> {
         Some(SpawnInTerminal {
             id: self.id.clone(),
             cwd,
@@ -38,7 +41,8 @@ impl Task for StaticTask {
             label: self.definition.label.clone(),
             command: self.definition.command.clone(),
             args: self.definition.args.clone(),
-            env: definition_env,
+            env: self.definition.env.clone(),
+            separate_shell: false,
         })
     }
 
@@ -50,7 +54,7 @@ impl Task for StaticTask {
         &self.id
     }
 
-    fn cwd(&self) -> Option<&str> {
+    fn cwd(&self) -> Option<&Path> {
         self.definition.cwd.as_deref()
     }
 }
@@ -77,7 +81,7 @@ pub(crate) struct Definition {
     pub env: HashMap<String, String>,
     /// Current working directory to spawn the command into, defaults to current project root.
     #[serde(default)]
-    pub cwd: Option<String>,
+    pub cwd: Option<PathBuf>,
     /// Whether to use a new terminal tab or reuse the existing one to spawn the process.
     #[serde(default)]
     pub use_new_terminal: bool,
@@ -101,7 +105,7 @@ impl DefinitionProvider {
         serde_json_lenient::to_value(schema).unwrap()
     }
 }
-/// A Wrapper around deserializable T that keeps track of its contents
+/// A Wrapper around deserializable T that keeps track of it's contents
 /// via a provided channel. Once T value changes, the observers of [`TrackedFile`] are
 /// notified.
 struct TrackedFile<T> {
@@ -146,16 +150,14 @@ impl<T: for<'a> Deserialize<'a> + PartialEq + 'static> TrackedFile<T> {
 impl StaticSource {
     /// Initializes the static source, reacting on tasks config changes.
     pub fn new(
-        id_base: impl Into<Cow<'static, str>>,
         tasks_file_tracker: UnboundedReceiver<String>,
         cx: &mut AppContext,
     ) -> Model<Box<dyn TaskSource>> {
         let definitions = TrackedFile::new(DefinitionProvider::default(), tasks_file_tracker, cx);
         cx.new_model(|cx| {
-            let id_base = id_base.into();
             let _subscription = cx.observe(
                 &definitions,
-                move |source: &mut Box<(dyn TaskSource + 'static)>, new_definitions, cx| {
+                |source: &mut Box<(dyn TaskSource + 'static)>, new_definitions, cx| {
                     if let Some(static_source) = source.as_any().downcast_mut::<Self>() {
                         static_source.tasks = new_definitions
                             .read(cx)
@@ -164,10 +166,7 @@ impl StaticSource {
                             .clone()
                             .into_iter()
                             .enumerate()
-                            .map(|(i, definition)| StaticTask {
-                                id: TaskId(format!("static_{id_base}_{i}_{}", definition.label)),
-                                definition,
-                            })
+                            .map(|(id, definition)| StaticTask::new(id, definition))
                             .collect();
                         cx.notify();
                     }

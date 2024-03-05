@@ -38,6 +38,10 @@ impl super::LspAdapter for GoLspAdapter {
         LanguageServerName("gopls".into())
     }
 
+    fn short_name(&self) -> &'static str {
+        "gopls"
+    }
+
     async fn fetch_latest_server_version(
         &self,
         delegate: &dyn LspAdapterDelegate,
@@ -54,16 +58,23 @@ impl super::LspAdapter for GoLspAdapter {
         Ok(Box::new(version) as Box<_>)
     }
 
-    async fn check_if_user_installed(
+    fn check_if_user_installed(
         &self,
-        delegate: &dyn LspAdapterDelegate,
-    ) -> Option<LanguageServerBinary> {
-        let (path, env) = delegate.which_command(OsString::from("gopls")).await?;
-        Some(LanguageServerBinary {
-            path,
-            arguments: server_binary_arguments(),
-            env: Some(env),
-        })
+        delegate: &Arc<dyn LspAdapterDelegate>,
+        cx: &mut AsyncAppContext,
+    ) -> Option<Task<Option<LanguageServerBinary>>> {
+        let delegate = delegate.clone();
+
+        Some(cx.spawn(|cx| async move {
+            match cx.update(|cx| delegate.which_command(OsString::from("gopls"), cx)) {
+                Ok(task) => task.await.map(|(path, env)| LanguageServerBinary {
+                    path,
+                    arguments: server_binary_arguments(),
+                    env: Some(env),
+                }),
+                Err(_) => None,
+            }
+        }))
     }
 
     fn will_fetch_server(
@@ -412,8 +423,12 @@ mod tests {
 
     #[gpui::test]
     async fn test_go_label_for_completion() {
-        let adapter = Arc::new(GoLspAdapter);
-        let language = language("go", tree_sitter_go::language());
+        let language = language(
+            "go",
+            tree_sitter_go::language(),
+            Some(Arc::new(GoLspAdapter)),
+        )
+        .await;
 
         let theme = SyntaxTheme::new_test([
             ("type", Hsla::default()),
@@ -431,16 +446,13 @@ mod tests {
         let highlight_number = grammar.highlight_id_for_name("number").unwrap();
 
         assert_eq!(
-            adapter
-                .label_for_completion(
-                    &lsp::CompletionItem {
-                        kind: Some(lsp::CompletionItemKind::FUNCTION),
-                        label: "Hello".to_string(),
-                        detail: Some("func(a B) c.D".to_string()),
-                        ..Default::default()
-                    },
-                    &language
-                )
+            language
+                .label_for_completion(&lsp::CompletionItem {
+                    kind: Some(lsp::CompletionItemKind::FUNCTION),
+                    label: "Hello".to_string(),
+                    detail: Some("func(a B) c.D".to_string()),
+                    ..Default::default()
+                })
                 .await,
             Some(CodeLabel {
                 text: "Hello(a B) c.D".to_string(),
@@ -455,16 +467,13 @@ mod tests {
 
         // Nested methods
         assert_eq!(
-            adapter
-                .label_for_completion(
-                    &lsp::CompletionItem {
-                        kind: Some(lsp::CompletionItemKind::METHOD),
-                        label: "one.two.Three".to_string(),
-                        detail: Some("func() [3]interface{}".to_string()),
-                        ..Default::default()
-                    },
-                    &language
-                )
+            language
+                .label_for_completion(&lsp::CompletionItem {
+                    kind: Some(lsp::CompletionItemKind::METHOD),
+                    label: "one.two.Three".to_string(),
+                    detail: Some("func() [3]interface{}".to_string()),
+                    ..Default::default()
+                })
                 .await,
             Some(CodeLabel {
                 text: "one.two.Three() [3]interface{}".to_string(),
@@ -479,16 +488,13 @@ mod tests {
 
         // Nested fields
         assert_eq!(
-            adapter
-                .label_for_completion(
-                    &lsp::CompletionItem {
-                        kind: Some(lsp::CompletionItemKind::FIELD),
-                        label: "two.Three".to_string(),
-                        detail: Some("a.Bcd".to_string()),
-                        ..Default::default()
-                    },
-                    &language
-                )
+            language
+                .label_for_completion(&lsp::CompletionItem {
+                    kind: Some(lsp::CompletionItemKind::FIELD),
+                    label: "two.Three".to_string(),
+                    detail: Some("a.Bcd".to_string()),
+                    ..Default::default()
+                })
                 .await,
             Some(CodeLabel {
                 text: "two.Three a.Bcd".to_string(),

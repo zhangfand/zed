@@ -15,10 +15,10 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
-use util::{async_maybe, ResultExt};
+use util::ResultExt;
 
-const SERVER_NAME: &str = "elm-language-server";
-const SERVER_PATH: &str = "node_modules/@elm-tooling/elm-language-server/out/node/index.js";
+const SERVER_NAME: &'static str = "elm-language-server";
+const SERVER_PATH: &'static str = "node_modules/@elm-tooling/elm-language-server/out/node/index.js";
 
 fn server_binary_arguments(server_path: &Path) -> Vec<OsString> {
     vec![server_path.into(), "--stdio".into()]
@@ -38,6 +38,10 @@ impl ElmLspAdapter {
 impl LspAdapter for ElmLspAdapter {
     fn name(&self) -> LanguageServerName {
         LanguageServerName(SERVER_NAME.into())
+    }
+
+    fn short_name(&self) -> &'static str {
+        "elmLS"
     }
 
     async fn fetch_latest_server_version(
@@ -117,7 +121,7 @@ async fn get_cached_server_binary(
     container_dir: PathBuf,
     node: &dyn NodeRuntime,
 ) -> Option<LanguageServerBinary> {
-    async_maybe!({
+    (|| async move {
         let mut last_version_dir = None;
         let mut entries = fs::read_dir(&container_dir).await?;
         while let Some(entry) = entries.next().await {
@@ -140,7 +144,7 @@ async fn get_cached_server_binary(
                 last_version_dir
             ))
         }
-    })
+    })()
     .await
     .log_err()
 }

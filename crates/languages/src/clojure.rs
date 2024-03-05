@@ -18,6 +18,10 @@ impl super::LspAdapter for ClojureLspAdapter {
         LanguageServerName("clojure-lsp".into())
     }
 
+    fn short_name(&self) -> &'static str {
+        "clojure"
+    }
+
     async fn fetch_latest_server_version(
         &self,
         delegate: &dyn LspAdapterDelegate,

@@ -147,7 +147,9 @@ async fn fetch_extensions_from_blob_store(
         .send()
         .await?;
 
-    let objects = list.contents.unwrap_or_default();
+    let objects = list
+        .contents
+        .ok_or_else(|| anyhow!("missing bucket contents"))?;
 
     let mut published_versions = HashMap::<&str, Vec<&str>>::default();
     for object in &objects {

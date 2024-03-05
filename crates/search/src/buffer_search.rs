@@ -98,7 +98,7 @@ impl BufferSearchBar {
             font_size: rems(0.875).into(),
             font_weight: FontWeight::NORMAL,
             font_style: FontStyle::Normal,
-            line_height: relative(1.3),
+            line_height: relative(1.3).into(),
             background_color: None,
             underline: None,
             strikethrough: None,
@@ -1477,7 +1477,7 @@ mod tests {
                 buffer_text,
             )
         });
-        let window = cx.add_window(|_| gpui::Empty);
+        let window = cx.add_window(|_| ());
 
         let editor = window.build_view(cx, |cx| Editor::for_buffer(buffer.clone(), None, cx));
 

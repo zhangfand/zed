@@ -1553,14 +1553,12 @@ pub mod tests {
                     }),
                 )
                 .await;
-
         let project = Project::test(fs, ["/a".as_ref()], cx).await;
 
-        let language_registry = project.read_with(cx, |project, _| project.languages().clone());
         let mut rs_fake_servers = None;
         let mut md_fake_servers = None;
         for (name, path_suffix) in [("Rust", "rs"), ("Markdown", "md")] {
-            language_registry.add(Arc::new(Language::new(
+            let mut language = Language::new(
                 LanguageConfig {
                     name: name.into(),
                     matcher: LanguageMatcher {
@@ -1570,23 +1568,25 @@ pub mod tests {
                     ..Default::default()
                 },
                 Some(tree_sitter_rust::language()),
-            )));
-            let fake_servers = language_registry.register_fake_lsp_adapter(
-                name,
-                FakeLspAdapter {
+            );
+            let fake_servers = language
+                .set_fake_lsp_adapter(Arc::new(FakeLspAdapter {
                     name,
                     capabilities: lsp::ServerCapabilities {
                         inlay_hint_provider: Some(lsp::OneOf::Left(true)),
                         ..Default::default()
                     },
                     ..Default::default()
-                },
-            );
+                }))
+                .await;
             match name {
                 "Rust" => rs_fake_servers = Some(fake_servers),
                 "Markdown" => md_fake_servers = Some(fake_servers),
                 _ => unreachable!(),
             }
+            project.update(cx, |project, _| {
+                project.languages().add(Arc::new(language));
+            });
         }
 
         let rs_buffer = project
@@ -2197,7 +2197,7 @@ pub mod tests {
             "another change #3",
         ] {
             expected_changes.push(async_later_change);
-            let task_editor = editor;
+            let task_editor = editor.clone();
             edits.push(cx.spawn(|mut cx| async move {
                 task_editor
                     .update(&mut cx, |editor, cx| {
@@ -2253,6 +2253,26 @@ pub mod tests {
             })
         });
 
+        let mut language = Language::new(
+            LanguageConfig {
+                name: "Rust".into(),
+                matcher: LanguageMatcher {
+                    path_suffixes: vec!["rs".to_string()],
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            Some(tree_sitter_rust::language()),
+        );
+        let mut fake_servers = language
+            .set_fake_lsp_adapter(Arc::new(FakeLspAdapter {
+                capabilities: lsp::ServerCapabilities {
+                    inlay_hint_provider: Some(lsp::OneOf::Left(true)),
+                    ..Default::default()
+                },
+                ..Default::default()
+            }))
+            .await;
         let fs = FakeFs::new(cx.background_executor.clone());
         fs.insert_tree(
             "/a",
@@ -2262,22 +2282,8 @@ pub mod tests {
             }),
         )
         .await;
-
         let project = Project::test(fs, ["/a".as_ref()], cx).await;
-
-        let language_registry = project.read_with(cx, |project, _| project.languages().clone());
-        language_registry.add(crate::editor_tests::rust_lang());
-        let mut fake_servers = language_registry.register_fake_lsp_adapter(
-            "Rust",
-            FakeLspAdapter {
-                capabilities: lsp::ServerCapabilities {
-                    inlay_hint_provider: Some(lsp::OneOf::Left(true)),
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-        );
-
+        project.update(cx, |project, _| project.languages().add(Arc::new(language)));
         let buffer = project
             .update(cx, |project, cx| {
                 project.open_local_buffer("/a/main.rs", cx)
@@ -2548,6 +2554,27 @@ pub mod tests {
             })
         });
 
+        let mut language = Language::new(
+            LanguageConfig {
+                name: "Rust".into(),
+                matcher: LanguageMatcher {
+                    path_suffixes: vec!["rs".to_string()],
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            Some(tree_sitter_rust::language()),
+        );
+        let mut fake_servers = language
+            .set_fake_lsp_adapter(Arc::new(FakeLspAdapter {
+                capabilities: lsp::ServerCapabilities {
+                    inlay_hint_provider: Some(lsp::OneOf::Left(true)),
+                    ..Default::default()
+                },
+                ..Default::default()
+            }))
+            .await;
+        let language = Arc::new(language);
         let fs = FakeFs::new(cx.background_executor.clone());
         fs.insert_tree(
                 "/a",
@@ -2557,23 +2584,10 @@ pub mod tests {
                 }),
             )
             .await;
-
         let project = Project::test(fs, ["/a".as_ref()], cx).await;
-
-        let language_registry = project.read_with(cx, |project, _| project.languages().clone());
-        let language = crate::editor_tests::rust_lang();
-        language_registry.add(language);
-        let mut fake_servers = language_registry.register_fake_lsp_adapter(
-            "Rust",
-            FakeLspAdapter {
-                capabilities: lsp::ServerCapabilities {
-                    inlay_hint_provider: Some(lsp::OneOf::Left(true)),
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-        );
-
+        project.update(cx, |project, _| {
+            project.languages().add(Arc::clone(&language))
+        });
         let worktree_id = project.update(cx, |project, cx| {
             project.worktrees().next().unwrap().read(cx).id()
         });
@@ -2897,6 +2911,27 @@ pub mod tests {
             })
         });
 
+        let mut language = Language::new(
+            LanguageConfig {
+                name: "Rust".into(),
+                matcher: LanguageMatcher {
+                    path_suffixes: vec!["rs".to_string()],
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            Some(tree_sitter_rust::language()),
+        );
+        let mut fake_servers = language
+            .set_fake_lsp_adapter(Arc::new(FakeLspAdapter {
+                capabilities: lsp::ServerCapabilities {
+                    inlay_hint_provider: Some(lsp::OneOf::Left(true)),
+                    ..Default::default()
+                },
+                ..Default::default()
+            }))
+            .await;
+        let language = Arc::new(language);
         let fs = FakeFs::new(cx.background_executor.clone());
         fs.insert_tree(
             "/a",
@@ -2906,22 +2941,10 @@ pub mod tests {
             }),
         )
         .await;
-
         let project = Project::test(fs, ["/a".as_ref()], cx).await;
-
-        let language_registry = project.read_with(cx, |project, _| project.languages().clone());
-        language_registry.add(crate::editor_tests::rust_lang());
-        let mut fake_servers = language_registry.register_fake_lsp_adapter(
-            "Rust",
-            FakeLspAdapter {
-                capabilities: lsp::ServerCapabilities {
-                    inlay_hint_provider: Some(lsp::OneOf::Left(true)),
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-        );
-
+        project.update(cx, |project, _| {
+            project.languages().add(Arc::clone(&language))
+        });
         let worktree_id = project.update(cx, |project, cx| {
             project.worktrees().next().unwrap().read(cx).id()
         });
@@ -3126,6 +3149,26 @@ pub mod tests {
             })
         });
 
+        let mut language = Language::new(
+            LanguageConfig {
+                name: "Rust".into(),
+                matcher: LanguageMatcher {
+                    path_suffixes: vec!["rs".to_string()],
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            Some(tree_sitter_rust::language()),
+        );
+        let mut fake_servers = language
+            .set_fake_lsp_adapter(Arc::new(FakeLspAdapter {
+                capabilities: lsp::ServerCapabilities {
+                    inlay_hint_provider: Some(lsp::OneOf::Left(true)),
+                    ..Default::default()
+                },
+                ..Default::default()
+            }))
+            .await;
         let fs = FakeFs::new(cx.background_executor.clone());
         fs.insert_tree(
             "/a",
@@ -3135,22 +3178,8 @@ pub mod tests {
             }),
         )
         .await;
-
         let project = Project::test(fs, ["/a".as_ref()], cx).await;
-
-        let language_registry = project.read_with(cx, |project, _| project.languages().clone());
-        language_registry.add(crate::editor_tests::rust_lang());
-        let mut fake_servers = language_registry.register_fake_lsp_adapter(
-            "Rust",
-            FakeLspAdapter {
-                capabilities: lsp::ServerCapabilities {
-                    inlay_hint_provider: Some(lsp::OneOf::Left(true)),
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-        );
-
+        project.update(cx, |project, _| project.languages().add(Arc::new(language)));
         let buffer = project
             .update(cx, |project, cx| {
                 project.open_local_buffer("/a/main.rs", cx)
@@ -3367,6 +3396,27 @@ pub mod tests {
     async fn prepare_test_objects(
         cx: &mut TestAppContext,
     ) -> (&'static str, WindowHandle<Editor>, FakeLanguageServer) {
+        let mut language = Language::new(
+            LanguageConfig {
+                name: "Rust".into(),
+                matcher: LanguageMatcher {
+                    path_suffixes: vec!["rs".to_string()],
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            Some(tree_sitter_rust::language()),
+        );
+        let mut fake_servers = language
+            .set_fake_lsp_adapter(Arc::new(FakeLspAdapter {
+                capabilities: lsp::ServerCapabilities {
+                    inlay_hint_provider: Some(lsp::OneOf::Left(true)),
+                    ..Default::default()
+                },
+                ..Default::default()
+            }))
+            .await;
+
         let fs = FakeFs::new(cx.background_executor.clone());
         fs.insert_tree(
             "/a",
@@ -3378,30 +3428,7 @@ pub mod tests {
         .await;
 
         let project = Project::test(fs, ["/a".as_ref()], cx).await;
-
-        let language_registry = project.read_with(cx, |project, _| project.languages().clone());
-        language_registry.add(Arc::new(Language::new(
-            LanguageConfig {
-                name: "Rust".into(),
-                matcher: LanguageMatcher {
-                    path_suffixes: vec!["rs".to_string()],
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-            Some(tree_sitter_rust::language()),
-        )));
-        let mut fake_servers = language_registry.register_fake_lsp_adapter(
-            "Rust",
-            FakeLspAdapter {
-                capabilities: lsp::ServerCapabilities {
-                    inlay_hint_provider: Some(lsp::OneOf::Left(true)),
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-        );
-
+        project.update(cx, |project, _| project.languages().add(Arc::new(language)));
         let buffer = project
             .update(cx, |project, cx| {
                 project.open_local_buffer("/a/main.rs", cx)

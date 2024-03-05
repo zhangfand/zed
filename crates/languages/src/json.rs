@@ -18,7 +18,8 @@ use std::{
 };
 use util::{async_maybe, paths, ResultExt};
 
-const SERVER_PATH: &str = "node_modules/vscode-json-languageserver/bin/vscode-json-languageserver";
+const SERVER_PATH: &'static str =
+    "node_modules/vscode-json-languageserver/bin/vscode-json-languageserver";
 
 fn server_binary_arguments(server_path: &Path) -> Vec<OsString> {
     vec![server_path.into(), "--stdio".into()]
@@ -71,10 +72,7 @@ impl JsonLspAdapter {
                         "schema": KeymapFile::generate_json_schema(&action_names),
                     },
                     {
-                        "fileMatch": [
-                            schema_file_match(&paths::TASKS),
-                            &*paths::LOCAL_TASKS_RELATIVE_PATH,
-                        ],
+                        "fileMatch": [schema_file_match(&paths::TASKS)],
                         "schema": tasks_schema,
                     }
                 ]
@@ -87,6 +85,10 @@ impl JsonLspAdapter {
 impl LspAdapter for JsonLspAdapter {
     fn name(&self) -> LanguageServerName {
         LanguageServerName("json-language-server".into())
+    }
+
+    fn short_name(&self) -> &'static str {
+        "json"
     }
 
     async fn fetch_latest_server_version(

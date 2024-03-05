@@ -23,6 +23,10 @@ impl LspAdapter for RustLspAdapter {
         LanguageServerName("rust-analyzer".into())
     }
 
+    fn short_name(&self) -> &'static str {
+        "rust"
+    }
+
     async fn fetch_latest_server_version(
         &self,
         delegate: &dyn LspAdapterDelegate,
@@ -70,7 +74,7 @@ impl LspAdapter for RustLspAdapter {
             let decompressed_bytes = GzipDecoder::new(BufReader::new(response.body_mut()));
             let mut file = File::create(&destination_path).await?;
             futures::io::copy(decompressed_bytes, &mut file).await?;
-            // todo("windows")
+            // todo!("windows")
             #[cfg(not(windows))]
             {
                 fs::set_permissions(
@@ -356,8 +360,12 @@ mod tests {
 
     #[gpui::test]
     async fn test_rust_label_for_completion() {
-        let adapter = Arc::new(RustLspAdapter);
-        let language = language("rust", tree_sitter_rust::language());
+        let language = language(
+            "rust",
+            tree_sitter_rust::language(),
+            Some(Arc::new(RustLspAdapter)),
+        )
+        .await;
         let grammar = language.grammar().unwrap();
         let theme = SyntaxTheme::new_test([
             ("type", Hsla::default()),
@@ -374,16 +382,13 @@ mod tests {
         let highlight_field = grammar.highlight_id_for_name("property").unwrap();
 
         assert_eq!(
-            adapter
-                .label_for_completion(
-                    &lsp::CompletionItem {
-                        kind: Some(lsp::CompletionItemKind::FUNCTION),
-                        label: "hello(…)".to_string(),
-                        detail: Some("fn(&mut Option<T>) -> Vec<T>".to_string()),
-                        ..Default::default()
-                    },
-                    &language
-                )
+            language
+                .label_for_completion(&lsp::CompletionItem {
+                    kind: Some(lsp::CompletionItemKind::FUNCTION),
+                    label: "hello(…)".to_string(),
+                    detail: Some("fn(&mut Option<T>) -> Vec<T>".to_string()),
+                    ..Default::default()
+                })
                 .await,
             Some(CodeLabel {
                 text: "hello(&mut Option<T>) -> Vec<T>".to_string(),
@@ -399,16 +404,13 @@ mod tests {
             })
         );
         assert_eq!(
-            adapter
-                .label_for_completion(
-                    &lsp::CompletionItem {
-                        kind: Some(lsp::CompletionItemKind::FUNCTION),
-                        label: "hello(…)".to_string(),
-                        detail: Some("async fn(&mut Option<T>) -> Vec<T>".to_string()),
-                        ..Default::default()
-                    },
-                    &language
-                )
+            language
+                .label_for_completion(&lsp::CompletionItem {
+                    kind: Some(lsp::CompletionItemKind::FUNCTION),
+                    label: "hello(…)".to_string(),
+                    detail: Some("async fn(&mut Option<T>) -> Vec<T>".to_string()),
+                    ..Default::default()
+                })
                 .await,
             Some(CodeLabel {
                 text: "hello(&mut Option<T>) -> Vec<T>".to_string(),
@@ -424,16 +426,13 @@ mod tests {
             })
         );
         assert_eq!(
-            adapter
-                .label_for_completion(
-                    &lsp::CompletionItem {
-                        kind: Some(lsp::CompletionItemKind::FIELD),
-                        label: "len".to_string(),
-                        detail: Some("usize".to_string()),
-                        ..Default::default()
-                    },
-                    &language
-                )
+            language
+                .label_for_completion(&lsp::CompletionItem {
+                    kind: Some(lsp::CompletionItemKind::FIELD),
+                    label: "len".to_string(),
+                    detail: Some("usize".to_string()),
+                    ..Default::default()
+                })
                 .await,
             Some(CodeLabel {
                 text: "len: usize".to_string(),
@@ -443,16 +442,13 @@ mod tests {
         );
 
         assert_eq!(
-            adapter
-                .label_for_completion(
-                    &lsp::CompletionItem {
-                        kind: Some(lsp::CompletionItemKind::FUNCTION),
-                        label: "hello(…)".to_string(),
-                        detail: Some("fn(&mut Option<T>) -> Vec<T>".to_string()),
-                        ..Default::default()
-                    },
-                    &language
-                )
+            language
+                .label_for_completion(&lsp::CompletionItem {
+                    kind: Some(lsp::CompletionItemKind::FUNCTION),
+                    label: "hello(…)".to_string(),
+                    detail: Some("fn(&mut Option<T>) -> Vec<T>".to_string()),
+                    ..Default::default()
+                })
                 .await,
             Some(CodeLabel {
                 text: "hello(&mut Option<T>) -> Vec<T>".to_string(),
@@ -471,8 +467,12 @@ mod tests {
 
     #[gpui::test]
     async fn test_rust_label_for_symbol() {
-        let adapter = Arc::new(RustLspAdapter);
-        let language = language("rust", tree_sitter_rust::language());
+        let language = language(
+            "rust",
+            tree_sitter_rust::language(),
+            Some(Arc::new(RustLspAdapter)),
+        )
+        .await;
         let grammar = language.grammar().unwrap();
         let theme = SyntaxTheme::new_test([
             ("type", Hsla::default()),
@@ -488,8 +488,8 @@ mod tests {
         let highlight_keyword = grammar.highlight_id_for_name("keyword").unwrap();
 
         assert_eq!(
-            adapter
-                .label_for_symbol("hello", lsp::SymbolKind::FUNCTION, &language)
+            language
+                .label_for_symbol("hello", lsp::SymbolKind::FUNCTION)
                 .await,
             Some(CodeLabel {
                 text: "fn hello".to_string(),
@@ -499,8 +499,8 @@ mod tests {
         );
 
         assert_eq!(
-            adapter
-                .label_for_symbol("World", lsp::SymbolKind::TYPE_PARAMETER, &language)
+            language
+                .label_for_symbol("World", lsp::SymbolKind::TYPE_PARAMETER)
                 .await,
             Some(CodeLabel {
                 text: "type World".to_string(),
@@ -524,7 +524,7 @@ mod tests {
             });
         });
 
-        let language = crate::language("rust", tree_sitter_rust::language());
+        let language = crate::language("rust", tree_sitter_rust::language(), None).await;
 
         cx.new_model(|cx| {
             let mut buffer = Buffer::new(0, BufferId::new(cx.entity_id().as_u64()).unwrap(), "")

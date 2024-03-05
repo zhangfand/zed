@@ -32,7 +32,8 @@ jobs:
         uses: ./.github/actions/check_style
 
       - name: Run clippy
-        run: cargo xtask clippy
+        shell: bash -euxo pipefail {0}
+        run: script/clippy
   tests:
     name: Run tests
     if: github.repository_owner == 'zed-industries'

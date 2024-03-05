@@ -5,9 +5,6 @@ edition = "2021"
 publish = false
 license = "GPL-3.0-or-later"
 
-[lints]
-workspace = true
-
 [lib]
 path = "src/cli.rs"
 doctest = false
@@ -18,7 +15,6 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow.workspace = true
-# TODO: Use workspace version of `clap`.
 clap = { version = "3.1", features = ["derive"] }
 ipc-channel = "0.16"
 serde.workspace = true

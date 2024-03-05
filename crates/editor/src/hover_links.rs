@@ -381,7 +381,7 @@ pub fn show_link_definition(
     let Some((buffer, buffer_position)) = editor
         .buffer
         .read(cx)
-        .text_anchor_for_position(*trigger_anchor, cx)
+        .text_anchor_for_position(trigger_anchor.clone(), cx)
     else {
         return;
     };
@@ -389,7 +389,7 @@ pub fn show_link_definition(
     let Some((excerpt_id, _, _)) = editor
         .buffer()
         .read(cx)
-        .excerpt_containing(*trigger_anchor, cx)
+        .excerpt_containing(trigger_anchor.clone(), cx)
     else {
         return;
     };
@@ -424,8 +424,9 @@ pub fn show_link_definition(
                 TriggerPoint::Text(_) => {
                     if let Some((url_range, url)) = find_url(&buffer, buffer_position, cx.clone()) {
                         this.update(&mut cx, |_, _| {
-                            let start = snapshot.anchor_in_excerpt(excerpt_id, url_range.start);
-                            let end = snapshot.anchor_in_excerpt(excerpt_id, url_range.end);
+                            let start =
+                                snapshot.anchor_in_excerpt(excerpt_id.clone(), url_range.start);
+                            let end = snapshot.anchor_in_excerpt(excerpt_id.clone(), url_range.end);
                             (
                                 Some(RangeInEditor::Text(start..end)),
                                 vec![HoverLink::Url(url)],
@@ -450,10 +451,14 @@ pub fn show_link_definition(
                                 (
                                     definition_result.iter().find_map(|link| {
                                         link.origin.as_ref().map(|origin| {
-                                            let start = snapshot
-                                                .anchor_in_excerpt(excerpt_id, origin.range.start);
-                                            let end = snapshot
-                                                .anchor_in_excerpt(excerpt_id, origin.range.end);
+                                            let start = snapshot.anchor_in_excerpt(
+                                                excerpt_id.clone(),
+                                                origin.range.start,
+                                            );
+                                            let end = snapshot.anchor_in_excerpt(
+                                                excerpt_id.clone(),
+                                                origin.range.end,
+                                            );
                                             RangeInEditor::Text(start..end)
                                         })
                                     }),

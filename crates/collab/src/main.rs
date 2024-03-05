@@ -20,12 +20,11 @@ use tracing_log::LogTracer;
 use tracing_subscriber::{filter::EnvFilter, fmt::format::JsonFields, Layer};
 use util::ResultExt;
 
-const VERSION: &str = env!("CARGO_PKG_VERSION");
+const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 const REVISION: Option<&'static str> = option_env!("GITHUB_SHA");
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    console_subscriber::init();
     if let Err(error) = env::load_dotenv() {
         eprintln!(
             "error loading .env.toml (this is expected in production): {}",
@@ -131,7 +130,7 @@ async fn main() -> Result<()> {
                 })
                 .await?;
 
-            // todo("windows")
+            // todo!("windows")
             #[cfg(windows)]
             unimplemented!();
         }

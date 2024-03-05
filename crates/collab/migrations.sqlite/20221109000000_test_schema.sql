@@ -46,11 +46,10 @@ CREATE UNIQUE INDEX "index_rooms_on_channel_id" ON "rooms" ("channel_id");
 CREATE TABLE "projects" (
     "id" INTEGER PRIMARY KEY AUTOINCREMENT,
     "room_id" INTEGER REFERENCES rooms (id) ON DELETE CASCADE NOT NULL,
-    "host_user_id" INTEGER REFERENCES users (id),
+    "host_user_id" INTEGER REFERENCES users (id) NOT NULL,
     "host_connection_id" INTEGER,
     "host_connection_server_id" INTEGER REFERENCES servers (id) ON DELETE CASCADE,
-    "unregistered" BOOLEAN NOT NULL DEFAULT FALSE,
-    "hosted_project_id" INTEGER REFERENCES hosted_projects (id)
+    "unregistered" BOOLEAN NOT NULL DEFAULT FALSE
 );
 CREATE INDEX "index_projects_on_host_connection_server_id" ON "projects" ("host_connection_server_id");
 CREATE INDEX "index_projects_on_host_connection_id_and_host_connection_server_id" ON "projects" ("host_connection_id", "host_connection_server_id");

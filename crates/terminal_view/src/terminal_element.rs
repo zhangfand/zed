@@ -365,7 +365,7 @@ impl TerminalElement {
         };
 
         let mut result = TextRun {
-            len: indexed.c.len_utf8(),
+            len: indexed.c.len_utf8() as usize,
             color: fg,
             background_color: None,
             font: Font {
@@ -406,10 +406,11 @@ impl TerminalElement {
 
         let font_features = terminal_settings
             .font_features
-            .unwrap_or(settings.buffer_font.features);
+            .clone()
+            .unwrap_or(settings.buffer_font.features.clone());
 
         let line_height = terminal_settings.line_height.value();
-        let font_size = terminal_settings.font_size;
+        let font_size = terminal_settings.font_size.clone();
 
         let font_size =
             font_size.map_or(buffer_font_size, |size| theme::adjusted_font_size(size, cx));
@@ -461,7 +462,7 @@ impl TerminalElement {
                 .width;
             gutter = cell_width;
 
-            let mut size = bounds.size;
+            let mut size = bounds.size.clone();
             size.width -= gutter;
 
             // https://github.com/zed-industries/zed/issues/2750
@@ -645,6 +646,7 @@ impl TerminalElement {
         });
 
         cx.on_mouse_event({
+            let bounds = bounds.clone();
             let focus = self.focus.clone();
             let terminal = self.terminal.clone();
             move |e: &MouseMoveEvent, phase, cx| {
@@ -826,7 +828,7 @@ impl Element for TerminalElement {
                                 start_y, //Need to change this
                                 line_height: layout.dimensions.line_height,
                                 lines: highlighted_range_lines,
-                                color: *color,
+                                color: color.clone(),
                                 //Copied from editor. TODO: move to theme or something
                                 corner_radius: 0.15 * layout.dimensions.line_height,
                             };
@@ -1013,10 +1015,10 @@ fn to_highlighted_range_lines(
         let mut line_end = layout.dimensions.columns();
 
         if line == clamped_start_line {
-            line_start = unclamped_start.column.0;
+            line_start = unclamped_start.column.0 as usize;
         }
         if line == clamped_end_line {
-            line_end = unclamped_end.column.0 + 1; // +1 for inclusive
+            line_end = unclamped_end.column.0 as usize + 1; //+1 for inclusive
         }
 
         highlighted_range_lines.push(HighlightedRangeLine {

@@ -1,10 +1,11 @@
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 
 use anyhow::{anyhow, Context};
 use aws_sdk_s3::primitives::ByteStream;
 use axum::{
     body::Bytes, headers::Header, http::HeaderName, routing::post, Extension, Router, TypedHeader,
 };
+use hyper::StatusCode;
 use hyper::{HeaderMap, StatusCode};
 use serde::{Serialize, Serializer};
 use sha2::{Digest, Sha256};
@@ -24,12 +25,16 @@ pub fn router() -> Router {
         .route("/telemetry/crashes", post(post_crash))
 }
 
+lazy_static! {
+    static ref ZED_CHECKSUM_HEADER: HeaderName = HeaderName::from_static("x-zed-checksum");
+    static ref CLOUDFLARE_IP_COUNTRY_HEADER: HeaderName = HeaderName::from_static("cf-ipcountry");
+}
+
 pub struct ZedChecksumHeader(Vec<u8>);
 
 impl Header for ZedChecksumHeader {
     fn name() -> &'static HeaderName {
-        static ZED_CHECKSUM_HEADER: OnceLock<HeaderName> = OnceLock::new();
-        ZED_CHECKSUM_HEADER.get_or_init(|| HeaderName::from_static("x-zed-checksum"))
+        &ZED_CHECKSUM_HEADER
     }
 
     fn decode<'i, I>(values: &mut I) -> Result<Self, axum::headers::Error>
@@ -56,8 +61,7 @@ pub struct CloudflareIpCountryHeader(String);
 
 impl Header for CloudflareIpCountryHeader {
     fn name() -> &'static HeaderName {
-        static CLOUDFLARE_IP_COUNTRY_HEADER: OnceLock<HeaderName> = OnceLock::new();
-        CLOUDFLARE_IP_COUNTRY_HEADER.get_or_init(|| HeaderName::from_static("cf-ipcountry"))
+        &CLOUDFLARE_IP_COUNTRY_HEADER
     }
 
     fn decode<'i, I>(values: &mut I) -> Result<Self, axum::headers::Error>
@@ -355,68 +359,40 @@ struct ToUpload {
 
 impl ToUpload {
     pub async fn upload(&self, clickhouse_client: &clickhouse::Client) -> anyhow::Result<()> {
-        const EDITOR_EVENTS_TABLE: &str = "editor_events";
-        Self::upload_to_table(EDITOR_EVENTS_TABLE, &self.editor_events, clickhouse_client)
+        Self::upload_to_table("editor_events", &self.editor_events, clickhouse_client)
             .await
-            .with_context(|| format!("failed to upload to table '{EDITOR_EVENTS_TABLE}'"))?;
-
-        const COPILOT_EVENTS_TABLE: &str = "copilot_events";
+            .with_context(|| format!("failed to upload to table 'editor_events'"))?;
+        Self::upload_to_table("copilot_events", &self.copilot_events, clickhouse_client)
+            .await
+            .with_context(|| format!("failed to upload to table 'copilot_events'"))?;
         Self::upload_to_table(
-            COPILOT_EVENTS_TABLE,
-            &self.copilot_events,
-            clickhouse_client,
-        )
-        .await
-        .with_context(|| format!("failed to upload to table '{COPILOT_EVENTS_TABLE}'"))?;
-
-        const ASSISTANT_EVENTS_TABLE: &str = "assistant_events";
-        Self::upload_to_table(
-            ASSISTANT_EVENTS_TABLE,
+            "assistant_events",
             &self.assistant_events,
             clickhouse_client,
         )
         .await
-        .with_context(|| format!("failed to upload to table '{ASSISTANT_EVENTS_TABLE}'"))?;
-
-        const CALL_EVENTS_TABLE: &str = "call_events";
-        Self::upload_to_table(CALL_EVENTS_TABLE, &self.call_events, clickhouse_client)
+        .with_context(|| format!("failed to upload to table 'assistant_events'"))?;
+        Self::upload_to_table("call_events", &self.call_events, clickhouse_client)
             .await
-            .with_context(|| format!("failed to upload to table '{CALL_EVENTS_TABLE}'"))?;
-
-        const CPU_EVENTS_TABLE: &str = "cpu_events";
-        Self::upload_to_table(CPU_EVENTS_TABLE, &self.cpu_events, clickhouse_client)
+            .with_context(|| format!("failed to upload to table 'call_events'"))?;
+        Self::upload_to_table("cpu_events", &self.cpu_events, clickhouse_client)
             .await
-            .with_context(|| format!("failed to upload to table '{CPU_EVENTS_TABLE}'"))?;
-
-        const MEMORY_EVENTS_TABLE: &str = "memory_events";
-        Self::upload_to_table(MEMORY_EVENTS_TABLE, &self.memory_events, clickhouse_client)
+            .with_context(|| format!("failed to upload to table 'cpu_events'"))?;
+        Self::upload_to_table("memory_events", &self.memory_events, clickhouse_client)
             .await
-            .with_context(|| format!("failed to upload to table '{MEMORY_EVENTS_TABLE}'"))?;
-
-        const APP_EVENTS_TABLE: &str = "app_events";
-        Self::upload_to_table(APP_EVENTS_TABLE, &self.app_events, clickhouse_client)
+            .with_context(|| format!("failed to upload to table 'memory_events'"))?;
+        Self::upload_to_table("app_events", &self.app_events, clickhouse_client)
             .await
-            .with_context(|| format!("failed to upload to table '{APP_EVENTS_TABLE}'"))?;
-
-        const SETTING_EVENTS_TABLE: &str = "setting_events";
-        Self::upload_to_table(
-            SETTING_EVENTS_TABLE,
-            &self.setting_events,
-            clickhouse_client,
-        )
-        .await
-        .with_context(|| format!("failed to upload to table '{SETTING_EVENTS_TABLE}'"))?;
-
-        const EDIT_EVENTS_TABLE: &str = "edit_events";
-        Self::upload_to_table(EDIT_EVENTS_TABLE, &self.edit_events, clickhouse_client)
+            .with_context(|| format!("failed to upload to table 'app_events'"))?;
+        Self::upload_to_table("setting_events", &self.setting_events, clickhouse_client)
             .await
-            .with_context(|| format!("failed to upload to table '{EDIT_EVENTS_TABLE}'"))?;
-
-        const ACTION_EVENTS_TABLE: &str = "action_events";
-        Self::upload_to_table(ACTION_EVENTS_TABLE, &self.action_events, clickhouse_client)
+            .with_context(|| format!("failed to upload to table 'setting_events'"))?;
+        Self::upload_to_table("edit_events", &self.edit_events, clickhouse_client)
             .await
-            .with_context(|| format!("failed to upload to table '{ACTION_EVENTS_TABLE}'"))?;
-
+            .with_context(|| format!("failed to upload to table 'edit_events'"))?;
+        Self::upload_to_table("action_events", &self.action_events, clickhouse_client)
+            .await
+            .with_context(|| format!("failed to upload to table 'action_events'"))?;
         Ok(())
     }
 

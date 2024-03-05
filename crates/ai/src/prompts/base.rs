@@ -30,7 +30,7 @@ impl PromptArguments {
         if self
             .language_name
             .as_ref()
-            .map(|name| !["Markdown", "Plain Text"].contains(&name.as_str()))
+            .and_then(|name| Some(!["Markdown", "Plain Text"].contains(&name.as_str())))
             .unwrap_or(true)
         {
             PromptFileType::Code
@@ -51,10 +51,8 @@ pub trait PromptTemplate {
 #[repr(i8)]
 #[derive(PartialEq, Eq, Ord)]
 pub enum PromptPriority {
-    /// Ignores truncation.
-    Mandatory,
-    /// Truncates based on priority.
-    Ordered { order: usize },
+    Mandatory,                // Ignores truncation
+    Ordered { order: usize }, // Truncates based on priority
 }
 
 impl PartialOrd for PromptPriority {
@@ -88,6 +86,7 @@ impl PromptChain {
         let mut sorted_indices = (0..self.templates.len()).collect::<Vec<_>>();
         sorted_indices.sort_by_key(|&i| Reverse(&self.templates[i].0));
 
+        // If Truncate
         let mut tokens_outstanding = if truncate {
             Some(self.args.model.capacity()? - self.args.reserved_tokens)
         } else {

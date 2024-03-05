@@ -24,9 +24,11 @@ impl PromptCodeSnippet {
 
             let language_name = buffer
                 .language()
-                .map(|language| language.name().to_string().to_lowercase());
+                .and_then(|language| Some(language.name().to_string().to_lowercase()));
 
-            let file_path = buffer.file().map(|file| file.path().to_path_buf());
+            let file_path = buffer
+                .file()
+                .and_then(|file| Some(file.path().to_path_buf()));
 
             (content, language_name, file_path)
         })?;
@@ -44,7 +46,7 @@ impl ToString for PromptCodeSnippet {
         let path = self
             .path
             .as_ref()
-            .map(|path| path.to_string_lossy().to_string())
+            .and_then(|path| Some(path.to_string_lossy().to_string()))
             .unwrap_or("".to_string());
         let language_name = self.language_name.clone().unwrap_or("".to_string());
         let content = self.content.clone();
@@ -65,7 +67,7 @@ impl PromptTemplate for RepositoryContext {
         let template = "You are working inside a large repository, here are a few code snippets that may be useful.";
         let mut prompt = String::new();
 
-        let mut remaining_tokens = max_token_length;
+        let mut remaining_tokens = max_token_length.clone();
         let separator_token_length = args.model.count_tokens("\n")?;
         for snippet in &args.snippets {
             let mut snippet_prompt = template.to_string();

@@ -88,7 +88,6 @@ impl PaneGroup {
         };
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub(crate) fn render(
         &self,
         project: &Model<Project>,
@@ -160,7 +159,6 @@ impl Member {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub fn render(
         &self,
         project: &Model<Project>,
@@ -268,7 +266,7 @@ impl Member {
                                         this.cursor_pointer().on_mouse_down(
                                             MouseButton::Left,
                                             cx.listener(move |this, _, cx| {
-                                                crate::join_in_room_project(
+                                                crate::join_remote_project(
                                                     leader_project_id,
                                                     leader_user_id,
                                                     this.app_state().clone(),
@@ -473,7 +471,6 @@ impl PaneAxis {
         None
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn render(
         &self,
         project: &Model<Project>,
@@ -643,7 +640,6 @@ mod element {
             self
         }
 
-        #[allow(clippy::too_many_arguments)]
         fn compute_resize(
             flexes: &Arc<Mutex<Vec<f32>>>,
             e: &MouseMoveEvent,
@@ -732,7 +728,6 @@ mod element {
             cx.refresh();
         }
 
-        #[allow(clippy::too_many_arguments)]
         fn push_handle(
             flexes: Arc<Mutex<Vec<f32>>>,
             dragged_handle: Rc<RefCell<Option<usize>>>,

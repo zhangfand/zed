@@ -4,9 +4,8 @@ use crate::{
     auth::{self, Impersonator},
     db::{
         self, BufferId, ChannelId, ChannelRole, ChannelsForUser, CreatedChannelMessage, Database,
-        HostedProjectId, InviteMemberResult, MembershipUpdated, MessageId, NotificationId, Project,
-        ProjectId, RemoveChannelMemberResult, ReplicaId, RespondToChannelInvite, RoomId, ServerId,
-        User, UserId,
+        InviteMemberResult, MembershipUpdated, MessageId, NotificationId, ProjectId,
+        RemoveChannelMemberResult, RespondToChannelInvite, RoomId, ServerId, User, UserId,
     },
     executor::Executor,
     AppState, Error, Result,
@@ -36,6 +35,7 @@ use futures::{
     stream::FuturesUnordered,
     FutureExt, SinkExt, StreamExt, TryStreamExt,
 };
+use lazy_static::lazy_static;
 use prometheus::{register_int_gauge, IntGauge};
 use rpc::{
     proto::{
@@ -56,7 +56,7 @@ use std::{
     rc::Rc,
     sync::{
         atomic::{AtomicBool, Ordering::SeqCst},
-        Arc, OnceLock,
+        Arc,
     },
     time::{Duration, Instant},
 };
@@ -72,6 +72,16 @@ pub const CLEANUP_TIMEOUT: Duration = Duration::from_secs(10);
 const MESSAGE_COUNT_PER_PAGE: usize = 100;
 const MAX_MESSAGE_LEN: usize = 1024;
 const NOTIFICATION_COUNT_PER_PAGE: usize = 50;
+
+lazy_static! {
+    static ref METRIC_CONNECTIONS: IntGauge =
+        register_int_gauge!("connections", "number of connections").unwrap();
+    static ref METRIC_SHARED_PROJECTS: IntGauge = register_int_gauge!(
+        "shared_projects",
+        "number of open projects with one or more guests"
+    )
+    .unwrap();
+}
 
 type MessageHandler =
     Box<dyn Send + Sync + Fn(Box<dyn AnyTypedEnvelope>, Session) -> BoxFuture<'static, ()>>;
@@ -148,7 +158,7 @@ pub struct Server {
     app_state: Arc<AppState>,
     executor: Executor,
     handlers: HashMap<TypeId, MessageHandler>,
-    teardown: watch::Sender<bool>,
+    teardown: watch::Sender<()>,
 }
 
 pub(crate) struct ConnectionPoolGuard<'a> {
@@ -181,7 +191,7 @@ impl Server {
             executor,
             connection_pool: Default::default(),
             handlers: Default::default(),
-            teardown: watch::channel(false).0,
+            teardown: watch::channel(()).0,
         };
 
         server
@@ -198,7 +208,6 @@ impl Server {
             .add_request_handler(share_project)
             .add_message_handler(unshare_project)
             .add_request_handler(join_project)
-            .add_request_handler(join_hosted_project)
             .add_message_handler(leave_project)
             .add_request_handler(update_project)
             .add_request_handler(update_worktree)
@@ -355,7 +364,7 @@ impl Server {
                                     &refreshed_room.room,
                                     &refreshed_room.channel_members,
                                     &peer,
-                                    &pool.lock(),
+                                    &*pool.lock(),
                                 );
                             }
                             contacts_to_update
@@ -438,7 +447,7 @@ impl Server {
     pub fn teardown(&self) {
         self.peer.teardown();
         self.connection_pool.lock().reset();
-        let _ = self.teardown.send(true);
+        let _ = self.teardown.send(());
     }
 
     #[cfg(test)]
@@ -446,7 +455,6 @@ impl Server {
         self.teardown();
         *self.id.lock() = id;
         self.peer.reset(id.0 as u32);
-        let _ = self.teardown.send(false);
     }
 
     #[cfg(test)]
@@ -545,7 +553,6 @@ impl Server {
         })
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub fn handle_connection(
         self: &Arc<Self>,
         connection: Connection,
@@ -565,9 +572,6 @@ impl Server {
         }
         let mut teardown = self.teardown.subscribe();
         async move {
-            if *teardown.borrow() {
-                return Err(anyhow!("server is tearing down"))?;
-            }
             let (connection_id, handle_io, mut incoming_rx) = this
                 .peer
                 .add_connection(connection, {
@@ -756,13 +760,13 @@ impl<'a> Deref for ConnectionPoolGuard<'a> {
     type Target = ConnectionPool;
 
     fn deref(&self) -> &Self::Target {
-        &self.guard
+        &*self.guard
     }
 }
 
 impl<'a> DerefMut for ConnectionPoolGuard<'a> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.guard
+        &mut *self.guard
     }
 }
 
@@ -789,12 +793,16 @@ fn broadcast<F>(
     }
 }
 
+lazy_static! {
+    static ref ZED_PROTOCOL_VERSION: HeaderName = HeaderName::from_static("x-zed-protocol-version");
+    static ref ZED_APP_VERSION: HeaderName = HeaderName::from_static("x-zed-app-version");
+}
+
 pub struct ProtocolVersion(u32);
 
 impl Header for ProtocolVersion {
     fn name() -> &'static HeaderName {
-        static ZED_PROTOCOL_VERSION: OnceLock<HeaderName> = OnceLock::new();
-        ZED_PROTOCOL_VERSION.get_or_init(|| HeaderName::from_static("x-zed-protocol-version"))
+        &ZED_PROTOCOL_VERSION
     }
 
     fn decode<'i, I>(values: &mut I) -> Result<Self, axum::headers::Error>
@@ -820,8 +828,7 @@ impl Header for ProtocolVersion {
 pub struct AppVersionHeader(SemanticVersion);
 impl Header for AppVersionHeader {
     fn name() -> &'static HeaderName {
-        static ZED_APP_VERSION: OnceLock<HeaderName> = OnceLock::new();
-        ZED_APP_VERSION.get_or_init(|| HeaderName::from_static("x-zed-app-version"))
+        &ZED_APP_VERSION
     }
 
     fn decode<'i, I>(values: &mut I) -> Result<Self, axum::headers::Error>
@@ -915,29 +922,17 @@ pub async fn handle_websocket_request(
 }
 
 pub async fn handle_metrics(Extension(server): Extension<Arc<Server>>) -> Result<String> {
-    static CONNECTIONS_METRIC: OnceLock<IntGauge> = OnceLock::new();
-    let connections_metric = CONNECTIONS_METRIC
-        .get_or_init(|| register_int_gauge!("connections", "number of connections").unwrap());
-
     let connections = server
         .connection_pool
         .lock()
         .connections()
         .filter(|connection| !connection.admin)
         .count();
-    connections_metric.set(connections as _);
 
-    static SHARED_PROJECTS_METRIC: OnceLock<IntGauge> = OnceLock::new();
-    let shared_projects_metric = SHARED_PROJECTS_METRIC.get_or_init(|| {
-        register_int_gauge!(
-            "shared_projects",
-            "number of open projects with one or more guests"
-        )
-        .unwrap()
-    });
+    METRIC_CONNECTIONS.set(connections as _);
 
     let shared_projects = server.app_state.db.project_count_excluding_admins().await?;
-    shared_projects_metric.set(shared_projects as _);
+    METRIC_SHARED_PROJECTS.set(shared_projects as _);
 
     let encoder = prometheus::TextEncoder::new();
     let metric_families = prometheus::gather();
@@ -950,7 +945,7 @@ pub async fn handle_metrics(Extension(server): Extension<Arc<Server>>) -> Result
 #[instrument(err, skip(executor))]
 async fn connection_lost(
     session: Session,
-    mut teardown: watch::Receiver<bool>,
+    mut teardown: watch::Receiver<()>,
     executor: Executor,
 ) -> Result<()> {
     session.peer.disconnect(session.connection_id);
@@ -1586,46 +1581,22 @@ async fn join_project(
     session: Session,
 ) -> Result<()> {
     let project_id = ProjectId::from_proto(request.project_id);
+    let guest_user_id = session.user_id;
 
     tracing::info!(%project_id, "join project");
 
     let (project, replica_id) = &mut *session
         .db()
         .await
-        .join_project_in_room(project_id, session.connection_id)
+        .join_project(project_id, session.connection_id)
         .await?;
 
-    join_project_internal(response, session, project, replica_id)
-}
-
-trait JoinProjectInternalResponse {
-    fn send(self, result: proto::JoinProjectResponse) -> Result<()>;
-}
-impl JoinProjectInternalResponse for Response<proto::JoinProject> {
-    fn send(self, result: proto::JoinProjectResponse) -> Result<()> {
-        Response::<proto::JoinProject>::send(self, result)
-    }
-}
-impl JoinProjectInternalResponse for Response<proto::JoinHostedProject> {
-    fn send(self, result: proto::JoinProjectResponse) -> Result<()> {
-        Response::<proto::JoinHostedProject>::send(self, result)
-    }
-}
-
-fn join_project_internal(
-    response: impl JoinProjectInternalResponse,
-    session: Session,
-    project: &mut Project,
-    replica_id: &ReplicaId,
-) -> Result<()> {
     let collaborators = project
         .collaborators
         .iter()
         .filter(|collaborator| collaborator.connection_id != session.connection_id)
         .map(|collaborator| collaborator.to_proto())
         .collect::<Vec<_>>();
-    let project_id = project.id;
-    let guest_user_id = session.user_id;
 
     let worktrees = project
         .worktrees
@@ -1657,12 +1628,10 @@ fn join_project_internal(
 
     // First, we send the metadata associated with each worktree.
     response.send(proto::JoinProjectResponse {
-        project_id: project.id.0 as u64,
         worktrees: worktrees.clone(),
         replica_id: replica_id.0 as u32,
         collaborators: collaborators.clone(),
         language_servers: project.language_servers.clone(),
-        role: project.role.into(), // todo
     })?;
 
     for (worktree_id, worktree) in mem::take(&mut project.worktrees) {
@@ -1735,17 +1704,15 @@ fn join_project_internal(
 async fn leave_project(request: proto::LeaveProject, session: Session) -> Result<()> {
     let sender_id = session.connection_id;
     let project_id = ProjectId::from_proto(request.project_id);
-    let db = session.db().await;
-    if db.is_hosted_project(project_id).await? {
-        let project = db.leave_hosted_project(project_id, sender_id).await?;
-        project_left(&project, &session);
-        return Ok(());
-    }
 
-    let (room, project) = &*db.leave_project(project_id, sender_id).await?;
+    let (room, project) = &*session
+        .db()
+        .await
+        .leave_project(project_id, sender_id)
+        .await?;
     tracing::info!(
         %project_id,
-        host_user_id = ?project.host_user_id,
+        host_user_id = %project.host_user_id,
         host_connection_id = ?project.host_connection_id,
         "leave project"
     );
@@ -1754,24 +1721,6 @@ async fn leave_project(request: proto::LeaveProject, session: Session) -> Result
     room_updated(&room, &session.peer);
 
     Ok(())
-}
-
-async fn join_hosted_project(
-    request: proto::JoinHostedProject,
-    response: Response<proto::JoinHostedProject>,
-    session: Session,
-) -> Result<()> {
-    let (mut project, replica_id) = session
-        .db()
-        .await
-        .join_hosted_project(
-            HostedProjectId(request.id as i32),
-            session.user_id,
-            session.connection_id,
-        )
-        .await?;
-
-    join_project_internal(response, session, &mut project, &replica_id)
 }
 
 /// Updates other participants with changes to the project
@@ -2274,7 +2223,7 @@ async fn request_contact(
         session.peer.send(connection_id, update.clone())?;
     }
 
-    send_notifications(&connection_pool, &session.peer, notifications);
+    send_notifications(&*connection_pool, &session.peer, notifications);
 
     response.send(proto::Ack {})?;
     Ok(())
@@ -2331,7 +2280,7 @@ async fn respond_to_contact_request(
             session.peer.send(connection_id, update.clone())?;
         }
 
-        send_notifications(&pool, &session.peer, notifications);
+        send_notifications(&*pool, &session.peer, notifications);
     }
 
     response.send(proto::Ack {})?;
@@ -2499,7 +2448,7 @@ async fn invite_channel_member(
         session.peer.send(connection_id, update.clone())?;
     }
 
-    send_notifications(&connection_pool, &session.peer, notifications);
+    send_notifications(&*connection_pool, &session.peer, notifications);
 
     response.send(proto::Ack {})?;
     Ok(())
@@ -2761,7 +2710,7 @@ async fn respond_to_channel_invite(
         }
     };
 
-    send_notifications(&connection_pool, &session.peer, notifications);
+    send_notifications(&*connection_pool, &session.peer, notifications);
 
     response.send(proto::Ack {})?;
 
@@ -2931,7 +2880,7 @@ async fn update_channel_buffer(
             .flat_map(|user_id| pool.user_connection_ids(*user_id)),
         |peer_id| {
             session.peer.send(
-                peer_id,
+                peer_id.into(),
                 proto::UpdateChannels {
                     latest_channel_buffer_versions: vec![proto::ChannelBufferVersion {
                         channel_id: channel_id.to_proto(),
@@ -3016,8 +2965,8 @@ fn channel_buffer_updated<T: EnvelopedMessage>(
     message: &T,
     peer: &Peer,
 ) {
-    broadcast(Some(sender_id), collaborators, |peer_id| {
-        peer.send(peer_id, message.clone())
+    broadcast(Some(sender_id), collaborators.into_iter(), |peer_id| {
+        peer.send(peer_id.into(), message.clone())
     });
 }
 
@@ -3122,7 +3071,7 @@ async fn send_channel_message(
             .flat_map(|user_id| pool.user_connection_ids(*user_id)),
         |peer_id| {
             session.peer.send(
-                peer_id,
+                peer_id.into(),
                 proto::UpdateChannels {
                     latest_channel_message_ids: vec![proto::ChannelMessageId {
                         channel_id: channel_id.to_proto(),
@@ -3418,6 +3367,7 @@ fn build_update_user_channels(channels: &ChannelsForUser) -> proto::UpdateUserCh
             .collect(),
         observed_channel_buffer_version: channels.observed_buffer_versions.clone(),
         observed_channel_message_id: channels.observed_channel_messages.clone(),
+        ..Default::default()
     }
 }
 
@@ -3494,7 +3444,7 @@ fn room_updated(room: &proto::Room, peer: &Peer) {
             .filter_map(|participant| Some(participant.peer_id?.into())),
         |peer_id| {
             peer.send(
-                peer_id,
+                peer_id.into(),
                 proto::RoomUpdated {
                     room: Some(room.clone()),
                 },
@@ -3523,7 +3473,7 @@ fn channel_updated(
             .flat_map(|user_id| pool.user_connection_ids(*user_id)),
         |peer_id| {
             peer.send(
-                peer_id,
+                peer_id.into(),
                 proto::UpdateChannels {
                     channel_participants: vec![proto::ChannelParticipants {
                         channel_id: channel_id.to_proto(),
@@ -3672,7 +3622,7 @@ async fn leave_channel_buffers_for_session(session: &Session) -> Result<()> {
 
 fn project_left(project: &db::LeftProject, session: &Session) {
     for connection_id in &project.connection_ids {
-        if project.host_user_id == Some(session.user_id) {
+        if project.host_user_id == session.user_id {
             session
                 .peer
                 .send(
