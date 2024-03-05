@@ -11,11 +11,15 @@ mod project_tests;
 
 use anyhow::{anyhow, bail, Context as _, Result};
 use async_trait::async_trait;
-use client::{proto, Client, Collaborator, TypedEnvelope, UserStore};
+use client::{
+    proto, Client, Collaborator, HostedProjectId, PendingEntitySubscription, TypedEnvelope,
+    UserStore,
+};
 use clock::ReplicaId;
 use collections::{hash_map, BTreeMap, HashMap, HashSet, VecDeque};
 use copilot::Copilot;
 use debounced_delay::DebouncedDelay;
+use fs::repository::GitRepository;
 use futures::{
     channel::mpsc::{self, UnboundedReceiver},
     future::{try_join_all, Shared},
@@ -167,6 +171,7 @@ pub struct Project {
     prettiers_per_worktree: HashMap<WorktreeId, HashSet<Option<PathBuf>>>,
     prettier_instances: HashMap<PathBuf, PrettierInstance>,
     tasks: Model<Inventory>,
+    hosted_project_id: Option<HostedProjectId>,
 }
 
 pub enum LanguageServerToQuery {
@@ -605,6 +610,7 @@ impl Project {
                 prettiers_per_worktree: HashMap::default(),
                 prettier_instances: HashMap::default(),
                 tasks,
+                hosted_project_id: None,
             }
         })
     }
@@ -615,8 +621,7 @@ impl Project {
         user_store: Model<UserStore>,
         languages: Arc<LanguageRegistry>,
         fs: Arc<dyn Fs>,
-        role: proto::ChannelRole,
-        mut cx: AsyncAppContext,
+        cx: AsyncAppContext,
     ) -> Result<Model<Self>> {
         client.authenticate_and_connect(true, &cx).await?;
 
@@ -626,6 +631,28 @@ impl Project {
                 project_id: remote_id,
             })
             .await?;
+        Self::from_join_project_response(
+            response,
+            subscription,
+            client,
+            user_store,
+            languages,
+            fs,
+            cx,
+        )
+        .await
+    }
+    async fn from_join_project_response(
+        response: TypedEnvelope<proto::JoinProjectResponse>,
+        subscription: PendingEntitySubscription<Project>,
+        client: Arc<Client>,
+        user_store: Model<UserStore>,
+        languages: Arc<LanguageRegistry>,
+        fs: Arc<dyn Fs>,
+        mut cx: AsyncAppContext,
+    ) -> Result<Model<Self>> {
+        let remote_id = response.payload.project_id;
+        let role = response.payload.role();
         let this = cx.new_model(|cx| {
             let replica_id = response.payload.replica_id as ReplicaId;
             let tasks = Inventory::new(cx);
@@ -714,6 +741,7 @@ impl Project {
                 prettiers_per_worktree: HashMap::default(),
                 prettier_instances: HashMap::default(),
                 tasks,
+                hosted_project_id: None,
             };
             this.set_role(role, cx);
             for worktree in worktrees {
@@ -740,6 +768,32 @@ impl Project {
         })??;
 
         Ok(this)
+    }
+
+    pub async fn hosted(
+        _hosted_project_id: HostedProjectId,
+        _user_store: Model<UserStore>,
+        _client: Arc<Client>,
+        _languages: Arc<LanguageRegistry>,
+        _fs: Arc<dyn Fs>,
+        _cx: AsyncAppContext,
+    ) -> Result<Model<Self>> {
+        // let response = client
+        //     .request_envelope(proto::JoinHostedProject {
+        //         id: hosted_project_id.0,
+        //     })
+        //     .await?;
+        // Self::from_join_project_response(
+        //     response,
+        //     Some(hosted_project_id),
+        //     client,
+        //     user_store,
+        //     languages,
+        //     fs,
+        //     cx,
+        // )
+        // .await
+        Err(anyhow!("disabled"))
     }
 
     fn release(&mut self, cx: &mut AppContext) {
@@ -985,6 +1039,10 @@ impl Project {
             ProjectClientState::Shared { remote_id, .. }
             | ProjectClientState::Remote { remote_id, .. } => Some(remote_id),
         }
+    }
+
+    pub fn hosted_project_id(&self) -> Option<HostedProjectId> {
+        self.hosted_project_id
     }
 
     pub fn replica_id(&self) -> ReplicaId {
@@ -7257,6 +7315,18 @@ impl Project {
         })
     }
 
+    pub fn get_repo(
+        &self,
+        project_path: &ProjectPath,
+        cx: &AppContext,
+    ) -> Option<Arc<Mutex<dyn GitRepository>>> {
+        self.worktree_for_id(project_path.worktree_id, cx)?
+            .read(cx)
+            .as_local()?
+            .snapshot()
+            .local_git_repo(&project_path.path)
+    }
+
     // RPC message handlers
 
     async fn handle_unshare_project(
@@ -9456,23 +9526,38 @@ async fn load_shell_environment(dir: &Path) -> Result<HashMap<String, String>> {
     let shell = env::var("SHELL").context(
         "SHELL environment variable is not assigned so we can't source login environment variables",
     )?;
+
+    // What we're doing here is to spawn a shell and then `cd` into
+    // the project directory to get the env in there as if the user
+    // `cd`'d into it. We do that because tools like direnv, asdf, ...
+    // hook into `cd` and only set up the env after that.
+    //
+    // In certain shells we need to execute additional_command in order to
+    // trigger the behavior of direnv, etc.
+    //
+    //
+    // The `exit 0` is the result of hours of debugging, trying to find out
+    // why running this command here, without `exit 0`, would mess
+    // up signal process for our process so that `ctrl-c` doesn't work
+    // anymore.
+    //
+    // We still don't know why `$SHELL -l -i -c '/usr/bin/env -0'`  would
+    // do that, but it does, and `exit 0` helps.
+    let additional_command = PathBuf::from(&shell)
+        .file_name()
+        .and_then(|f| f.to_str())
+        .and_then(|shell| match shell {
+            "fish" => Some("emit fish_prompt;"),
+            _ => None,
+        });
+
+    let command = format!(
+        "cd {dir:?};{} echo {marker}; /usr/bin/env -0; exit 0;",
+        additional_command.unwrap_or("")
+    );
+
     let output = smol::process::Command::new(&shell)
-        .args([
-            "-i",
-            "-c",
-            // What we're doing here is to spawn a shell and then `cd` into
-            // the project directory to get the env in there as if the user
-            // `cd`'d into it. We do that because tools like direnv, asdf, ...
-            // hook into `cd` and only set up the env after that.
-            //
-            // The `exit 0` is the result of hours of debugging, trying to find out
-            // why running this command here, without `exit 0`, would mess
-            // up signal process for our process so that `ctrl-c` doesn't work
-            // anymore.
-            // We still don't know why `$SHELL -l -i -c '/usr/bin/env -0'`  would
-            // do that, but it does, and `exit 0` helps.
-            &format!("cd {dir:?}; echo {marker}; /usr/bin/env -0; exit 0;"),
-        ])
+        .args(["-i", "-c", &command])
         .output()
         .await
         .context("failed to spawn login shell to source login environment variables")?;
