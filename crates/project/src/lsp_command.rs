@@ -97,7 +97,7 @@ pub(crate) struct PerformRename {
     pub push_to_history: bool,
 }
 
-pub struct GetDefinition {
+pub(crate) struct GetDefinition {
     pub position: PointUtf16,
 }
 

@@ -40,7 +40,7 @@ const NEW_ENTRY_ID: ProjectEntryId = ProjectEntryId::MAX;
 pub struct ProjectPanel {
     project: Model<Project>,
     fs: Arc<dyn Fs>,
-    scroll_handle: UniformListScrollHandle,
+    list: UniformListScrollHandle,
     focus_handle: FocusHandle,
     visible_entries: Vec<(WorktreeId, Vec<Entry>)>,
     last_worktree_root_id: Option<ProjectEntryId>,
@@ -224,7 +224,7 @@ impl ProjectPanel {
             let mut this = Self {
                 project: project.clone(),
                 fs: workspace.app_state().fs.clone(),
-                scroll_handle: UniformListScrollHandle::new(),
+                list: UniformListScrollHandle::new(),
                 focus_handle,
                 visible_entries: Default::default(),
                 last_worktree_root_id: Default::default(),
@@ -864,7 +864,7 @@ impl ProjectPanel {
 
     fn autoscroll(&mut self, cx: &mut ViewContext<Self>) {
         if let Some((_, _, index)) = self.selection.and_then(|s| self.index_for_selection(s)) {
-            self.scroll_handle.scroll_to_item(index);
+            self.list.scroll_to_item(index);
             cx.notify();
         }
     }
@@ -1378,7 +1378,7 @@ impl ProjectPanel {
         let is_selected = self
             .selection
             .map_or(false, |selection| selection.entry_id == entry_id);
-        let width = self.size(cx);
+        let width = self.width.unwrap_or(px(0.));
 
         let filename_text_color = details
             .git_status
@@ -1426,11 +1426,9 @@ impl ProjectPanel {
                     })
                     .child(
                         if let (Some(editor), true) = (Some(&self.filename_editor), show_editor) {
-                            h_flex().h_6().w_full().child(editor.clone())
+                            div().h_full().w_full().child(editor.clone())
                         } else {
-                            div()
-                                .h_6()
-                                .child(Label::new(file_name).color(filename_text_color))
+                            div().child(Label::new(file_name).color(filename_text_color))
                         }
                         .ml_1(),
                     )
@@ -1567,7 +1565,7 @@ impl Render for ProjectPanel {
                         },
                     )
                     .size_full()
-                    .track_scroll(self.scroll_handle.clone()),
+                    .track_scroll(self.list.clone()),
                 )
                 .children(self.context_menu.as_ref().map(|(menu, position, _)| {
                     overlay()
@@ -1717,7 +1715,7 @@ mod tests {
     use collections::HashSet;
     use gpui::{TestAppContext, View, VisualTestContext, WindowHandle};
     use pretty_assertions::assert_eq;
-    use project::{FakeFs, WorktreeSettings};
+    use project::{project_settings::ProjectSettings, FakeFs};
     use serde_json::json;
     use settings::SettingsStore;
     use std::path::{Path, PathBuf};
@@ -1819,8 +1817,8 @@ mod tests {
         init_test(cx);
         cx.update(|cx| {
             cx.update_global::<SettingsStore, _>(|store, cx| {
-                store.update_user_settings::<WorktreeSettings>(cx, |worktree_settings| {
-                    worktree_settings.file_scan_exclusions =
+                store.update_user_settings::<ProjectSettings>(cx, |project_settings| {
+                    project_settings.file_scan_exclusions =
                         Some(vec!["**/.git".to_string(), "**/4/**".to_string()]);
                 });
             });
@@ -3026,8 +3024,8 @@ mod tests {
         init_test_with_editor(cx);
         cx.update(|cx| {
             cx.update_global::<SettingsStore, _>(|store, cx| {
-                store.update_user_settings::<WorktreeSettings>(cx, |worktree_settings| {
-                    worktree_settings.file_scan_exclusions = Some(Vec::new());
+                store.update_user_settings::<ProjectSettings>(cx, |project_settings| {
+                    project_settings.file_scan_exclusions = Some(Vec::new());
                 });
                 store.update_user_settings::<ProjectPanelSettings>(cx, |project_panel_settings| {
                     project_panel_settings.auto_reveal_entries = Some(false)
@@ -3264,8 +3262,8 @@ mod tests {
         init_test_with_editor(cx);
         cx.update(|cx| {
             cx.update_global::<SettingsStore, _>(|store, cx| {
-                store.update_user_settings::<WorktreeSettings>(cx, |worktree_settings| {
-                    worktree_settings.file_scan_exclusions = Some(Vec::new());
+                store.update_user_settings::<ProjectSettings>(cx, |project_settings| {
+                    project_settings.file_scan_exclusions = Some(Vec::new());
                 });
                 store.update_user_settings::<ProjectPanelSettings>(cx, |project_panel_settings| {
                     project_panel_settings.auto_reveal_entries = Some(false)
@@ -3582,8 +3580,8 @@ mod tests {
             Project::init_settings(cx);
 
             cx.update_global::<SettingsStore, _>(|store, cx| {
-                store.update_user_settings::<WorktreeSettings>(cx, |worktree_settings| {
-                    worktree_settings.file_scan_exclusions = Some(Vec::new());
+                store.update_user_settings::<ProjectSettings>(cx, |project_settings| {
+                    project_settings.file_scan_exclusions = Some(Vec::new());
                 });
             });
         });

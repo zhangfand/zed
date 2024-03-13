@@ -2,7 +2,6 @@ pub mod mappings;
 
 pub use alacritty_terminal;
 
-mod pty_info;
 pub mod terminal_settings;
 
 use alacritty_terminal::{
@@ -35,7 +34,7 @@ use mappings::mouse::{
 
 use collections::{HashMap, VecDeque};
 use futures::StreamExt;
-use pty_info::PtyProcessInfo;
+use procinfo::LocalProcessInfo;
 use serde::{Deserialize, Serialize};
 use settings::Settings;
 use smol::channel::{Receiver, Sender};
@@ -53,6 +52,9 @@ use std::{
     time::Duration,
 };
 use thiserror::Error;
+
+#[cfg(unix)]
+use std::os::unix::prelude::AsRawFd;
 
 use gpui::{
     actions, black, px, AnyWindowHandle, AppContext, Bounds, ClipboardItem, EventEmitter, Hsla,
@@ -395,7 +397,12 @@ impl TerminalBuilder {
             }
         };
 
-        let pty_info = PtyProcessInfo::new(&pty);
+        #[cfg(unix)]
+        let (fd, shell_pid) = (pty.file().as_raw_fd(), pty.child().id());
+
+        // todo("windows")
+        #[cfg(windows)]
+        let (fd, shell_pid) = (-1, 0);
 
         //And connect them together
         let event_loop = EventLoop::new(
@@ -423,7 +430,9 @@ impl TerminalBuilder {
             last_mouse: None,
             matches: Vec::new(),
             selection_head: None,
-            pty_info,
+            shell_fd: fd as u32,
+            shell_pid,
+            foreground_process_info: None,
             breadcrumb_text: String::new(),
             scroll_px: px(0.),
             last_mouse_position: None,
@@ -578,7 +587,9 @@ pub struct Terminal {
     pub last_content: TerminalContent,
     pub selection_head: Option<AlacPoint>,
     pub breadcrumb_text: String,
-    pub pty_info: PtyProcessInfo,
+    shell_pid: u32,
+    shell_fd: u32,
+    pub foreground_process_info: Option<LocalProcessInfo>,
     scroll_px: Pixels,
     next_link_id: usize,
     selection_phase: SelectionPhase,
@@ -638,7 +649,7 @@ impl Terminal {
             AlacTermEvent::Wakeup => {
                 cx.emit(Event::Wakeup);
 
-                if self.pty_info.has_changed() {
+                if self.update_process_info() {
                     cx.emit(Event::TitleChanged);
                 }
             }
@@ -653,8 +664,38 @@ impl Terminal {
         self.selection_phase == SelectionPhase::Selecting
     }
 
-    pub fn get_cwd(&self) -> Option<PathBuf> {
-        self.pty_info.current.as_ref().map(|info| info.cwd.clone())
+    /// Updates the cached process info, returns whether the Zed-relevant info has changed
+    fn update_process_info(&mut self) -> bool {
+        #[cfg(unix)]
+        let mut pid = unsafe { libc::tcgetpgrp(self.shell_fd as i32) };
+        // todo("windows")
+        #[cfg(windows)]
+        let mut pid = unsafe { windows::Win32::System::Threading::GetCurrentProcessId() } as i32;
+        if pid < 0 {
+            pid = self.shell_pid as i32;
+        }
+
+        if let Some(process_info) = LocalProcessInfo::with_root_pid(pid as u32) {
+            let res = self
+                .foreground_process_info
+                .as_ref()
+                .map(|old_info| {
+                    process_info.cwd != old_info.cwd || process_info.name != old_info.name
+                })
+                .unwrap_or(true);
+
+            self.foreground_process_info = Some(process_info.clone());
+
+            res
+        } else {
+            false
+        }
+    }
+
+    fn get_cwd(&self) -> Option<PathBuf> {
+        self.foreground_process_info
+            .as_ref()
+            .map(|info| info.cwd.clone())
     }
 
     ///Takes events from Alacritty and translates them to behavior on this view
@@ -1324,16 +1365,9 @@ impl Terminal {
     pub fn title(&self, truncate: bool) -> String {
         const MAX_CHARS: usize = 25;
         match &self.task {
-            Some(task_state) => {
-                if truncate {
-                    truncate_and_trailoff(&task_state.label, MAX_CHARS)
-                } else {
-                    task_state.label.clone()
-                }
-            }
+            Some(task_state) => truncate_and_trailoff(&task_state.label, MAX_CHARS),
             None => self
-                .pty_info
-                .current
+                .foreground_process_info
                 .as_ref()
                 .map(|fpi| {
                     let process_file = fpi
@@ -1341,13 +1375,11 @@ impl Terminal {
                         .file_name()
                         .map(|name| name.to_string_lossy().to_string())
                         .unwrap_or_default();
-
-                    let argv = fpi.argv.clone();
                     let process_name = format!(
                         "{}{}",
                         fpi.name,
-                        if argv.len() >= 1 {
-                            format!(" {}", (argv[1..]).join(" "))
+                        if fpi.argv.len() >= 1 {
+                            format!(" {}", (fpi.argv[1..]).join(" "))
                         } else {
                             "".to_string()
                         }

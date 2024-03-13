@@ -2,7 +2,6 @@ pub mod debounced_delay;
 pub mod lsp_command;
 pub mod lsp_ext_command;
 mod prettier_support;
-pub mod project_settings;
 pub mod search;
 mod task_inventory;
 pub mod terminals;
@@ -13,7 +12,8 @@ mod project_tests;
 use anyhow::{anyhow, bail, Context as _, Result};
 use async_trait::async_trait;
 use client::{
-    proto, Client, Collaborator, PendingEntitySubscription, ProjectId, TypedEnvelope, UserStore,
+    proto, Client, Collaborator, HostedProjectId, PendingEntitySubscription, TypedEnvelope,
+    UserStore,
 };
 use clock::ReplicaId;
 use collections::{hash_map, BTreeMap, HashMap, HashSet, VecDeque};
@@ -57,9 +57,9 @@ use node_runtime::NodeRuntime;
 use parking_lot::{Mutex, RwLock};
 use postage::watch;
 use prettier_support::{DefaultPrettier, PrettierInstance};
-use project_settings::{LspSettings, ProjectSettings};
+use project_core::project_settings::{LspSettings, ProjectSettings};
+pub use project_core::{DiagnosticSummary, ProjectEntryId};
 use rand::prelude::*;
-use worktree::LocalSnapshot;
 
 use rpc::{ErrorCode, ErrorExt as _};
 use search::SearchQuery;
@@ -73,9 +73,9 @@ use std::{
     cmp::{self, Ordering},
     convert::TryInto,
     env,
-    ffi::OsStr,
+    ffi::OsString,
     hash::Hash,
-    io, mem,
+    mem,
     num::NonZeroU32,
     ops::Range,
     path::{self, Component, Path, PathBuf},
@@ -97,25 +97,20 @@ use util::{
     paths::{LOCAL_SETTINGS_RELATIVE_PATH, LOCAL_TASKS_RELATIVE_PATH},
     post_inc, ResultExt, TryFutureExt as _,
 };
-use worktree::{Snapshot, Traversal};
 
 pub use fs::*;
 pub use language::Location;
 #[cfg(any(test, feature = "test-support"))]
 pub use prettier::FORMAT_SUFFIX as TEST_PRETTIER_FORMAT_SUFFIX;
+pub use project_core::project_settings;
+pub use project_core::worktree::{self, *};
 #[cfg(feature = "test-support")]
 pub use task_inventory::test_inventory::*;
 pub use task_inventory::{Inventory, TaskSourceKind};
-pub use worktree::{
-    DiagnosticSummary, Entry, EntryKind, File, LocalWorktree, PathChange, ProjectEntryId,
-    RepositoryEntry, UpdatedEntriesSet, UpdatedGitRepositoriesSet, Worktree, WorktreeId,
-    WorktreeSettings, FS_WATCH_LATENCY,
-};
 
 const MAX_SERVER_REINSTALL_ATTEMPT_COUNT: u64 = 4;
 const SERVER_REINSTALL_DEBOUNCE_TIMEOUT: Duration = Duration::from_secs(1);
 const SERVER_LAUNCHING_BEFORE_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
-pub const SERVER_PROGRESS_DEBOUNCE_TIMEOUT: Duration = Duration::from_millis(100);
 
 pub trait Item {
     fn entry_id(&self, cx: &AppContext) -> Option<ProjectEntryId>;
@@ -126,18 +121,13 @@ pub struct Project {
     worktrees: Vec<WorktreeHandle>,
     active_entry: Option<ProjectEntryId>,
     buffer_ordered_messages_tx: mpsc::UnboundedSender<BufferOrderedMessage>,
-    pending_language_server_update: Option<BufferOrderedMessage>,
-    flush_language_server_update: Option<Task<()>>,
-
     languages: Arc<LanguageRegistry>,
     supplementary_language_servers:
         HashMap<LanguageServerId, (LanguageServerName, Arc<LanguageServer>)>,
     language_servers: HashMap<LanguageServerId, LanguageServerState>,
     language_server_ids: HashMap<(WorktreeId, LanguageServerName), LanguageServerId>,
     language_server_statuses: BTreeMap<LanguageServerId, LanguageServerStatus>,
-    last_formatting_failure: Option<String>,
     last_workspace_edits_by_language_server: HashMap<LanguageServerId, ProjectTransaction>,
-    language_server_watched_paths: HashMap<LanguageServerId, HashMap<WorktreeId, GlobSet>>,
     client: Arc<client::Client>,
     next_entry_id: Arc<AtomicUsize>,
     join_project_response_message_id: u32,
@@ -181,7 +171,7 @@ pub struct Project {
     prettiers_per_worktree: HashMap<WorktreeId, HashSet<Option<PathBuf>>>,
     prettier_instances: HashMap<PathBuf, PrettierInstance>,
     tasks: Model<Inventory>,
-    hosted_project_id: Option<ProjectId>,
+    hosted_project_id: Option<HostedProjectId>,
 }
 
 pub enum LanguageServerToQuery {
@@ -195,7 +185,6 @@ struct LspBufferSnapshot {
 }
 
 /// Message ordered with respect to buffer operations
-#[derive(Debug)]
 enum BufferOrderedMessage {
     Operation {
         buffer_id: BufferId,
@@ -312,6 +301,7 @@ pub enum LanguageServerState {
         language: Arc<Language>,
         adapter: Arc<CachedLspAdapter>,
         server: Arc<LanguageServer>,
+        watched_paths: HashMap<WorktreeId, GlobSet>,
         simulate_disk_based_diagnostics_completion: Option<Task<()>>,
     },
 }
@@ -498,7 +488,6 @@ impl SearchMatchCandidate {
 
 impl Project {
     pub fn init_settings(cx: &mut AppContext) {
-        WorktreeSettings::register(cx);
         ProjectSettings::register(cx);
     }
 
@@ -573,8 +562,6 @@ impl Project {
             Self {
                 worktrees: Vec::new(),
                 buffer_ordered_messages_tx: tx,
-                flush_language_server_update: None,
-                pending_language_server_update: None,
                 collaborators: Default::default(),
                 next_buffer_id: BufferId::new(1).unwrap(),
                 opened_buffers: Default::default(),
@@ -607,9 +594,7 @@ impl Project {
                 language_servers: Default::default(),
                 language_server_ids: HashMap::default(),
                 language_server_statuses: Default::default(),
-                last_formatting_failure: None,
                 last_workspace_edits_by_language_server: Default::default(),
-                language_server_watched_paths: HashMap::default(),
                 buffers_being_formatted: Default::default(),
                 buffers_needing_diff: Default::default(),
                 git_diff_debouncer: DebouncedDelay::new(),
@@ -689,8 +674,6 @@ impl Project {
             let mut this = Self {
                 worktrees: Vec::new(),
                 buffer_ordered_messages_tx: tx,
-                pending_language_server_update: None,
-                flush_language_server_update: None,
                 loading_buffers_by_path: Default::default(),
                 next_buffer_id: BufferId::new(1).unwrap(),
                 opened_buffer: watch::channel(),
@@ -740,9 +723,7 @@ impl Project {
                         )
                     })
                     .collect(),
-                last_formatting_failure: None,
                 last_workspace_edits_by_language_server: Default::default(),
-                language_server_watched_paths: HashMap::default(),
                 opened_buffers: Default::default(),
                 buffers_being_formatted: Default::default(),
                 buffers_needing_diff: Default::default(),
@@ -790,31 +771,29 @@ impl Project {
     }
 
     pub async fn hosted(
-        remote_id: ProjectId,
-        user_store: Model<UserStore>,
-        client: Arc<Client>,
-        languages: Arc<LanguageRegistry>,
-        fs: Arc<dyn Fs>,
-        cx: AsyncAppContext,
+        _hosted_project_id: HostedProjectId,
+        _user_store: Model<UserStore>,
+        _client: Arc<Client>,
+        _languages: Arc<LanguageRegistry>,
+        _fs: Arc<dyn Fs>,
+        _cx: AsyncAppContext,
     ) -> Result<Model<Self>> {
-        client.authenticate_and_connect(true, &cx).await?;
-
-        let subscription = client.subscribe_to_entity(remote_id.0)?;
-        let response = client
-            .request_envelope(proto::JoinHostedProject {
-                project_id: remote_id.0,
-            })
-            .await?;
-        Self::from_join_project_response(
-            response,
-            subscription,
-            client,
-            user_store,
-            languages,
-            fs,
-            cx,
-        )
-        .await
+        // let response = client
+        //     .request_envelope(proto::JoinHostedProject {
+        //         id: hosted_project_id.0,
+        //     })
+        //     .await?;
+        // Self::from_join_project_response(
+        //     response,
+        //     Some(hosted_project_id),
+        //     client,
+        //     user_store,
+        //     languages,
+        //     fs,
+        //     cx,
+        // )
+        // .await
+        Err(anyhow!("disabled"))
     }
 
     fn release(&mut self, cx: &mut AppContext) {
@@ -1062,7 +1041,7 @@ impl Project {
         }
     }
 
-    pub fn hosted_project_id(&self) -> Option<ProjectId> {
+    pub fn hosted_project_id(&self) -> Option<HostedProjectId> {
         self.hosted_project_id
     }
 
@@ -1145,24 +1124,18 @@ impl Project {
             .map(|worktree| worktree.read(cx).id())
     }
 
-    pub fn visibility_for_paths(&self, paths: &[PathBuf], cx: &AppContext) -> Option<bool> {
-        paths
-            .iter()
-            .map(|path| self.visibility_for_path(path, cx))
-            .max()
-            .flatten()
+    pub fn contains_paths(&self, paths: &[PathBuf], cx: &AppContext) -> bool {
+        paths.iter().all(|path| self.contains_path(path, cx))
     }
 
-    pub fn visibility_for_path(&self, path: &Path, cx: &AppContext) -> Option<bool> {
-        self.worktrees()
-            .filter_map(|worktree| {
-                let worktree = worktree.read(cx);
-                worktree
-                    .as_local()?
-                    .contains_abs_path(path)
-                    .then(|| worktree.is_visible())
-            })
-            .max()
+    pub fn contains_path(&self, path: &Path, cx: &AppContext) -> bool {
+        for worktree in self.worktrees() {
+            let worktree = worktree.read(cx).as_local();
+            if worktree.map_or(false, |w| w.contains_abs_path(path)) {
+                return true;
+            }
+        }
+        false
     }
 
     pub fn create_entry(
@@ -1571,7 +1544,8 @@ impl Project {
                 )
             })
             .collect();
-        self.enqueue_buffer_ordered_message(BufferOrderedMessage::Resync)
+        self.buffer_ordered_messages_tx
+            .unbounded_send(BufferOrderedMessage::Resync)
             .unwrap();
         cx.notify();
         Ok(())
@@ -1801,13 +1775,13 @@ impl Project {
                 let (mut tx, rx) = postage::watch::channel();
                 entry.insert(rx.clone());
 
-                let project_path = project_path.clone();
                 let load_buffer = if worktree.read(cx).is_local() {
-                    self.open_local_buffer_internal(project_path.path.clone(), worktree, cx)
+                    self.open_local_buffer_internal(&project_path.path, &worktree, cx)
                 } else {
                     self.open_remote_buffer_internal(&project_path.path, &worktree, cx)
                 };
 
+                let project_path = project_path.clone();
                 cx.spawn(move |this, mut cx| async move {
                     let load_result = load_buffer.await;
                     *tx.borrow_mut() = Some(this.update(&mut cx, |this, _| {
@@ -1832,32 +1806,17 @@ impl Project {
 
     fn open_local_buffer_internal(
         &mut self,
-        path: Arc<Path>,
-        worktree: Model<Worktree>,
+        path: &Arc<Path>,
+        worktree: &Model<Worktree>,
         cx: &mut ModelContext<Self>,
     ) -> Task<Result<Model<Buffer>>> {
         let buffer_id = self.next_buffer_id.next();
         let load_buffer = worktree.update(cx, |worktree, cx| {
             let worktree = worktree.as_local_mut().unwrap();
-            worktree.load_buffer(buffer_id, &path, cx)
+            worktree.load_buffer(buffer_id, path, cx)
         });
-        fn is_not_found_error(error: &anyhow::Error) -> bool {
-            error
-                .root_cause()
-                .downcast_ref::<io::Error>()
-                .is_some_and(|err| err.kind() == io::ErrorKind::NotFound)
-        }
         cx.spawn(move |this, mut cx| async move {
-            let buffer = match load_buffer.await {
-                Ok(buffer) => Ok(buffer),
-                Err(error) if is_not_found_error(&error) => {
-                    worktree.update(&mut cx, |worktree, cx| {
-                        let worktree = worktree.as_local_mut().unwrap();
-                        worktree.new_buffer(buffer_id, path, cx)
-                    })
-                }
-                Err(e) => Err(e),
-            }?;
+            let buffer = load_buffer.await?;
             this.update(&mut cx, |this, cx| this.register_buffer(&buffer, cx))??;
             Ok(buffer)
         })
@@ -2377,11 +2336,12 @@ impl Project {
 
         match event {
             BufferEvent::Operation(operation) => {
-                self.enqueue_buffer_ordered_message(BufferOrderedMessage::Operation {
-                    buffer_id: buffer.read(cx).remote_id(),
-                    operation: language::proto::serialize_operation(operation),
-                })
-                .ok();
+                self.buffer_ordered_messages_tx
+                    .unbounded_send(BufferOrderedMessage::Operation {
+                        buffer_id: buffer.read(cx).remote_id(),
+                        operation: language::proto::serialize_operation(operation),
+                    })
+                    .ok();
             }
 
             BufferEvent::Edited { .. } => {
@@ -2528,7 +2488,8 @@ impl Project {
                                             language_server_id,
                                             cx,
                                         );
-                                        this.enqueue_buffer_ordered_message(
+                                        this.buffer_ordered_messages_tx
+                                            .unbounded_send(
                                                 BufferOrderedMessage::LanguageServerUpdate {
                                                     language_server_id,
                                                     message:proto::update_language_server::Variant::DiskBasedDiagnosticsUpdated(Default::default())
@@ -3349,6 +3310,7 @@ impl Project {
             LanguageServerState::Running {
                 adapter: adapter.clone(),
                 language: language.clone(),
+                watched_paths: Default::default(),
                 server: language_server.clone(),
                 simulate_disk_based_diagnostics_completion: None,
             },
@@ -3493,14 +3455,13 @@ impl Project {
                 }
             }
 
-            self.language_server_watched_paths.remove(&server_id);
             self.language_server_statuses.remove(&server_id);
             cx.notify();
 
             let server_state = self.language_servers.remove(&server_id);
             cx.emit(Event::LanguageServerRemoved(server_id));
-            cx.spawn(move |_, cx| async move {
-                Self::shutdown_language_server(server_state, name, cx).await;
+            cx.spawn(move |this, cx| async move {
+                Self::shutdown_language_server(this, server_state, name, server_id, cx).await;
                 orphaned_worktrees
             })
         } else {
@@ -3509,9 +3470,11 @@ impl Project {
     }
 
     async fn shutdown_language_server(
+        this: WeakModel<Project>,
         server_state: Option<LanguageServerState>,
         name: Arc<str>,
-        cx: AsyncAppContext,
+        server_id: LanguageServerId,
+        mut cx: AsyncAppContext,
     ) {
         let server = match server_state {
             Some(LanguageServerState::Starting(task)) => {
@@ -3541,6 +3504,14 @@ impl Project {
             if let Some(shutdown) = server.shutdown() {
                 shutdown.await;
             }
+        }
+
+        if let Some(this) = this.upgrade() {
+            this.update(&mut cx, |this, cx| {
+                this.language_server_statuses.remove(&server_id);
+                cx.notify();
+            })
+            .ok();
         }
     }
 
@@ -3692,40 +3663,6 @@ impl Project {
         .detach();
     }
 
-    fn enqueue_language_server_progress(
-        &mut self,
-        message: BufferOrderedMessage,
-        cx: &mut ModelContext<Self>,
-    ) {
-        self.pending_language_server_update.replace(message);
-        self.flush_language_server_update.get_or_insert_with(|| {
-            cx.spawn(|this, mut cx| async move {
-                cx.background_executor()
-                    .timer(SERVER_PROGRESS_DEBOUNCE_TIMEOUT)
-                    .await;
-                this.update(&mut cx, |this, _| {
-                    this.flush_language_server_update.take();
-                    if let Some(update) = this.pending_language_server_update.take() {
-                        this.enqueue_buffer_ordered_message(update).ok();
-                    }
-                })
-                .ok();
-            })
-        });
-    }
-
-    fn enqueue_buffer_ordered_message(&mut self, message: BufferOrderedMessage) -> Result<()> {
-        if let Some(pending_message) = self.pending_language_server_update.take() {
-            self.flush_language_server_update.take();
-            self.buffer_ordered_messages_tx
-                .unbounded_send(pending_message)
-                .map_err(|e| anyhow!(e))?;
-        }
-        self.buffer_ordered_messages_tx
-            .unbounded_send(message)
-            .map_err(|e| anyhow!(e))
-    }
-
     fn on_lsp_progress(
         &mut self,
         progress: lsp::ProgressParams,
@@ -3763,7 +3700,8 @@ impl Project {
                 if is_disk_based_diagnostics_progress {
                     language_server_status.has_pending_diagnostic_updates = true;
                     self.disk_based_diagnostics_started(language_server_id, cx);
-                    self.enqueue_buffer_ordered_message(BufferOrderedMessage::LanguageServerUpdate {
+                    self.buffer_ordered_messages_tx
+                        .unbounded_send(BufferOrderedMessage::LanguageServerUpdate {
                             language_server_id,
                             message: proto::update_language_server::Variant::DiskBasedDiagnosticsUpdating(Default::default())
                         })
@@ -3779,8 +3717,8 @@ impl Project {
                         },
                         cx,
                     );
-                    self.enqueue_buffer_ordered_message(
-                        BufferOrderedMessage::LanguageServerUpdate {
+                    self.buffer_ordered_messages_tx
+                        .unbounded_send(BufferOrderedMessage::LanguageServerUpdate {
                             language_server_id,
                             message: proto::update_language_server::Variant::WorkStart(
                                 proto::LspWorkStart {
@@ -3789,9 +3727,8 @@ impl Project {
                                     percentage: report.percentage,
                                 },
                             ),
-                        },
-                    )
-                    .ok();
+                        })
+                        .ok();
                 }
             }
             lsp::WorkDoneProgress::Report(report) => {
@@ -3806,8 +3743,8 @@ impl Project {
                         },
                         cx,
                     );
-                    self.enqueue_language_server_progress(
-                        BufferOrderedMessage::LanguageServerUpdate {
+                    self.buffer_ordered_messages_tx
+                        .unbounded_send(BufferOrderedMessage::LanguageServerUpdate {
                             language_server_id,
                             message: proto::update_language_server::Variant::WorkProgress(
                                 proto::LspWorkProgress {
@@ -3816,9 +3753,8 @@ impl Project {
                                     percentage: report.percentage,
                                 },
                             ),
-                        },
-                        cx,
-                    );
+                        })
+                        .ok();
                 }
             }
             lsp::WorkDoneProgress::End(_) => {
@@ -3827,27 +3763,25 @@ impl Project {
                 if is_disk_based_diagnostics_progress {
                     language_server_status.has_pending_diagnostic_updates = false;
                     self.disk_based_diagnostics_finished(language_server_id, cx);
-                    self.enqueue_buffer_ordered_message(
-                        BufferOrderedMessage::LanguageServerUpdate {
+                    self.buffer_ordered_messages_tx
+                        .unbounded_send(BufferOrderedMessage::LanguageServerUpdate {
                             language_server_id,
                             message:
                                 proto::update_language_server::Variant::DiskBasedDiagnosticsUpdated(
                                     Default::default(),
                                 ),
-                        },
-                    )
-                    .ok();
+                        })
+                        .ok();
                 } else {
                     self.on_lsp_work_end(language_server_id, token.clone(), cx);
-                    self.enqueue_buffer_ordered_message(
-                        BufferOrderedMessage::LanguageServerUpdate {
+                    self.buffer_ordered_messages_tx
+                        .unbounded_send(BufferOrderedMessage::LanguageServerUpdate {
                             language_server_id,
                             message: proto::update_language_server::Variant::WorkEnd(
                                 proto::LspWorkEnd { token },
                             ),
-                        },
-                    )
-                    .ok();
+                        })
+                        .ok();
                 }
             }
         }
@@ -3912,66 +3846,64 @@ impl Project {
         params: DidChangeWatchedFilesRegistrationOptions,
         cx: &mut ModelContext<Self>,
     ) {
-        let watched_paths = self
-            .language_server_watched_paths
-            .entry(language_server_id)
-            .or_default();
-
-        let mut builders = HashMap::default();
-        for watcher in params.watchers {
-            for worktree in &self.worktrees {
-                if let Some(worktree) = worktree.upgrade() {
-                    let glob_is_inside_worktree = worktree.update(cx, |tree, _| {
-                        if let Some(abs_path) = tree.abs_path().to_str() {
-                            let relative_glob_pattern = match &watcher.glob_pattern {
-                                lsp::GlobPattern::String(s) => Some(
-                                    s.strip_prefix(abs_path)
-                                        .unwrap_or(s)
-                                        .strip_prefix(std::path::MAIN_SEPARATOR)
-                                        .unwrap_or(s),
-                                ),
-                                lsp::GlobPattern::Relative(rp) => {
-                                    let base_uri = match &rp.base_uri {
-                                        lsp::OneOf::Left(workspace_folder) => &workspace_folder.uri,
-                                        lsp::OneOf::Right(base_uri) => base_uri,
-                                    };
-                                    base_uri.to_file_path().ok().and_then(|file_path| {
-                                        (file_path.to_str() == Some(abs_path))
-                                            .then_some(rp.pattern.as_str())
-                                    })
+        if let Some(LanguageServerState::Running { watched_paths, .. }) =
+            self.language_servers.get_mut(&language_server_id)
+        {
+            let mut builders = HashMap::default();
+            for watcher in params.watchers {
+                for worktree in &self.worktrees {
+                    if let Some(worktree) = worktree.upgrade() {
+                        let glob_is_inside_worktree = worktree.update(cx, |tree, _| {
+                            if let Some(abs_path) = tree.abs_path().to_str() {
+                                let relative_glob_pattern = match &watcher.glob_pattern {
+                                    lsp::GlobPattern::String(s) => s
+                                        .strip_prefix(abs_path)
+                                        .and_then(|s| s.strip_prefix(std::path::MAIN_SEPARATOR)),
+                                    lsp::GlobPattern::Relative(rp) => {
+                                        let base_uri = match &rp.base_uri {
+                                            lsp::OneOf::Left(workspace_folder) => {
+                                                &workspace_folder.uri
+                                            }
+                                            lsp::OneOf::Right(base_uri) => base_uri,
+                                        };
+                                        base_uri.to_file_path().ok().and_then(|file_path| {
+                                            (file_path.to_str() == Some(abs_path))
+                                                .then_some(rp.pattern.as_str())
+                                        })
+                                    }
+                                };
+                                if let Some(relative_glob_pattern) = relative_glob_pattern {
+                                    let literal_prefix = glob_literal_prefix(relative_glob_pattern);
+                                    tree.as_local_mut()
+                                        .unwrap()
+                                        .add_path_prefix_to_scan(Path::new(literal_prefix).into());
+                                    if let Some(glob) = Glob::new(relative_glob_pattern).log_err() {
+                                        builders
+                                            .entry(tree.id())
+                                            .or_insert_with(|| GlobSetBuilder::new())
+                                            .add(glob);
+                                    }
+                                    return true;
                                 }
-                            };
-                            if let Some(relative_glob_pattern) = relative_glob_pattern {
-                                let literal_prefix = glob_literal_prefix(relative_glob_pattern);
-                                tree.as_local_mut()
-                                    .unwrap()
-                                    .add_path_prefix_to_scan(Path::new(literal_prefix).into());
-                                if let Some(glob) = Glob::new(relative_glob_pattern).log_err() {
-                                    builders
-                                        .entry(tree.id())
-                                        .or_insert_with(|| GlobSetBuilder::new())
-                                        .add(glob);
-                                }
-                                return true;
                             }
+                            false
+                        });
+                        if glob_is_inside_worktree {
+                            break;
                         }
-                        false
-                    });
-                    if glob_is_inside_worktree {
-                        break;
                     }
                 }
             }
-        }
 
-        watched_paths.clear();
-        for (worktree_id, builder) in builders {
-            if let Ok(globset) = builder.build() {
-                watched_paths.insert(worktree_id, globset);
+            watched_paths.clear();
+            for (worktree_id, builder) in builders {
+                if let Ok(globset) = builder.build() {
+                    watched_paths.insert(worktree_id, globset);
+                }
             }
-        }
 
-        cx.notify();
+            cx.notify();
+        }
     }
 
     async fn on_lsp_workspace_edit(
@@ -4014,10 +3946,6 @@ impl Project {
         &self,
     ) -> impl DoubleEndedIterator<Item = &LanguageServerStatus> {
         self.language_server_statuses.values()
-    }
-
-    pub fn last_formatting_failure(&self) -> Option<&str> {
-        self.last_formatting_failure.as_deref()
     }
 
     pub fn update_diagnostics(
@@ -4325,7 +4253,7 @@ impl Project {
         cx: &mut ModelContext<Project>,
     ) -> Task<anyhow::Result<ProjectTransaction>> {
         if self.is_local() {
-            let buffers_with_paths = buffers
+            let mut buffers_with_paths = buffers
                 .into_iter()
                 .filter_map(|buffer_handle| {
                     let buffer = buffer_handle.read(cx);
@@ -4336,23 +4264,285 @@ impl Project {
                 .collect::<Vec<_>>();
 
             cx.spawn(move |project, mut cx| async move {
-                let result = Self::format_locally(
-                    project.clone(),
-                    buffers_with_paths,
-                    push_to_history,
-                    trigger,
-                    cx.clone(),
-                )
-                .await;
-
-                project.update(&mut cx, |project, _| match &result {
-                    Ok(_) => project.last_formatting_failure = None,
-                    Err(error) => {
-                        project.last_formatting_failure.replace(error.to_string());
-                    }
+                // Do not allow multiple concurrent formatting requests for the
+                // same buffer.
+                project.update(&mut cx, |this, cx| {
+                    buffers_with_paths.retain(|(buffer, _)| {
+                        this.buffers_being_formatted
+                            .insert(buffer.read(cx).remote_id())
+                    });
                 })?;
 
-                result
+                let _cleanup = defer({
+                    let this = project.clone();
+                    let mut cx = cx.clone();
+                    let buffers = &buffers_with_paths;
+                    move || {
+                        this.update(&mut cx, |this, cx| {
+                            for (buffer, _) in buffers {
+                                this.buffers_being_formatted
+                                    .remove(&buffer.read(cx).remote_id());
+                            }
+                        })
+                        .ok();
+                    }
+                });
+
+                let mut project_transaction = ProjectTransaction::default();
+                for (buffer, buffer_abs_path) in &buffers_with_paths {
+                    let adapters_and_servers: Vec<_> = project.update(&mut cx, |project, cx| {
+                        project
+                            .language_servers_for_buffer(&buffer.read(cx), cx)
+                            .map(|(adapter, lsp)| (adapter.clone(), lsp.clone()))
+                            .collect()
+                    })?;
+
+                    let settings = buffer.update(&mut cx, |buffer, cx| {
+                        language_settings(buffer.language(), buffer.file(), cx).clone()
+                    })?;
+
+                    let remove_trailing_whitespace = settings.remove_trailing_whitespace_on_save;
+                    let ensure_final_newline = settings.ensure_final_newline_on_save;
+                    let tab_size = settings.tab_size;
+
+                    // First, format buffer's whitespace according to the settings.
+                    let trailing_whitespace_diff = if remove_trailing_whitespace {
+                        Some(
+                            buffer
+                                .update(&mut cx, |b, cx| b.remove_trailing_whitespace(cx))?
+                                .await,
+                        )
+                    } else {
+                        None
+                    };
+                    let whitespace_transaction_id = buffer.update(&mut cx, |buffer, cx| {
+                        buffer.finalize_last_transaction();
+                        buffer.start_transaction();
+                        if let Some(diff) = trailing_whitespace_diff {
+                            buffer.apply_diff(diff, cx);
+                        }
+                        if ensure_final_newline {
+                            buffer.ensure_final_newline(cx);
+                        }
+                        buffer.end_transaction(cx)
+                    })?;
+
+                    for (lsp_adapter, language_server) in adapters_and_servers.iter() {
+                        // Apply the code actions on
+                        let code_actions: Vec<lsp::CodeActionKind> = settings
+                            .code_actions_on_format
+                            .iter()
+                            .flat_map(|(kind, enabled)| {
+                                if *enabled {
+                                    Some(kind.clone().into())
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect();
+
+                        #[allow(clippy::nonminimal_bool)]
+                        if !code_actions.is_empty()
+                            && !(trigger == FormatTrigger::Save
+                                && settings.format_on_save == FormatOnSave::Off)
+                        {
+                            let actions = project
+                                .update(&mut cx, |this, cx| {
+                                    this.request_lsp(
+                                        buffer.clone(),
+                                        LanguageServerToQuery::Other(language_server.server_id()),
+                                        GetCodeActions {
+                                            range: text::Anchor::MIN..text::Anchor::MAX,
+                                            kinds: Some(code_actions),
+                                        },
+                                        cx,
+                                    )
+                                })?
+                                .await?;
+
+                            for mut action in actions {
+                                Self::try_resolve_code_action(&language_server, &mut action)
+                                    .await
+                                    .context("resolving a formatting code action")?;
+                                if let Some(edit) = action.lsp_action.edit {
+                                    if edit.changes.is_none() && edit.document_changes.is_none() {
+                                        continue;
+                                    }
+
+                                    let new = Self::deserialize_workspace_edit(
+                                        project
+                                            .upgrade()
+                                            .ok_or_else(|| anyhow!("project dropped"))?,
+                                        edit,
+                                        push_to_history,
+                                        lsp_adapter.clone(),
+                                        language_server.clone(),
+                                        &mut cx,
+                                    )
+                                    .await?;
+                                    project_transaction.0.extend(new.0);
+                                }
+
+                                // TODO kb here too:
+                                if let Some(command) = action.lsp_action.command {
+                                    project.update(&mut cx, |this, _| {
+                                        this.last_workspace_edits_by_language_server
+                                            .remove(&language_server.server_id());
+                                    })?;
+
+                                    language_server
+                                        .request::<lsp::request::ExecuteCommand>(
+                                            lsp::ExecuteCommandParams {
+                                                command: command.command,
+                                                arguments: command.arguments.unwrap_or_default(),
+                                                ..Default::default()
+                                            },
+                                        )
+                                        .await?;
+
+                                    project.update(&mut cx, |this, _| {
+                                        project_transaction.0.extend(
+                                            this.last_workspace_edits_by_language_server
+                                                .remove(&language_server.server_id())
+                                                .unwrap_or_default()
+                                                .0,
+                                        )
+                                    })?;
+                                }
+                            }
+                        }
+                    }
+
+                    // Apply language-specific formatting using either the primary language server
+                    // or external command.
+                    let primary_language_server = adapters_and_servers
+                        .first()
+                        .cloned()
+                        .map(|(_, lsp)| lsp.clone());
+                    let server_and_buffer = primary_language_server
+                        .as_ref()
+                        .zip(buffer_abs_path.as_ref());
+
+                    let mut format_operation = None;
+                    match (&settings.formatter, &settings.format_on_save) {
+                        (_, FormatOnSave::Off) if trigger == FormatTrigger::Save => {}
+
+                        (Formatter::LanguageServer, FormatOnSave::On | FormatOnSave::Off)
+                        | (_, FormatOnSave::LanguageServer) => {
+                            if let Some((language_server, buffer_abs_path)) = server_and_buffer {
+                                format_operation = Some(FormatOperation::Lsp(
+                                    Self::format_via_lsp(
+                                        &project,
+                                        buffer,
+                                        buffer_abs_path,
+                                        language_server,
+                                        tab_size,
+                                        &mut cx,
+                                    )
+                                    .await
+                                    .context("failed to format via language server")?,
+                                ));
+                            }
+                        }
+
+                        (
+                            Formatter::External { command, arguments },
+                            FormatOnSave::On | FormatOnSave::Off,
+                        )
+                        | (_, FormatOnSave::External { command, arguments }) => {
+                            if let Some(buffer_abs_path) = buffer_abs_path {
+                                format_operation = Self::format_via_external_command(
+                                    buffer,
+                                    buffer_abs_path,
+                                    command,
+                                    arguments,
+                                    &mut cx,
+                                )
+                                .await
+                                .context(format!(
+                                    "failed to format via external command {:?}",
+                                    command
+                                ))?
+                                .map(FormatOperation::External);
+                            }
+                        }
+                        (Formatter::Auto, FormatOnSave::On | FormatOnSave::Off) => {
+                            if let Some(new_operation) =
+                                prettier_support::format_with_prettier(&project, buffer, &mut cx)
+                                    .await
+                            {
+                                format_operation = Some(new_operation);
+                            } else if let Some((language_server, buffer_abs_path)) =
+                                server_and_buffer
+                            {
+                                format_operation = Some(FormatOperation::Lsp(
+                                    Self::format_via_lsp(
+                                        &project,
+                                        buffer,
+                                        buffer_abs_path,
+                                        language_server,
+                                        tab_size,
+                                        &mut cx,
+                                    )
+                                    .await
+                                    .context("failed to format via language server")?,
+                                ));
+                            }
+                        }
+                        (Formatter::Prettier, FormatOnSave::On | FormatOnSave::Off) => {
+                            if let Some(new_operation) =
+                                prettier_support::format_with_prettier(&project, buffer, &mut cx)
+                                    .await
+                            {
+                                format_operation = Some(new_operation);
+                            }
+                        }
+                    };
+
+                    buffer.update(&mut cx, |b, cx| {
+                        // If the buffer had its whitespace formatted and was edited while the language-specific
+                        // formatting was being computed, avoid applying the language-specific formatting, because
+                        // it can't be grouped with the whitespace formatting in the undo history.
+                        if let Some(transaction_id) = whitespace_transaction_id {
+                            if b.peek_undo_stack()
+                                .map_or(true, |e| e.transaction_id() != transaction_id)
+                            {
+                                format_operation.take();
+                            }
+                        }
+
+                        // Apply any language-specific formatting, and group the two formatting operations
+                        // in the buffer's undo history.
+                        if let Some(operation) = format_operation {
+                            match operation {
+                                FormatOperation::Lsp(edits) => {
+                                    b.edit(edits, None, cx);
+                                }
+                                FormatOperation::External(diff) => {
+                                    b.apply_diff(diff, cx);
+                                }
+                                FormatOperation::Prettier(diff) => {
+                                    b.apply_diff(diff, cx);
+                                }
+                            }
+
+                            if let Some(transaction_id) = whitespace_transaction_id {
+                                b.group_until_transaction(transaction_id);
+                            } else if let Some(transaction) = project_transaction.0.get(buffer) {
+                                b.group_until_transaction(transaction.id)
+                            }
+                        }
+
+                        if let Some(transaction) = b.finalize_last_transaction().cloned() {
+                            if !push_to_history {
+                                b.forget_transaction(transaction.id);
+                            }
+                            project_transaction.0.insert(buffer.clone(), transaction);
+                        }
+                    })?;
+                }
+
+                Ok(project_transaction)
             })
         } else {
             let remote_id = self.remote_id();
@@ -4383,289 +4573,6 @@ impl Project {
                 Ok(project_transaction)
             })
         }
-    }
-
-    async fn format_locally(
-        project: WeakModel<Project>,
-        mut buffers_with_paths: Vec<(Model<Buffer>, Option<PathBuf>)>,
-        push_to_history: bool,
-        trigger: FormatTrigger,
-        mut cx: AsyncAppContext,
-    ) -> anyhow::Result<ProjectTransaction> {
-        // Do not allow multiple concurrent formatting requests for the
-        // same buffer.
-        project.update(&mut cx, |this, cx| {
-            buffers_with_paths.retain(|(buffer, _)| {
-                this.buffers_being_formatted
-                    .insert(buffer.read(cx).remote_id())
-            });
-        })?;
-
-        let _cleanup = defer({
-            let this = project.clone();
-            let mut cx = cx.clone();
-            let buffers = &buffers_with_paths;
-            move || {
-                this.update(&mut cx, |this, cx| {
-                    for (buffer, _) in buffers {
-                        this.buffers_being_formatted
-                            .remove(&buffer.read(cx).remote_id());
-                    }
-                })
-                .ok();
-            }
-        });
-
-        let mut project_transaction = ProjectTransaction::default();
-        for (buffer, buffer_abs_path) in &buffers_with_paths {
-            let adapters_and_servers: Vec<_> = project.update(&mut cx, |project, cx| {
-                project
-                    .language_servers_for_buffer(&buffer.read(cx), cx)
-                    .map(|(adapter, lsp)| (adapter.clone(), lsp.clone()))
-                    .collect()
-            })?;
-
-            let settings = buffer.update(&mut cx, |buffer, cx| {
-                language_settings(buffer.language(), buffer.file(), cx).clone()
-            })?;
-
-            let remove_trailing_whitespace = settings.remove_trailing_whitespace_on_save;
-            let ensure_final_newline = settings.ensure_final_newline_on_save;
-            let tab_size = settings.tab_size;
-
-            // First, format buffer's whitespace according to the settings.
-            let trailing_whitespace_diff = if remove_trailing_whitespace {
-                Some(
-                    buffer
-                        .update(&mut cx, |b, cx| b.remove_trailing_whitespace(cx))?
-                        .await,
-                )
-            } else {
-                None
-            };
-            let whitespace_transaction_id = buffer.update(&mut cx, |buffer, cx| {
-                buffer.finalize_last_transaction();
-                buffer.start_transaction();
-                if let Some(diff) = trailing_whitespace_diff {
-                    buffer.apply_diff(diff, cx);
-                }
-                if ensure_final_newline {
-                    buffer.ensure_final_newline(cx);
-                }
-                buffer.end_transaction(cx)
-            })?;
-
-            for (lsp_adapter, language_server) in adapters_and_servers.iter() {
-                // Apply the code actions on
-                let code_actions: Vec<lsp::CodeActionKind> = settings
-                    .code_actions_on_format
-                    .iter()
-                    .flat_map(|(kind, enabled)| {
-                        if *enabled {
-                            Some(kind.clone().into())
-                        } else {
-                            None
-                        }
-                    })
-                    .collect();
-
-                #[allow(clippy::nonminimal_bool)]
-                if !code_actions.is_empty()
-                    && !(trigger == FormatTrigger::Save
-                        && settings.format_on_save == FormatOnSave::Off)
-                {
-                    let actions = project
-                        .update(&mut cx, |this, cx| {
-                            this.request_lsp(
-                                buffer.clone(),
-                                LanguageServerToQuery::Other(language_server.server_id()),
-                                GetCodeActions {
-                                    range: text::Anchor::MIN..text::Anchor::MAX,
-                                    kinds: Some(code_actions),
-                                },
-                                cx,
-                            )
-                        })?
-                        .await?;
-
-                    for mut action in actions {
-                        Self::try_resolve_code_action(&language_server, &mut action)
-                            .await
-                            .context("resolving a formatting code action")?;
-                        if let Some(edit) = action.lsp_action.edit {
-                            if edit.changes.is_none() && edit.document_changes.is_none() {
-                                continue;
-                            }
-
-                            let new = Self::deserialize_workspace_edit(
-                                project
-                                    .upgrade()
-                                    .ok_or_else(|| anyhow!("project dropped"))?,
-                                edit,
-                                push_to_history,
-                                lsp_adapter.clone(),
-                                language_server.clone(),
-                                &mut cx,
-                            )
-                            .await?;
-                            project_transaction.0.extend(new.0);
-                        }
-
-                        if let Some(command) = action.lsp_action.command {
-                            project.update(&mut cx, |this, _| {
-                                this.last_workspace_edits_by_language_server
-                                    .remove(&language_server.server_id());
-                            })?;
-
-                            language_server
-                                .request::<lsp::request::ExecuteCommand>(
-                                    lsp::ExecuteCommandParams {
-                                        command: command.command,
-                                        arguments: command.arguments.unwrap_or_default(),
-                                        ..Default::default()
-                                    },
-                                )
-                                .await?;
-
-                            project.update(&mut cx, |this, _| {
-                                project_transaction.0.extend(
-                                    this.last_workspace_edits_by_language_server
-                                        .remove(&language_server.server_id())
-                                        .unwrap_or_default()
-                                        .0,
-                                )
-                            })?;
-                        }
-                    }
-                }
-            }
-
-            // Apply language-specific formatting using either the primary language server
-            // or external command.
-            let primary_language_server = adapters_and_servers
-                .first()
-                .cloned()
-                .map(|(_, lsp)| lsp.clone());
-            let server_and_buffer = primary_language_server
-                .as_ref()
-                .zip(buffer_abs_path.as_ref());
-
-            let mut format_operation = None;
-            match (&settings.formatter, &settings.format_on_save) {
-                (_, FormatOnSave::Off) if trigger == FormatTrigger::Save => {}
-
-                (Formatter::LanguageServer, FormatOnSave::On | FormatOnSave::Off)
-                | (_, FormatOnSave::LanguageServer) => {
-                    if let Some((language_server, buffer_abs_path)) = server_and_buffer {
-                        format_operation = Some(FormatOperation::Lsp(
-                            Self::format_via_lsp(
-                                &project,
-                                buffer,
-                                buffer_abs_path,
-                                language_server,
-                                tab_size,
-                                &mut cx,
-                            )
-                            .await
-                            .context("failed to format via language server")?,
-                        ));
-                    }
-                }
-
-                (
-                    Formatter::External { command, arguments },
-                    FormatOnSave::On | FormatOnSave::Off,
-                )
-                | (_, FormatOnSave::External { command, arguments }) => {
-                    if let Some(buffer_abs_path) = buffer_abs_path {
-                        format_operation = Self::format_via_external_command(
-                            buffer,
-                            buffer_abs_path,
-                            command,
-                            arguments,
-                            &mut cx,
-                        )
-                        .await
-                        .context(format!(
-                            "failed to format via external command {:?}",
-                            command
-                        ))?
-                        .map(FormatOperation::External);
-                    }
-                }
-                (Formatter::Auto, FormatOnSave::On | FormatOnSave::Off) => {
-                    if let Some(new_operation) =
-                        prettier_support::format_with_prettier(&project, buffer, &mut cx).await
-                    {
-                        format_operation = Some(new_operation);
-                    } else if let Some((language_server, buffer_abs_path)) = server_and_buffer {
-                        format_operation = Some(FormatOperation::Lsp(
-                            Self::format_via_lsp(
-                                &project,
-                                buffer,
-                                buffer_abs_path,
-                                language_server,
-                                tab_size,
-                                &mut cx,
-                            )
-                            .await
-                            .context("failed to format via language server")?,
-                        ));
-                    }
-                }
-                (Formatter::Prettier, FormatOnSave::On | FormatOnSave::Off) => {
-                    if let Some(new_operation) =
-                        prettier_support::format_with_prettier(&project, buffer, &mut cx).await
-                    {
-                        format_operation = Some(new_operation);
-                    }
-                }
-            };
-
-            buffer.update(&mut cx, |b, cx| {
-                // If the buffer had its whitespace formatted and was edited while the language-specific
-                // formatting was being computed, avoid applying the language-specific formatting, because
-                // it can't be grouped with the whitespace formatting in the undo history.
-                if let Some(transaction_id) = whitespace_transaction_id {
-                    if b.peek_undo_stack()
-                        .map_or(true, |e| e.transaction_id() != transaction_id)
-                    {
-                        format_operation.take();
-                    }
-                }
-
-                // Apply any language-specific formatting, and group the two formatting operations
-                // in the buffer's undo history.
-                if let Some(operation) = format_operation {
-                    match operation {
-                        FormatOperation::Lsp(edits) => {
-                            b.edit(edits, None, cx);
-                        }
-                        FormatOperation::External(diff) => {
-                            b.apply_diff(diff, cx);
-                        }
-                        FormatOperation::Prettier(diff) => {
-                            b.apply_diff(diff, cx);
-                        }
-                    }
-
-                    if let Some(transaction_id) = whitespace_transaction_id {
-                        b.group_until_transaction(transaction_id);
-                    } else if let Some(transaction) = project_transaction.0.get(buffer) {
-                        b.group_until_transaction(transaction.id)
-                    }
-                }
-
-                if let Some(transaction) = b.finalize_last_transaction().cloned() {
-                    if !push_to_history {
-                        b.forget_transaction(transaction.id);
-                    }
-                    project_transaction.0.insert(buffer.clone(), transaction);
-                }
-            })?;
-        }
-
-        Ok(project_transaction)
     }
 
     async fn format_via_lsp(
@@ -6781,8 +6688,6 @@ impl Project {
             self.language_server_ids
                 .remove(&(id_to_remove, server_name));
             self.language_server_statuses.remove(&server_id_to_remove);
-            self.language_server_watched_paths
-                .remove(&server_id_to_remove);
             self.last_workspace_edits_by_language_server
                 .remove(&server_id_to_remove);
             self.language_servers.remove(&server_id_to_remove);
@@ -7037,14 +6942,13 @@ impl Project {
 
         let abs_path = worktree_handle.read(cx).abs_path();
         for server_id in &language_server_ids {
-            if let Some(LanguageServerState::Running { server, .. }) =
-                self.language_servers.get(server_id)
+            if let Some(LanguageServerState::Running {
+                server,
+                watched_paths,
+                ..
+            }) = self.language_servers.get(server_id)
             {
-                if let Some(watched_paths) = self
-                    .language_server_watched_paths
-                    .get(&server_id)
-                    .and_then(|paths| paths.get(&worktree_id))
-                {
+                if let Some(watched_paths) = watched_paths.get(&worktree_id) {
                     let params = lsp::DidChangeWatchedFilesParams {
                         changes: changes
                             .iter()
@@ -7066,6 +6970,7 @@ impl Project {
                             })
                             .collect(),
                     };
+
                     if !params.changes.is_empty() {
                         server
                             .notify::<lsp::notification::DidChangeWatchedFiles>(params)
@@ -7487,7 +7392,8 @@ impl Project {
             if is_host {
                 this.opened_buffers
                     .retain(|_, buffer| !matches!(buffer, OpenBuffer::Operations(_)));
-                this.enqueue_buffer_ordered_message(BufferOrderedMessage::Resync)
+                this.buffer_ordered_messages_tx
+                    .unbounded_send(BufferOrderedMessage::Resync)
                     .unwrap();
             }
 
@@ -8020,7 +7926,7 @@ impl Project {
             project_id,
             buffer_id: buffer_id.into(),
             version: serialize_version(buffer.saved_version()),
-            mtime: buffer.saved_mtime().map(|time| time.into()),
+            mtime: Some(buffer.saved_mtime().into()),
             fingerprint: language::proto::serialize_fingerprint(buffer.saved_version_fingerprint()),
         })
     }
@@ -8113,7 +8019,7 @@ impl Project {
                             project_id,
                             buffer_id: buffer_id.into(),
                             version: language::proto::serialize_version(buffer.saved_version()),
-                            mtime: buffer.saved_mtime().map(|time| time.into()),
+                            mtime: Some(buffer.saved_mtime().into()),
                             fingerprint: language::proto::serialize_fingerprint(
                                 buffer.saved_version_fingerprint(),
                             ),
@@ -8988,7 +8894,11 @@ impl Project {
         let fingerprint = deserialize_fingerprint(&envelope.payload.fingerprint)?;
         let version = deserialize_version(&envelope.payload.version);
         let buffer_id = BufferId::new(envelope.payload.buffer_id)?;
-        let mtime = envelope.payload.mtime.map(|time| time.into());
+        let mtime = envelope
+            .payload
+            .mtime
+            .ok_or_else(|| anyhow!("missing mtime"))?
+            .into();
 
         this.update(&mut cx, |this, cx| {
             let buffer = this
@@ -9022,7 +8932,10 @@ impl Project {
             proto::LineEnding::from_i32(payload.line_ending)
                 .ok_or_else(|| anyhow!("missing line ending"))?,
         );
-        let mtime = payload.mtime.map(|time| time.into());
+        let mtime = payload
+            .mtime
+            .ok_or_else(|| anyhow!("missing mtime"))?
+            .into();
         let buffer_id = BufferId::new(payload.buffer_id)?;
         this.update(&mut cx, |this, cx| {
             let buffer = this
@@ -9429,36 +9342,22 @@ impl<P: AsRef<Path>> From<(WorktreeId, P)> for ProjectPath {
 }
 
 struct ProjectLspAdapterDelegate {
-    project: WeakModel<Project>,
+    project: Model<Project>,
     worktree: worktree::Snapshot,
     fs: Arc<dyn Fs>,
     http_client: Arc<dyn HttpClient>,
     language_registry: Arc<LanguageRegistry>,
-    shell_env: Mutex<Option<HashMap<String, String>>>,
 }
 
 impl ProjectLspAdapterDelegate {
     fn new(project: &Project, worktree: &Model<Worktree>, cx: &ModelContext<Project>) -> Arc<Self> {
         Arc::new(Self {
-            project: cx.weak_model(),
+            project: cx.handle(),
             worktree: worktree.read(cx).snapshot(),
             fs: project.fs.clone(),
             http_client: project.client.http_client(),
             language_registry: project.languages.clone(),
-            shell_env: Default::default(),
         })
-    }
-
-    async fn load_shell_env(&self) {
-        let worktree_abs_path = self.worktree.abs_path();
-        let shell_env = load_shell_environment(&worktree_abs_path)
-            .await
-            .with_context(|| {
-                format!("failed to determine load login shell environment in {worktree_abs_path:?}")
-            })
-            .log_err()
-            .unwrap_or_default();
-        *self.shell_env.lock() = Some(shell_env);
     }
 }
 
@@ -9466,28 +9365,39 @@ impl ProjectLspAdapterDelegate {
 impl LspAdapterDelegate for ProjectLspAdapterDelegate {
     fn show_notification(&self, message: &str, cx: &mut AppContext) {
         self.project
-            .update(cx, |_, cx| cx.emit(Event::Notification(message.to_owned())))
-            .ok();
+            .update(cx, |_, cx| cx.emit(Event::Notification(message.to_owned())));
     }
 
     fn http_client(&self) -> Arc<dyn HttpClient> {
         self.http_client.clone()
     }
 
-    async fn shell_env(&self) -> HashMap<String, String> {
-        self.load_shell_env().await;
-        self.shell_env.lock().as_ref().cloned().unwrap_or_default()
-    }
-
-    async fn which(&self, command: &OsStr) -> Option<PathBuf> {
+    async fn which_command(&self, command: OsString) -> Option<(PathBuf, HashMap<String, String>)> {
         let worktree_abs_path = self.worktree.abs_path();
-        self.load_shell_env().await;
-        let shell_path = self
-            .shell_env
-            .lock()
-            .as_ref()
-            .and_then(|shell_env| shell_env.get("PATH").cloned());
-        which::which_in(command, shell_path.as_ref(), &worktree_abs_path).ok()
+
+        let shell_env = load_shell_environment(&worktree_abs_path)
+            .await
+            .with_context(|| {
+                format!("failed to determine load login shell environment in {worktree_abs_path:?}")
+            })
+            .log_err();
+
+        if let Some(shell_env) = shell_env {
+            let shell_path = shell_env.get("PATH");
+            match which::which_in(&command, shell_path, &worktree_abs_path) {
+                Ok(command_path) => Some((command_path, shell_env)),
+                Err(error) => {
+                    log::warn!(
+                        "failed to determine path for command {:?} in shell PATH {:?}: {error}",
+                        command.to_string_lossy(),
+                        shell_path.map(String::as_str).unwrap_or("")
+                    );
+                    None
+                }
+            }
+        } else {
+            None
+        }
     }
 
     fn update_status(
@@ -9646,8 +9556,7 @@ async fn load_shell_environment(dir: &Path) -> Result<HashMap<String, String>> {
         });
 
     let command = format!(
-        "cd '{}';{} echo {marker}; /usr/bin/env -0; exit 0;",
-        dir.display(),
+        "cd {dir:?};{} echo {marker}; /usr/bin/env -0; exit 0;",
         additional_command.unwrap_or("")
     );
 

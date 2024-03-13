@@ -6,6 +6,7 @@ use gpui::{
     actions, canvas, div, point, px, Action, AnyElement, AppContext, Element, Hsla,
     InteractiveElement, IntoElement, Model, ParentElement, Path, Render,
     StatefulInteractiveElement, Styled, Subscription, View, ViewContext, VisualContext, WeakView,
+    WindowBounds,
 };
 use project::{Project, RepositoryEntry};
 use recent_projects::RecentProjects;
@@ -64,7 +65,7 @@ impl Render for CollabTitlebarItem {
             .w_full()
             .h(titlebar_height(cx))
             .map(|this| {
-                if cx.is_full_screen() {
+                if matches!(cx.window_bounds(), WindowBounds::Fullscreen) {
                     this.pl_2()
                 } else {
                     // Use pixels here instead of a rem-based size because the macOS traffic
@@ -328,27 +329,24 @@ impl Render for CollabTitlebarItem {
     }
 }
 
-fn render_color_ribbon(color: Hsla) -> impl Element {
-    canvas(
-        move |_, _| {},
-        move |bounds, _, cx| {
-            let height = bounds.size.height;
-            let horizontal_offset = height;
-            let vertical_offset = px(height.0 / 2.0);
-            let mut path = Path::new(bounds.lower_left());
-            path.curve_to(
-                bounds.origin + point(horizontal_offset, vertical_offset),
-                bounds.origin + point(px(0.0), vertical_offset),
-            );
-            path.line_to(bounds.upper_right() + point(-horizontal_offset, vertical_offset));
-            path.curve_to(
-                bounds.lower_right(),
-                bounds.upper_right() + point(px(0.0), vertical_offset),
-            );
-            path.line_to(bounds.lower_left());
-            cx.paint_path(path, color);
-        },
-    )
+fn render_color_ribbon(color: Hsla) -> gpui::Canvas {
+    canvas(move |bounds, cx| {
+        let height = bounds.size.height;
+        let horizontal_offset = height;
+        let vertical_offset = px(height.0 / 2.0);
+        let mut path = Path::new(bounds.lower_left());
+        path.curve_to(
+            bounds.origin + point(horizontal_offset, vertical_offset),
+            bounds.origin + point(px(0.0), vertical_offset),
+        );
+        path.line_to(bounds.upper_right() + point(-horizontal_offset, vertical_offset));
+        path.curve_to(
+            bounds.lower_right(),
+            bounds.upper_right() + point(px(0.0), vertical_offset),
+        );
+        path.line_to(bounds.lower_left());
+        cx.paint_path(path, color);
+    })
     .h_1()
     .w_full()
 }
@@ -700,8 +698,9 @@ impl CollabTitlebarItem {
                     ContextMenu::build(cx, |menu, _| {
                         menu.action("Settings", zed_actions::OpenSettings.boxed_clone())
                             .action("Extensions", extensions_ui::Extensions.boxed_clone())
-                            .action("Themes...", theme_selector::Toggle.boxed_clone())
+                            .action("Theme...", theme_selector::Toggle.boxed_clone())
                             .separator()
+                            .action("Share Feedback...", feedback::GiveFeedback.boxed_clone())
                             .action("Sign Out", client::SignOut.boxed_clone())
                     })
                     .into()
@@ -723,8 +722,10 @@ impl CollabTitlebarItem {
                 .menu(|cx| {
                     ContextMenu::build(cx, |menu, _| {
                         menu.action("Settings", zed_actions::OpenSettings.boxed_clone())
+                            .action("Theme...", theme_selector::Toggle.boxed_clone())
                             .action("Extensions", extensions_ui::Extensions.boxed_clone())
-                            .action("Themes...", theme_selector::Toggle.boxed_clone())
+                            .separator()
+                            .action("Share Feedback...", feedback::GiveFeedback.boxed_clone())
                     })
                     .into()
                 })

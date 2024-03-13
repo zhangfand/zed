@@ -292,7 +292,6 @@ impl MetalRenderer {
             znear: 0.0,
             zfar: 1.0,
         });
-
         for batch in scene.batches() {
             let ok = match batch {
                 PrimitiveBatch::Shadows(shadows) => self.draw_shadows(

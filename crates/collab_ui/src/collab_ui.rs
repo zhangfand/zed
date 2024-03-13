@@ -13,10 +13,9 @@ use call::{report_call_event_for_room, ActiveCall};
 pub use collab_panel::CollabPanel;
 pub use collab_titlebar_item::CollabTitlebarItem;
 use gpui::{
-    actions, point, AppContext, GlobalPixels, Pixels, PlatformDisplay, Size, Task, WindowContext,
-    WindowKind, WindowOptions,
+    actions, point, AppContext, GlobalPixels, Pixels, PlatformDisplay, Size, Task, WindowBounds,
+    WindowContext, WindowKind, WindowOptions,
 };
-use panel_settings::MessageEditorSettings;
 pub use panel_settings::{
     ChatPanelSettings, CollaborationPanelSettings, NotificationPanelSettings,
 };
@@ -32,7 +31,6 @@ pub fn init(app_state: &Arc<AppState>, cx: &mut AppContext) {
     CollaborationPanelSettings::register(cx);
     ChatPanelSettings::register(cx);
     NotificationPanelSettings::register(cx);
-    MessageEditorSettings::register(cx);
 
     vcs_menu::init(cx);
     collab_titlebar_item::init(cx);
@@ -111,15 +109,14 @@ fn notification_window_options(
             ),
         size: window_size.into(),
     };
-
     WindowOptions {
-        bounds: Some(bounds),
+        bounds: WindowBounds::Fixed(bounds),
         titlebar: None,
+        center: false,
         focus: false,
         show: true,
         kind: WindowKind::PopUp,
         is_movable: false,
         display_id: Some(screen.id()),
-        fullscreen: false,
     }
 }

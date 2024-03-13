@@ -4,16 +4,15 @@
 use crate::{
     platform::blade::BladeRenderer, size, Bounds, GlobalPixels, Modifiers, Pixels, PlatformAtlas,
     PlatformDisplay, PlatformInput, PlatformInputHandler, PlatformWindow, Point, PromptLevel,
-    Scene, Size, WindowAppearance, WindowOptions, WindowParams,
+    Scene, Size, WindowAppearance, WindowBounds, WindowOptions,
 };
 use blade_graphics as gpu;
 use parking_lot::Mutex;
 use raw_window_handle as rwh;
-use x11rb::{
-    connection::Connection,
-    protocol::xproto::{self, ConnectionExt as _, CreateWindowAux},
-    wrapper::ConnectionExt,
-    xcb_ffi::XCBConnection,
+
+use xcb::{
+    x::{self, StackMode},
+    Xid as _,
 };
 
 use std::{
@@ -41,13 +40,14 @@ struct Callbacks {
     appearance_changed: Option<Box<dyn FnMut()>>,
 }
 
-x11rb::atom_manager! {
-    pub XcbAtoms: AtomsCookie {
-        WM_PROTOCOLS,
-        WM_DELETE_WINDOW,
-        _NET_WM_STATE,
-        _NET_WM_STATE_MAXIMIZED_VERT,
-        _NET_WM_STATE_MAXIMIZED_HORZ,
+xcb::atoms_struct! {
+    #[derive(Debug)]
+    pub(crate) struct XcbAtoms {
+        pub wm_protocols    => b"WM_PROTOCOLS",
+        pub wm_del_window   => b"WM_DELETE_WINDOW",
+        wm_state        => b"_NET_WM_STATE",
+        wm_state_maxv   => b"_NET_WM_STATE_MAXIMIZED_VERT",
+        wm_state_maxh   => b"_NET_WM_STATE_MAXIMIZED_HORZ",
     }
 }
 
@@ -68,31 +68,30 @@ impl LinuxWindowInner {
     }
 }
 
-fn query_render_extent(xcb_connection: &XCBConnection, x_window: xproto::Window) -> gpu::Extent {
-    let reply = xcb_connection
-        .get_geometry(x_window)
-        .unwrap()
-        .reply()
-        .unwrap();
+fn query_render_extent(xcb_connection: &xcb::Connection, x_window: x::Window) -> gpu::Extent {
+    let cookie = xcb_connection.send_request(&x::GetGeometry {
+        drawable: x::Drawable::Window(x_window),
+    });
+    let reply = xcb_connection.wait_for_reply(cookie).unwrap();
     gpu::Extent {
-        width: reply.width as u32,
-        height: reply.height as u32,
+        width: reply.width() as u32,
+        height: reply.height() as u32,
         depth: 1,
     }
 }
 
 struct RawWindow {
     connection: *mut c_void,
-    screen_id: usize,
+    screen_id: i32,
     window_id: u32,
     visual_id: u32,
 }
 
 pub(crate) struct X11WindowState {
-    xcb_connection: Rc<XCBConnection>,
+    xcb_connection: Rc<xcb::Connection>,
     display: Rc<dyn PlatformDisplay>,
     raw: RawWindow,
-    x_window: xproto::Window,
+    x_window: x::Window,
     callbacks: RefCell<Callbacks>,
     inner: RefCell<LinuxWindowInner>,
 }
@@ -113,7 +112,7 @@ unsafe impl blade_rwh::HasRawDisplayHandle for RawWindow {
     fn raw_display_handle(&self) -> blade_rwh::RawDisplayHandle {
         let mut dh = blade_rwh::XcbDisplayHandle::empty();
         dh.connection = self.connection;
-        dh.screen = self.screen_id as i32;
+        dh.screen = self.screen_id;
         dh.into()
     }
 }
@@ -131,7 +130,7 @@ impl rwh::HasDisplayHandle for X11Window {
     fn display_handle(&self) -> Result<rwh::DisplayHandle, rwh::HandleError> {
         Ok(unsafe {
             let non_zero = NonNull::new(self.0.raw.connection).unwrap();
-            let handle = rwh::XcbDisplayHandle::new(Some(non_zero), self.0.raw.screen_id as i32);
+            let handle = rwh::XcbDisplayHandle::new(Some(non_zero), self.0.raw.screen_id);
             rwh::DisplayHandle::borrow_raw(handle.into())
         })
     }
@@ -139,77 +138,88 @@ impl rwh::HasDisplayHandle for X11Window {
 
 impl X11WindowState {
     pub fn new(
-        params: WindowParams,
-        xcb_connection: &Rc<XCBConnection>,
-        x_main_screen_index: usize,
-        x_window: xproto::Window,
+        options: WindowOptions,
+        xcb_connection: &Rc<xcb::Connection>,
+        x_main_screen_index: i32,
+        x_window: x::Window,
         atoms: &XcbAtoms,
     ) -> Self {
-        let x_screen_index = params
+        let x_screen_index = options
             .display_id
-            .map_or(x_main_screen_index, |did| did.0 as usize);
-        let screen = xcb_connection.setup().roots.get(x_screen_index).unwrap();
-
-        let win_aux = xproto::CreateWindowAux::new().event_mask(
-            xproto::EventMask::EXPOSURE
-                | xproto::EventMask::STRUCTURE_NOTIFY
-                | xproto::EventMask::ENTER_WINDOW
-                | xproto::EventMask::LEAVE_WINDOW
-                | xproto::EventMask::FOCUS_CHANGE
-                | xproto::EventMask::KEY_PRESS
-                | xproto::EventMask::KEY_RELEASE
-                | xproto::EventMask::BUTTON_PRESS
-                | xproto::EventMask::BUTTON_RELEASE
-                | xproto::EventMask::POINTER_MOTION
-                | xproto::EventMask::BUTTON1_MOTION
-                | xproto::EventMask::BUTTON2_MOTION
-                | xproto::EventMask::BUTTON3_MOTION
-                | xproto::EventMask::BUTTON4_MOTION
-                | xproto::EventMask::BUTTON5_MOTION
-                | xproto::EventMask::BUTTON_MOTION,
-        );
-
-        xcb_connection
-            .create_window(
-                x11rb::COPY_FROM_PARENT as _,
-                x_window,
-                screen.root,
-                params.bounds.origin.x.0 as i16,
-                params.bounds.origin.y.0 as i16,
-                params.bounds.size.width.0 as u16,
-                params.bounds.size.height.0 as u16,
-                0,
-                xproto::WindowClass::INPUT_OUTPUT,
-                screen.root_visual,
-                &win_aux,
-            )
+            .map_or(x_main_screen_index, |did| did.0 as i32);
+        let screen = xcb_connection
+            .get_setup()
+            .roots()
+            .nth(x_screen_index as usize)
             .unwrap();
 
-        if let Some(titlebar) = params.titlebar {
+        let xcb_values = [
+            x::Cw::BackPixel(screen.white_pixel()),
+            x::Cw::EventMask(
+                x::EventMask::EXPOSURE
+                    | x::EventMask::STRUCTURE_NOTIFY
+                    | x::EventMask::ENTER_WINDOW
+                    | x::EventMask::LEAVE_WINDOW
+                    | x::EventMask::FOCUS_CHANGE
+                    | x::EventMask::KEY_PRESS
+                    | x::EventMask::KEY_RELEASE
+                    | x::EventMask::BUTTON_PRESS
+                    | x::EventMask::BUTTON_RELEASE
+                    | x::EventMask::POINTER_MOTION
+                    | x::EventMask::BUTTON1_MOTION
+                    | x::EventMask::BUTTON2_MOTION
+                    | x::EventMask::BUTTON3_MOTION
+                    | x::EventMask::BUTTON4_MOTION
+                    | x::EventMask::BUTTON5_MOTION
+                    | x::EventMask::BUTTON_MOTION,
+            ),
+        ];
+
+        let bounds = match options.bounds {
+            WindowBounds::Fullscreen | WindowBounds::Maximized => Bounds {
+                origin: Point::default(),
+                size: Size {
+                    width: screen.width_in_pixels() as i32,
+                    height: screen.height_in_pixels() as i32,
+                },
+            },
+            WindowBounds::Fixed(bounds) => bounds.map(|p| p.0 as i32),
+        };
+
+        xcb_connection.send_request(&x::CreateWindow {
+            depth: x::COPY_FROM_PARENT as u8,
+            wid: x_window,
+            parent: screen.root(),
+            x: bounds.origin.x as i16,
+            y: bounds.origin.y as i16,
+            width: bounds.size.width as u16,
+            height: bounds.size.height as u16,
+            border_width: 0,
+            class: x::WindowClass::InputOutput,
+            visual: screen.root_visual(),
+            value_list: &xcb_values,
+        });
+
+        if let Some(titlebar) = options.titlebar {
             if let Some(title) = titlebar.title {
-                xcb_connection
-                    .change_property8(
-                        xproto::PropMode::REPLACE,
-                        x_window,
-                        xproto::AtomEnum::WM_NAME,
-                        xproto::AtomEnum::STRING,
-                        title.as_bytes(),
-                    )
-                    .unwrap();
+                xcb_connection.send_request(&x::ChangeProperty {
+                    mode: x::PropMode::Replace,
+                    window: x_window,
+                    property: x::ATOM_WM_NAME,
+                    r#type: x::ATOM_STRING,
+                    data: title.as_bytes(),
+                });
             }
         }
+        xcb_connection.send_request(&x::ChangeProperty {
+            mode: x::PropMode::Replace,
+            window: x_window,
+            property: atoms.wm_protocols,
+            r#type: x::ATOM_ATOM,
+            data: &[atoms.wm_del_window],
+        });
 
-        xcb_connection
-            .change_property32(
-                xproto::PropMode::REPLACE,
-                x_window,
-                atoms.WM_PROTOCOLS,
-                xproto::AtomEnum::ATOM,
-                &[atoms.WM_DELETE_WINDOW],
-            )
-            .unwrap();
-
-        xcb_connection.map_window(x_window).unwrap();
+        xcb_connection.send_request(&x::MapWindow { window: x_window });
         xcb_connection.flush().unwrap();
 
         let raw = RawWindow {
@@ -217,8 +227,8 @@ impl X11WindowState {
                 xcb_connection,
             ) as *mut _,
             screen_id: x_screen_index,
-            window_id: x_window,
-            visual_id: screen.root_visual,
+            window_id: x_window.resource_id(),
+            visual_id: screen.root_visual(),
         };
         let gpu = Arc::new(
             unsafe {
@@ -240,12 +250,12 @@ impl X11WindowState {
 
         Self {
             xcb_connection: xcb_connection.clone(),
-            display: Rc::new(X11Display::new(xcb_connection, x_screen_index).unwrap()),
+            display: Rc::new(X11Display::new(xcb_connection, x_screen_index)),
             raw,
             x_window,
             callbacks: RefCell::new(Callbacks::default()),
             inner: RefCell::new(LinuxWindowInner {
-                bounds: params.bounds.map(|v| v.0 as i32),
+                bounds,
                 scale_factor: 1.0,
                 renderer: BladeRenderer::new(gpu, gpu_extent),
                 input_handler: None,
@@ -255,8 +265,12 @@ impl X11WindowState {
 
     pub fn destroy(&self) {
         self.inner.borrow_mut().renderer.destroy();
-        self.xcb_connection.unmap_window(self.x_window).unwrap();
-        self.xcb_connection.destroy_window(self.x_window).unwrap();
+        self.xcb_connection.send_request(&x::UnmapWindow {
+            window: self.x_window,
+        });
+        self.xcb_connection.send_request(&x::DestroyWindow {
+            window: self.x_window,
+        });
         if let Some(fun) = self.callbacks.borrow_mut().close.take() {
             fun();
         }
@@ -325,12 +339,14 @@ impl X11WindowState {
 }
 
 impl PlatformWindow for X11Window {
-    fn bounds(&self) -> Bounds<GlobalPixels> {
-        self.0
-            .inner
-            .borrow_mut()
-            .bounds
-            .map(|v| GlobalPixels(v as f32))
+    fn bounds(&self) -> WindowBounds {
+        WindowBounds::Fixed(
+            self.0
+                .inner
+                .borrow_mut()
+                .bounds
+                .map(|v| GlobalPixels(v as f32)),
+        )
     }
 
     fn content_size(&self) -> Size<Pixels> {
@@ -356,14 +372,14 @@ impl PlatformWindow for X11Window {
     }
 
     fn mouse_position(&self) -> Point<Pixels> {
-        let reply = self
-            .0
-            .xcb_connection
-            .query_pointer(self.0.x_window)
-            .unwrap()
-            .reply()
-            .unwrap();
-        Point::new((reply.root_x as u32).into(), (reply.root_y as u32).into())
+        let cookie = self.0.xcb_connection.send_request(&x::QueryPointer {
+            window: self.0.x_window,
+        });
+        let reply: x::QueryPointerReply = self.0.xcb_connection.wait_for_reply(cookie).unwrap();
+        Point::new(
+            (reply.root_x() as u32).into(),
+            (reply.root_y() as u32).into(),
+        )
     }
 
     // todo(linux)
@@ -383,35 +399,32 @@ impl PlatformWindow for X11Window {
         self.0.inner.borrow_mut().input_handler.take()
     }
 
+    // todo(linux)
     fn prompt(
         &self,
         _level: PromptLevel,
         _msg: &str,
         _detail: Option<&str>,
         _answers: &[&str],
-    ) -> Option<futures::channel::oneshot::Receiver<usize>> {
-        None
+    ) -> futures::channel::oneshot::Receiver<usize> {
+        unimplemented!()
     }
 
     fn activate(&self) {
-        let win_aux = xproto::ConfigureWindowAux::new().stack_mode(xproto::StackMode::ABOVE);
-        self.0
-            .xcb_connection
-            .configure_window(self.0.x_window, &win_aux)
-            .unwrap();
+        self.0.xcb_connection.send_request(&x::ConfigureWindow {
+            window: self.0.x_window,
+            value_list: &[x::ConfigWindow::StackMode(x::StackMode::Above)],
+        });
     }
 
     fn set_title(&mut self, title: &str) {
-        self.0
-            .xcb_connection
-            .change_property8(
-                xproto::PropMode::REPLACE,
-                self.0.x_window,
-                xproto::AtomEnum::WM_NAME,
-                xproto::AtomEnum::STRING,
-                title.as_bytes(),
-            )
-            .unwrap();
+        self.0.xcb_connection.send_request(&x::ChangeProperty {
+            mode: x::PropMode::Replace,
+            window: self.0.x_window,
+            property: x::ATOM_WM_NAME,
+            r#type: x::ATOM_STRING,
+            data: title.as_bytes(),
+        });
     }
 
     // todo(linux)
@@ -440,11 +453,6 @@ impl PlatformWindow for X11Window {
     // todo(linux)
     fn toggle_full_screen(&self) {
         unimplemented!()
-    }
-
-    // todo(linux)
-    fn is_full_screen(&self) -> bool {
-        false
     }
 
     fn on_request_frame(&self, callback: Box<dyn FnMut()>) {

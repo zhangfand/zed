@@ -1,8 +1,6 @@
-mod ignore;
-mod worktree_settings;
-#[cfg(test)]
-mod worktree_tests;
-
+use crate::{
+    ignore::IgnoreStack, project_settings::ProjectSettings, DiagnosticSummary, ProjectEntryId,
+};
 use ::ignore::gitignore::{Gitignore, GitignoreBuilder};
 use anyhow::{anyhow, Context as _, Result};
 use client::{proto, Client};
@@ -28,7 +26,6 @@ use gpui::{
     AppContext, AsyncAppContext, BackgroundExecutor, Context, EventEmitter, Model, ModelContext,
     Task,
 };
-use ignore::IgnoreStack;
 use itertools::Itertools;
 use language::{
     proto::{
@@ -38,14 +35,13 @@ use language::{
     Buffer, Capability, DiagnosticEntry, File as _, LineEnding, PointUtf16, Rope, RopeFingerprint,
     Unclipped,
 };
-use lsp::{DiagnosticSeverity, LanguageServerId};
+use lsp::LanguageServerId;
 use parking_lot::Mutex;
 use postage::{
     barrier,
     prelude::{Sink as _, Stream as _},
     watch,
 };
-use serde::Serialize;
 use settings::{Settings, SettingsStore};
 use smol::channel::{self, Sender};
 use std::{
@@ -72,12 +68,10 @@ use util::{
     ResultExt,
 };
 
-pub use worktree_settings::WorktreeSettings;
-
 #[cfg(feature = "test-support")]
 pub const FS_WATCH_LATENCY: Duration = Duration::from_millis(100);
 #[cfg(not(feature = "test-support"))]
-pub const FS_WATCH_LATENCY: Duration = Duration::from_millis(100);
+const FS_WATCH_LATENCY: Duration = Duration::from_millis(100);
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Hash, PartialOrd, Ord)]
 pub struct WorktreeId(usize);
@@ -346,13 +340,13 @@ impl Worktree {
             cx.observe_global::<SettingsStore>(move |this, cx| {
                 if let Self::Local(this) = this {
                     let new_file_scan_exclusions = path_matchers(
-                        WorktreeSettings::get_global(cx)
+                        ProjectSettings::get_global(cx)
                             .file_scan_exclusions
                             .as_deref(),
                         "file_scan_exclusions",
                     );
                     let new_private_files = path_matchers(
-                        WorktreeSettings::get(Some((cx.handle().entity_id().as_u64() as usize, &Path::new(""))), cx).private_files.as_deref(),
+                        ProjectSettings::get(Some((cx.handle().entity_id().as_u64() as usize, &Path::new(""))), cx).private_files.as_deref(),
                         "private_files",
                     );
 
@@ -402,13 +396,13 @@ impl Worktree {
 
             let mut snapshot = LocalSnapshot {
                 file_scan_exclusions: path_matchers(
-                    WorktreeSettings::get_global(cx)
+                    ProjectSettings::get_global(cx)
                         .file_scan_exclusions
                         .as_deref(),
                     "file_scan_exclusions",
                 ),
                 private_files: path_matchers(
-                    WorktreeSettings::get(Some((cx.handle().entity_id().as_u64() as usize, &Path::new(""))), cx).private_files.as_deref(),
+                    ProjectSettings::get(Some((cx.handle().entity_id().as_u64() as usize, &Path::new(""))), cx).private_files.as_deref(),
                     "private_files",
                 ),
                 ignores_by_parent_abs_path: Default::default(),
@@ -761,32 +755,6 @@ impl LocalWorktree {
         })
     }
 
-    pub fn new_buffer(
-        &mut self,
-        buffer_id: BufferId,
-        path: Arc<Path>,
-        cx: &mut ModelContext<Worktree>,
-    ) -> Model<Buffer> {
-        let text_buffer = text::Buffer::new(0, buffer_id, "".into());
-        let worktree = cx.handle();
-        cx.new_model(|_| {
-            Buffer::build(
-                text_buffer,
-                None,
-                Some(Arc::new(File {
-                    worktree,
-                    path,
-                    mtime: None,
-                    entry_id: None,
-                    is_local: true,
-                    is_deleted: false,
-                    is_private: false,
-                })),
-                Capability::ReadWrite,
-            )
-        })
-    }
-
     pub fn diagnostics_for_path(
         &self,
         path: &Path,
@@ -1114,7 +1082,7 @@ impl LocalWorktree {
                             entry_id: None,
                             worktree,
                             path,
-                            mtime: Some(metadata.mtime),
+                            mtime: metadata.mtime,
                             is_local: true,
                             is_deleted: false,
                             is_private,
@@ -1131,7 +1099,7 @@ impl LocalWorktree {
         &self,
         buffer_handle: Model<Buffer>,
         path: Arc<Path>,
-        mut has_changed_file: bool,
+        has_changed_file: bool,
         cx: &mut ModelContext<Worktree>,
     ) -> Task<Result<()>> {
         let buffer = buffer_handle.read(cx);
@@ -1139,10 +1107,6 @@ impl LocalWorktree {
         let rpc = self.client.clone();
         let buffer_id: u64 = buffer.remote_id().into();
         let project_id = self.share.as_ref().map(|share| share.project_id);
-
-        if buffer.file().is_some_and(|file| !file.is_created()) {
-            has_changed_file = true;
-        }
 
         let text = buffer.as_rope().clone();
         let fingerprint = text.fingerprint();
@@ -1171,7 +1135,7 @@ impl LocalWorktree {
                         .with_context(|| {
                             format!("Excluded buffer {path:?} got removed during saving")
                         })?;
-                    (None, Some(metadata.mtime), path, is_private)
+                    (None, metadata.mtime, path, is_private)
                 }
             };
 
@@ -1207,7 +1171,7 @@ impl LocalWorktree {
                     project_id,
                     buffer_id,
                     version: serialize_version(&version),
-                    mtime: mtime.map(|time| time.into()),
+                    mtime: Some(mtime.into()),
                     fingerprint: serialize_fingerprint(fingerprint),
                 })?;
             }
@@ -1615,7 +1579,10 @@ impl RemoteWorktree {
                 .await?;
             let version = deserialize_version(&response.version);
             let fingerprint = deserialize_fingerprint(&response.fingerprint)?;
-            let mtime = response.mtime.map(|mtime| mtime.into());
+            let mtime = response
+                .mtime
+                .ok_or_else(|| anyhow!("missing mtime"))?
+                .into();
 
             buffer_handle.update(&mut cx, |buffer, cx| {
                 buffer.did_save(version.clone(), fingerprint, mtime, cx);
@@ -2760,13 +2727,10 @@ impl BackgroundScannerState {
             let Ok(repo_path) = entry.path.strip_prefix(&work_directory.0) else {
                 continue;
             };
-            let Some(mtime) = entry.mtime else {
-                continue;
-            };
             let repo_path = RepoPath(repo_path.to_path_buf());
             let git_file_status = combine_git_statuses(
                 staged_statuses.get(&repo_path).copied(),
-                repo.unstaged_status(&repo_path, mtime),
+                repo.unstaged_status(&repo_path, entry.mtime),
             );
             if entry.git_status != git_file_status {
                 entry.git_status = git_file_status;
@@ -2880,7 +2844,7 @@ impl fmt::Debug for Snapshot {
 pub struct File {
     pub worktree: Model<Worktree>,
     pub path: Arc<Path>,
-    pub mtime: Option<SystemTime>,
+    pub mtime: SystemTime,
     pub entry_id: Option<ProjectEntryId>,
     pub is_local: bool,
     pub is_deleted: bool,
@@ -2896,7 +2860,7 @@ impl language::File for File {
         }
     }
 
-    fn mtime(&self) -> Option<SystemTime> {
+    fn mtime(&self) -> SystemTime {
         self.mtime
     }
 
@@ -2953,7 +2917,7 @@ impl language::File for File {
             worktree_id: self.worktree.entity_id().as_u64(),
             entry_id: self.entry_id.map(|id| id.to_proto()),
             path: self.path.to_string_lossy().into(),
-            mtime: self.mtime.map(|time| time.into()),
+            mtime: Some(self.mtime.into()),
             is_deleted: self.is_deleted,
         }
     }
@@ -2987,7 +2951,7 @@ impl language::LocalFile for File {
         version: &clock::Global,
         fingerprint: RopeFingerprint,
         line_ending: LineEnding,
-        mtime: Option<SystemTime>,
+        mtime: SystemTime,
         cx: &mut AppContext,
     ) {
         let worktree = self.worktree.read(cx).as_local().unwrap();
@@ -2998,7 +2962,7 @@ impl language::LocalFile for File {
                     project_id,
                     buffer_id: buffer_id.into(),
                     version: serialize_version(version),
-                    mtime: mtime.map(|time| time.into()),
+                    mtime: Some(mtime.into()),
                     fingerprint: serialize_fingerprint(fingerprint),
                     line_ending: serialize_line_ending(line_ending) as i32,
                 })
@@ -3038,7 +3002,7 @@ impl File {
         Ok(Self {
             worktree,
             path: Path::new(&proto.path).into(),
-            mtime: proto.mtime.map(|time| time.into()),
+            mtime: proto.mtime.ok_or_else(|| anyhow!("no timestamp"))?.into(),
             entry_id: proto.entry_id.map(ProjectEntryId::from_proto),
             is_local: false,
             is_deleted: proto.is_deleted,
@@ -3069,7 +3033,7 @@ pub struct Entry {
     pub kind: EntryKind,
     pub path: Arc<Path>,
     pub inode: u64,
-    pub mtime: Option<SystemTime>,
+    pub mtime: SystemTime,
     pub is_symlink: bool,
 
     /// Whether this entry is ignored by Git.
@@ -3139,17 +3103,13 @@ impl Entry {
             },
             path,
             inode: metadata.inode,
-            mtime: Some(metadata.mtime),
+            mtime: metadata.mtime,
             is_symlink: metadata.is_symlink,
             is_ignored: false,
             is_external: false,
             is_private: false,
             git_status: None,
         }
-    }
-
-    pub fn is_created(&self) -> bool {
-        self.mtime.is_some()
     }
 
     pub fn is_dir(&self) -> bool {
@@ -3376,7 +3336,7 @@ impl BackgroundScanner {
         }
     }
 
-    async fn run(&mut self, mut fs_events_rx: Pin<Box<dyn Send + Stream<Item = Vec<PathBuf>>>>) {
+    async fn run(&mut self, mut fs_events_rx: Pin<Box<dyn Send + Stream<Item = Vec<fs::Event>>>>) {
         use futures::FutureExt as _;
 
         // Populate ignores above the root.
@@ -3429,9 +3389,11 @@ impl BackgroundScanner {
         // For these events, update events cannot be as precise, because we didn't
         // have the previous state loaded yet.
         self.phase = BackgroundScannerPhase::EventsReceivedDuringInitialScan;
-        if let Poll::Ready(Some(mut paths)) = futures::poll!(fs_events_rx.next()) {
-            while let Poll::Ready(Some(more_paths)) = futures::poll!(fs_events_rx.next()) {
-                paths.extend(more_paths);
+        if let Poll::Ready(Some(events)) = futures::poll!(fs_events_rx.next()) {
+            let mut paths = fs::fs_events_paths(events);
+
+            while let Poll::Ready(Some(more_events)) = futures::poll!(fs_events_rx.next()) {
+                paths.extend(fs::fs_events_paths(more_events));
             }
             self.process_events(paths).await;
         }
@@ -3468,10 +3430,12 @@ impl BackgroundScanner {
                     }
                 }
 
-                paths = fs_events_rx.next().fuse() => {
-                    let Some(mut paths) = paths else { break };
-                    while let Poll::Ready(Some(more_paths)) = futures::poll!(fs_events_rx.next()) {
-                        paths.extend(more_paths);
+                events = fs_events_rx.next().fuse() => {
+                    let Some(events) = events else { break };
+                    let mut paths = fs::fs_events_paths(events);
+
+                    while let Poll::Ready(Some(more_events)) = futures::poll!(fs_events_rx.next()) {
+                        paths.extend(fs::fs_events_paths(more_events));
                     }
                     self.process_events(paths.clone()).await;
                 }
@@ -3490,7 +3454,7 @@ impl BackgroundScanner {
             Ok(path) => path,
             Err(err) => {
                 log::error!("failed to canonicalize root path: {}", err);
-                return true;
+                return false;
             }
         };
         let abs_paths = request
@@ -3912,13 +3876,13 @@ impl BackgroundScanner {
                         &job.containing_repository
                     {
                         if let Ok(repo_path) = child_entry.path.strip_prefix(&repository_dir.0) {
-                            if let Some(mtime) = child_entry.mtime {
-                                let repo_path = RepoPath(repo_path.into());
-                                child_entry.git_status = combine_git_statuses(
-                                    staged_statuses.get(&repo_path).copied(),
-                                    repository.lock().unstaged_status(&repo_path, mtime),
-                                );
-                            }
+                            let repo_path = RepoPath(repo_path.into());
+                            child_entry.git_status = combine_git_statuses(
+                                staged_statuses.get(&repo_path).copied(),
+                                repository
+                                    .lock()
+                                    .unstaged_status(&repo_path, child_entry.mtime),
+                            );
                         }
                     }
                 }
@@ -4052,11 +4016,9 @@ impl BackgroundScanner {
                     if !is_dir && !fs_entry.is_ignored && !fs_entry.is_external {
                         if let Some((work_dir, repo)) = state.snapshot.local_repo_for_path(path) {
                             if let Ok(repo_path) = path.strip_prefix(work_dir.0) {
-                                if let Some(mtime) = fs_entry.mtime {
-                                    let repo_path = RepoPath(repo_path.into());
-                                    let repo = repo.repo_ptr.lock();
-                                    fs_entry.git_status = repo.status(&repo_path, mtime);
-                                }
+                                let repo_path = RepoPath(repo_path.into());
+                                let repo = repo.repo_ptr.lock();
+                                fs_entry.git_status = repo.status(&repo_path, fs_entry.mtime);
                             }
                         }
                     }
@@ -4700,7 +4662,7 @@ impl<'a> From<&'a Entry> for proto::Entry {
             is_dir: entry.is_dir(),
             path: entry.path.to_string_lossy().into(),
             inode: entry.inode,
-            mtime: entry.mtime.map(|time| time.into()),
+            mtime: Some(entry.mtime.into()),
             is_symlink: entry.is_symlink,
             is_ignored: entry.is_ignored,
             is_external: entry.is_external,
@@ -4713,26 +4675,33 @@ impl<'a> TryFrom<(&'a CharBag, proto::Entry)> for Entry {
     type Error = anyhow::Error;
 
     fn try_from((root_char_bag, entry): (&'a CharBag, proto::Entry)) -> Result<Self> {
-        let kind = if entry.is_dir {
-            EntryKind::Dir
+        if let Some(mtime) = entry.mtime {
+            let kind = if entry.is_dir {
+                EntryKind::Dir
+            } else {
+                let mut char_bag = *root_char_bag;
+                char_bag.extend(entry.path.chars().map(|c| c.to_ascii_lowercase()));
+                EntryKind::File(char_bag)
+            };
+            let path: Arc<Path> = PathBuf::from(entry.path).into();
+            Ok(Entry {
+                id: ProjectEntryId::from_proto(entry.id),
+                kind,
+                path,
+                inode: entry.inode,
+                mtime: mtime.into(),
+                is_symlink: entry.is_symlink,
+                is_ignored: entry.is_ignored,
+                is_external: entry.is_external,
+                git_status: git_status_from_proto(entry.git_status),
+                is_private: false,
+            })
         } else {
-            let mut char_bag = *root_char_bag;
-            char_bag.extend(entry.path.chars().map(|c| c.to_ascii_lowercase()));
-            EntryKind::File(char_bag)
-        };
-        let path: Arc<Path> = PathBuf::from(entry.path).into();
-        Ok(Entry {
-            id: ProjectEntryId::from_proto(entry.id),
-            kind,
-            path,
-            inode: entry.inode,
-            mtime: entry.mtime.map(|time| time.into()),
-            is_symlink: entry.is_symlink,
-            is_ignored: entry.is_ignored,
-            is_external: entry.is_external,
-            git_status: git_status_from_proto(entry.git_status),
-            is_private: false,
-        })
+            Err(anyhow!(
+                "missing mtime in remote worktree entry {:?}",
+                entry.path
+            ))
+        }
     }
 }
 
@@ -4770,72 +4739,5 @@ fn git_status_to_proto(status: GitFileStatus) -> i32 {
         GitFileStatus::Added => proto::GitStatus::Added as i32,
         GitFileStatus::Modified => proto::GitStatus::Modified as i32,
         GitFileStatus::Conflict => proto::GitStatus::Conflict as i32,
-    }
-}
-
-#[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub struct ProjectEntryId(usize);
-
-impl ProjectEntryId {
-    pub const MAX: Self = Self(usize::MAX);
-
-    pub fn new(counter: &AtomicUsize) -> Self {
-        Self(counter.fetch_add(1, SeqCst))
-    }
-
-    pub fn from_proto(id: u64) -> Self {
-        Self(id as usize)
-    }
-
-    pub fn to_proto(&self) -> u64 {
-        self.0 as u64
-    }
-
-    pub fn to_usize(&self) -> usize {
-        self.0
-    }
-}
-
-#[derive(Copy, Clone, Debug, Default, PartialEq, Serialize)]
-pub struct DiagnosticSummary {
-    pub error_count: usize,
-    pub warning_count: usize,
-}
-
-impl DiagnosticSummary {
-    fn new<'a, T: 'a>(diagnostics: impl IntoIterator<Item = &'a DiagnosticEntry<T>>) -> Self {
-        let mut this = Self {
-            error_count: 0,
-            warning_count: 0,
-        };
-
-        for entry in diagnostics {
-            if entry.diagnostic.is_primary {
-                match entry.diagnostic.severity {
-                    DiagnosticSeverity::ERROR => this.error_count += 1,
-                    DiagnosticSeverity::WARNING => this.warning_count += 1,
-                    _ => {}
-                }
-            }
-        }
-
-        this
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.error_count == 0 && self.warning_count == 0
-    }
-
-    pub fn to_proto(
-        &self,
-        language_server_id: LanguageServerId,
-        path: &Path,
-    ) -> proto::DiagnosticSummary {
-        proto::DiagnosticSummary {
-            path: path.to_string_lossy().to_string(),
-            language_server_id: language_server_id.0 as u64,
-            error_count: self.error_count as u32,
-            warning_count: self.warning_count as u32,
-        }
     }
 }

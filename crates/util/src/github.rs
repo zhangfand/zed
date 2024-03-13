@@ -85,19 +85,14 @@ pub async fn github_release_with_tag(
     let mut response = http
         .get(&url, Default::default(), true)
         .await
-        .with_context(|| format!("error fetching release {} of {}", tag, repo_name_with_owner))?;
+        .context("error fetching latest release")?;
 
     let mut body = Vec::new();
     response
         .body_mut()
         .read_to_end(&mut body)
         .await
-        .with_context(|| {
-            format!(
-                "error reading response body for release {} of {}",
-                tag, repo_name_with_owner
-            )
-        })?;
+        .context("error reading latest release")?;
 
     if response.status().is_client_error() {
         let text = String::from_utf8_lossy(body.as_slice());
@@ -116,11 +111,7 @@ pub async fn github_release_with_tag(
                 "GitHub API response text: {:?}",
                 String::from_utf8_lossy(body.as_slice())
             );
-            Err(anyhow!(
-                "error deserializing release {} of {}",
-                tag,
-                repo_name_with_owner
-            ))
+            return Err(anyhow!("error deserializing latest release"));
         }
     }
 }

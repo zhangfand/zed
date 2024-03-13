@@ -4,9 +4,9 @@ use crate::{
     auth::{self, Impersonator},
     db::{
         self, BufferId, ChannelId, ChannelRole, ChannelsForUser, CreatedChannelMessage, Database,
-        InviteMemberResult, MembershipUpdated, MessageId, NotificationId, Project, ProjectId,
-        RemoveChannelMemberResult, ReplicaId, RespondToChannelInvite, RoomId, ServerId, User,
-        UserId,
+        HostedProjectId, InviteMemberResult, MembershipUpdated, MessageId, NotificationId, Project,
+        ProjectId, RemoveChannelMemberResult, ReplicaId, RespondToChannelInvite, RoomId, ServerId,
+        User, UserId,
     },
     executor::Executor,
     AppState, Error, Result,
@@ -1770,7 +1770,7 @@ async fn join_hosted_project(
         .db()
         .await
         .join_hosted_project(
-            ProjectId(request.project_id as i32),
+            HostedProjectId(request.id as i32),
             session.user_id,
             session.connection_id,
         )

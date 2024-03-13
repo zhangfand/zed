@@ -3,7 +3,7 @@ use crate::{
     Action, AnyWindowHandle, BackgroundExecutor, ClipboardItem, CursorStyle, DisplayId,
     ForegroundExecutor, Keymap, MacDispatcher, MacDisplay, MacTextSystem, MacWindow, Menu,
     MenuItem, PathPromptOptions, Platform, PlatformDisplay, PlatformInput, PlatformTextSystem,
-    PlatformWindow, Result, SemanticVersion, Task, WindowAppearance, WindowParams,
+    PlatformWindow, Result, SemanticVersion, Task, WindowAppearance, WindowOptions,
 };
 use anyhow::{anyhow, bail};
 use block::ConcreteBlock;
@@ -477,10 +477,6 @@ impl Platform for MacPlatform {
         }
     }
 
-    fn primary_display(&self) -> Option<Rc<dyn PlatformDisplay>> {
-        Some(Rc::new(MacDisplay::primary()))
-    }
-
     fn displays(&self) -> Vec<Rc<dyn PlatformDisplay>> {
         MacDisplay::all()
             .map(|screen| Rc::new(screen) as Rc<_>)
@@ -498,7 +494,7 @@ impl Platform for MacPlatform {
     fn open_window(
         &self,
         handle: AnyWindowHandle,
-        options: WindowParams,
+        options: WindowOptions,
     ) -> Box<dyn PlatformWindow> {
         // Clippy thinks that this evaluates to `()`, for some reason.
         #[allow(clippy::unit_arg, clippy::clone_on_copy)]

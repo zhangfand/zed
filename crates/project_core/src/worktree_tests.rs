@@ -1,6 +1,7 @@
 use crate::{
-    worktree_settings::WorktreeSettings, Entry, EntryKind, Event, PathChange, Snapshot, Worktree,
-    WorktreeModelHandle,
+    project_settings::ProjectSettings,
+    worktree::{Entry, EntryKind, PathChange, Worktree},
+    worktree::{Event, Snapshot, WorktreeModelHandle},
 };
 use anyhow::Result;
 use client::Client;
@@ -206,12 +207,8 @@ async fn test_circular_symlinks(cx: &mut TestAppContext) {
         }),
     )
     .await;
-    fs.create_symlink("/root/lib/a/lib".as_ref(), "..".into())
-        .await
-        .unwrap();
-    fs.create_symlink("/root/lib/b/lib".as_ref(), "..".into())
-        .await
-        .unwrap();
+    fs.insert_symlink("/root/lib/a/lib", "..".into()).await;
+    fs.insert_symlink("/root/lib/b/lib", "..".into()).await;
 
     let tree = Worktree::local(
         build_client(cx),
@@ -306,12 +303,10 @@ async fn test_symlinks_pointing_outside(cx: &mut TestAppContext) {
     .await;
 
     // These symlinks point to directories outside of the worktree's root, dir1.
-    fs.create_symlink("/root/dir1/deps/dep-dir2".as_ref(), "../../dir2".into())
-        .await
-        .unwrap();
-    fs.create_symlink("/root/dir1/deps/dep-dir3".as_ref(), "../../dir3".into())
-        .await
-        .unwrap();
+    fs.insert_symlink("/root/dir1/deps/dep-dir2", "../../dir2".into())
+        .await;
+    fs.insert_symlink("/root/dir1/deps/dep-dir3", "../../dir3".into())
+        .await;
 
     let tree = Worktree::local(
         build_client(cx),
@@ -803,7 +798,7 @@ async fn test_rescan_with_gitignore(cx: &mut TestAppContext) {
     init_test(cx);
     cx.update(|cx| {
         cx.update_global::<SettingsStore, _>(|store, cx| {
-            store.update_user_settings::<WorktreeSettings>(cx, |project_settings| {
+            store.update_user_settings::<ProjectSettings>(cx, |project_settings| {
                 project_settings.file_scan_exclusions = Some(Vec::new());
             });
         });
@@ -995,7 +990,7 @@ async fn test_file_scan_exclusions(cx: &mut TestAppContext) {
     }));
     cx.update(|cx| {
         cx.update_global::<SettingsStore, _>(|store, cx| {
-            store.update_user_settings::<WorktreeSettings>(cx, |project_settings| {
+            store.update_user_settings::<ProjectSettings>(cx, |project_settings| {
                 project_settings.file_scan_exclusions =
                     Some(vec!["**/foo/**".to_string(), "**/.DS_Store".to_string()]);
             });
@@ -1032,7 +1027,7 @@ async fn test_file_scan_exclusions(cx: &mut TestAppContext) {
 
     cx.update(|cx| {
         cx.update_global::<SettingsStore, _>(|store, cx| {
-            store.update_user_settings::<WorktreeSettings>(cx, |project_settings| {
+            store.update_user_settings::<ProjectSettings>(cx, |project_settings| {
                 project_settings.file_scan_exclusions =
                     Some(vec!["**/node_modules/**".to_string()]);
             });
@@ -1096,7 +1091,7 @@ async fn test_fs_events_in_exclusions(cx: &mut TestAppContext) {
     }));
     cx.update(|cx| {
         cx.update_global::<SettingsStore, _>(|store, cx| {
-            store.update_user_settings::<WorktreeSettings>(cx, |project_settings| {
+            store.update_user_settings::<ProjectSettings>(cx, |project_settings| {
                 project_settings.file_scan_exclusions = Some(vec![
                     "**/.git".to_string(),
                     "node_modules/".to_string(),
@@ -2540,6 +2535,6 @@ fn init_test(cx: &mut gpui::TestAppContext) {
     cx.update(|cx| {
         let settings_store = SettingsStore::test(cx);
         cx.set_global(settings_store);
-        WorktreeSettings::register(cx);
+        ProjectSettings::register(cx);
     });
 }

@@ -58,8 +58,7 @@ impl super::LspAdapter for GoLspAdapter {
         &self,
         delegate: &dyn LspAdapterDelegate,
     ) -> Option<LanguageServerBinary> {
-        let env = delegate.shell_env().await;
-        let path = delegate.which("gopls".as_ref()).await?;
+        let (path, env) = delegate.which_command(OsString::from("gopls")).await?;
         Some(LanguageServerBinary {
             path,
             arguments: server_binary_arguments(),

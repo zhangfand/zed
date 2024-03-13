@@ -17,8 +17,6 @@ pub struct EditorSettings {
     pub relative_line_numbers: bool,
     pub seed_search_query_from_cursor: SeedQuerySetting,
     pub redact_private_values: bool,
-    #[serde(default)]
-    pub double_click_in_multibuffer: DoubleClickInMultibuffer,
 }
 
 /// When to populate a new search's query based on the text under the cursor.
@@ -31,18 +29,6 @@ pub enum SeedQuerySetting {
     Selection,
     /// Never populate the search query
     Never,
-}
-
-/// What to do when multibuffer is double clicked in some of its excerpts (parts of singleton buffers).
-#[derive(Default, Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum DoubleClickInMultibuffer {
-    /// Behave as a regular buffer and select the whole word.
-    #[default]
-    Select,
-    /// Open the excerpt clicked as a new buffer in the new tab, if no `alt` modifier was pressed during double click.
-    /// Otherwise, behave as a regular buffer and select the whole word.
-    Open,
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -141,12 +127,6 @@ pub struct EditorSettingsContent {
     ///
     /// Default: false
     pub redact_private_values: Option<bool>,
-
-    /// What to do when multibuffer is double clicked in some of its excerpts
-    /// (parts of singleton buffers).
-    ///
-    /// Default: select
-    pub double_click_in_multibuffer: Option<DoubleClickInMultibuffer>,
 }
 
 // Toolbar related settings

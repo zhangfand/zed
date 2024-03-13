@@ -9,21 +9,20 @@ impl Database {
         roles: &HashMap<ChannelId, ChannelRole>,
         tx: &DatabaseTransaction,
     ) -> Result<Vec<proto::HostedProject>> {
-        let projects = hosted_project::Entity::find()
-            .find_also_related(project::Entity)
+        Ok(hosted_project::Entity::find()
             .filter(hosted_project::Column::ChannelId.is_in(channel_ids.iter().map(|id| id.0)))
             .all(tx)
             .await?
             .into_iter()
-            .flat_map(|(hosted_project, project)| {
-                if hosted_project.deleted_at.is_some() {
+            .flat_map(|project| {
+                if project.deleted_at.is_some() {
                     return None;
                 }
-                match hosted_project.visibility {
+                match project.visibility {
                     ChannelVisibility::Public => {}
                     ChannelVisibility::Members => {
                         let is_visible = roles
-                            .get(&hosted_project.channel_id)
+                            .get(&project.channel_id)
                             .map(|role| role.can_see_all_descendants())
                             .unwrap_or(false);
                         if !is_visible {
@@ -32,15 +31,13 @@ impl Database {
                     }
                 };
                 Some(proto::HostedProject {
-                    project_id: project?.id.to_proto(),
-                    channel_id: hosted_project.channel_id.to_proto(),
-                    name: hosted_project.name.clone(),
-                    visibility: hosted_project.visibility.into(),
+                    id: project.id.to_proto(),
+                    channel_id: project.channel_id.to_proto(),
+                    name: project.name.clone(),
+                    visibility: project.visibility.into(),
                 })
             })
-            .collect();
-
-        Ok(projects)
+            .collect())
     }
 
     pub async fn get_hosted_project(

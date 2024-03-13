@@ -16,8 +16,6 @@ extend-exclude = [
     "crates/editor/src/editor_tests.rs",
     # Clojure uses .edn filename extension, which is not a misspelling of "end"
     "crates/languages/src/clojure/config.toml",
-    # Windows likes it's abbreviations
-    "crates/gpui/src/platform/windows/",
 ]
 
 [default]
@@ -30,5 +28,7 @@ extend-ignore-re = [
     # crates/collab/src/api/events.rs
     "rename = \"sesssion_id\"",
     "doas",
+    # extensions/gleam/grammars
+    "_maybe_function_expresssion"
 ]
 check-filename = true
