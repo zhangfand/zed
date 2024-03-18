@@ -23,7 +23,7 @@ use gpui::{
 use menu::Confirm;
 use project::{
     search::{SearchInputs, SearchQuery},
-    Project,
+    Entry, Project,
 };
 use semantic_index::{SemanticIndex, SemanticIndexStatus};
 
@@ -34,7 +34,7 @@ use std::{
     any::{Any, TypeId},
     mem,
     ops::{Not, Range},
-    path::{Path, PathBuf},
+    path::PathBuf,
     time::{Duration, Instant},
 };
 use theme::ThemeSettings;
@@ -143,7 +143,6 @@ struct ProjectSearch {
     search_id: usize,
     search_history: SearchHistory,
     no_results: Option<bool>,
-    limit_reached: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -206,7 +205,6 @@ impl ProjectSearch {
             search_id: 0,
             search_history: SearchHistory::default(),
             no_results: None,
-            limit_reached: false,
         }
     }
 
@@ -222,7 +220,6 @@ impl ProjectSearch {
             search_id: self.search_id,
             search_history: self.search_history.clone(),
             no_results: self.no_results,
-            limit_reached: self.limit_reached,
         })
     }
 
@@ -241,38 +238,27 @@ impl ProjectSearch {
                 this.match_ranges.clear();
                 this.excerpts.update(cx, |this, cx| this.clear(cx));
                 this.no_results = Some(true);
-                this.limit_reached = false;
             })
             .ok()?;
 
-            let mut limit_reached = false;
-            while let Some(result) = matches.next().await {
-                match result {
-                    project::SearchResult::Buffer { buffer, ranges } => {
-                        let mut match_ranges = this
-                            .update(&mut cx, |this, cx| {
-                                this.no_results = Some(false);
-                                this.excerpts.update(cx, |excerpts, cx| {
-                                    excerpts
-                                        .stream_excerpts_with_context_lines(buffer, ranges, 1, cx)
-                                })
-                            })
-                            .ok()?;
+            while let Some((buffer, anchors)) = matches.next().await {
+                let mut ranges = this
+                    .update(&mut cx, |this, cx| {
+                        this.no_results = Some(false);
+                        this.excerpts.update(cx, |excerpts, cx| {
+                            excerpts.stream_excerpts_with_context_lines(buffer, anchors, 1, cx)
+                        })
+                    })
+                    .ok()?;
 
-                        while let Some(range) = match_ranges.next().await {
-                            this.update(&mut cx, |this, _| this.match_ranges.push(range))
-                                .ok()?;
-                        }
-                        this.update(&mut cx, |_, cx| cx.notify()).ok()?;
-                    }
-                    project::SearchResult::LimitReached => {
-                        limit_reached = true;
-                    }
+                while let Some(range) = ranges.next().await {
+                    this.update(&mut cx, |this, _| this.match_ranges.push(range))
+                        .ok()?;
                 }
+                this.update(&mut cx, |_, cx| cx.notify()).ok()?;
             }
 
             this.update(&mut cx, |this, cx| {
-                this.limit_reached = limit_reached;
                 this.pending_search.take();
                 cx.notify();
             })
@@ -732,7 +718,6 @@ impl ProjectSearchView {
         self.model.update(cx, |model, cx| {
             model.pending_search = None;
             model.no_results = None;
-            model.limit_reached = false;
             model.match_ranges.clear();
 
             model.excerpts.update(cx, |excerpts, cx| {
@@ -1005,10 +990,13 @@ impl ProjectSearchView {
 
     pub fn new_search_in_directory(
         workspace: &mut Workspace,
-        dir_path: &Path,
+        dir_entry: &Entry,
         cx: &mut ViewContext<Workspace>,
     ) {
-        let Some(filter_str) = dir_path.to_str() else {
+        if !dir_entry.is_dir() {
+            return;
+        }
+        let Some(filter_str) = dir_entry.path.to_str() else {
             return;
         };
 
@@ -1241,9 +1229,6 @@ impl ProjectSearchView {
             },
         };
         if !self.panels_with_errors.is_empty() {
-            return None;
-        }
-        if query.as_ref().is_some_and(|query| query.is_empty()) {
             return None;
         }
         query
@@ -1826,8 +1811,6 @@ impl Render for ProjectSearchBar {
             })
             .unwrap_or_else(|| "No matches".to_string());
 
-        let limit_reached = search.model.read(cx).limit_reached;
-
         let matches_column = h_flex()
             .child(div().min_w(rems(6.)).child(Label::new(match_text)))
             .child(
@@ -1855,14 +1838,7 @@ impl Render for ProjectSearchBar {
                         }
                     }))
                     .tooltip(|cx| Tooltip::for_action("Go to next match", &SelectNextMatch, cx)),
-            )
-            .when(limit_reached, |this| {
-                this.child(
-                    div()
-                        .child(Label::new("Search limit reached").color(Color::Warning))
-                        .ml_2(),
-                )
-            });
+            );
 
         let search_line = h_flex()
             .gap_2()
@@ -2827,6 +2803,33 @@ pub mod tests {
             })
             .unwrap();
 
+        let one_file_entry = cx.update(|cx| {
+            workspace
+                .read(cx)
+                .project()
+                .read(cx)
+                .entry_for_path(&(worktree_id, "a/one.rs").into(), cx)
+                .expect("no entry for /a/one.rs file")
+        });
+        assert!(one_file_entry.is_file());
+        window
+            .update(cx, |workspace, cx| {
+                ProjectSearchView::new_search_in_directory(workspace, &one_file_entry, cx)
+            })
+            .unwrap();
+        let active_search_entry = cx.read(|cx| {
+            workspace
+                .read(cx)
+                .active_pane()
+                .read(cx)
+                .active_item()
+                .and_then(|item| item.downcast::<ProjectSearchView>())
+        });
+        assert!(
+            active_search_entry.is_none(),
+            "Expected no search panel to be active for file entry"
+        );
+
         let a_dir_entry = cx.update(|cx| {
             workspace
                 .read(cx)
@@ -2838,7 +2841,7 @@ pub mod tests {
         assert!(a_dir_entry.is_dir());
         window
             .update(cx, |workspace, cx| {
-                ProjectSearchView::new_search_in_directory(workspace, &a_dir_entry.path, cx)
+                ProjectSearchView::new_search_in_directory(workspace, &a_dir_entry, cx)
             })
             .unwrap();
 

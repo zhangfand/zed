@@ -381,6 +381,9 @@ fn default_bounds(cx: &mut AppContext) -> Bounds<GlobalPixels> {
         })
 }
 
+// Fixed, Maximized, Fullscreen, and 'Inherent / default'
+// Platform part, you don't, you only need Fixed, Maximized, Fullscreen
+
 impl Window {
     pub(crate) fn new(
         handle: AnyWindowHandle,
@@ -426,7 +429,7 @@ impl Window {
         let last_input_timestamp = Rc::new(Cell::new(Instant::now()));
 
         if fullscreen {
-            platform_window.toggle_fullscreen();
+            platform_window.toggle_full_screen();
         }
 
         platform_window.on_close(Box::new({
@@ -520,7 +523,7 @@ impl Window {
                 handle
                     .update(&mut cx, |_, cx| cx.dispatch_event(event))
                     .log_err()
-                    .unwrap_or(DispatchEventResult::default())
+                    .unwrap_or(false)
             })
         });
 
@@ -572,12 +575,6 @@ impl Window {
     ) -> (Subscription, impl FnOnce()) {
         self.focus_listeners.insert((), value)
     }
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct DispatchEventResult {
-    pub propagate: bool,
-    pub default_prevented: bool,
 }
 
 /// Indicates which region of the window is visible. Content falling outside of this mask will not be
@@ -691,12 +688,6 @@ impl<'a> WindowContext<'a> {
             style.refine(refinement);
         }
         style
-    }
-
-    /// Check if the platform window is maximized
-    /// On some platforms (namely Windows) this is different than the bounds being the size of the display
-    pub fn is_maximized(&self) -> bool {
-        self.window.platform_window.is_maximized()
     }
 
     /// Dispatch the given action on the currently focused element.
@@ -855,8 +846,8 @@ impl<'a> WindowContext<'a> {
     }
 
     /// Retusn whether or not the window is currently fullscreen
-    pub fn is_fullscreen(&self) -> bool {
-        self.window.platform_window.is_fullscreen()
+    pub fn is_full_screen(&self) -> bool {
+        self.window.platform_window.is_full_screen()
     }
 
     fn appearance_changed(&mut self) {
@@ -1095,11 +1086,10 @@ impl<'a> WindowContext<'a> {
     /// You can create a keystroke with Keystroke::parse("").
     pub fn dispatch_keystroke(&mut self, keystroke: Keystroke) -> bool {
         let keystroke = keystroke.with_simulated_ime();
-        let result = self.dispatch_event(PlatformInput::KeyDown(KeyDownEvent {
+        if self.dispatch_event(PlatformInput::KeyDown(KeyDownEvent {
             keystroke: keystroke.clone(),
             is_held: false,
-        }));
-        if !result.propagate {
+        })) {
             return true;
         }
 
@@ -1132,7 +1122,7 @@ impl<'a> WindowContext<'a> {
 
     /// Dispatch a mouse or keyboard event on the window.
     #[profiling::function]
-    pub fn dispatch_event(&mut self, event: PlatformInput) -> DispatchEventResult {
+    pub fn dispatch_event(&mut self, event: PlatformInput) -> bool {
         self.window.last_input_timestamp.set(Instant::now());
         // Handlers may set this to false by calling `stop_propagation`.
         self.app.propagate_event = true;
@@ -1220,10 +1210,7 @@ impl<'a> WindowContext<'a> {
             self.dispatch_key_event(any_key_event);
         }
 
-        DispatchEventResult {
-            propagate: self.app.propagate_event,
-            default_prevented: self.window.default_prevented,
-        }
+        !self.app.propagate_event
     }
 
     fn dispatch_mouse_event(&mut self, event: &dyn Any) {
@@ -1585,8 +1572,8 @@ impl<'a> WindowContext<'a> {
     }
 
     /// Toggle full screen status on the current window at the platform level.
-    pub fn toggle_fullscreen(&self) {
-        self.window.platform_window.toggle_fullscreen();
+    pub fn toggle_full_screen(&self) {
+        self.window.platform_window.toggle_full_screen();
     }
 
     /// Present a platform dialog.
@@ -1744,14 +1731,6 @@ impl<'a> WindowContext<'a> {
             .next_frame
             .dispatch_tree
             .on_action(action_type, Rc::new(listener));
-    }
-}
-
-#[cfg(target_os = "windows")]
-impl WindowContext<'_> {
-    /// Returns the raw HWND handle for the window.
-    pub fn get_raw_handle(&self) -> windows::Win32::Foundation::HWND {
-        self.window.platform_window.get_raw_handle()
     }
 }
 

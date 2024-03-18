@@ -15,7 +15,6 @@ mod right_click_menu;
 mod stack;
 mod tab;
 mod tab_bar;
-mod title_bar;
 mod tooltip;
 
 #[cfg(feature = "stories")]
@@ -38,7 +37,6 @@ pub use right_click_menu::*;
 pub use stack::*;
 pub use tab::*;
 pub use tab_bar::*;
-pub use title_bar::*;
 pub use tooltip::*;
 
 #[cfg(feature = "stories")]

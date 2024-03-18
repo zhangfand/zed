@@ -203,12 +203,12 @@ async-recursion = "1.0.0"
 async-tar = "0.4.2"
 async-trait = "0.1"
 bitflags = "2.4.2"
-blade-graphics = { git = "https://github.com/kvark/blade", rev = "61cbd6b2c224791d52b150fe535cee665cc91bb2" }
-blade-macros = { git = "https://github.com/kvark/blade", rev = "61cbd6b2c224791d52b150fe535cee665cc91bb2" }
+blade-graphics = { git = "https://github.com/kvark/blade", rev = "43721bf42d298b7cbee2195ee66f73a5f1c7b2fc" }
+blade-macros = { git = "https://github.com/kvark/blade", rev = "43721bf42d298b7cbee2195ee66f73a5f1c7b2fc" }
 blade-rwh = { package = "raw-window-handle", version = "0.5" }
 cap-std = "2.0"
 chrono = { version = "0.4", features = ["serde"] }
-clap = { version = "4.4", features = ["derive"] }
+clap = "4.4"
 clickhouse = { version = "0.11.6" }
 ctor = "0.2.6"
 core-foundation = { version = "0.9.3" }
@@ -296,7 +296,6 @@ tree-sitter-hcl = { git = "https://github.com/MichaHoffmann/tree-sitter-hcl", re
 rustc-demangle = "0.1.23"
 tree-sitter-heex = { git = "https://github.com/phoenixframework/tree-sitter-heex", rev = "2e1348c3cf2c9323e87c2744796cf3f3868aa82a" }
 tree-sitter-html = "0.19.0"
-tree-sitter-jsdoc = { git = "https://github.com/tree-sitter/tree-sitter-jsdoc", ref = "6a6cf9e7341af32d8e2b2e24a37fbfebefc3dc55" }
 tree-sitter-json = { git = "https://github.com/tree-sitter/tree-sitter-json", rev = "40a81c01a40ac48744e0c8ccabbaba1920441199" }
 tree-sitter-lua = "0.0.14"
 tree-sitter-markdown = { git = "https://github.com/MDeiml/tree-sitter-markdown", rev = "330ecab87a3e3a7211ac69bbadc19eabecdb1cca" }
@@ -309,7 +308,6 @@ tree-sitter-proto = { git = "https://github.com/rewinfrey/tree-sitter-proto", re
 tree-sitter-purescript = { git = "https://github.com/postsolar/tree-sitter-purescript", rev = "v0.1.0" }
 tree-sitter-python = "0.20.2"
 tree-sitter-racket = { git = "https://github.com/zed-industries/tree-sitter-racket", rev = "eb010cf2c674c6fd9a6316a84e28ef90190fe51a" }
-tree-sitter-regex = "0.20.0"
 tree-sitter-ruby = "0.20.0"
 tree-sitter-rust = "0.20.3"
 tree-sitter-scheme = { git = "https://github.com/6cdh/tree-sitter-scheme", rev = "af0fd1fa452cb2562dc7b5c8a8c55551c39273b9" }
@@ -325,13 +323,7 @@ url = "2.2"
 uuid = { version = "1.1.2", features = ["v4"] }
 wasmparser = "0.121"
 wasm-encoder = "0.41"
-wasmtime = { version = "18.0", default-features = false, features = [
-    "async",
-    "demangle",
-    "runtime",
-    "cranelift",
-    "component-model",
-] }
+wasmtime = { version = "18.0", default-features = false, features = ["async", "demangle", "runtime", "cranelift", "component-model"] }
 wasmtime-wasi = "18.0"
 which = "6.0.0"
 wit-component = "0.20"
@@ -342,38 +334,38 @@ version = "0.53.0"
 features = [
     "implement",
     "Wdk_System_SystemServices",
-    "Win32_Globalization",
-    "Win32_Graphics_DirectWrite",
     "Win32_Graphics_Gdi",
-    "Win32_Media",
-    "Win32_Security",
-    "Win32_Security_Credentials",
-    "Win32_Storage_FileSystem",
-    "Win32_System_Com",
-    "Win32_System_Com_StructuredStorage",
-    "Win32_System_DataExchange",
-    "Win32_System_LibraryLoader",
-    "Win32_System_Ole",
-    "Win32_System_SystemInformation",
-    "Win32_System_SystemServices",
-    "Win32_System_Threading",
-    "Win32_System_Time",
+    "Win32_Graphics_DirectComposition",
     "Win32_UI_Controls",
-    "Win32_UI_HiDpi",
-    "Win32_UI_Input_Ime",
+    "Win32_UI_WindowsAndMessaging",
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_Shell",
-    "Win32_UI_WindowsAndMessaging",
+    "Win32_System_Com",
+    "Win32_System_SystemInformation",
+    "Win32_System_SystemServices",
+    "Win32_System_Time",
+    "Win32_Security",
+    "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_System_Threading",
+    "Win32_System_DataExchange",
+    "Win32_System_Ole",
+    "Win32_System_Com",
 ]
 
 [patch.crates-io]
 tree-sitter = { git = "https://github.com/tree-sitter/tree-sitter", rev = "e4a23971ec3071a09c1e84816954c98f96e98e52" }
 # Workaround for a broken nightly build of gpui: See #7644 and revisit once 0.5.3 is released.
-pathfinder_simd = { git = "https://github.com/servo/pathfinder.git", rev = "30419d07660dc11a21e42ef4a7fa329600cff152" }
+pathfinder_simd = { git = "https://github.com/servo/pathfinder.git", rev = "e4fcda0d5259d0acf902aee6de7d2501f2bd6629" }
 
 [profile.dev]
 split-debuginfo = "unpacked"
 debug = "limited"
+
+# todo(linux) - Remove this
+[profile.dev.package.blade-graphics]
+split-debuginfo = "off"
+debug = "full"
 
 [profile.dev.package]
 taffy = { opt-level = 3 }
@@ -390,10 +382,6 @@ codegen-units = 1
 [workspace.lints.clippy]
 dbg_macro = "deny"
 todo = "deny"
-
-# Motivation: We use `vec![a..b]` a lot when dealing with ranges in text, so
-# warning on this rule produces a lot of noise.
-single_range_in_vec_init = "allow"
 
 # These are all of the rules that currently have violations in the Zed
 # codebase.
@@ -413,11 +401,17 @@ style = "allow"
 # Individual rules that have violations in the codebase:
 almost_complete_range = "allow"
 arc_with_non_send_sync = "allow"
+await_holding_lock = "allow"
 borrowed_box = "allow"
+derive_ord_xor_partial_ord = "allow"
+eq_op = "allow"
 let_underscore_future = "allow"
 map_entry = "allow"
+never_loop = "allow"
+non_canonical_clone_impl = "allow"
 non_canonical_partial_ord_impl = "allow"
 reversed_empty_ranges = "allow"
+single_range_in_vec_init = "allow"
 type_complexity = "allow"
 
 [workspace.metadata.cargo-machete]

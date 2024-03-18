@@ -69,10 +69,8 @@ fn test_line_endings(cx: &mut gpui::AppContext) {
 }
 
 #[gpui::test]
-fn test_select_language(cx: &mut AppContext) {
-    init_settings(cx, |_| {});
-
-    let registry = Arc::new(LanguageRegistry::test(cx.background_executor().clone()));
+fn test_select_language() {
+    let registry = Arc::new(LanguageRegistry::test());
     registry.add(Arc::new(Language::new(
         LanguageConfig {
             name: "Rust".into(),
@@ -99,14 +97,14 @@ fn test_select_language(cx: &mut AppContext) {
     // matching file extension
     assert_eq!(
         registry
-            .language_for_file(&file("src/lib.rs"), None, cx)
+            .language_for_file("zed/lib.rs".as_ref(), None)
             .now_or_never()
             .and_then(|l| Some(l.ok()?.name())),
         Some("Rust".into())
     );
     assert_eq!(
         registry
-            .language_for_file(&file("src/lib.mk"), None, cx)
+            .language_for_file("zed/lib.mk".as_ref(), None)
             .now_or_never()
             .and_then(|l| Some(l.ok()?.name())),
         Some("Make".into())
@@ -115,7 +113,7 @@ fn test_select_language(cx: &mut AppContext) {
     // matching filename
     assert_eq!(
         registry
-            .language_for_file(&file("src/Makefile"), None, cx)
+            .language_for_file("zed/Makefile".as_ref(), None)
             .now_or_never()
             .and_then(|l| Some(l.ok()?.name())),
         Some("Make".into())
@@ -124,130 +122,25 @@ fn test_select_language(cx: &mut AppContext) {
     // matching suffix that is not the full file extension or filename
     assert_eq!(
         registry
-            .language_for_file(&file("zed/cars"), None, cx)
+            .language_for_file("zed/cars".as_ref(), None)
             .now_or_never()
             .and_then(|l| Some(l.ok()?.name())),
         None
     );
     assert_eq!(
         registry
-            .language_for_file(&file("zed/a.cars"), None, cx)
+            .language_for_file("zed/a.cars".as_ref(), None)
             .now_or_never()
             .and_then(|l| Some(l.ok()?.name())),
         None
     );
     assert_eq!(
         registry
-            .language_for_file(&file("zed/sumk"), None, cx)
+            .language_for_file("zed/sumk".as_ref(), None)
             .now_or_never()
             .and_then(|l| Some(l.ok()?.name())),
         None
     );
-}
-
-#[gpui::test(iterations = 10)]
-async fn test_first_line_pattern(cx: &mut TestAppContext) {
-    cx.update(|cx| init_settings(cx, |_| {}));
-
-    let languages = LanguageRegistry::test(cx.executor());
-    let languages = Arc::new(languages);
-
-    languages.register_test_language(LanguageConfig {
-        name: "JavaScript".into(),
-        matcher: LanguageMatcher {
-            path_suffixes: vec!["js".into()],
-            first_line_pattern: Some(Regex::new(r"\bnode\b").unwrap()),
-        },
-        ..Default::default()
-    });
-
-    cx.read(|cx| languages.language_for_file(&file("the/script"), None, cx))
-        .await
-        .unwrap_err();
-    cx.read(|cx| languages.language_for_file(&file("the/script"), Some(&"nothing".into()), cx))
-        .await
-        .unwrap_err();
-    assert_eq!(
-        cx.read(|cx| languages.language_for_file(
-            &file("the/script"),
-            Some(&"#!/bin/env node".into()),
-            cx
-        ))
-        .await
-        .unwrap()
-        .name()
-        .as_ref(),
-        "JavaScript"
-    );
-}
-
-#[gpui::test]
-async fn test_language_for_file_with_custom_file_types(cx: &mut TestAppContext) {
-    cx.update(|cx| {
-        init_settings(cx, |settings| {
-            settings.file_types.extend([
-                ("TypeScript".into(), vec!["js".into()]),
-                ("C++".into(), vec!["c".into()]),
-            ]);
-        })
-    });
-
-    let languages = Arc::new(LanguageRegistry::test(cx.executor()));
-
-    for config in [
-        LanguageConfig {
-            name: "JavaScript".into(),
-            matcher: LanguageMatcher {
-                path_suffixes: vec!["js".to_string()],
-                ..Default::default()
-            },
-            ..Default::default()
-        },
-        LanguageConfig {
-            name: "TypeScript".into(),
-            matcher: LanguageMatcher {
-                path_suffixes: vec!["js".to_string()],
-                ..Default::default()
-            },
-            ..Default::default()
-        },
-        LanguageConfig {
-            name: "C++".into(),
-            matcher: LanguageMatcher {
-                path_suffixes: vec!["cpp".to_string()],
-                ..Default::default()
-            },
-            ..Default::default()
-        },
-        LanguageConfig {
-            name: "C".into(),
-            matcher: LanguageMatcher {
-                path_suffixes: vec!["c".to_string()],
-                ..Default::default()
-            },
-            ..Default::default()
-        },
-    ] {
-        languages.add(Arc::new(Language::new(config, None)));
-    }
-
-    let language = cx
-        .read(|cx| languages.language_for_file(&file("foo.js"), None, cx))
-        .await
-        .unwrap();
-    assert_eq!(language.name().as_ref(), "TypeScript");
-    let language = cx
-        .read(|cx| languages.language_for_file(&file("foo.c"), None, cx))
-        .await
-        .unwrap();
-    assert_eq!(language.name().as_ref(), "C++");
-}
-
-fn file(path: &str) -> Arc<dyn File> {
-    Arc::new(TestFile {
-        path: Path::new(path).into(),
-        root_name: "zed".into(),
-    })
 }
 
 #[gpui::test]
@@ -1682,7 +1575,7 @@ fn test_autoindent_with_injected_languages(cx: &mut AppContext) {
 
     let javascript_language = Arc::new(javascript_lang());
 
-    let language_registry = Arc::new(LanguageRegistry::test(cx.background_executor().clone()));
+    let language_registry = Arc::new(LanguageRegistry::test());
     language_registry.add(html_language.clone());
     language_registry.add(javascript_language.clone());
 
@@ -2002,7 +1895,7 @@ fn test_language_scope_at_with_combined_injections(cx: &mut AppContext) {
         "#
         .unindent();
 
-        let language_registry = Arc::new(LanguageRegistry::test(cx.background_executor().clone()));
+        let language_registry = Arc::new(LanguageRegistry::test());
         language_registry.add(Arc::new(ruby_lang()));
         language_registry.add(Arc::new(html_lang()));
         language_registry.add(Arc::new(erb_lang()));

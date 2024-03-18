@@ -21,7 +21,7 @@ fn server_binary_arguments() -> Vec<OsString> {
 
 pub struct GleamLspAdapter;
 
-#[async_trait(?Send)]
+#[async_trait]
 impl LspAdapter for GleamLspAdapter {
     fn name(&self) -> LanguageServerName {
         LanguageServerName("gleam".into())

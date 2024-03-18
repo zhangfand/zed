@@ -1,4 +1,4 @@
-use gpui::{svg, IntoElement, Rems};
+use gpui::{rems, svg, IntoElement, Rems};
 use strum::EnumIter;
 
 use crate::prelude::*;
@@ -15,10 +15,10 @@ pub enum IconSize {
 impl IconSize {
     pub fn rems(self) -> Rems {
         match self {
-            IconSize::Indicator => rems_from_px(10.),
-            IconSize::XSmall => rems_from_px(12.),
-            IconSize::Small => rems_from_px(14.),
-            IconSize::Medium => rems_from_px(16.),
+            IconSize::Indicator => rems(10. / 16.),
+            IconSize::XSmall => rems(12. / 16.),
+            IconSize::Small => rems(14. / 16.),
+            IconSize::Medium => rems(16. / 16.),
         }
     }
 }
@@ -101,8 +101,7 @@ pub enum IconName {
     ReplaceAll,
     ReplaceNext,
     Return,
-    ReplyArrowRight,
-    ReplyArrowLeft,
+    ReplyArrow,
     Screen,
     SelectAll,
     Shift,
@@ -196,8 +195,7 @@ impl IconName {
             IconName::ReplaceAll => "icons/replace_all.svg",
             IconName::ReplaceNext => "icons/replace_next.svg",
             IconName::Return => "icons/return.svg",
-            IconName::ReplyArrowRight => "icons/reply_arrow_right.svg",
-            IconName::ReplyArrowLeft => "icons/reply_arrow_left.svg",
+            IconName::ReplyArrow => "icons/reply_arrow.svg",
             IconName::Screen => "icons/desktop.svg",
             IconName::SelectAll => "icons/select_all.svg",
             IconName::Shift => "icons/shift.svg",

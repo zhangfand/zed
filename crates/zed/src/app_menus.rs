@@ -74,6 +74,7 @@ pub fn app_menus() -> Vec<Menu<'static>> {
                     "Toggle Line Comment",
                     editor::actions::ToggleComments::default(),
                 ),
+                MenuItem::action("Emoji & Symbols", editor::actions::ShowCharacterPalette),
             ],
         },
         Menu {

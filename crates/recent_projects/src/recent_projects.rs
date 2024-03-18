@@ -1,10 +1,8 @@
-use collections::HashMap;
 use fuzzy::{StringMatch, StringMatchCandidate};
 use gpui::{
     AnyElement, AppContext, DismissEvent, EventEmitter, FocusHandle, FocusableView, Result,
     Subscription, Task, View, ViewContext, WeakView,
 };
-use itertools::Itertools;
 use ordered_float::OrderedFloat;
 use picker::{
     highlighted_match_with_paths::{HighlightedMatchWithPaths, HighlightedText},
@@ -58,6 +56,7 @@ impl RecentProjects {
                 .recent_workspaces_on_disk()
                 .await
                 .unwrap_or_default();
+
             this.update(&mut cx, move |this, cx| {
                 this.picker.update(cx, move |picker, cx| {
                     picker.delegate.workspaces = workspaces;
@@ -158,7 +157,7 @@ impl RecentProjectsDelegate {
     fn new(workspace: WeakView<Workspace>, create_new_window: bool, render_paths: bool) -> Self {
         Self {
             workspace,
-            workspaces: Vec::new(),
+            workspaces: vec![],
             selected_match_index: 0,
             matches: Default::default(),
             create_new_window,
@@ -431,20 +430,7 @@ impl RecentProjectsDelegate {
                     .recent_workspaces_on_disk()
                     .await
                     .unwrap_or_default();
-                let mut unique_added_paths = HashMap::default();
-                for (id, workspace) in &workspaces {
-                    for path in workspace.paths().iter() {
-                        unique_added_paths.insert(path.clone(), id);
-                    }
-                }
-                let updated_paths = unique_added_paths
-                    .into_iter()
-                    .sorted_by_key(|(_, id)| *id)
-                    .map(|(path, _)| path)
-                    .collect::<Vec<_>>();
                 this.update(&mut cx, move |picker, cx| {
-                    cx.clear_recent_documents();
-                    cx.add_recent_documents(&updated_paths);
                     picker.delegate.workspaces = workspaces;
                     picker.delegate.set_selected_index(ix - 1, cx);
                     picker.delegate.reset_selected_match_index = false;
@@ -554,10 +540,7 @@ mod tests {
                         positions: Vec::new(),
                         string: "fake candidate".to_string(),
                     }];
-                    delegate.workspaces = vec![(
-                        WorkspaceId::default(),
-                        WorkspaceLocation::new(vec!["/test/path/"]),
-                    )];
+                    delegate.workspaces = vec![(0, WorkspaceLocation::new(vec!["/test/path/"]))];
                 });
             })
             .unwrap();

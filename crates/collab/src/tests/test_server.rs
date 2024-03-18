@@ -40,7 +40,7 @@ use std::{
     },
 };
 use util::{http::FakeHttpClient, SemanticVersion};
-use workspace::{Workspace, WorkspaceId, WorkspaceStore};
+use workspace::{Workspace, WorkspaceStore};
 
 pub struct TestServer {
     pub app_state: Arc<AppState>,
@@ -257,12 +257,13 @@ impl TestServer {
         let fs = FakeFs::new(cx.executor());
         let user_store = cx.new_model(|cx| UserStore::new(client.clone(), cx));
         let workspace_store = cx.new_model(|cx| WorkspaceStore::new(client.clone(), cx));
-        let language_registry = Arc::new(LanguageRegistry::test(cx.executor()));
+        let mut language_registry = LanguageRegistry::test();
+        language_registry.set_executor(cx.executor());
         let app_state = Arc::new(workspace::AppState {
             client: client.clone(),
             user_store: user_store.clone(),
             workspace_store,
-            languages: language_registry,
+            languages: Arc::new(language_registry),
             fs: fs.clone(),
             build_window_options: |_, _| Default::default(),
             node_runtime: FakeNodeRuntime::new(),
@@ -512,7 +513,6 @@ impl TestServer {
                 clickhouse_database: None,
                 zed_client_checksum_seed: None,
                 slack_panics_webhook: None,
-                auto_join_channel_id: None,
             },
         })
     }
@@ -753,12 +753,7 @@ impl TestClient {
     ) -> (View<Workspace>, &'a mut VisualTestContext) {
         cx.add_window_view(|cx| {
             cx.activate_window();
-            Workspace::new(
-                WorkspaceId::default(),
-                project.clone(),
-                self.app_state.clone(),
-                cx,
-            )
+            Workspace::new(0, project.clone(), self.app_state.clone(), cx)
         })
     }
 
@@ -769,12 +764,7 @@ impl TestClient {
         let project = self.build_test_project(cx).await;
         cx.add_window_view(|cx| {
             cx.activate_window();
-            Workspace::new(
-                WorkspaceId::default(),
-                project.clone(),
-                self.app_state.clone(),
-                cx,
-            )
+            Workspace::new(0, project.clone(), self.app_state.clone(), cx)
         })
     }
 

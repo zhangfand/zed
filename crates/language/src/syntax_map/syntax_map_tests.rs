@@ -1,6 +1,5 @@
 use super::*;
 use crate::{LanguageConfig, LanguageMatcher};
-use gpui::AppContext;
 use rand::rngs::StdRng;
 use std::{env, ops::Range, sync::Arc};
 use text::{Buffer, BufferId};
@@ -80,8 +79,8 @@ fn test_splice_included_ranges() {
 }
 
 #[gpui::test]
-fn test_syntax_map_layers_for_range(cx: &mut AppContext) {
-    let registry = Arc::new(LanguageRegistry::test(cx.background_executor().clone()));
+fn test_syntax_map_layers_for_range() {
+    let registry = Arc::new(LanguageRegistry::test());
     let language = Arc::new(rust_lang());
     registry.add(language.clone());
 
@@ -177,8 +176,8 @@ fn test_syntax_map_layers_for_range(cx: &mut AppContext) {
 }
 
 #[gpui::test]
-fn test_dynamic_language_injection(cx: &mut AppContext) {
-    let registry = Arc::new(LanguageRegistry::test(cx.background_executor().clone()));
+fn test_dynamic_language_injection() {
+    let registry = Arc::new(LanguageRegistry::test());
     let markdown = Arc::new(markdown_lang());
     registry.add(markdown.clone());
     registry.add(Arc::new(rust_lang()));
@@ -255,7 +254,7 @@ fn test_dynamic_language_injection(cx: &mut AppContext) {
 }
 
 #[gpui::test]
-fn test_typing_multiple_new_injections(cx: &mut AppContext) {
+fn test_typing_multiple_new_injections() {
     let (buffer, syntax_map) = test_edit_sequence(
         "Rust",
         &[
@@ -273,7 +272,6 @@ fn test_typing_multiple_new_injections(cx: &mut AppContext) {
             "fn a() { test_macro!(b.c(vec![d«.»])) }",
             "fn a() { test_macro!(b.c(vec![d.«e»])) }",
         ],
-        cx,
     );
 
     assert_capture_ranges(
@@ -285,7 +283,7 @@ fn test_typing_multiple_new_injections(cx: &mut AppContext) {
 }
 
 #[gpui::test]
-fn test_pasting_new_injection_line_between_others(cx: &mut AppContext) {
+fn test_pasting_new_injection_line_between_others() {
     let (buffer, syntax_map) = test_edit_sequence(
         "Rust",
         &[
@@ -311,7 +309,6 @@ fn test_pasting_new_injection_line_between_others(cx: &mut AppContext) {
                 }
             ",
         ],
-        cx,
     );
 
     assert_capture_ranges(
@@ -333,7 +330,7 @@ fn test_pasting_new_injection_line_between_others(cx: &mut AppContext) {
 }
 
 #[gpui::test]
-fn test_joining_injections_with_child_injections(cx: &mut AppContext) {
+fn test_joining_injections_with_child_injections() {
     let (buffer, syntax_map) = test_edit_sequence(
         "Rust",
         &[
@@ -358,7 +355,6 @@ fn test_joining_injections_with_child_injections(cx: &mut AppContext) {
                 }
             ",
         ],
-        cx,
     );
 
     assert_capture_ranges(
@@ -378,7 +374,7 @@ fn test_joining_injections_with_child_injections(cx: &mut AppContext) {
 }
 
 #[gpui::test]
-fn test_editing_edges_of_injection(cx: &mut AppContext) {
+fn test_editing_edges_of_injection() {
     test_edit_sequence(
         "Rust",
         &[
@@ -403,12 +399,11 @@ fn test_editing_edges_of_injection(cx: &mut AppContext) {
                 }
             ",
         ],
-        cx,
     );
 }
 
 #[gpui::test]
-fn test_edits_preceding_and_intersecting_injection(cx: &mut AppContext) {
+fn test_edits_preceding_and_intersecting_injection() {
     test_edit_sequence(
         "Rust",
         &[
@@ -416,12 +411,11 @@ fn test_edits_preceding_and_intersecting_injection(cx: &mut AppContext) {
             "const aaaaaaaaaaaa: B = c!(d(e.f));",
             "const aˇa: B = c!(d(eˇ));",
         ],
-        cx,
     );
 }
 
 #[gpui::test]
-fn test_non_local_changes_create_injections(cx: &mut AppContext) {
+fn test_non_local_changes_create_injections() {
     test_edit_sequence(
         "Rust",
         &[
@@ -436,12 +430,11 @@ fn test_non_local_changes_create_injections(cx: &mut AppContext) {
                 ˇ}
             ",
         ],
-        cx,
     );
 }
 
 #[gpui::test]
-fn test_creating_many_injections_in_one_edit(cx: &mut AppContext) {
+fn test_creating_many_injections_in_one_edit() {
     test_edit_sequence(
         "Rust",
         &[
@@ -467,12 +460,11 @@ fn test_creating_many_injections_in_one_edit(cx: &mut AppContext) {
                 }
             ",
         ],
-        cx,
     );
 }
 
 #[gpui::test]
-fn test_editing_across_injection_boundary(cx: &mut AppContext) {
+fn test_editing_across_injection_boundary() {
     test_edit_sequence(
         "Rust",
         &[
@@ -496,12 +488,11 @@ fn test_editing_across_injection_boundary(cx: &mut AppContext) {
                 }
             ",
         ],
-        cx,
     );
 }
 
 #[gpui::test]
-fn test_removing_injection_by_replacing_across_boundary(cx: &mut AppContext) {
+fn test_removing_injection_by_replacing_across_boundary() {
     test_edit_sequence(
         "Rust",
         &[
@@ -523,12 +514,11 @@ fn test_removing_injection_by_replacing_across_boundary(cx: &mut AppContext) {
                 }
             ",
         ],
-        cx,
     );
 }
 
 #[gpui::test]
-fn test_combined_injections_simple(cx: &mut AppContext) {
+fn test_combined_injections_simple() {
     let (buffer, syntax_map) = test_edit_sequence(
         "ERB",
         &[
@@ -559,7 +549,6 @@ fn test_combined_injections_simple(cx: &mut AppContext) {
                 </body>
             ",
         ],
-        cx,
     );
 
     assert_capture_ranges(
@@ -576,7 +565,7 @@ fn test_combined_injections_simple(cx: &mut AppContext) {
 }
 
 #[gpui::test]
-fn test_combined_injections_empty_ranges(cx: &mut AppContext) {
+fn test_combined_injections_empty_ranges() {
     test_edit_sequence(
         "ERB",
         &[
@@ -590,12 +579,11 @@ fn test_combined_injections_empty_ranges(cx: &mut AppContext) {
                 ˇ<% end %>
             ",
         ],
-        cx,
     );
 }
 
 #[gpui::test]
-fn test_combined_injections_edit_edges_of_ranges(cx: &mut AppContext) {
+fn test_combined_injections_edit_edges_of_ranges() {
     let (buffer, syntax_map) = test_edit_sequence(
         "ERB",
         &[
@@ -612,7 +600,6 @@ fn test_combined_injections_edit_edges_of_ranges(cx: &mut AppContext) {
                 <%= three @four %>
             ",
         ],
-        cx,
     );
 
     assert_capture_ranges(
@@ -627,7 +614,7 @@ fn test_combined_injections_edit_edges_of_ranges(cx: &mut AppContext) {
 }
 
 #[gpui::test]
-fn test_combined_injections_splitting_some_injections(cx: &mut AppContext) {
+fn test_combined_injections_splitting_some_injections() {
     let (_buffer, _syntax_map) = test_edit_sequence(
         "ERB",
         &[
@@ -648,12 +635,11 @@ fn test_combined_injections_splitting_some_injections(cx: &mut AppContext) {
                 <% f %>
             "#,
         ],
-        cx,
     );
 }
 
 #[gpui::test]
-fn test_combined_injections_editing_after_last_injection(cx: &mut AppContext) {
+fn test_combined_injections_editing_after_last_injection() {
     test_edit_sequence(
         "ERB",
         &[
@@ -669,12 +655,11 @@ fn test_combined_injections_editing_after_last_injection(cx: &mut AppContext) {
                 more text»
             "#,
         ],
-        cx,
     );
 }
 
 #[gpui::test]
-fn test_combined_injections_inside_injections(cx: &mut AppContext) {
+fn test_combined_injections_inside_injections() {
     let (buffer, syntax_map) = test_edit_sequence(
         "Markdown",
         &[
@@ -724,7 +709,6 @@ fn test_combined_injections_inside_injections(cx: &mut AppContext) {
                 ```
             "#,
         ],
-        cx,
     );
 
     // Check that the code directive below the ruby comment is
@@ -751,7 +735,7 @@ fn test_combined_injections_inside_injections(cx: &mut AppContext) {
 }
 
 #[gpui::test]
-fn test_empty_combined_injections_inside_injections(cx: &mut AppContext) {
+fn test_empty_combined_injections_inside_injections() {
     let (buffer, syntax_map) = test_edit_sequence(
         "Markdown",
         &[r#"
@@ -761,7 +745,6 @@ fn test_empty_combined_injections_inside_injections(cx: &mut AppContext) {
 
             goodbye
         "#],
-        cx,
     );
 
     assert_layers_for_range(
@@ -780,7 +763,7 @@ fn test_empty_combined_injections_inside_injections(cx: &mut AppContext) {
 }
 
 #[gpui::test(iterations = 50)]
-fn test_random_syntax_map_edits_rust_macros(rng: StdRng, cx: &mut AppContext) {
+fn test_random_syntax_map_edits_rust_macros(rng: StdRng) {
     let text = r#"
         fn test_something() {
             let vec = vec![5, 1, 3, 8];
@@ -798,7 +781,7 @@ fn test_random_syntax_map_edits_rust_macros(rng: StdRng, cx: &mut AppContext) {
     .unindent()
     .repeat(2);
 
-    let registry = Arc::new(LanguageRegistry::test(cx.background_executor().clone()));
+    let registry = Arc::new(LanguageRegistry::test());
     let language = Arc::new(rust_lang());
     registry.add(language.clone());
 
@@ -806,7 +789,7 @@ fn test_random_syntax_map_edits_rust_macros(rng: StdRng, cx: &mut AppContext) {
 }
 
 #[gpui::test(iterations = 50)]
-fn test_random_syntax_map_edits_with_erb(rng: StdRng, cx: &mut AppContext) {
+fn test_random_syntax_map_edits_with_erb(rng: StdRng) {
     let text = r#"
         <div id="main">
         <% if one?(:two) %>
@@ -825,7 +808,7 @@ fn test_random_syntax_map_edits_with_erb(rng: StdRng, cx: &mut AppContext) {
     .unindent()
     .repeat(5);
 
-    let registry = Arc::new(LanguageRegistry::test(cx.background_executor().clone()));
+    let registry = Arc::new(LanguageRegistry::test());
     let language = Arc::new(erb_lang());
     registry.add(language.clone());
     registry.add(Arc::new(ruby_lang()));
@@ -835,7 +818,7 @@ fn test_random_syntax_map_edits_with_erb(rng: StdRng, cx: &mut AppContext) {
 }
 
 #[gpui::test(iterations = 50)]
-fn test_random_syntax_map_edits_with_heex(rng: StdRng, cx: &mut AppContext) {
+fn test_random_syntax_map_edits_with_heex(rng: StdRng) {
     let text = r#"
         defmodule TheModule do
             def the_method(assigns) do
@@ -858,7 +841,7 @@ fn test_random_syntax_map_edits_with_heex(rng: StdRng, cx: &mut AppContext) {
     .unindent()
     .repeat(3);
 
-    let registry = Arc::new(LanguageRegistry::test(cx.background_executor().clone()));
+    let registry = Arc::new(LanguageRegistry::test());
     let language = Arc::new(elixir_lang());
     registry.add(language.clone());
     registry.add(Arc::new(heex_lang()));
@@ -1042,12 +1025,8 @@ fn check_interpolation(
     }
 }
 
-fn test_edit_sequence(
-    language_name: &str,
-    steps: &[&str],
-    cx: &mut AppContext,
-) -> (Buffer, SyntaxMap) {
-    let registry = Arc::new(LanguageRegistry::test(cx.background_executor().clone()));
+fn test_edit_sequence(language_name: &str, steps: &[&str]) -> (Buffer, SyntaxMap) {
+    let registry = Arc::new(LanguageRegistry::test());
     registry.add(Arc::new(elixir_lang()));
     registry.add(Arc::new(heex_lang()));
     registry.add(Arc::new(rust_lang()));

@@ -1079,7 +1079,9 @@ fn main() {
 
     #[gpui::test]
     async fn test_code_block_with_language(executor: BackgroundExecutor) {
-        let language_registry = Arc::new(LanguageRegistry::test(executor.clone()));
+        let mut language_registry = LanguageRegistry::test();
+        language_registry.set_executor(executor);
+        let language_registry = Arc::new(language_registry);
         language_registry.add(rust_lang());
 
         let parsed = parse_markdown(

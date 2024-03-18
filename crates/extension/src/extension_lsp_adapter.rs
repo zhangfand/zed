@@ -19,7 +19,7 @@ pub struct ExtensionLspAdapter {
     pub(crate) host: Arc<WasmHost>,
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl LspAdapter for ExtensionLspAdapter {
     fn name(&self) -> LanguageServerName {
         LanguageServerName(self.config.name.clone().into())

@@ -30,7 +30,7 @@ impl AstroLspAdapter {
     }
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl LspAdapter for AstroLspAdapter {
     fn name(&self) -> LanguageServerName {
         LanguageServerName("astro-language-server".into())
@@ -49,22 +49,19 @@ impl LspAdapter for AstroLspAdapter {
 
     async fn fetch_server_binary(
         &self,
-        latest_version: Box<dyn 'static + Send + Any>,
+        version: Box<dyn 'static + Send + Any>,
         container_dir: PathBuf,
         _: &dyn LspAdapterDelegate,
     ) -> Result<LanguageServerBinary> {
-        let latest_version = latest_version.downcast::<String>().unwrap();
+        let version = version.downcast::<String>().unwrap();
         let server_path = container_dir.join(SERVER_PATH);
-        let package_name = "@astrojs/language-server";
 
-        let should_install_npm_package = self
-            .node
-            .should_install_npm_package(package_name, &server_path, &container_dir, &latest_version)
-            .await;
-
-        if should_install_npm_package {
+        if fs::metadata(&server_path).await.is_err() {
             self.node
-                .npm_install_packages(&container_dir, &[(package_name, latest_version.as_str())])
+                .npm_install_packages(
+                    &container_dir,
+                    &[("@astrojs/language-server", version.as_str())],
+                )
                 .await?;
         }
 

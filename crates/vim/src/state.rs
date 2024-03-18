@@ -1,18 +1,17 @@
 use std::{fmt::Display, ops::Range, sync::Arc};
 
-use crate::motion::Motion;
 use collections::HashMap;
-use editor::Anchor;
 use gpui::{Action, KeyContext};
-use language::{CursorShape, Selection, TransactionId};
+use language::CursorShape;
 use serde::{Deserialize, Serialize};
 use workspace::searchable::Direction;
+
+use crate::motion::Motion;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub enum Mode {
     Normal,
     Insert,
-    Replace,
     Visual,
     VisualLine,
     VisualBlock,
@@ -23,7 +22,6 @@ impl Display for Mode {
         match self {
             Mode::Normal => write!(f, "NORMAL"),
             Mode::Insert => write!(f, "INSERT"),
-            Mode::Replace => write!(f, "REPLACE"),
             Mode::Visual => write!(f, "VISUAL"),
             Mode::VisualLine => write!(f, "VISUAL LINE"),
             Mode::VisualBlock => write!(f, "VISUAL BLOCK"),
@@ -34,7 +32,7 @@ impl Display for Mode {
 impl Mode {
     pub fn is_visual(&self) -> bool {
         match self {
-            Mode::Normal | Mode::Insert | Mode::Replace => false,
+            Mode::Normal | Mode::Insert => false,
             Mode::Visual | Mode::VisualLine | Mode::VisualBlock => true,
         }
     }
@@ -46,7 +44,7 @@ impl Default for Mode {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Deserialize)]
 pub enum Operator {
     Change,
     Delete,
@@ -68,11 +66,6 @@ pub struct EditorState {
     pub post_count: Option<usize>,
 
     pub operator_stack: Vec<Operator>,
-    pub replacements: Vec<(Range<editor::Anchor>, String)>,
-
-    pub current_tx: Option<TransactionId>,
-    pub current_anchor: Option<Selection<Anchor>>,
-    pub undo_modes: HashMap<TransactionId, Mode>,
 }
 
 #[derive(Default, Clone, Debug)]
@@ -161,21 +154,17 @@ impl EditorState {
                     CursorShape::Underscore
                 }
             }
-            Mode::Replace => CursorShape::Underscore,
             Mode::Visual | Mode::VisualLine | Mode::VisualBlock => CursorShape::Block,
             Mode::Insert => CursorShape::Bar,
         }
     }
 
     pub fn vim_controlled(&self) -> bool {
-        let is_insert_mode = matches!(self.mode, Mode::Insert);
-        if !is_insert_mode {
-            return true;
-        }
-        matches!(
-            self.operator_stack.last(),
-            Some(Operator::FindForward { .. }) | Some(Operator::FindBackward { .. })
-        )
+        !matches!(self.mode, Mode::Insert)
+            || matches!(
+                self.operator_stack.last(),
+                Some(Operator::FindForward { .. }) | Some(Operator::FindBackward { .. })
+            )
     }
 
     pub fn should_autoindent(&self) -> bool {
@@ -184,15 +173,13 @@ impl EditorState {
 
     pub fn clip_at_line_ends(&self) -> bool {
         match self.mode {
-            Mode::Insert | Mode::Visual | Mode::VisualLine | Mode::VisualBlock | Mode::Replace => {
-                false
-            }
+            Mode::Insert | Mode::Visual | Mode::VisualLine | Mode::VisualBlock => false,
             Mode::Normal => true,
         }
     }
 
     pub fn active_operator(&self) -> Option<Operator> {
-        self.operator_stack.last().cloned()
+        self.operator_stack.last().copied()
     }
 
     pub fn keymap_context_layer(&self) -> KeyContext {
@@ -203,7 +190,6 @@ impl EditorState {
                 Mode::Normal => "normal",
                 Mode::Visual | Mode::VisualLine | Mode::VisualBlock => "visual",
                 Mode::Insert => "insert",
-                Mode::Replace => "replace",
             },
         );
 
@@ -219,7 +205,7 @@ impl EditorState {
 
         let active_operator = self.active_operator();
 
-        if let Some(active_operator) = active_operator.clone() {
+        if let Some(active_operator) = active_operator {
             for context_flag in active_operator.context_flags().into_iter() {
                 context.add(*context_flag);
             }
@@ -227,15 +213,9 @@ impl EditorState {
 
         context.set(
             "vim_operator",
-            active_operator
-                .clone()
-                .map(|op| op.id())
-                .unwrap_or_else(|| "none"),
+            active_operator.map(|op| op.id()).unwrap_or_else(|| "none"),
         );
 
-        if self.mode == Mode::Replace {
-            context.add("VimWaiting");
-        }
         context
     }
 }

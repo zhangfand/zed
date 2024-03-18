@@ -217,7 +217,7 @@ macro_rules! query {
 
             let sql_stmt = $crate::sqlez_macros::sql!($($sql)+);
 
-            self.select_row::<$return_type>(sql_stmt)?()
+            self.select_row::<$return_type>(indoc! { $sql })?()
                 .context(::std::format!(
                     "Error in {}, select_row_bound failed to execute or parse for: {}",
                     ::std::stringify!($id),

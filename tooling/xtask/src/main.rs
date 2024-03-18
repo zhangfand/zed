@@ -47,10 +47,7 @@ fn run_clippy(args: ClippyArgs) -> Result<()> {
         clippy_command.arg("--workspace");
     }
 
-    clippy_command
-        .arg("--release")
-        .arg("--all-targets")
-        .arg("--all-features");
+    clippy_command.arg("--release").arg("--all-features");
 
     if args.fix {
         clippy_command.arg("--fix");

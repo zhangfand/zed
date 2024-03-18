@@ -1,5 +1,29 @@
 use crate::{h_flex, prelude::*, Icon, IconName, IconSize};
-use gpui::{relative, Action, FocusHandle, IntoElement, Keystroke};
+use gpui::{relative, rems, Action, FocusHandle, IntoElement, Keystroke};
+
+/// The way a [`KeyBinding`] should be displayed.
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
+pub enum KeyBindingDisplay {
+    /// Display in macOS style.
+    Mac,
+    /// Display in Linux style.
+    Linux,
+    /// Display in Windows style.
+    Windows,
+}
+
+impl KeyBindingDisplay {
+    /// Returns the [`KeyBindingDisplay`] for the current platform.
+    pub const fn platform() -> Self {
+        if cfg!(target_os = "linux") {
+            KeyBindingDisplay::Linux
+        } else if cfg!(target_os = "windows") {
+            KeyBindingDisplay::Windows
+        } else {
+            KeyBindingDisplay::Mac
+        }
+    }
+}
 
 #[derive(IntoElement, Clone)]
 pub struct KeyBinding {
@@ -9,8 +33,8 @@ pub struct KeyBinding {
     /// This should always contain at least one element.
     key_binding: gpui::KeyBinding,
 
-    /// The [`PlatformStyle`] to use when displaying this keybinding.
-    platform_style: PlatformStyle,
+    /// How keybindings should be displayed.
+    display: KeyBindingDisplay,
 }
 
 impl KeyBinding {
@@ -52,13 +76,13 @@ impl KeyBinding {
     pub fn new(key_binding: gpui::KeyBinding) -> Self {
         Self {
             key_binding,
-            platform_style: PlatformStyle::platform(),
+            display: KeyBindingDisplay::platform(),
         }
     }
 
-    /// Sets the [`PlatformStyle`] for this [`KeyBinding`].
-    pub fn platform_style(mut self, platform_style: PlatformStyle) -> Self {
-        self.platform_style = platform_style;
+    /// Sets how this [`KeyBinding`] should be displayed.
+    pub fn display(mut self, display: KeyBindingDisplay) -> Self {
+        self.display = display;
         self
     }
 }
@@ -73,49 +97,43 @@ impl RenderOnce for KeyBinding {
 
                 h_flex()
                     .flex_none()
-                    .map(|el| match self.platform_style {
-                        PlatformStyle::Mac => el.gap_0p5(),
-                        PlatformStyle::Linux | PlatformStyle::Windows => el,
+                    .map(|el| match self.display {
+                        KeyBindingDisplay::Mac => el.gap_0p5(),
+                        KeyBindingDisplay::Linux | KeyBindingDisplay::Windows => el,
                     })
                     .p_0p5()
                     .rounded_sm()
                     .text_color(cx.theme().colors().text_muted)
-                    .when(keystroke.modifiers.function, |el| {
-                        match self.platform_style {
-                            PlatformStyle::Mac => el.child(Key::new("fn")),
-                            PlatformStyle::Linux | PlatformStyle::Windows => {
-                                el.child(Key::new("Fn")).child(Key::new("+"))
-                            }
+                    .when(keystroke.modifiers.function, |el| match self.display {
+                        KeyBindingDisplay::Mac => el.child(Key::new("fn")),
+                        KeyBindingDisplay::Linux | KeyBindingDisplay::Windows => {
+                            el.child(Key::new("Fn")).child(Key::new("+"))
                         }
                     })
-                    .when(keystroke.modifiers.control, |el| {
-                        match self.platform_style {
-                            PlatformStyle::Mac => el.child(KeyIcon::new(IconName::Control)),
-                            PlatformStyle::Linux | PlatformStyle::Windows => {
-                                el.child(Key::new("Ctrl")).child(Key::new("+"))
-                            }
+                    .when(keystroke.modifiers.control, |el| match self.display {
+                        KeyBindingDisplay::Mac => el.child(KeyIcon::new(IconName::Control)),
+                        KeyBindingDisplay::Linux | KeyBindingDisplay::Windows => {
+                            el.child(Key::new("Ctrl")).child(Key::new("+"))
                         }
                     })
-                    .when(keystroke.modifiers.alt, |el| match self.platform_style {
-                        PlatformStyle::Mac => el.child(KeyIcon::new(IconName::Option)),
-                        PlatformStyle::Linux | PlatformStyle::Windows => {
+                    .when(keystroke.modifiers.alt, |el| match self.display {
+                        KeyBindingDisplay::Mac => el.child(KeyIcon::new(IconName::Option)),
+                        KeyBindingDisplay::Linux | KeyBindingDisplay::Windows => {
                             el.child(Key::new("Alt")).child(Key::new("+"))
                         }
                     })
-                    .when(keystroke.modifiers.command, |el| {
-                        match self.platform_style {
-                            PlatformStyle::Mac => el.child(KeyIcon::new(IconName::Command)),
-                            PlatformStyle::Linux => {
-                                el.child(Key::new("Super")).child(Key::new("+"))
-                            }
-                            PlatformStyle::Windows => {
-                                el.child(Key::new("Win")).child(Key::new("+"))
-                            }
+                    .when(keystroke.modifiers.command, |el| match self.display {
+                        KeyBindingDisplay::Mac => el.child(KeyIcon::new(IconName::Command)),
+                        KeyBindingDisplay::Linux => {
+                            el.child(Key::new("Super")).child(Key::new("+"))
+                        }
+                        KeyBindingDisplay::Windows => {
+                            el.child(Key::new("Win")).child(Key::new("+"))
                         }
                     })
-                    .when(keystroke.modifiers.shift, |el| match self.platform_style {
-                        PlatformStyle::Mac => el.child(KeyIcon::new(IconName::Shift)),
-                        PlatformStyle::Linux | PlatformStyle::Windows => {
+                    .when(keystroke.modifiers.shift, |el| match self.display {
+                        KeyBindingDisplay::Mac => el.child(KeyIcon::new(IconName::Shift)),
+                        KeyBindingDisplay::Linux | KeyBindingDisplay::Windows => {
                             el.child(Key::new("Shift")).child(Key::new("+"))
                         }
                     })
@@ -140,15 +158,12 @@ impl RenderOnce for Key {
             .py_0()
             .map(|this| {
                 if single_char {
-                    this.w(rems_from_px(14.))
-                        .flex()
-                        .flex_none()
-                        .justify_center()
+                    this.w(rems(14. / 16.)).flex().flex_none().justify_center()
                 } else {
                     this.px_0p5()
                 }
             })
-            .h(rems_from_px(14.))
+            .h(rems(14. / 16.))
             .text_ui()
             .line_height(relative(1.))
             .text_color(cx.theme().colors().text_muted)
@@ -169,7 +184,7 @@ pub struct KeyIcon {
 
 impl RenderOnce for KeyIcon {
     fn render(self, _cx: &mut WindowContext) -> impl IntoElement {
-        div().w(rems_from_px(14.)).child(
+        div().w(rems(14. / 16.)).child(
             Icon::new(self.icon)
                 .size(IconSize::Small)
                 .color(Color::Muted),

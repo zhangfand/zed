@@ -3,6 +3,7 @@ use async_trait::async_trait;
 use language::{LanguageServerName, LspAdapter, LspAdapterDelegate};
 use lsp::LanguageServerBinary;
 use node_runtime::NodeRuntime;
+use smol::fs;
 use std::{
     any::Any,
     ffi::OsString,
@@ -27,7 +28,7 @@ impl PythonLspAdapter {
     }
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl LspAdapter for PythonLspAdapter {
     fn name(&self) -> LanguageServerName {
         LanguageServerName("pyright".into())
@@ -42,22 +43,16 @@ impl LspAdapter for PythonLspAdapter {
 
     async fn fetch_server_binary(
         &self,
-        latest_version: Box<dyn 'static + Send + Any>,
+        version: Box<dyn 'static + Send + Any>,
         container_dir: PathBuf,
         _: &dyn LspAdapterDelegate,
     ) -> Result<LanguageServerBinary> {
-        let latest_version = latest_version.downcast::<String>().unwrap();
+        let version = version.downcast::<String>().unwrap();
         let server_path = container_dir.join(SERVER_PATH);
-        let package_name = "pyright";
 
-        let should_install_language_server = self
-            .node
-            .should_install_npm_package(package_name, &server_path, &container_dir, &latest_version)
-            .await;
-
-        if should_install_language_server {
+        if fs::metadata(&server_path).await.is_err() {
             self.node
-                .npm_install_packages(&container_dir, &[(package_name, latest_version.as_str())])
+                .npm_install_packages(&container_dir, &[("pyright", version.as_str())])
                 .await?;
         }
 

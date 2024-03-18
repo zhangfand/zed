@@ -10,11 +10,11 @@ use file_associations::FileAssociations;
 use anyhow::{anyhow, Result};
 use collections::{hash_map, HashMap};
 use gpui::{
-    actions, div, impl_actions, overlay, px, uniform_list, Action, AppContext, AssetSource,
-    AsyncWindowContext, ClipboardItem, DismissEvent, Div, EventEmitter, FocusHandle, FocusableView,
-    InteractiveElement, KeyContext, Model, MouseButton, MouseDownEvent, ParentElement, Pixels,
-    Point, PromptLevel, Render, Stateful, Styled, Subscription, Task, UniformListScrollHandle,
-    View, ViewContext, VisualContext as _, WeakView, WindowContext,
+    actions, div, overlay, px, uniform_list, Action, AppContext, AssetSource, AsyncWindowContext,
+    ClipboardItem, DismissEvent, Div, EventEmitter, FocusHandle, FocusableView, InteractiveElement,
+    KeyContext, Model, MouseButton, MouseDownEvent, ParentElement, Pixels, Point, PromptLevel,
+    Render, Stateful, Styled, Subscription, Task, UniformListScrollHandle, View, ViewContext,
+    VisualContext as _, WeakView, WindowContext,
 };
 use menu::{Confirm, SelectNext, SelectPrev};
 use project::{
@@ -23,13 +23,7 @@ use project::{
 };
 use project_panel_settings::{ProjectPanelDockPosition, ProjectPanelSettings};
 use serde::{Deserialize, Serialize};
-use std::{
-    cmp::Ordering,
-    ffi::OsStr,
-    ops::Range,
-    path::{Path, PathBuf},
-    sync::Arc,
-};
+use std::{cmp::Ordering, ffi::OsStr, ops::Range, path::Path, sync::Arc};
 use theme::ThemeSettings;
 use ui::{prelude::*, v_flex, ContextMenu, Icon, KeyBinding, Label, ListItem};
 use unicase::UniCase;
@@ -106,13 +100,6 @@ pub struct EntryDetails {
     is_dotenv: bool,
 }
 
-#[derive(PartialEq, Clone, Default, Debug, Deserialize)]
-pub struct Delete {
-    pub skip_prompt: bool,
-}
-
-impl_actions!(project_panel, [Delete]);
-
 actions!(
     project_panel,
     [
@@ -128,6 +115,7 @@ actions!(
         OpenInTerminal,
         Cut,
         Paste,
+        Delete,
         Rename,
         Open,
         ToggleFocus,
@@ -430,7 +418,6 @@ impl ProjectPanel {
                                         });
                                     }),
                                 )
-                                .action("Collapse All", Box::new(CollapseAllEntries))
                             })
                         })
                         .action("New File", Box::new(NewFile))
@@ -454,9 +441,7 @@ impl ProjectPanel {
                         })
                         .separator()
                         .action("Rename", Box::new(Rename))
-                        .when(!is_root, |menu| {
-                            menu.action("Delete", Box::new(Delete { skip_prompt: false }))
-                        })
+                        .when(!is_root, |menu| menu.action("Delete", Box::new(Delete)))
                     },
                 )
             });
@@ -801,26 +786,22 @@ impl ProjectPanel {
         }
     }
 
-    fn delete(&mut self, action: &Delete, cx: &mut ViewContext<Self>) {
+    fn delete(&mut self, _: &Delete, cx: &mut ViewContext<Self>) {
         maybe!({
             let Selection { entry_id, .. } = self.selection?;
             let path = self.project.read(cx).path_for_entry(entry_id, cx)?.path;
             let file_name = path.file_name()?;
 
-            let answer = (!action.skip_prompt).then(|| {
-                cx.prompt(
-                    PromptLevel::Info,
-                    &format!("Delete {file_name:?}?"),
-                    None,
-                    &["Delete", "Cancel"],
-                )
-            });
+            let answer = cx.prompt(
+                PromptLevel::Info,
+                &format!("Delete {file_name:?}?"),
+                None,
+                &["Delete", "Cancel"],
+            );
 
             cx.spawn(|this, mut cx| async move {
-                if let Some(answer) = answer {
-                    if answer.await != Ok(0) {
-                        return Ok(());
-                    }
+                if answer.await != Ok(0) {
+                    return Ok(());
                 }
                 this.update(&mut cx, |this, cx| {
                     this.project
@@ -1010,22 +991,12 @@ impl ProjectPanel {
         _: &NewSearchInDirectory,
         cx: &mut ViewContext<Self>,
     ) {
-        if let Some((worktree, entry)) = self.selected_entry(cx) {
+        if let Some((_, entry)) = self.selected_entry(cx) {
             if entry.is_dir() {
-                let include_root = self.project.read(cx).visible_worktrees(cx).count() > 1;
-                let dir_path = if include_root {
-                    let mut full_path = PathBuf::from(worktree.root_name());
-                    full_path.push(&entry.path);
-                    Arc::from(full_path)
-                } else {
-                    entry.path.clone()
-                };
-
+                let entry = entry.clone();
                 self.workspace
                     .update(cx, |workspace, cx| {
-                        search::ProjectSearchView::new_search_in_directory(
-                            workspace, &dir_path, cx,
-                        );
+                        search::ProjectSearchView::new_search_in_directory(workspace, &entry, cx);
                     })
                     .ok();
             }
@@ -2703,7 +2674,7 @@ mod tests {
                 open_editor.update(cx, |editor, cx| editor.set_text("Another text!", cx));
             })
             .unwrap();
-        submit_deletion_skipping_prompt(&panel, cx);
+        submit_deletion(&panel, cx);
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
             &["v src", "    v test", "          third.rs"],
@@ -3664,9 +3635,7 @@ mod tests {
             !cx.has_pending_prompt(),
             "Should have no prompts before the deletion"
         );
-        panel.update(cx, |panel, cx| {
-            panel.delete(&Delete { skip_prompt: false }, cx)
-        });
+        panel.update(cx, |panel, cx| panel.delete(&Delete, cx));
         assert!(
             cx.has_pending_prompt(),
             "Should have a prompt after the deletion"
@@ -3676,18 +3645,6 @@ mod tests {
             !cx.has_pending_prompt(),
             "Should have no prompts after prompt was replied to"
         );
-        cx.executor().run_until_parked();
-    }
-
-    fn submit_deletion_skipping_prompt(panel: &View<ProjectPanel>, cx: &mut VisualTestContext) {
-        assert!(
-            !cx.has_pending_prompt(),
-            "Should have no prompts before the deletion"
-        );
-        panel.update(cx, |panel, cx| {
-            panel.delete(&Delete { skip_prompt: true }, cx)
-        });
-        assert!(!cx.has_pending_prompt(), "Should have received no prompts");
         cx.executor().run_until_parked();
     }
 

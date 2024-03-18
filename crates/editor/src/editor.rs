@@ -101,7 +101,6 @@ use serde::{Deserialize, Serialize};
 use settings::{Settings, SettingsStore};
 use smallvec::SmallVec;
 use snippet::Snippet;
-use std::ops::Not as _;
 use std::{
     any::TypeId,
     borrow::Cow,
@@ -125,9 +124,7 @@ use ui::{
 };
 use util::{maybe, post_inc, RangeExt, ResultExt, TryFutureExt};
 use workspace::Toast;
-use workspace::{
-    searchable::SearchEvent, ItemNavHistory, SplitDirection, ViewId, Workspace, WorkspaceId,
-};
+use workspace::{searchable::SearchEvent, ItemNavHistory, SplitDirection, ViewId, Workspace};
 
 use crate::hover_links::find_url;
 
@@ -365,7 +362,7 @@ pub struct Editor {
     buffer: Model<MultiBuffer>,
     /// Map of how text in the buffer should be displayed.
     /// Handles soft wraps, folds, fake inlay text insertions, etc.
-    pub display_map: Model<DisplayMap>,
+    display_map: Model<DisplayMap>,
     pub selections: SelectionsCollection,
     pub scroll_manager: ScrollManager,
     columnar_selection_tail: Option<Anchor>,
@@ -409,7 +406,7 @@ pub struct Editor {
     cursor_shape: CursorShape,
     collapse_matches: bool,
     autoindent_mode: Option<AutoindentMode>,
-    workspace: Option<(WeakView<Workspace>, WorkspaceId)>,
+    workspace: Option<(WeakView<Workspace>, i64)>,
     keymap_context_layers: BTreeMap<TypeId, KeyContext>,
     input_enabled: bool,
     use_modal_editing: bool,
@@ -425,7 +422,6 @@ pub struct Editor {
     _subscriptions: Vec<Subscription>,
     pixel_position_of_newest_cursor: Option<gpui::Point<Pixels>>,
     gutter_width: Pixels,
-    pub vim_replace_map: HashMap<Range<usize>, String>,
     style: Option<EditorStyle>,
     editor_actions: Vec<Box<dyn Fn(&mut ViewContext<Self>)>>,
     show_copilot_suggestions: bool,
@@ -1571,7 +1567,6 @@ impl Editor {
             show_cursor_names: false,
             hovered_cursors: Default::default(),
             editor_actions: Default::default(),
-            vim_replace_map: Default::default(),
             show_copilot_suggestions: mode == EditorMode::Full,
             custom_context_menu: None,
             _subscriptions: vec![
@@ -2956,10 +2951,13 @@ impl Editor {
     }
 
     pub fn insert(&mut self, text: &str, cx: &mut ViewContext<Self>) {
-        let autoindent = text.is_empty().not().then(|| AutoindentMode::Block {
-            original_indent_columns: Vec::new(),
-        });
-        self.insert_with_autoindent_mode(text, autoindent, cx);
+        self.insert_with_autoindent_mode(
+            text,
+            Some(AutoindentMode::Block {
+                original_indent_columns: Vec::new(),
+            }),
+            cx,
+        );
     }
 
     fn insert_with_autoindent_mode(
@@ -5699,9 +5697,6 @@ impl Editor {
             self.unmark_text(cx);
             self.refresh_copilot_suggestions(true, cx);
             cx.emit(EditorEvent::Edited);
-            cx.emit(EditorEvent::TransactionUndone {
-                transaction_id: tx_id,
-            });
         }
     }
 
@@ -5727,11 +5722,6 @@ impl Editor {
     pub fn finalize_last_transaction(&mut self, cx: &mut ViewContext<Self>) {
         self.buffer
             .update(cx, |buffer, cx| buffer.finalize_last_transaction(cx));
-    }
-
-    pub fn group_until_transaction(&mut self, tx_id: TransactionId, cx: &mut ViewContext<Self>) {
-        self.buffer
-            .update(cx, |buffer, cx| buffer.group_until_transaction(tx_id, cx));
     }
 
     pub fn move_left(&mut self, _: &MoveLeft, cx: &mut ViewContext<Self>) {
@@ -8561,9 +8551,6 @@ impl Editor {
         {
             self.selection_history
                 .insert_transaction(tx_id, self.selections.disjoint_anchors());
-            cx.emit(EditorEvent::TransactionBegun {
-                transaction_id: tx_id,
-            })
         }
     }
 
@@ -9315,7 +9302,8 @@ impl Editor {
             .redacted_ranges(search_range, |file| {
                 if let Some(file) = file {
                     file.is_private()
-                        && EditorSettings::get(Some(file.as_ref().into()), cx).redact_private_values
+                        && EditorSettings::get(Some((file.worktree_id(), file.path())), cx)
+                            .redact_private_values
                 } else {
                     false
                 }
@@ -9535,8 +9523,9 @@ impl Editor {
                 } else {
                     workspace.active_pane().clone()
                 };
+                pane.update(cx, |pane, _| pane.disable_history());
 
-                for (buffer, ranges) in new_selections_by_buffer {
+                for (buffer, ranges) in new_selections_by_buffer.into_iter() {
                     let editor = workspace.open_project_item::<Self>(pane.clone(), buffer, cx);
                     editor.update(cx, |editor, cx| {
                         editor.change_selections(Some(Autoscroll::newest()), cx, |s| {
@@ -9544,6 +9533,8 @@ impl Editor {
                         });
                     });
                 }
+
+                pane.update(cx, |pane, _| pane.enable_history());
             })
         });
     }
@@ -9654,16 +9645,22 @@ impl Editor {
         telemetry.report_copilot_event(suggestion_id, suggestion_accepted, file_extension)
     }
 
+    #[cfg(any(test, feature = "test-support"))]
+    fn report_editor_event(
+        &self,
+        _operation: &'static str,
+        _file_extension: Option<String>,
+        _cx: &AppContext,
+    ) {
+    }
+
+    #[cfg(not(any(test, feature = "test-support")))]
     fn report_editor_event(
         &self,
         operation: &'static str,
         file_extension: Option<String>,
         cx: &AppContext,
     ) {
-        if cfg!(any(test, feature = "test-support")) {
-            return;
-        }
-
         let Some(project) = &self.project else { return };
 
         // If None, we are in a file without an extension
@@ -10175,12 +10172,6 @@ pub enum EditorEvent {
         autoscroll: bool,
     },
     Closed,
-    TransactionUndone {
-        transaction_id: clock::Lamport,
-    },
-    TransactionBegun {
-        transaction_id: clock::Lamport,
-    },
 }
 
 impl EventEmitter<EditorEvent> for Editor {}

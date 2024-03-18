@@ -1,10 +1,5 @@
 use anyhow::anyhow;
-use axum::{
-    extract::MatchedPath,
-    http::{Request, Response},
-    routing::get,
-    Extension, Router,
-};
+use axum::{extract::MatchedPath, http::Request, routing::get, Extension, Router};
 use collab::{
     api::fetch_extensions_from_blob_store_periodically, db, env, executor::Executor, AppState,
     Config, MigrateConfig, Result,
@@ -15,11 +10,11 @@ use std::{
     net::{SocketAddr, TcpListener},
     path::Path,
     sync::Arc,
-    time::Duration,
 };
 #[cfg(unix)]
 use tokio::signal::unix::SignalKind;
-use tower_http::trace::TraceLayer;
+use tower_http::trace::{self, TraceLayer};
+use tracing::Level;
 use tracing_subscriber::{
     filter::EnvFilter, fmt::format::JsonFields, util::SubscriberInitExt, Layer,
 };
@@ -112,16 +107,7 @@ async fn main() -> Result<()> {
                                 matched_path,
                             )
                         })
-                        .on_response(
-                            |response: &Response<_>, latency: Duration, _: &tracing::Span| {
-                                let duration_ms = latency.as_micros() as f64 / 1000.;
-                                tracing::info!(
-                                    duration_ms,
-                                    status = response.status().as_u16(),
-                                    "finished processing request"
-                                );
-                            },
-                        ),
+                        .on_response(trace::DefaultOnResponse::new().level(Level::INFO)),
                 );
 
             #[cfg(unix)]
@@ -206,7 +192,7 @@ pub fn init_tracing(config: &Config) -> Option<()> {
                         tracing_subscriber::fmt::format()
                             .json()
                             .flatten_event(true)
-                            .with_span_list(false),
+                            .with_span_list(true),
                     )
                     .with_filter(filter),
             ) as Box<dyn Layer<_> + Send + Sync>

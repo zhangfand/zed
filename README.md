@@ -14,17 +14,9 @@ Support for additional platforms is on our [roadmap](https://zed.dev/roadmap):
 - Windows ([tracking issue](https://github.com/zed-industries/zed/issues/5394))
 - Web ([tracking issue](https://github.com/zed-industries/zed/issues/5396))
 
-For macOS users, you can also install Zed using [Homebrew](https://brew.sh/):
-
+For macOS users, you can also install Zed from Homebrew:
 ```sh
 brew install zed
-```
-
-Alternatively, to install the Preview release:
-
-```sh
-brew tap homebrew/cask-versions
-brew install zed-preview
 ```
 
 ## Developing Zed

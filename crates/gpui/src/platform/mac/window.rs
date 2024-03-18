@@ -324,7 +324,7 @@ struct MacWindowState {
     renderer: renderer::Renderer,
     kind: WindowKind,
     request_frame_callback: Option<Box<dyn FnMut()>>,
-    event_callback: Option<Box<dyn FnMut(PlatformInput) -> crate::DispatchEventResult>>,
+    event_callback: Option<Box<dyn FnMut(PlatformInput) -> bool>>,
     activate_callback: Option<Box<dyn FnMut(bool)>>,
     resize_callback: Option<Box<dyn FnMut(Size<Pixels>, f32)>>,
     fullscreen_callback: Option<Box<dyn FnMut(bool)>>,
@@ -409,14 +409,6 @@ impl MacWindowState {
 
     fn stop_display_link(&mut self) {
         self.display_link = None;
-    }
-
-    fn is_maximized(&self) -> bool {
-        unsafe {
-            let bounds = self.bounds();
-            let screen_size = self.native_window.screen().visibleFrame().into();
-            bounds.size == screen_size
-        }
     }
 
     fn is_fullscreen(&self) -> bool {
@@ -724,16 +716,16 @@ impl PlatformWindow for MacWindow {
         self.0.as_ref().lock().bounds()
     }
 
-    fn is_maximized(&self) -> bool {
-        self.0.as_ref().lock().is_maximized()
-    }
-
     fn content_size(&self) -> Size<Pixels> {
         self.0.as_ref().lock().content_size()
     }
 
     fn scale_factor(&self) -> f32 {
         self.0.as_ref().lock().scale_factor()
+    }
+
+    fn titlebar_height(&self) -> Pixels {
+        self.0.as_ref().lock().titlebar_height()
     }
 
     fn appearance(&self) -> WindowAppearance {
@@ -949,7 +941,7 @@ impl PlatformWindow for MacWindow {
             .detach();
     }
 
-    fn toggle_fullscreen(&self) {
+    fn toggle_full_screen(&self) {
         let this = self.0.lock();
         let window = this.native_window;
         this.executor
@@ -961,7 +953,7 @@ impl PlatformWindow for MacWindow {
             .detach();
     }
 
-    fn is_fullscreen(&self) -> bool {
+    fn is_full_screen(&self) -> bool {
         let this = self.0.lock();
         let window = this.native_window;
 
@@ -976,7 +968,7 @@ impl PlatformWindow for MacWindow {
         self.0.as_ref().lock().request_frame_callback = Some(callback);
     }
 
-    fn on_input(&self, callback: Box<dyn FnMut(PlatformInput) -> crate::DispatchEventResult>) {
+    fn on_input(&self, callback: Box<dyn FnMut(PlatformInput) -> bool>) {
         self.0.as_ref().lock().event_callback = Some(callback);
     }
 
@@ -1199,7 +1191,7 @@ extern "C" fn handle_key_event(this: &Object, native_event: id, key_equivalent: 
                     window_state.lock().previous_keydown_inserted_text = Some(text.clone());
                     if let Some(callback) = callback.as_mut() {
                         event.keystroke.ime_key = Some(text.clone());
-                        handled = !callback(PlatformInput::KeyDown(event)).propagate;
+                        handled = callback(PlatformInput::KeyDown(event));
                     }
                 }
             }
@@ -1212,7 +1204,7 @@ extern "C" fn handle_key_event(this: &Object, native_event: id, key_equivalent: 
             let is_held = event.is_held;
 
             if let Some(callback) = callback.as_mut() {
-                handled = !callback(PlatformInput::KeyDown(event)).propagate;
+                handled = callback(PlatformInput::KeyDown(event));
             }
 
             if !handled && is_held {

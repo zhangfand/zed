@@ -174,7 +174,7 @@ impl Render for ChannelModal {
                     .child(
                         h_flex()
                             .w_full()
-                            .h(rems_from_px(22.))
+                            .h(rems(22. / 16.))
                             .justify_between()
                             .line_height(rems(1.25))
                             .child(CheckboxWithLabel::new(

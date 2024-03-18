@@ -4,8 +4,6 @@ use gpui::{
 use settings::Settings;
 use theme::{ActiveTheme, ThemeSettings};
 
-use crate::rems_from_px;
-
 #[derive(Debug, Default, Clone)]
 pub enum UiTextSize {
     /// The default size for UI text.
@@ -40,10 +38,10 @@ pub enum UiTextSize {
 impl UiTextSize {
     pub fn rems(self) -> Rems {
         match self {
-            Self::Large => rems_from_px(16.),
-            Self::Default => rems_from_px(14.),
-            Self::Small => rems_from_px(12.),
-            Self::XSmall => rems_from_px(10.),
+            Self::Large => rems(16. / 16.),
+            Self::Default => rems(14. / 16.),
+            Self::Small => rems(12. / 16.),
+            Self::XSmall => rems(10. / 16.),
         }
     }
 }

@@ -1349,7 +1349,7 @@ impl MultiBuffer {
                     cursor.next(&());
 
                     // Skip over any subsequent excerpts that are also removed.
-                    if let Some(&next_excerpt_id) = excerpt_ids.peek() {
+                    while let Some(&next_excerpt_id) = excerpt_ids.peek() {
                         let next_locator = snapshot.excerpt_locator_for_id(next_excerpt_id);
                         if let Some(next_excerpt) = cursor.item() {
                             if next_excerpt.locator == *next_locator {
@@ -1358,6 +1358,7 @@ impl MultiBuffer {
                                 continue 'remove_excerpts;
                             }
                         }
+                        break;
                     }
 
                     break;

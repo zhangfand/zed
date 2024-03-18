@@ -138,7 +138,6 @@ define_connection! {
     //   window_width: Option<f32>, // WindowBounds::Fixed RectF width
     //   window_height: Option<f32>, // WindowBounds::Fixed RectF height
     //   display: Option<Uuid>, // Display id
-    //   fullscreen: Option<bool>, // Is the window fullscreen?
     // )
     //
     // pane_groups(
@@ -275,11 +274,7 @@ define_connection! {
     // Add pane group flex data
     sql!(
         ALTER TABLE pane_groups ADD COLUMN flexes TEXT;
-    ),
-    // Add fullscreen field to workspace
-    sql!(
-        ALTER TABLE workspaces ADD COLUMN fullscreen INTEGER; //bool
-    ),
+    )
     ];
 }
 
@@ -295,12 +290,11 @@ impl WorkspaceDb {
 
         // Note that we re-assign the workspace_id here in case it's empty
         // and we've grabbed the most recent workspace
-        let (workspace_id, workspace_location, bounds, display, fullscreen, docks): (
+        let (workspace_id, workspace_location, bounds, display, docks): (
             WorkspaceId,
             WorkspaceLocation,
             Option<SerializedWindowsBounds>,
             Option<Uuid>,
-            Option<bool>,
             DockStructure,
         ) = self
             .select_row_bound(sql! {
@@ -313,7 +307,6 @@ impl WorkspaceDb {
                     window_width,
                     window_height,
                     display,
-                    fullscreen,
                     left_dock_visible,
                     left_dock_active_panel,
                     left_dock_zoom,
@@ -339,7 +332,6 @@ impl WorkspaceDb {
                 .context("Getting center group")
                 .log_err()?,
             bounds: bounds.map(|bounds| bounds.0),
-            fullscreen: fullscreen.unwrap_or(false),
             display,
             docks,
         })
@@ -417,16 +409,6 @@ impl WorkspaceDb {
             FROM workspaces
             WHERE workspace_location IS NOT NULL
             ORDER BY timestamp DESC
-        }
-    }
-
-    query! {
-        pub fn last_window() -> Result<(Option<Uuid>, Option<SerializedWindowsBounds>, Option<bool>)> {
-            SELECT display, window_state, window_x, window_y, window_width, window_height, fullscreen
-            FROM workspaces
-            WHERE workspace_location IS NOT NULL
-            ORDER BY timestamp DESC
-            LIMIT 1
         }
     }
 
@@ -666,14 +648,6 @@ impl WorkspaceDb {
             WHERE workspace_id = ?1
         }
     }
-
-    query! {
-        pub(crate) async fn set_fullscreen(workspace_id: WorkspaceId, fullscreen: bool) -> Result<()> {
-            UPDATE workspaces
-            SET fullscreen = ?2
-            WHERE workspace_id = ?1
-        }
-    }
 }
 
 #[cfg(test)]
@@ -753,23 +727,21 @@ mod tests {
         .unwrap();
 
         let mut workspace_1 = SerializedWorkspace {
-            id: WorkspaceId(1),
+            id: 1,
             location: (["/tmp", "/tmp2"]).into(),
             center_group: Default::default(),
             bounds: Default::default(),
             display: Default::default(),
             docks: Default::default(),
-            fullscreen: false,
         };
 
         let workspace_2 = SerializedWorkspace {
-            id: WorkspaceId(2),
+            id: 2,
             location: (["/tmp"]).into(),
             center_group: Default::default(),
             bounds: Default::default(),
             display: Default::default(),
             docks: Default::default(),
-            fullscreen: false,
         };
 
         db.save_workspace(workspace_1.clone()).await;
@@ -862,13 +834,12 @@ mod tests {
         );
 
         let workspace = SerializedWorkspace {
-            id: WorkspaceId(5),
+            id: 5,
             location: (["/tmp", "/tmp2"]).into(),
             center_group,
             bounds: Default::default(),
             display: Default::default(),
             docks: Default::default(),
-            fullscreen: false,
         };
 
         db.save_workspace(workspace.clone()).await;
@@ -891,23 +862,21 @@ mod tests {
         let db = WorkspaceDb(open_test_db("test_basic_functionality").await);
 
         let workspace_1 = SerializedWorkspace {
-            id: WorkspaceId(1),
+            id: 1,
             location: (["/tmp", "/tmp2"]).into(),
             center_group: Default::default(),
             bounds: Default::default(),
             display: Default::default(),
             docks: Default::default(),
-            fullscreen: false,
         };
 
         let mut workspace_2 = SerializedWorkspace {
-            id: WorkspaceId(2),
+            id: 2,
             location: (["/tmp"]).into(),
             center_group: Default::default(),
             bounds: Default::default(),
             display: Default::default(),
             docks: Default::default(),
-            fullscreen: false,
         };
 
         db.save_workspace(workspace_1.clone()).await;
@@ -938,13 +907,12 @@ mod tests {
 
         // Test other mechanism for mutating
         let mut workspace_3 = SerializedWorkspace {
-            id: WorkspaceId(3),
+            id: 3,
             location: (&["/tmp", "/tmp2"]).into(),
             center_group: Default::default(),
             bounds: Default::default(),
             display: Default::default(),
             docks: Default::default(),
-            fullscreen: false,
         };
 
         db.save_workspace(workspace_3.clone()).await;
@@ -972,13 +940,12 @@ mod tests {
         center_group: &SerializedPaneGroup,
     ) -> SerializedWorkspace {
         SerializedWorkspace {
-            id: WorkspaceId(4),
+            id: 4,
             location: workspace_id.into(),
             center_group: center_group.clone(),
             bounds: Default::default(),
             display: Default::default(),
             docks: Default::default(),
-            fullscreen: false,
         }
     }
 

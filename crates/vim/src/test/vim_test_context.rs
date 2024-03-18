@@ -124,7 +124,7 @@ impl VimTestContext {
 
     pub fn active_operator(&mut self) -> Option<Operator> {
         self.cx
-            .read(|cx| cx.global::<Vim>().state().operator_stack.last().cloned())
+            .read(|cx| cx.global::<Vim>().state().operator_stack.last().copied())
     }
 
     pub fn set_state(&mut self, text: &str, mode: Mode) {
