@@ -21,11 +21,6 @@ impl ListSubHeader {
         self.start_slot = left_icon;
         self
     }
-
-    pub fn inset(mut self, inset: bool) -> Self {
-        self.inset = inset;
-        self
-    }
 }
 
 impl RenderOnce for ListSubHeader {

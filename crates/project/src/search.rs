@@ -327,10 +327,6 @@ impl SearchQuery {
         matches
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.as_str().is_empty()
-    }
-
     pub fn as_str(&self) -> &str {
         self.as_inner().as_str()
     }

@@ -408,7 +408,7 @@ message JoinProject {
 }
 
 message JoinHostedProject {
-    uint64 project_id = 1;
+    uint64 id = 1;
 }
 
 message JoinProjectResponse {
@@ -947,7 +947,6 @@ message SearchProject {
 
 message SearchProjectResponse {
     repeated Location locations = 1;
-    bool limit_reached = 2;
 }
 
 message CodeAction {
@@ -1068,7 +1067,7 @@ message ChannelParticipants {
 }
 
 message HostedProject {
-    uint64 project_id = 1;
+    uint64 id = 1;
     uint64 channel_id = 2;
     string name = 3;
     ChannelVisibility visibility = 4;

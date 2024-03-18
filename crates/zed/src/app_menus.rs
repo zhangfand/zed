@@ -74,6 +74,7 @@ pub fn app_menus() -> Vec<Menu<'static>> {
                     "Toggle Line Comment",
                     editor::actions::ToggleComments::default(),
                 ),
+                MenuItem::action("Emoji & Symbols", editor::actions::ShowCharacterPalette),
             ],
         },
         Menu {
@@ -98,10 +99,7 @@ pub fn app_menus() -> Vec<Menu<'static>> {
                 MenuItem::separator(),
                 MenuItem::action("Move Line Up", editor::actions::MoveLineUp),
                 MenuItem::action("Move Line Down", editor::actions::MoveLineDown),
-                MenuItem::action(
-                    "Duplicate Selection",
-                    editor::actions::DuplicateLine::default(),
-                ),
+                MenuItem::action("Duplicate Selection", editor::actions::DuplicateLine),
             ],
         },
         Menu {
@@ -168,7 +166,6 @@ pub fn app_menus() -> Vec<Menu<'static>> {
                 MenuItem::action("View Telemetry", crate::OpenTelemetryLog),
                 MenuItem::action("View Dependency Licenses", crate::OpenLicenses),
                 MenuItem::action("Show Welcome", workspace::Welcome),
-                MenuItem::action("Give Feedback...", feedback::GiveFeedback),
                 MenuItem::separator(),
                 MenuItem::action(
                     "Documentation",

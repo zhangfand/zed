@@ -10,7 +10,6 @@ workspace = true
 
 [lib]
 path = "src/extension_store.rs"
-doctest = false
 
 [[bin]]
 name = "extension_json_schemas"
@@ -21,7 +20,6 @@ anyhow.workspace = true
 async-compression.workspace = true
 async-tar.workspace = true
 async-trait.workspace = true
-cap-std.workspace = true
 collections.workspace = true
 fs.workspace = true
 futures.workspace = true
@@ -38,17 +36,11 @@ settings.workspace = true
 theme.workspace = true
 toml.workspace = true
 util.workspace = true
-wasm-encoder.workspace = true
-wasmtime.workspace = true
+wasmtime = { workspace = true, features = ["async"] }
 wasmtime-wasi.workspace = true
 wasmparser.workspace = true
-wit-component.workspace = true
 
 [dev-dependencies]
-ctor.workspace = true
-env_logger.workspace = true
-parking_lot.workspace = true
-
 fs = { workspace = true, features = ["test-support"] }
 gpui = { workspace = true, features = ["test-support"] }
 language = { workspace = true, features = ["test-support"] }

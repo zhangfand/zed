@@ -102,14 +102,7 @@ pub fn new_journal_entry(app_state: Arc<AppState>, cx: &mut WindowContext) {
     cx.spawn(|mut cx| async move {
         let (journal_dir, entry_path) = create_entry.await?;
         let (workspace, _) = cx
-            .update(|cx| {
-                workspace::open_paths(
-                    &[journal_dir],
-                    app_state,
-                    workspace::OpenOptions::default(),
-                    cx,
-                )
-            })?
+            .update(|cx| workspace::open_paths(&[journal_dir], app_state, None, cx))?
             .await?;
 
         let opened = workspace

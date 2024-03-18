@@ -22,8 +22,7 @@ RUN --mount=type=cache,target=./target \
 # Copy collab server binary to the runtime image
 FROM debian:bookworm-slim as runtime
 RUN apt-get update; \
-    apt-get install -y --no-install-recommends libcurl4-openssl-dev ca-certificates \
-    linux-perf binutils
+    apt-get install -y --no-install-recommends libcurl4-openssl-dev ca-certificates linux-perf
 WORKDIR app
 COPY --from=builder /app/collab /app/collab
 COPY --from=builder /app/crates/collab/migrations /app/migrations

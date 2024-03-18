@@ -5,36 +5,30 @@ use clap::Parser;
 use cli::{CliRequest, CliResponse};
 use serde::Deserialize;
 use std::{
-    env,
     ffi::OsStr,
-    fs::{self},
+    fs::{self, OpenOptions},
+    io,
     path::{Path, PathBuf},
 };
 use util::paths::PathLikeWithPosition;
 
-#[derive(Parser, Debug)]
-#[command(name = "zed", disable_version_flag = true)]
+#[derive(Parser)]
+#[clap(name = "zed", global_setting(clap::AppSettings::NoAutoVersion))]
 struct Args {
     /// Wait for all of the given paths to be opened/closed before exiting.
-    #[arg(short, long)]
+    #[clap(short, long)]
     wait: bool,
-    /// Add files to the currently open workspace
-    #[arg(short, long, overrides_with = "new")]
-    add: bool,
-    /// Create a new workspace
-    #[arg(short, long, overrides_with = "add")]
-    new: bool,
     /// A sequence of space-separated paths that you want to open.
     ///
     /// Use `path:line:row` syntax to open a file at a specific location.
     /// Non-existing paths and directories will ignore `:line:row` suffix.
-    #[arg(value_parser = parse_path_with_position)]
+    #[clap(value_parser = parse_path_with_position)]
     paths_with_position: Vec<PathLikeWithPosition<PathBuf>>,
     /// Print Zed's version and the app path.
-    #[arg(short, long)]
+    #[clap(short, long)]
     version: bool,
     /// Custom Zed.app path
-    #[arg(short, long)]
+    #[clap(short, long)]
     bundle_path: Option<PathBuf>,
 }
 
@@ -62,41 +56,31 @@ fn main() -> Result<()> {
         return Ok(());
     }
 
-    let curdir = env::current_dir()?;
-    let mut paths = vec![];
-    for path in args.paths_with_position {
-        let canonicalized = path.map_path_like(|path| match fs::canonicalize(&path) {
-            Ok(path) => Ok(path),
-            Err(e) => {
-                if let Some(mut parent) = path.parent() {
-                    if parent == Path::new("") {
-                        parent = &curdir;
-                    }
-                    match fs::canonicalize(parent) {
-                        Ok(parent) => Ok(parent.join(path.file_name().unwrap())),
-                        Err(_) => Err(e),
-                    }
-                } else {
-                    Err(e)
-                }
-            }
-        })?;
-        paths.push(canonicalized.to_string(|path| path.display().to_string()))
+    for path in args
+        .paths_with_position
+        .iter()
+        .map(|path_with_position| &path_with_position.path_like)
+    {
+        if !path.exists() {
+            touch(path.as_path())?;
+        }
     }
 
     let (tx, rx) = bundle.launch()?;
-    let open_new_workspace = if args.new {
-        Some(true)
-    } else if args.add {
-        Some(false)
-    } else {
-        None
-    };
 
     tx.send(CliRequest::Open {
-        paths,
+        paths: args
+            .paths_with_position
+            .into_iter()
+            .map(|path_with_position| {
+                let path_with_position = path_with_position.map_path_like(|path| {
+                    fs::canonicalize(&path)
+                        .with_context(|| format!("path {path:?} canonicalization"))
+                })?;
+                Ok(path_with_position.to_string(|path| path.display().to_string()))
+            })
+            .collect::<Result<_>>()?,
         wait: args.wait,
-        open_new_workspace,
     })?;
 
     while let Ok(response) = rx.recv() {
@@ -120,6 +104,13 @@ enum Bundle {
         executable: PathBuf,
         plist: InfoPlist,
     },
+}
+
+fn touch(path: &Path) -> io::Result<()> {
+    match OpenOptions::new().create(true).write(true).open(path) {
+        Ok(_) => Ok(()),
+        Err(e) => Err(e),
+    }
 }
 
 fn locate_bundle() -> Result<PathBuf> {

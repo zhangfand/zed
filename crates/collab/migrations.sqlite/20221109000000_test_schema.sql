@@ -198,7 +198,7 @@ CREATE TABLE "channels" (
     "name" VARCHAR NOT NULL,
     "created_at" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "visibility" VARCHAR NOT NULL,
-    "parent_path" TEXT NOT NULL,
+    "parent_path" TEXT,
     "requires_zed_cla" BOOLEAN NOT NULL DEFAULT FALSE
 );
 
@@ -237,7 +237,8 @@ CREATE TABLE "channel_members" (
     "id" INTEGER PRIMARY KEY AUTOINCREMENT,
     "channel_id" INTEGER NOT NULL REFERENCES channels (id) ON DELETE CASCADE,
     "user_id" INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
-    "role" VARCHAR NOT NULL,
+    "admin" BOOLEAN NOT NULL DEFAULT false,
+    "role" VARCHAR,
     "accepted" BOOLEAN NOT NULL DEFAULT false,
     "updated_at" TIMESTAMP NOT NULL DEFAULT now
 );
@@ -247,10 +248,7 @@ CREATE UNIQUE INDEX "index_channel_members_on_channel_id_and_user_id" ON "channe
 CREATE TABLE "buffers" (
     "id" INTEGER PRIMARY KEY AUTOINCREMENT,
     "channel_id" INTEGER NOT NULL REFERENCES channels (id) ON DELETE CASCADE,
-    "epoch" INTEGER NOT NULL DEFAULT 0,
-    "latest_operation_epoch" INTEGER,
-    "latest_operation_replica_id" INTEGER,
-    "latest_operation_lamport_timestamp" INTEGER
+    "epoch" INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX "index_buffers_on_channel_id" ON "buffers" ("channel_id");

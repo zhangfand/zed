@@ -1,4 +1,4 @@
-use crate::wasm_host::{wit::LanguageServerConfig, WasmExtension, WasmHost};
+use crate::wasm_host::{wit::LanguageServerConfig, WasmExtension};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use futures::{Future, FutureExt};
@@ -16,10 +16,10 @@ use wasmtime_wasi::preview2::WasiView as _;
 pub struct ExtensionLspAdapter {
     pub(crate) extension: WasmExtension,
     pub(crate) config: LanguageServerConfig,
-    pub(crate) host: Arc<WasmHost>,
+    pub(crate) work_dir: PathBuf,
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl LspAdapter for ExtensionLspAdapter {
     fn name(&self) -> LanguageServerName {
         LanguageServerName(self.config.name.clone().into())
@@ -41,23 +41,18 @@ impl LspAdapter for ExtensionLspAdapter {
                     |extension, store| {
                         async move {
                             let resource = store.data_mut().table().push(delegate)?;
-                            let command = extension
+                            extension
                                 .call_language_server_command(store, &this.config, resource)
-                                .await?
-                                .map_err(|e| anyhow!("{}", e))?;
-                            anyhow::Ok(command)
+                                .await
                         }
                         .boxed()
                     }
                 })
-                .await?;
-
-            let path = self
-                .host
-                .path_from_extension(&self.extension.manifest.id, command.command.as_ref());
+                .await?
+                .map_err(|e| anyhow!("{}", e))?;
 
             Ok(LanguageServerBinary {
-                path,
+                path: self.work_dir.join(&command.command),
                 arguments: command.args.into_iter().map(|arg| arg.into()).collect(),
                 env: Some(command.env.into_iter().collect()),
             })

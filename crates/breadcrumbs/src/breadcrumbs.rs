@@ -86,7 +86,7 @@ impl Render for Breadcrumbs {
             ),
             None => element
                 // Match the height of the `ButtonLike` in the other arm.
-                .h(rems_from_px(22.))
+                .h(rems(22. / 16.))
                 .child(breadcrumbs_stack),
         }
     }

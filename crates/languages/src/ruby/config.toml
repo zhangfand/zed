@@ -37,3 +37,4 @@ brackets = [
     ] },
 ]
 collapsed_placeholder = "# ..."
+word_characters = ["_", "$", "=", "@", "!", ":", "?"]

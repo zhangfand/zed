@@ -11,5 +11,3 @@ pub(crate) use platform::*;
 pub(crate) use text_system::*;
 pub(crate) use util::*;
 pub(crate) use window::*;
-
-pub(crate) use windows::Win32::Foundation::HWND;

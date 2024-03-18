@@ -29,6 +29,7 @@ pub fn init(cx: &mut AppContext) {
     })
     .detach();
 }
+
 fn focused(editor: View<Editor>, cx: &mut WindowContext) {
     Vim::update(cx, |vim, cx| {
         if !vim.enabled {

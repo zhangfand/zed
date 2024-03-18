@@ -114,7 +114,12 @@ pub fn hover_at_inlay(editor: &mut Editor, inlay_hover: InlayHover, cx: &mut Vie
                 };
 
                 this.update(&mut cx, |this, cx| {
-                    // TODO: no background highlights happen for inlays currently
+                    // Highlight the selected symbol using a background highlight
+                    this.highlight_inlay_background::<HoverState>(
+                        vec![inlay_hover.range],
+                        |theme| theme.element_hover, // todo("use a proper background here")
+                        cx,
+                    );
                     this.hover_state.info_popover = Some(hover_popover);
                     cx.notify();
                 })?;
@@ -499,10 +504,9 @@ impl InfoPopover {
             .overflow_y_scroll()
             .max_w(max_size.width)
             .max_h(max_size.height)
-            // Prevent a mouse down/move on the popover from being propagated to the editor,
+            // Prevent a mouse move on the popover from being propagated to the editor,
             // because that would dismiss the popover.
             .on_mouse_move(|_, cx| cx.stop_propagation())
-            .on_mouse_down(MouseButton::Left, |_, cx| cx.stop_propagation())
             .child(crate::render_parsed_markdown(
                 "content",
                 &self.parsed_content,
@@ -564,7 +568,6 @@ impl DiagnosticPopover {
 
         div()
             .id("diagnostic")
-            .block()
             .elevation_2(cx)
             .overflow_y_scroll()
             .px_2()
@@ -604,10 +607,11 @@ mod tests {
     use super::*;
     use crate::{
         editor_tests::init_test,
+        element::PointForPosition,
         hover_links::update_inlay_link_and_hover_points,
         inlay_hint_cache::tests::{cached_hint_labels, visible_hint_labels},
         test::editor_lsp_test_context::EditorLspTestContext,
-        InlayId, PointForPosition,
+        InlayId,
     };
     use collections::BTreeSet;
     use gpui::{FontWeight, HighlightStyle, UnderlineStyle};
@@ -824,8 +828,6 @@ mod tests {
         .next()
         .await;
 
-        let languages = cx.language_registry().clone();
-
         cx.condition(|editor, _| editor.hover_state.visible()).await;
         cx.editor(|editor, _| {
             let blocks = editor.hover_state.info_popover.clone().unwrap().blocks;
@@ -837,7 +839,7 @@ mod tests {
                 }],
             );
 
-            let rendered = smol::block_on(parse_blocks(&blocks, &languages, None));
+            let rendered = smol::block_on(parse_blocks(&blocks, &Default::default(), None));
             assert_eq!(
                 rendered.text,
                 code_str.trim(),
@@ -918,7 +920,6 @@ mod tests {
     fn test_render_blocks(cx: &mut gpui::TestAppContext) {
         init_test(cx, |_| {});
 
-        let languages = Arc::new(LanguageRegistry::test(cx.executor()));
         let editor = cx.add_window(|cx| Editor::single_line(cx));
         editor
             .update(cx, |editor, _cx| {
@@ -1031,7 +1032,7 @@ mod tests {
                     expected_styles,
                 } in &rows[0..]
                 {
-                    let rendered = smol::block_on(parse_blocks(&blocks, &languages, None));
+                    let rendered = smol::block_on(parse_blocks(&blocks, &Default::default(), None));
 
                     let (expected_text, ranges) = marked_text_ranges(expected_marked_text, false);
                     let expected_highlights = ranges

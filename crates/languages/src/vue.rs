@@ -38,7 +38,7 @@ impl VueLspAdapter {
         }
     }
 }
-#[async_trait(?Send)]
+#[async_trait]
 impl super::LspAdapter for VueLspAdapter {
     fn name(&self) -> LanguageServerName {
         LanguageServerName("vue-language-server".into())
@@ -86,7 +86,6 @@ impl super::LspAdapter for VueLspAdapter {
         let version = version.downcast::<VueLspVersion>().unwrap();
         let server_path = container_dir.join(Self::SERVER_PATH);
         let ts_path = container_dir.join(Self::TYPESCRIPT_PATH);
-
         if fs::metadata(&server_path).await.is_err() {
             self.node
                 .npm_install_packages(

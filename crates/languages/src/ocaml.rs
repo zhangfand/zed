@@ -12,7 +12,7 @@ const OPERATOR_CHAR: [char; 17] = [
 
 pub struct OCamlLspAdapter;
 
-#[async_trait(?Send)]
+#[async_trait]
 impl LspAdapter for OCamlLspAdapter {
     fn name(&self) -> LanguageServerName {
         LanguageServerName("ocamllsp".into())

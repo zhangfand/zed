@@ -14,3 +14,5 @@ zed_extension_api = { path = "../../crates/extension_api" }
 [lib]
 path = "src/gleam.rs"
 crate-type = ["cdylib"]
+
+[package.metadata.component]

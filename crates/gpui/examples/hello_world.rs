@@ -23,17 +23,18 @@ impl Render for HelloWorld {
 
 fn main() {
     App::new().run(|cx: &mut AppContext| {
-        let bounds = Bounds::centered(size(px(600.0), px(600.0)), cx);
-        cx.open_window(
-            WindowOptions {
-                bounds: Some(bounds),
-                ..Default::default()
-            },
-            |cx| {
-                cx.new_view(|_cx| HelloWorld {
-                    text: "World".into(),
-                })
-            },
-        );
+        let options = WindowOptions {
+            bounds: WindowBounds::Fixed(Bounds {
+                size: size(px(600.0), px(600.0)).into(),
+                origin: Default::default(),
+            }),
+            center: true,
+            ..Default::default()
+        };
+        cx.open_window(options, |cx| {
+            cx.new_view(|_cx| HelloWorld {
+                text: "World".into(),
+            })
+        });
     });
 }

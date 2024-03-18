@@ -5,11 +5,12 @@ use crate::{
     FileToEmbed, JobHandle, SearchResult, SemanticIndex, EMBEDDING_QUEUE_FLUSH_TIMEOUT,
 };
 use ai::test::FakeEmbeddingProvider;
-use gpui::TestAppContext;
+
+use gpui::{Task, TestAppContext};
 use language::{Language, LanguageConfig, LanguageMatcher, LanguageRegistry, ToOffset};
 use parking_lot::Mutex;
 use pretty_assertions::assert_eq;
-use project::{FakeFs, Fs, Project};
+use project::{project_settings::ProjectSettings, FakeFs, Fs, Project};
 use rand::{rngs::StdRng, Rng};
 use serde_json::json;
 use settings::{Settings, SettingsStore};
@@ -56,7 +57,7 @@ async fn test_semantic_index(cx: &mut TestAppContext) {
     )
     .await;
 
-    let languages = Arc::new(LanguageRegistry::test(cx.executor().clone()));
+    let languages = Arc::new(LanguageRegistry::new(Task::ready(())));
     let rust_language = rust_lang();
     let toml_language = toml_lang();
     languages.add(rust_language);
@@ -1719,7 +1720,6 @@ fn init_test(cx: &mut TestAppContext) {
         let settings_store = SettingsStore::test(cx);
         cx.set_global(settings_store);
         SemanticIndexSettings::register(cx);
-        language::init(cx);
-        Project::init_settings(cx);
+        ProjectSettings::register(cx);
     });
 }

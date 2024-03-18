@@ -12,7 +12,7 @@ use util::{
 #[derive(Copy, Clone)]
 pub struct ClojureLspAdapter;
 
-#[async_trait(?Send)]
+#[async_trait]
 impl super::LspAdapter for ClojureLspAdapter {
     fn name(&self) -> LanguageServerName {
         LanguageServerName("clojure-lsp".into())

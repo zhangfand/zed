@@ -7,10 +7,10 @@ use assistant::AssistantPanel;
 use breadcrumbs::Breadcrumbs;
 use client::ZED_URL_SCHEME;
 use collections::VecDeque;
-use editor::{scroll::Autoscroll, Editor, MultiBuffer};
+use editor::{Editor, MultiBuffer};
 use gpui::{
     actions, point, px, AppContext, AsyncAppContext, Context, FocusableView, PromptLevel,
-    TitlebarOptions, View, ViewContext, VisualContext, WindowKind, WindowOptions,
+    TitlebarOptions, View, ViewContext, VisualContext, WindowBounds, WindowKind, WindowOptions,
 };
 pub use only_instance::*;
 pub use open_listener::*;
@@ -41,7 +41,7 @@ use vim::VimModeSetting;
 use welcome::BaseKeymap;
 use workspace::{
     create_and_open_local_file, notifications::simple_message_notification::MessageNotification,
-    open_new, AppState, NewFile, NewWindow, OpenLog, Toast, Workspace, WorkspaceSettings,
+    open_new, AppState, NewFile, NewWindow, Toast, Workspace, WorkspaceSettings,
 };
 use workspace::{notifications::DetachAndPromptErr, Pane};
 use zed_actions::{OpenBrowser, OpenSettings, OpenZedUrl, Quit};
@@ -62,6 +62,7 @@ actions!(
         OpenLicenses,
         OpenLocalSettings,
         OpenLocalTasks,
+        OpenLog,
         OpenTasks,
         OpenTelemetryLog,
         ResetBufferFontSize,
@@ -79,7 +80,12 @@ pub fn init(cx: &mut AppContext) {
     cx.on_action(quit);
 }
 
-pub fn build_window_options(display_uuid: Option<Uuid>, cx: &mut AppContext) -> WindowOptions {
+pub fn build_window_options(
+    bounds: Option<WindowBounds>,
+    display_uuid: Option<Uuid>,
+    cx: &mut AppContext,
+) -> WindowOptions {
+    let bounds = bounds.unwrap_or(WindowBounds::Maximized);
     let display = display_uuid.and_then(|uuid| {
         cx.displays()
             .into_iter()
@@ -87,18 +93,18 @@ pub fn build_window_options(display_uuid: Option<Uuid>, cx: &mut AppContext) -> 
     });
 
     WindowOptions {
+        bounds,
         titlebar: Some(TitlebarOptions {
             title: None,
             appears_transparent: true,
             traffic_light_position: Some(point(px(9.5), px(9.5))),
         }),
-        bounds: None,
+        center: false,
         focus: false,
         show: false,
         kind: WindowKind::Normal,
         is_movable: true,
         display_id: display.map(|display| display.id()),
-        fullscreen: false,
     }
 }
 
@@ -124,11 +130,13 @@ pub fn initialize_workspace(app_state: Arc<AppState>, cx: &mut AppContext) {
         let active_buffer_language =
             cx.new_view(|_| language_selector::ActiveBufferLanguage::new(workspace));
         let vim_mode_indicator = cx.new_view(|cx| vim::ModeIndicator::new(cx));
-        let cursor_position =
-            cx.new_view(|_| go_to_line::cursor_position::CursorPosition::new(workspace));
+        let feedback_button =
+            cx.new_view(|_| feedback::deploy_feedback_button::DeployFeedbackButton::new(workspace));
+        let cursor_position = cx.new_view(|_| editor::items::CursorPosition::new());
         workspace.status_bar().update(cx, |status_bar, cx| {
             status_bar.add_left_item(diagnostic_summary, cx);
             status_bar.add_left_item(activity_indicator, cx);
+            status_bar.add_right_item(feedback_button, cx);
             status_bar.add_right_item(copilot, cx);
             status_bar.add_right_item(active_buffer_language, cx);
             status_bar.add_right_item(vim_mode_indicator, cx);
@@ -222,7 +230,7 @@ pub fn initialize_workspace(app_state: Arc<AppState>, cx: &mut AppContext) {
                 cx.zoom_window();
             })
             .register_action(|_, _: &ToggleFullScreen, cx| {
-                cx.toggle_fullscreen();
+                cx.toggle_full_screen();
             })
             .register_action(|_, action: &OpenZedUrl, cx| {
                 OpenListener::global(cx).open_urls(vec![action.url.clone()])
@@ -555,25 +563,21 @@ fn open_log_file(workspace: &mut Workspace, cx: &mut ViewContext<Workspace>) {
                         };
                         let project = workspace.project().clone();
                         let buffer = project
-                            .update(cx, |project, cx| project.create_buffer(&log, None, cx))
+                            .update(cx, |project, cx| project.create_buffer("", None, cx))
                             .expect("creating buffers on a local workspace always succeeds");
+                        buffer.update(cx, |buffer, cx| buffer.edit([(0..0, log)], None, cx));
 
                         let buffer = cx.new_model(|cx| {
                             MultiBuffer::singleton(buffer, cx).with_title("Log".into())
                         });
-                        let editor =
-                            cx.new_view(|cx| Editor::for_multibuffer(buffer, Some(project), cx));
-
-                        editor.update(cx, |editor, cx| {
-                            let last_multi_buffer_offset = editor.buffer().read(cx).len(cx);
-                            editor.change_selections(Some(Autoscroll::fit()), cx, |s| {
-                                s.select_ranges(Some(
-                                    last_multi_buffer_offset..last_multi_buffer_offset,
-                                ));
-                            })
-                        });
-
-                        workspace.add_item_to_active_pane(Box::new(editor), cx);
+                        workspace.add_item_to_active_pane(
+                            Box::new(
+                                cx.new_view(|cx| {
+                                    Editor::for_multibuffer(buffer, Some(project), cx)
+                                }),
+                            ),
+                            cx,
+                        );
                     })
                     .log_err();
             })
@@ -864,7 +868,7 @@ mod tests {
         VisualTestContext, WindowHandle,
     };
     use language::{LanguageMatcher, LanguageRegistry};
-    use project::{Project, ProjectPath, WorktreeSettings};
+    use project::{project_settings::ProjectSettings, Project, ProjectPath};
     use serde_json::json;
     use settings::{handle_settings_file_changes, watch_config_file, SettingsStore};
     use std::path::{Path, PathBuf};
@@ -874,41 +878,6 @@ mod tests {
         open_new, open_paths, pane, NewFile, OpenVisible, SaveIntent, SplitDirection,
         WorkspaceHandle,
     };
-
-    #[gpui::test]
-    async fn test_open_non_existing_file(cx: &mut TestAppContext) {
-        let app_state = init_test(cx);
-        app_state
-            .fs
-            .as_fake()
-            .insert_tree(
-                "/root",
-                json!({
-                    "a": {
-                    },
-                }),
-            )
-            .await;
-
-        cx.update(|cx| {
-            open_paths(
-                &[PathBuf::from("/root/a/new")],
-                app_state.clone(),
-                workspace::OpenOptions::default(),
-                cx,
-            )
-        })
-        .await
-        .unwrap();
-        assert_eq!(cx.read(|cx| cx.windows().len()), 1);
-
-        let workspace = cx.windows()[0].downcast::<Workspace>().unwrap();
-        workspace
-            .update(cx, |workspace, cx| {
-                assert!(workspace.active_item_as::<Editor>(cx).is_some())
-            })
-            .unwrap();
-    }
 
     #[gpui::test]
     async fn test_open_paths_action(cx: &mut TestAppContext) {
@@ -935,10 +904,6 @@ mod tests {
                         "da": null,
                         "db": null,
                     },
-                    "e": {
-                        "ea": null,
-                        "eb": null,
-                    }
                 }),
             )
             .await;
@@ -947,7 +912,7 @@ mod tests {
             open_paths(
                 &[PathBuf::from("/root/a"), PathBuf::from("/root/b")],
                 app_state.clone(),
-                workspace::OpenOptions::default(),
+                None,
                 cx,
             )
         })
@@ -955,16 +920,9 @@ mod tests {
         .unwrap();
         assert_eq!(cx.read(|cx| cx.windows().len()), 1);
 
-        cx.update(|cx| {
-            open_paths(
-                &[PathBuf::from("/root/a")],
-                app_state.clone(),
-                workspace::OpenOptions::default(),
-                cx,
-            )
-        })
-        .await
-        .unwrap();
+        cx.update(|cx| open_paths(&[PathBuf::from("/root/a")], app_state.clone(), None, cx))
+            .await
+            .unwrap();
         assert_eq!(cx.read(|cx| cx.windows().len()), 1);
         let workspace_1 = cx
             .read(|cx| cx.windows()[0].downcast::<Workspace>())
@@ -983,9 +941,9 @@ mod tests {
 
         cx.update(|cx| {
             open_paths(
-                &[PathBuf::from("/root/c"), PathBuf::from("/root/d")],
+                &[PathBuf::from("/root/b"), PathBuf::from("/root/c")],
                 app_state.clone(),
-                workspace::OpenOptions::default(),
+                None,
                 cx,
             )
         })
@@ -999,12 +957,9 @@ mod tests {
             .unwrap();
         cx.update(|cx| {
             open_paths(
-                &[PathBuf::from("/root/e")],
+                &[PathBuf::from("/root/c"), PathBuf::from("/root/d")],
                 app_state,
-                workspace::OpenOptions {
-                    replace_window: Some(window),
-                    ..Default::default()
-                },
+                Some(window),
                 cx,
             )
         })
@@ -1022,129 +977,12 @@ mod tests {
                         .worktrees(cx)
                         .map(|w| w.read(cx).abs_path())
                         .collect::<Vec<_>>(),
-                    &[Path::new("/root/e").into()]
+                    &[Path::new("/root/c").into(), Path::new("/root/d").into()]
                 );
                 assert!(workspace.left_dock().read(cx).is_open());
                 assert!(workspace.active_pane().focus_handle(cx).is_focused(cx));
             })
             .unwrap();
-    }
-
-    #[gpui::test]
-    async fn test_open_add_new(cx: &mut TestAppContext) {
-        let app_state = init_test(cx);
-        app_state
-            .fs
-            .as_fake()
-            .insert_tree("/root", json!({"a": "hey", "b": "", "dir": {"c": "f"}}))
-            .await;
-
-        cx.update(|cx| {
-            open_paths(
-                &[PathBuf::from("/root/dir")],
-                app_state.clone(),
-                workspace::OpenOptions::default(),
-                cx,
-            )
-        })
-        .await
-        .unwrap();
-        assert_eq!(cx.update(|cx| cx.windows().len()), 1);
-
-        cx.update(|cx| {
-            open_paths(
-                &[PathBuf::from("/root/a")],
-                app_state.clone(),
-                workspace::OpenOptions {
-                    open_new_workspace: Some(false),
-                    ..Default::default()
-                },
-                cx,
-            )
-        })
-        .await
-        .unwrap();
-        assert_eq!(cx.update(|cx| cx.windows().len()), 1);
-
-        cx.update(|cx| {
-            open_paths(
-                &[PathBuf::from("/root/dir/c")],
-                app_state.clone(),
-                workspace::OpenOptions {
-                    open_new_workspace: Some(true),
-                    ..Default::default()
-                },
-                cx,
-            )
-        })
-        .await
-        .unwrap();
-        assert_eq!(cx.update(|cx| cx.windows().len()), 2);
-    }
-
-    #[gpui::test]
-    async fn test_open_file_in_many_spaces(cx: &mut TestAppContext) {
-        let app_state = init_test(cx);
-        app_state
-            .fs
-            .as_fake()
-            .insert_tree("/root", json!({"dir1": {"a": "b"}, "dir2": {"c": "d"}}))
-            .await;
-
-        cx.update(|cx| {
-            open_paths(
-                &[PathBuf::from("/root/dir1/a")],
-                app_state.clone(),
-                workspace::OpenOptions::default(),
-                cx,
-            )
-        })
-        .await
-        .unwrap();
-        assert_eq!(cx.update(|cx| cx.windows().len()), 1);
-        let window1 = cx.update(|cx| cx.active_window().unwrap());
-
-        cx.update(|cx| {
-            open_paths(
-                &[PathBuf::from("/root/dir2/c")],
-                app_state.clone(),
-                workspace::OpenOptions::default(),
-                cx,
-            )
-        })
-        .await
-        .unwrap();
-        assert_eq!(cx.update(|cx| cx.windows().len()), 1);
-
-        cx.update(|cx| {
-            open_paths(
-                &[PathBuf::from("/root/dir2")],
-                app_state.clone(),
-                workspace::OpenOptions::default(),
-                cx,
-            )
-        })
-        .await
-        .unwrap();
-        assert_eq!(cx.update(|cx| cx.windows().len()), 2);
-        let window2 = cx.update(|cx| cx.active_window().unwrap());
-        assert!(window1 != window2);
-        cx.update_window(window1, |_, cx| cx.activate_window())
-            .unwrap();
-
-        cx.update(|cx| {
-            open_paths(
-                &[PathBuf::from("/root/dir2/c")],
-                app_state.clone(),
-                workspace::OpenOptions::default(),
-                cx,
-            )
-        })
-        .await
-        .unwrap();
-        assert_eq!(cx.update(|cx| cx.windows().len()), 2);
-        // should have opened in window2 because that has dir2 visibly open (window1 has it open, but not in the project panel)
-        assert!(cx.update(|cx| cx.active_window().unwrap()) == window2);
     }
 
     #[gpui::test]
@@ -1157,16 +995,9 @@ mod tests {
             .insert_tree("/root", json!({"a": "hey"}))
             .await;
 
-        cx.update(|cx| {
-            open_paths(
-                &[PathBuf::from("/root/a")],
-                app_state.clone(),
-                workspace::OpenOptions::default(),
-                cx,
-            )
-        })
-        .await
-        .unwrap();
+        cx.update(|cx| open_paths(&[PathBuf::from("/root/a")], app_state.clone(), None, cx))
+            .await
+            .unwrap();
         assert_eq!(cx.update(|cx| cx.windows().len()), 1);
 
         // When opening the workspace, the window is not in a edited state.
@@ -1231,16 +1062,9 @@ mod tests {
         assert!(!window_is_edited(window, cx));
 
         // Opening the buffer again doesn't impact the window's edited state.
-        cx.update(|cx| {
-            open_paths(
-                &[PathBuf::from("/root/a")],
-                app_state,
-                workspace::OpenOptions::default(),
-                cx,
-            )
-        })
-        .await
-        .unwrap();
+        cx.update(|cx| open_paths(&[PathBuf::from("/root/a")], app_state, None, cx))
+            .await
+            .unwrap();
         let editor = window
             .read_with(cx, |workspace, cx| {
                 workspace
@@ -1467,16 +1291,9 @@ mod tests {
             )
             .await;
 
-        cx.update(|cx| {
-            open_paths(
-                &[PathBuf::from("/dir1/")],
-                app_state,
-                workspace::OpenOptions::default(),
-                cx,
-            )
-        })
-        .await
-        .unwrap();
+        cx.update(|cx| open_paths(&[PathBuf::from("/dir1/")], app_state, None, cx))
+            .await
+            .unwrap();
         assert_eq!(cx.update(|cx| cx.windows().len()), 1);
         let window = cx.update(|cx| cx.windows()[0].downcast::<Workspace>().unwrap());
         let workspace = window.root(cx).unwrap();
@@ -1665,7 +1482,7 @@ mod tests {
         let app_state = init_test(cx);
         cx.update(|cx| {
             cx.update_global::<SettingsStore, _>(|store, cx| {
-                store.update_user_settings::<WorktreeSettings>(cx, |project_settings| {
+                store.update_user_settings::<ProjectSettings>(cx, |project_settings| {
                     project_settings.file_scan_exclusions =
                         Some(vec!["excluded_dir".to_string(), "**/.git".to_string()]);
                 });
@@ -1692,9 +1509,6 @@ mod tests {
                     },
                     "excluded_dir": {
                         "file": "excluded file contents",
-                        "ignored_subdir": {
-                            "file": "ignored subfile contents",
-                        },
                     },
                 }),
             )
@@ -1711,14 +1525,7 @@ mod tests {
             Path::new("/root/excluded_dir/ignored_subdir").to_path_buf(),
         ];
         let (opened_workspace, new_items) = cx
-            .update(|cx| {
-                workspace::open_paths(
-                    &paths_to_open,
-                    app_state,
-                    workspace::OpenOptions::default(),
-                    cx,
-                )
-            })
+            .update(|cx| workspace::open_paths(&paths_to_open, app_state, None, cx))
             .await
             .unwrap();
 
@@ -2343,7 +2150,7 @@ mod tests {
             (file3.clone(), DisplayPoint::new(0, 0), 0.)
         );
 
-        // Go back to an item that has been closed and removed from disk
+        // Go back to an item that has been closed and removed from disk, ensuring it gets skipped.
         workspace
             .update(cx, |_, cx| {
                 pane.update(cx, |pane, cx| {
@@ -2369,7 +2176,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             active_location(&workspace, cx),
-            (file2.clone(), DisplayPoint::new(0, 0), 0.)
+            (file1.clone(), DisplayPoint::new(10, 0), 0.)
         );
         workspace
             .update(cx, |w, cx| w.go_forward(w.active_pane().downgrade(), cx))
@@ -3024,18 +2831,15 @@ mod tests {
     async fn test_bundled_languages(cx: &mut TestAppContext) {
         let settings = cx.update(|cx| SettingsStore::test(cx));
         cx.set_global(settings);
-        let languages = LanguageRegistry::test(cx.executor());
+        let mut languages = LanguageRegistry::test();
+        languages.set_executor(cx.executor().clone());
         let languages = Arc::new(languages);
         let node_runtime = node_runtime::FakeNodeRuntime::new();
         cx.update(|cx| {
             languages::init(languages.clone(), node_runtime, cx);
         });
         for name in languages.language_names() {
-            languages
-                .language_for_name(&name)
-                .await
-                .with_context(|| format!("language name {name}"))
-                .unwrap();
+            languages.language_for_name(&name).await.unwrap();
         }
         cx.run_until_parked();
     }
