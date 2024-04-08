@@ -8,7 +8,6 @@ use editor::{
 use gpui::{actions, impl_actions, px, ViewContext, WindowContext};
 use language::{char_kind, CharKind, Point, Selection, SelectionGoal};
 use serde::Deserialize;
-use std::ops::Range;
 use workspace::Workspace;
 
 use crate::{
@@ -708,15 +707,15 @@ impl Motion {
         (new_point != point || infallible).then_some((new_point, goal))
     }
 
-    // Get the range value after self is applied to the specified selection.
-    pub fn range(
+    // Expands a selection using self motion for an operator
+    pub fn expand_selection(
         &self,
         map: &DisplaySnapshot,
-        selection: Selection<DisplayPoint>,
+        selection: &mut Selection<DisplayPoint>,
         times: Option<usize>,
         expand_to_surrounding_newline: bool,
         text_layout_details: &TextLayoutDetails,
-    ) -> Option<Range<DisplayPoint>> {
+    ) -> bool {
         if let Some((new_head, goal)) = self.move_point(
             map,
             selection.head(),
@@ -724,7 +723,6 @@ impl Motion {
             times,
             &text_layout_details,
         ) {
-            let mut selection = selection.clone();
             selection.set_head(new_head, goal);
 
             if self.linewise() {
@@ -736,7 +734,7 @@ impl Motion {
                         *selection.end.column_mut() = 0;
                         selection.end = map.clip_point(selection.end, Bias::Right);
                         // Don't reset the end here
-                        return Some(selection.start..selection.end);
+                        return true;
                     } else if selection.start.row() > 0 {
                         *selection.start.row_mut() -= 1;
                         *selection.start.column_mut() = map.line_len(selection.start.row());
@@ -744,7 +742,7 @@ impl Motion {
                     }
                 }
 
-                selection.end = map.next_line_boundary(selection.end.to_point(map)).1;
+                (_, selection.end) = map.next_line_boundary(selection.end.to_point(map));
             } else {
                 // Another special case: When using the "w" motion in combination with an
                 // operator and the last word moved over is at the end of a line, the end of
@@ -785,30 +783,6 @@ impl Motion {
                     *selection.end.column_mut() += 1;
                 }
             }
-            Some(selection.start..selection.end)
-        } else {
-            None
-        }
-    }
-
-    // Expands a selection using self for an operator
-    pub fn expand_selection(
-        &self,
-        map: &DisplaySnapshot,
-        selection: &mut Selection<DisplayPoint>,
-        times: Option<usize>,
-        expand_to_surrounding_newline: bool,
-        text_layout_details: &TextLayoutDetails,
-    ) -> bool {
-        if let Some(range) = self.range(
-            map,
-            selection.clone(),
-            times,
-            expand_to_surrounding_newline,
-            text_layout_details,
-        ) {
-            selection.start = range.start;
-            selection.end = range.end;
             true
         } else {
             false

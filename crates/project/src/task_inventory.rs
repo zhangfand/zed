@@ -9,15 +9,14 @@ use std::{
 use collections::{HashMap, VecDeque};
 use gpui::{AppContext, Context, Model, ModelContext, Subscription};
 use itertools::Itertools;
-use language::Language;
-use task::{static_source::tasks_for, Task, TaskContext, TaskSource};
+use task::{Task, TaskContext, TaskId, TaskSource};
 use util::{post_inc, NumericPrefixWithSuffix};
 use worktree::WorktreeId;
 
 /// Inventory tracks available tasks for a given project.
 pub struct Inventory {
     sources: Vec<SourceInInventory>,
-    last_scheduled_tasks: VecDeque<(Arc<dyn Task>, TaskContext)>,
+    last_scheduled_tasks: VecDeque<(TaskId, TaskContext)>,
 }
 
 struct SourceInInventory {
@@ -34,17 +33,17 @@ pub enum TaskSourceKind {
     UserInput,
     /// ~/.config/zed/task.json - like global files with task definitions, applicable to any path
     AbsPath(PathBuf),
-    /// Tasks from the worktree's .zed/task.json
+    /// Worktree-specific task definitions, e.g. dynamic tasks from open worktree file, or tasks from the worktree's .zed/task.json
     Worktree { id: WorktreeId, abs_path: PathBuf },
-    /// Languages-specific tasks coming from extensions.
-    Language { name: Arc<str> },
+    /// Buffer-specific task definitions, originating in e.g. language extension.
+    Buffer,
 }
 
 impl TaskSourceKind {
     fn abs_path(&self) -> Option<&Path> {
         match self {
             Self::AbsPath(abs_path) | Self::Worktree { abs_path, .. } => Some(abs_path),
-            Self::UserInput | Self::Language { .. } => None,
+            Self::UserInput | Self::Buffer => None,
         }
     }
 
@@ -126,38 +125,21 @@ impl Inventory {
         )
     }
 
-    /// Pulls its sources to list runnables for the editor given, or all runnables for no editor.
+    /// Pulls its sources to list runanbles for the path given (up to the source to decide what to return for no path).
     pub fn list_tasks(
         &self,
-        language: Option<Arc<Language>>,
+        path: Option<&Path>,
         worktree: Option<WorktreeId>,
         lru: bool,
         cx: &mut AppContext,
     ) -> Vec<(TaskSourceKind, Arc<dyn Task>)> {
-        let task_source_kind = language.as_ref().map(|language| TaskSourceKind::Language {
-            name: language.name(),
-        });
-        let language_tasks = language
-            .and_then(|language| {
-                let tasks = language.context_provider()?.associated_tasks()?;
-                Some((tasks, language))
-            })
-            .map(|(tasks, language)| {
-                let language_name = language.name();
-                let id_base = format!("buffer_source_{language_name}");
-                tasks_for(tasks, &id_base)
-            })
-            .unwrap_or_default()
-            .into_iter()
-            .flat_map(|task| Some((task_source_kind.as_ref()?, task)));
-
         let mut lru_score = 0_u32;
         let tasks_by_usage = if lru {
             self.last_scheduled_tasks.iter().rev().fold(
                 HashMap::default(),
-                |mut tasks, (task, context)| {
+                |mut tasks, (id, context)| {
                     tasks
-                        .entry(task.id().clone())
+                        .entry(id)
                         .or_insert_with(|| (post_inc(&mut lru_score), Some(context)));
                     tasks
                 },
@@ -176,11 +158,10 @@ impl Inventory {
             .flat_map(|source| {
                 source
                     .source
-                    .update(cx, |source, cx| source.tasks_to_schedule(cx))
+                    .update(cx, |source, cx| source.tasks_for_path(path, cx))
                     .into_iter()
                     .map(|task| (&source.kind, task))
             })
-            .chain(language_tasks)
             .map(|task| {
                 let usages = if lru {
                     tasks_by_usage
@@ -225,13 +206,21 @@ impl Inventory {
     }
 
     /// Returns the last scheduled task, if any of the sources contains one with the matching id.
-    pub fn last_scheduled_task(&self) -> Option<(Arc<dyn Task>, TaskContext)> {
-        self.last_scheduled_tasks.back().cloned()
+    pub fn last_scheduled_task(&self, cx: &mut AppContext) -> Option<(Arc<dyn Task>, TaskContext)> {
+        self.last_scheduled_tasks
+            .back()
+            .and_then(|(id, task_context)| {
+                // TODO straighten the `Path` story to understand what has to be passed here: or it will break in the future.
+                self.list_tasks(None, None, false, cx)
+                    .into_iter()
+                    .find(|(_, task)| task.id() == id)
+                    .map(|(_, task)| (task, task_context.clone()))
+            })
     }
 
     /// Registers task "usage" as being scheduled – to be used for LRU sorting when listing all tasks.
-    pub fn task_scheduled(&mut self, task: Arc<dyn Task>, task_context: TaskContext) {
-        self.last_scheduled_tasks.push_back((task, task_context));
+    pub fn task_scheduled(&mut self, id: TaskId, task_context: TaskContext) {
+        self.last_scheduled_tasks.push_back((id, task_context));
         if self.last_scheduled_tasks.len() > 5_000 {
             self.last_scheduled_tasks.pop_front();
         }
@@ -240,7 +229,7 @@ impl Inventory {
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_inventory {
-    use std::sync::Arc;
+    use std::{path::Path, sync::Arc};
 
     use gpui::{AppContext, Context as _, Model, ModelContext, TestAppContext};
     use task::{Task, TaskContext, TaskId, TaskSource};
@@ -269,7 +258,7 @@ pub mod test_inventory {
             None
         }
 
-        fn prepare_exec(&self, _cwd: TaskContext) -> Option<task::SpawnInTerminal> {
+        fn exec(&self, _cwd: TaskContext) -> Option<task::SpawnInTerminal> {
             None
         }
     }
@@ -299,8 +288,9 @@ pub mod test_inventory {
     }
 
     impl TaskSource for StaticTestSource {
-        fn tasks_to_schedule(
+        fn tasks_for_path(
             &mut self,
+            _path: Option<&Path>,
             _cx: &mut ModelContext<Box<dyn TaskSource>>,
         ) -> Vec<Arc<dyn Task>> {
             self.tasks
@@ -317,13 +307,14 @@ pub mod test_inventory {
 
     pub fn list_task_names(
         inventory: &Model<Inventory>,
+        path: Option<&Path>,
         worktree: Option<WorktreeId>,
         lru: bool,
         cx: &mut TestAppContext,
     ) -> Vec<String> {
         inventory.update(cx, |inventory, cx| {
             inventory
-                .list_tasks(None, worktree, lru, cx)
+                .list_tasks(path, worktree, lru, cx)
                 .into_iter()
                 .map(|(_, task)| task.name().to_string())
                 .collect()
@@ -341,19 +332,20 @@ pub mod test_inventory {
                 .into_iter()
                 .find(|(_, task)| task.name() == task_name)
                 .unwrap_or_else(|| panic!("Failed to find task with name {task_name}"));
-            inventory.task_scheduled(task.1, TaskContext::default());
+            inventory.task_scheduled(task.1.id().clone(), TaskContext::default());
         });
     }
 
     pub fn list_tasks(
         inventory: &Model<Inventory>,
+        path: Option<&Path>,
         worktree: Option<WorktreeId>,
         lru: bool,
         cx: &mut TestAppContext,
     ) -> Vec<(TaskSourceKind, String)> {
         inventory.update(cx, |inventory, cx| {
             inventory
-                .list_tasks(None, worktree, lru, cx)
+                .list_tasks(path, worktree, lru, cx)
                 .into_iter()
                 .map(|(source_kind, task)| (source_kind, task.name().to_string()))
                 .collect()
@@ -371,12 +363,12 @@ mod tests {
     #[gpui::test]
     fn test_task_list_sorting(cx: &mut TestAppContext) {
         let inventory = cx.update(Inventory::new);
-        let initial_tasks = list_task_names(&inventory, None, true, cx);
+        let initial_tasks = list_task_names(&inventory, None, None, true, cx);
         assert!(
             initial_tasks.is_empty(),
             "No tasks expected for empty inventory, but got {initial_tasks:?}"
         );
-        let initial_tasks = list_task_names(&inventory, None, false, cx);
+        let initial_tasks = list_task_names(&inventory, None, None, false, cx);
         assert!(
             initial_tasks.is_empty(),
             "No tasks expected for empty inventory, but got {initial_tasks:?}"
@@ -413,24 +405,24 @@ mod tests {
             "3_task".to_string(),
         ];
         assert_eq!(
-            list_task_names(&inventory, None, false, cx),
+            list_task_names(&inventory, None, None, false, cx),
             &expected_initial_state,
             "Task list without lru sorting, should be sorted alphanumerically"
         );
         assert_eq!(
-            list_task_names(&inventory, None, true, cx),
+            list_task_names(&inventory, None, None, true, cx),
             &expected_initial_state,
             "Tasks with equal amount of usages should be sorted alphanumerically"
         );
 
         register_task_used(&inventory, "2_task", cx);
         assert_eq!(
-            list_task_names(&inventory, None, false, cx),
+            list_task_names(&inventory, None, None, false, cx),
             &expected_initial_state,
             "Task list without lru sorting, should be sorted alphanumerically"
         );
         assert_eq!(
-            list_task_names(&inventory, None, true, cx),
+            list_task_names(&inventory, None, None, true, cx),
             vec![
                 "2_task".to_string(),
                 "1_a_task".to_string(),
@@ -444,12 +436,12 @@ mod tests {
         register_task_used(&inventory, "1_task", cx);
         register_task_used(&inventory, "3_task", cx);
         assert_eq!(
-            list_task_names(&inventory, None, false, cx),
+            list_task_names(&inventory, None, None, false, cx),
             &expected_initial_state,
             "Task list without lru sorting, should be sorted alphanumerically"
         );
         assert_eq!(
-            list_task_names(&inventory, None, true, cx),
+            list_task_names(&inventory, None, None, true, cx),
             vec![
                 "3_task".to_string(),
                 "1_task".to_string(),
@@ -476,12 +468,12 @@ mod tests {
             "11_hello".to_string(),
         ];
         assert_eq!(
-            list_task_names(&inventory, None, false, cx),
+            list_task_names(&inventory, None, None, false, cx),
             &expected_updated_state,
             "Task list without lru sorting, should be sorted alphanumerically"
         );
         assert_eq!(
-            list_task_names(&inventory, None, true, cx),
+            list_task_names(&inventory, None, None, true, cx),
             vec![
                 "3_task".to_string(),
                 "1_task".to_string(),
@@ -494,12 +486,12 @@ mod tests {
 
         register_task_used(&inventory, "11_hello", cx);
         assert_eq!(
-            list_task_names(&inventory, None, false, cx),
+            list_task_names(&inventory, None, None, false, cx),
             &expected_updated_state,
             "Task list without lru sorting, should be sorted alphanumerically"
         );
         assert_eq!(
-            list_task_names(&inventory, None, true, cx),
+            list_task_names(&inventory, None, None, true, cx),
             vec![
                 "11_hello".to_string(),
                 "3_task".to_string(),
@@ -641,25 +633,36 @@ mod tests {
             .cloned()
             .collect::<Vec<_>>();
 
-        assert_eq!(
-            list_tasks(&inventory_with_statics, None, false, cx),
-            all_tasks,
-        );
-        assert_eq!(
-            list_tasks(&inventory_with_statics, Some(worktree_1), false, cx),
-            worktree_1_tasks
-                .iter()
-                .chain(worktree_independent_tasks.iter())
-                .cloned()
-                .collect::<Vec<_>>(),
-        );
-        assert_eq!(
-            list_tasks(&inventory_with_statics, Some(worktree_2), false, cx),
-            worktree_2_tasks
-                .iter()
-                .chain(worktree_independent_tasks.iter())
-                .cloned()
-                .collect::<Vec<_>>(),
-        );
+        for path in [
+            None,
+            Some(path_1),
+            Some(path_2),
+            Some(worktree_path_1),
+            Some(worktree_path_2),
+        ] {
+            assert_eq!(
+                list_tasks(&inventory_with_statics, path, None, false, cx),
+                all_tasks,
+                "Path {path:?} choice should not adjust static runnables"
+            );
+            assert_eq!(
+                list_tasks(&inventory_with_statics, path, Some(worktree_1), false, cx),
+                worktree_1_tasks
+                    .iter()
+                    .chain(worktree_independent_tasks.iter())
+                    .cloned()
+                    .collect::<Vec<_>>(),
+                "Path {path:?} choice should not adjust static runnables for worktree_1"
+            );
+            assert_eq!(
+                list_tasks(&inventory_with_statics, path, Some(worktree_2), false, cx),
+                worktree_2_tasks
+                    .iter()
+                    .chain(worktree_independent_tasks.iter())
+                    .cloned()
+                    .collect::<Vec<_>>(),
+                "Path {path:?} choice should not adjust static runnables for worktree_2"
+            );
+        }
     }
 }

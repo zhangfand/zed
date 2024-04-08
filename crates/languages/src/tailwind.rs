@@ -2,7 +2,7 @@ use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use collections::HashMap;
 use futures::StreamExt;
-use gpui::AsyncAppContext;
+use gpui::AppContext;
 use language::{LanguageServerName, LspAdapter, LspAdapterDelegate};
 use lsp::LanguageServerBinary;
 use node_runtime::NodeRuntime;
@@ -107,16 +107,12 @@ impl LspAdapter for TailwindLspAdapter {
         })))
     }
 
-    async fn workspace_configuration(
-        self: Arc<Self>,
-        _: &Arc<dyn LspAdapterDelegate>,
-        _cx: &mut AsyncAppContext,
-    ) -> Result<Value> {
-        Ok(json!({
+    fn workspace_configuration(&self, _workspace_root: &Path, _: &mut AppContext) -> Value {
+        json!({
             "tailwindCSS": {
                 "emmetCompletions": true,
             }
-        }))
+        })
     }
 
     fn language_ids(&self) -> HashMap<String, String> {

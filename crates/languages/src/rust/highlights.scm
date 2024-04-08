@@ -93,7 +93,6 @@
   "use"
   "where"
   "while"
-  "yield"
   (crate)
   (mutable_specifier)
   (super)

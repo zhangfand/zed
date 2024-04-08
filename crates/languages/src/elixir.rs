@@ -1,7 +1,7 @@
 use anyhow::{anyhow, bail, Context, Result};
 use async_trait::async_trait;
 use futures::StreamExt;
-use gpui::{AsyncAppContext, Task};
+use gpui::{AppContext, AsyncAppContext, Task};
 pub use language::*;
 use lsp::{CompletionItemKind, LanguageServerBinary, SymbolKind};
 use project::project_settings::ProjectSettings;
@@ -14,16 +14,13 @@ use std::{
     any::Any,
     env::consts,
     ops::Deref,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{
         atomic::{AtomicBool, Ordering::SeqCst},
         Arc,
     },
 };
-use task::{
-    static_source::{Definition, TaskDefinitions},
-    VariableName,
-};
+use task::static_source::{Definition, TaskDefinitions};
 use util::{
     fs::remove_matching,
     github::{latest_github_release, GitHubLspBinaryVersion},
@@ -278,22 +275,16 @@ impl LspAdapter for ElixirLspAdapter {
         })
     }
 
-    async fn workspace_configuration(
-        self: Arc<Self>,
-        _: &Arc<dyn LspAdapterDelegate>,
-        cx: &mut AsyncAppContext,
-    ) -> Result<Value> {
-        let settings = cx.update(|cx| {
-            ProjectSettings::get_global(cx)
-                .lsp
-                .get("elixir-ls")
-                .and_then(|s| s.settings.clone())
-                .unwrap_or_default()
-        })?;
+    fn workspace_configuration(&self, _workspace_root: &Path, cx: &mut AppContext) -> Value {
+        let settings = ProjectSettings::get_global(cx)
+            .lsp
+            .get("elixir-ls")
+            .and_then(|s| s.settings.clone())
+            .unwrap_or_default();
 
-        Ok(serde_json::json!({
+        serde_json::json!({
             "elixirLS": settings
-        }))
+        })
     }
 }
 
@@ -566,32 +557,25 @@ pub(super) fn elixir_task_context() -> ContextProviderWithTasks {
             label: "Elixir: test suite".to_owned(),
             command: "mix".to_owned(),
             args: vec!["test".to_owned()],
-            ..Definition::default()
+            ..Default::default()
         },
         Definition {
             label: "Elixir: failed tests suite".to_owned(),
             command: "mix".to_owned(),
             args: vec!["test".to_owned(), "--failed".to_owned()],
-            ..Definition::default()
+            ..Default::default()
         },
         Definition {
             label: "Elixir: test file".to_owned(),
             command: "mix".to_owned(),
-            args: vec!["test".to_owned(), VariableName::Symbol.template_value()],
-            ..Definition::default()
+            args: vec!["test".to_owned(), "$ZED_FILE".to_owned()],
+            ..Default::default()
         },
         Definition {
             label: "Elixir: test at current line".to_owned(),
             command: "mix".to_owned(),
-            args: vec![
-                "test".to_owned(),
-                format!(
-                    "{}:{}",
-                    VariableName::File.template_value(),
-                    VariableName::Row.template_value()
-                ),
-            ],
-            ..Definition::default()
+            args: vec!["test".to_owned(), "$ZED_FILE:$ZED_ROW".to_owned()],
+            ..Default::default()
         },
         Definition {
             label: "Elixir: break line".to_owned(),
@@ -601,13 +585,9 @@ pub(super) fn elixir_task_context() -> ContextProviderWithTasks {
                 "mix".to_owned(),
                 "test".to_owned(),
                 "-b".to_owned(),
-                format!(
-                    "{}:{}",
-                    VariableName::File.template_value(),
-                    VariableName::Row.template_value()
-                ),
+                "$ZED_FILE:$ZED_ROW".to_owned(),
             ],
-            ..Definition::default()
+            ..Default::default()
         },
     ]))
 }

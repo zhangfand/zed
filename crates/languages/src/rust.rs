@@ -13,7 +13,7 @@ use smol::fs::{self, File};
 use std::{any::Any, borrow::Cow, env::consts, path::PathBuf, sync::Arc};
 use task::{
     static_source::{Definition, TaskDefinitions},
-    TaskVariables, VariableName,
+    TaskVariables,
 };
 use util::{
     fs::remove_matching,
@@ -322,9 +322,6 @@ impl LspAdapter for RustLspAdapter {
 
 pub(crate) struct RustContextProvider;
 
-const RUST_PACKAGE_TASK_VARIABLE: VariableName =
-    VariableName::Custom(Cow::Borrowed("RUST_PACKAGE"));
-
 impl ContextProvider for RustContextProvider {
     fn build_context(
         &self,
@@ -350,24 +347,19 @@ impl ContextProvider for RustContextProvider {
                 .ok();
 
             if let Some(package_name) = package_name {
-                context.insert(RUST_PACKAGE_TASK_VARIABLE.clone(), package_name);
+                context.0.insert("ZED_PACKAGE".to_owned(), package_name);
             }
         }
 
         Ok(context)
     }
-
     fn associated_tasks(&self) -> Option<TaskDefinitions> {
         Some(TaskDefinitions(vec![
             Definition {
                 label: "Rust: Test current crate".to_owned(),
                 command: "cargo".into(),
-                args: vec![
-                    "test".into(),
-                    "-p".into(),
-                    RUST_PACKAGE_TASK_VARIABLE.template_value(),
-                ],
-                ..Definition::default()
+                args: vec!["test".into(), "-p".into(), "$ZED_PACKAGE".into()],
+                ..Default::default()
             },
             Definition {
                 label: "Rust: Test current function".to_owned(),
@@ -375,33 +367,29 @@ impl ContextProvider for RustContextProvider {
                 args: vec![
                     "test".into(),
                     "-p".into(),
-                    RUST_PACKAGE_TASK_VARIABLE.template_value(),
+                    "$ZED_PACKAGE".into(),
                     "--".into(),
-                    VariableName::Symbol.template_value(),
+                    "$ZED_SYMBOL".into(),
                 ],
-                ..Definition::default()
+                ..Default::default()
             },
             Definition {
                 label: "Rust: cargo run".into(),
                 command: "cargo".into(),
                 args: vec!["run".into()],
-                ..Definition::default()
+                ..Default::default()
             },
             Definition {
                 label: "Rust: cargo check current crate".into(),
                 command: "cargo".into(),
-                args: vec![
-                    "check".into(),
-                    "-p".into(),
-                    RUST_PACKAGE_TASK_VARIABLE.template_value(),
-                ],
-                ..Definition::default()
+                args: vec!["check".into(), "-p".into(), "$ZED_PACKAGE".into()],
+                ..Default::default()
             },
             Definition {
                 label: "Rust: cargo check workspace".into(),
                 command: "cargo".into(),
                 args: vec!["check".into(), "--workspace".into()],
-                ..Definition::default()
+                ..Default::default()
             },
         ]))
     }

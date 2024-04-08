@@ -55,8 +55,6 @@
   (keyword_parameter [name: (identifier) (":")] @variable.parameter)
   ])
 
-(block_parameters (identifier) @variable.parameter)
-
 ; Identifiers
 
 ((identifier) @constant.builtin
@@ -70,12 +68,12 @@
   "**" @operator
 ) @constant.builtin
 
+((constant) @constant
+ (#match? @constant "^[A-Z\\d_]+$"))
+
 (global_variable) @constant
 
 (constant) @type
-
-((constant) @constant
- (#match? @constant "^[A-Z\\d_]+$"))
 
 (superclass
   (constant) @type.super)

@@ -1,13 +1,10 @@
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use futures::StreamExt;
-use gpui::AppContext;
-use language::{
-    language_settings::all_language_settings, LanguageServerName, LspAdapter, LspAdapterDelegate,
-};
+use language::{LanguageServerName, LspAdapter, LspAdapterDelegate};
 use lsp::LanguageServerBinary;
 use node_runtime::NodeRuntime;
-use serde_json::Value;
+use serde_json::json;
 use smol::fs;
 use std::{
     any::Any,
@@ -17,26 +14,27 @@ use std::{
 };
 use util::{maybe, ResultExt};
 
-const SERVER_PATH: &str = "node_modules/yaml-language-server/bin/yaml-language-server";
+const SERVER_PATH: &str =
+    "node_modules/vscode-langservers-extracted/bin/vscode-html-language-server";
 
 fn server_binary_arguments(server_path: &Path) -> Vec<OsString> {
     vec![server_path.into(), "--stdio".into()]
 }
 
-pub struct YamlLspAdapter {
+pub struct HtmlLspAdapter {
     node: Arc<dyn NodeRuntime>,
 }
 
-impl YamlLspAdapter {
+impl HtmlLspAdapter {
     pub fn new(node: Arc<dyn NodeRuntime>) -> Self {
-        YamlLspAdapter { node }
+        HtmlLspAdapter { node }
     }
 }
 
 #[async_trait(?Send)]
-impl LspAdapter for YamlLspAdapter {
+impl LspAdapter for HtmlLspAdapter {
     fn name(&self) -> LanguageServerName {
-        LanguageServerName("yaml-language-server".into())
+        LanguageServerName("vscode-html-language-server".into())
     }
 
     async fn fetch_latest_server_version(
@@ -45,7 +43,7 @@ impl LspAdapter for YamlLspAdapter {
     ) -> Result<Box<dyn 'static + Any + Send>> {
         Ok(Box::new(
             self.node
-                .npm_package_latest_version("yaml-language-server")
+                .npm_package_latest_version("vscode-langservers-extracted")
                 .await?,
         ) as Box<_>)
     }
@@ -58,7 +56,7 @@ impl LspAdapter for YamlLspAdapter {
     ) -> Result<LanguageServerBinary> {
         let latest_version = latest_version.downcast::<String>().unwrap();
         let server_path = container_dir.join(SERVER_PATH);
-        let package_name = "yaml-language-server";
+        let package_name = "vscode-langservers-extracted";
 
         let should_install_language_server = self
             .node
@@ -92,17 +90,14 @@ impl LspAdapter for YamlLspAdapter {
     ) -> Option<LanguageServerBinary> {
         get_cached_server_binary(container_dir, &*self.node).await
     }
-    fn workspace_configuration(&self, _workspace_root: &Path, cx: &mut AppContext) -> Value {
-        serde_json::json!({
-            "yaml": {
-                "keyOrdering": false
-            },
-            "[yaml]": {
-                "editor.tabSize": all_language_settings(None, cx)
-                    .language(Some("YAML"))
-                    .tab_size,
-            }
-        })
+
+    async fn initialization_options(
+        self: Arc<Self>,
+        _: &Arc<dyn LspAdapterDelegate>,
+    ) -> Result<Option<serde_json::Value>> {
+        Ok(Some(json!({
+            "provideFormatter": true
+        })))
     }
 }
 

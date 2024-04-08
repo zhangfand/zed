@@ -746,10 +746,7 @@ impl LanguageRegistry {
                     let capabilities = adapter
                         .as_fake()
                         .map(|fake_adapter| fake_adapter.capabilities.clone())
-                        .unwrap_or_else(|| lsp::ServerCapabilities {
-                            completion_provider: Some(Default::default()),
-                            ..Default::default()
-                        });
+                        .unwrap_or_default();
 
                     let (server, mut fake_server) = lsp::FakeLanguageServer::new(
                         server_id,

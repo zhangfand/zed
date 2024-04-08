@@ -3,10 +3,7 @@ use collections::HashMap;
 use serde::Deserialize;
 use util::ResultExt;
 
-use crate::{
-    static_source::{Definition, TaskDefinitions},
-    VariableName,
-};
+use crate::static_source::{Definition, TaskDefinitions};
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -132,16 +129,10 @@ impl TryFrom<VsCodeTaskFile> for TaskDefinitions {
 
     fn try_from(value: VsCodeTaskFile) -> Result<Self, Self::Error> {
         let replacer = EnvVariableReplacer::new(HashMap::from_iter([
-            (
-                "workspaceFolder".to_owned(),
-                VariableName::WorktreeRoot.to_string(),
-            ),
-            ("file".to_owned(), VariableName::File.to_string()),
-            ("lineNumber".to_owned(), VariableName::Row.to_string()),
-            (
-                "selectedText".to_owned(),
-                VariableName::SelectedText.to_string(),
-            ),
+            ("workspaceFolder".to_owned(), "ZED_WORKTREE_ROOT".to_owned()),
+            ("file".to_owned(), "ZED_FILE".to_owned()),
+            ("lineNumber".to_owned(), "ZED_ROW".to_owned()),
+            ("selectedText".to_owned(), "ZED_SELECTED_TEXT".to_owned()),
         ]));
         let definitions = value
             .tasks

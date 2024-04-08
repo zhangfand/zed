@@ -13,10 +13,12 @@ use self::{deno::DenoSettings, elixir::ElixirSettings};
 
 mod c;
 mod css;
+mod dart;
 mod deno;
 mod elixir;
 mod elm;
 mod go;
+mod html;
 mod json;
 mod lua;
 mod nu;
@@ -69,6 +71,7 @@ pub fn init(
         ("gowork", tree_sitter_gowork::language()),
         ("hcl", tree_sitter_hcl::language()),
         ("heex", tree_sitter_heex::language()),
+        ("html", tree_sitter_html::language()),
         ("jsdoc", tree_sitter_jsdoc::language()),
         ("json", tree_sitter_json::language()),
         ("lua", tree_sitter_lua::language()),
@@ -91,6 +94,7 @@ pub fn init(
         ("typescript", tree_sitter_typescript::language_typescript()),
         ("vue", tree_sitter_vue::language()),
         ("yaml", tree_sitter_yaml::language()),
+        ("dart", tree_sitter_dart::language()),
     ]);
 
     macro_rules! language {
@@ -271,6 +275,13 @@ pub fn init(
         }
     }
 
+    language!(
+        "html",
+        vec![
+            Arc::new(html::HtmlLspAdapter::new(node_runtime.clone())),
+            Arc::new(tailwind::TailwindLspAdapter::new(node_runtime.clone())),
+        ]
+    );
     language!("ruby", vec![Arc::new(ruby::RubyLanguageServer)]);
     language!(
         "erb",
@@ -310,13 +321,10 @@ pub fn init(
         vec![Arc::new(terraform::TerraformLspAdapter)]
     );
     language!("hcl", vec![]);
+    language!("dart", vec![Arc::new(dart::DartLanguageServer {})]);
 
     languages.register_secondary_lsp_adapter(
         "Astro".into(),
-        Arc::new(tailwind::TailwindLspAdapter::new(node_runtime.clone())),
-    );
-    languages.register_secondary_lsp_adapter(
-        "HTML".into(),
         Arc::new(tailwind::TailwindLspAdapter::new(node_runtime.clone())),
     );
     languages.register_secondary_lsp_adapter(

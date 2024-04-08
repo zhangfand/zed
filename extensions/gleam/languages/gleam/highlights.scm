@@ -7,10 +7,6 @@
 (constant
   name: (identifier) @constant)
 
-; Variables
-(identifier) @variable
-(discard) @comment.unused
-
 ; Modules
 (module) @module
 (import alias: (identifier) @module)
@@ -78,6 +74,10 @@
 ; refactor this to use `#any-of?` rather than `#match?`
 ((identifier) @warning
  (#match? @warning "^(auto|delegate|derive|else|implement|macro|test|echo)$"))
+
+; Variables
+(identifier) @variable
+(discard) @comment.unused
 
 ; Keywords
 [
