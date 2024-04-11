@@ -3,9 +3,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::{
-    point, px, size, AbsoluteLength, Asset, Bounds, DefiniteLength, DevicePixels, Element,
-    ElementContext, Hitbox, ImageData, InteractiveElement, Interactivity, IntoElement, LayoutId,
-    Length, Pixels, SharedUri, Size, StyleRefinement, Styled, SvgSize, UriOrPath, WindowContext,
+    point, px, size, AbsoluteLength, Asset, AvailableSpace, Bounds, DefiniteLength, DevicePixels,
+    Element, ElementContext, Hitbox, ImageData, InteractiveElement, Interactivity, IntoElement,
+    LayoutId, Length, Pixels, SharedUri, Size, StyleRefinement, Styled, SvgSize, UriOrPath,
+    WindowContext,
 };
 use futures::{AsyncReadExt, Future};
 use image::{ImageBuffer, ImageError};
@@ -92,6 +93,7 @@ pub fn img(source: impl Into<ImageSource>) -> Img {
 }
 
 /// How to fit the image into the bounds of the element.
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ObjectFit {
     /// The image will be stretched to fill the bounds of the element.
     Fill,
@@ -106,6 +108,42 @@ pub enum ObjectFit {
 }
 
 impl ObjectFit {
+    pub(crate) fn calculate_desired_size(
+        &self,
+        intrinsic_size: Size<DevicePixels>, // Original image size
+        available_space: Size<AvailableSpace>, // Space available in parent
+    ) -> Size<Pixels> {
+        // Implementation varies based on `self`
+        match self {
+            ObjectFit::Contain | ObjectFit::ScaleDown | ObjectFit::Fill => {
+                let aspect_ratio = intrinsic_size.width.0 as f32 / intrinsic_size.height.0 as f32;
+
+                let available_width = match available_space.width {
+                    AvailableSpace::Definite(p) => p,
+                    AvailableSpace::MaxContent => todo!(),
+                    AvailableSpace::MinContent => todo!(),
+                };
+
+                let available_height = match available_space.height {
+                    AvailableSpace::Definite(p) => p,
+                    AvailableSpace::MaxContent => todo!(),
+                    AvailableSpace::MinContent => todo!(),
+                };
+
+                let container_aspect_ratio = available_width.0 / available_height.0;
+
+                if container_aspect_ratio > aspect_ratio {
+                    // Scale by height
+                    size(available_height * aspect_ratio, available_height)
+                } else {
+                    // Scale by width
+                    size(available_width, available_width / aspect_ratio)
+                }
+            }
+            _ => todo!(),
+        }
+    }
+
     /// Get the bounds of the image within the given bounds.
     pub fn get_bounds(
         &self,
@@ -233,22 +271,72 @@ impl Element for Img {
     type AfterLayout = Option<Hitbox>;
 
     fn before_layout(&mut self, cx: &mut ElementContext) -> (LayoutId, Self::BeforeLayout) {
+        dbg!("before_layout");
         let layout_id = self.interactivity.before_layout(cx, |mut style, cx| {
+            dbg!("interactivity_before_layout");
             if let Some(data) = self.source.data(cx) {
-                let image_size = data.size();
-                match (style.size.width, style.size.height) {
-                    (Length::Auto, Length::Auto) => {
-                        style.size = Size {
-                            width: Length::Definite(DefiniteLength::Absolute(
-                                AbsoluteLength::Pixels(px(image_size.width.0 as f32)),
-                            )),
-                            height: Length::Definite(DefiniteLength::Absolute(
-                                AbsoluteLength::Pixels(px(image_size.height.0 as f32)),
-                            )),
+                dbg!("got some data");
+                let intrinsic_size: Size<DevicePixels> = data.size();
+                // let object_fit = self.object_fit;
+
+                return cx.request_measured_layout(
+                    style,
+                    move |known_dimensions: Size<Option<Pixels>>,
+                          available_space: Size<AvailableSpace>,
+                          _cx| {
+                        dbg!(known_dimensions);
+                        dbg!(available_space);
+                        // Sadly this is what we're seeing:
+                        // [crates/gpui/src/elements/img.rs:286:25] known_dimensions = Size { None × None }
+                        // [crates/gpui/src/elements/img.rs:287:25] available_space = Size { MaxContent × Definite(965.625 px) }
+                        // [crates/gpui/src/elements/img.rs:286:25] known_dimensions = Size { None × None }
+                        // [crates/gpui/src/elements/img.rs:287:25] available_space = Size { MinContent × Definite(965.625 px) }
+
+                        let available_width = match available_space.width {
+                            AvailableSpace::Definite(p) => Some(p),
+                            AvailableSpace::MaxContent | AvailableSpace::MinContent => {
+                                known_dimensions.width
+                            }
+                        };
+
+                        let available_height = match available_space.height {
+                            AvailableSpace::Definite(p) => Some(p),
+                            AvailableSpace::MaxContent | AvailableSpace::MinContent => {
+                                known_dimensions.height
+                            }
+                        };
+
+                        let aspect_ratio =
+                            intrinsic_size.width.0 as f32 / intrinsic_size.height.0 as f32;
+
+                        // If both available_width and available_height are None, we should use the intrinsic size
+                        let (available_width, available_height) =
+                            match (available_width, available_height) {
+                                (None, None) => {
+                                    dbg!("None x None");
+                                    (
+                                        px(intrinsic_size.width.0 as f32),
+                                        px(intrinsic_size.height.0 as f32),
+                                    )
+                                }
+                                (Some(w), None) => (w, px(w.0 / aspect_ratio)),
+                                (None, Some(h)) => (h * aspect_ratio, h),
+                                (Some(w), Some(h)) => (w, h),
+                            };
+
+                        dbg!("Computed available size", available_width, available_height);
+
+                        let container_aspect_ratio = available_width.0 / available_height.0;
+
+                        if container_aspect_ratio > aspect_ratio {
+                            // Logic to fit image by height
+                            size(available_height * aspect_ratio, available_height)
+                        } else {
+                            // Logic to fit image by width
+                            size(available_width, available_width / aspect_ratio)
                         }
-                    }
-                    _ => {}
-                }
+                    },
+                );
             }
 
             cx.request_layout(&style, [])
@@ -262,6 +350,7 @@ impl Element for Img {
         _before_layout: &mut Self::BeforeLayout,
         cx: &mut ElementContext,
     ) -> Option<Hitbox> {
+        // request_measured_layout
         self.interactivity
             .after_layout(bounds, bounds.size, cx, |_, _, hitbox, _| hitbox)
     }
