@@ -6,7 +6,7 @@
 /plugins/bin
 /script/node_modules
 /crates/theme/schemas/theme.json
-/crates/collab/seed.json
+/crates/collab/.admins.json
 /assets/*licenses.md
 **/venv
 .build

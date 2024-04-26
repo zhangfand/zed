@@ -552,7 +552,7 @@ impl Dock {
     }
 
     fn dispatch_context() -> KeyContext {
-        let mut dispatch_context = KeyContext::new_with_defaults();
+        let mut dispatch_context = KeyContext::default();
         dispatch_context.add("Dock");
 
         dispatch_context

@@ -85,14 +85,14 @@ struct AnimationState {
 }
 
 impl<E: IntoElement + 'static> Element for AnimationElement<E> {
-    type RequestLayoutState = AnyElement;
+    type BeforeLayout = AnyElement;
 
-    type PrepaintState = ();
+    type AfterLayout = ();
 
-    fn request_layout(
+    fn before_layout(
         &mut self,
-        cx: &mut crate::WindowContext,
-    ) -> (crate::LayoutId, Self::RequestLayoutState) {
+        cx: &mut crate::ElementContext,
+    ) -> (crate::LayoutId, Self::BeforeLayout) {
         cx.with_element_state(Some(self.id.clone()), |state, cx| {
             let state = state.unwrap().unwrap_or_else(|| AnimationState {
                 start: Instant::now(),
@@ -130,25 +130,25 @@ impl<E: IntoElement + 'static> Element for AnimationElement<E> {
                 })
             }
 
-            ((element.request_layout(cx), element), Some(state))
+            ((element.before_layout(cx), element), Some(state))
         })
     }
 
-    fn prepaint(
+    fn after_layout(
         &mut self,
         _bounds: crate::Bounds<crate::Pixels>,
-        element: &mut Self::RequestLayoutState,
-        cx: &mut crate::WindowContext,
-    ) -> Self::PrepaintState {
-        element.prepaint(cx);
+        element: &mut Self::BeforeLayout,
+        cx: &mut crate::ElementContext,
+    ) -> Self::AfterLayout {
+        element.after_layout(cx);
     }
 
     fn paint(
         &mut self,
         _bounds: crate::Bounds<crate::Pixels>,
-        element: &mut Self::RequestLayoutState,
-        _: &mut Self::PrepaintState,
-        cx: &mut crate::WindowContext,
+        element: &mut Self::BeforeLayout,
+        _: &mut Self::AfterLayout,
+        cx: &mut crate::ElementContext,
     ) {
         element.paint(cx);
     }

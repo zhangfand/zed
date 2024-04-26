@@ -849,32 +849,11 @@ impl Database {
                     .into_values::<_, QueryProjectIds>()
                     .all(&*tx)
                     .await?;
-
-                // if any project in the room has a remote-project-id that belongs to a dev server that this user owns.
-                let remote_projects_for_user = self
-                    .remote_project_ids_for_user(leaving_participant.user_id, &tx)
-                    .await?;
-
-                let remote_projects_to_unshare = project::Entity::find()
-                    .filter(
-                        Condition::all()
-                            .add(project::Column::RoomId.eq(room_id))
-                            .add(
-                                project::Column::RemoteProjectId
-                                    .is_in(remote_projects_for_user.clone()),
-                            ),
-                    )
-                    .all(&*tx)
-                    .await?
-                    .into_iter()
-                    .map(|project| project.id)
-                    .collect::<HashSet<_>>();
                 let mut left_projects = HashMap::default();
                 let mut collaborators = project_collaborator::Entity::find()
                     .filter(project_collaborator::Column::ProjectId.is_in(project_ids))
                     .stream(&*tx)
                     .await?;
-
                 while let Some(collaborator) = collaborators.next().await {
                     let collaborator = collaborator?;
                     let left_project =
@@ -882,8 +861,9 @@ impl Database {
                             .entry(collaborator.project_id)
                             .or_insert(LeftProject {
                                 id: collaborator.project_id,
+                                host_user_id: Default::default(),
                                 connection_ids: Default::default(),
-                                should_unshare: false,
+                                host_connection_id: None,
                             });
 
                     let collaborator_connection_id = collaborator.connection();
@@ -891,10 +871,9 @@ impl Database {
                         left_project.connection_ids.push(collaborator_connection_id);
                     }
 
-                    if (collaborator.is_host && collaborator.connection() == connection)
-                        || remote_projects_to_unshare.contains(&collaborator.project_id)
-                    {
-                        left_project.should_unshare = true;
+                    if collaborator.is_host {
+                        left_project.host_user_id = Some(collaborator.user_id);
+                        left_project.host_connection_id = Some(collaborator_connection_id);
                     }
                 }
                 drop(collaborators);
@@ -935,17 +914,6 @@ impl Database {
                     )
                     .exec(&*tx)
                     .await?;
-
-                if !remote_projects_to_unshare.is_empty() {
-                    project::Entity::update_many()
-                        .filter(project::Column::Id.is_in(remote_projects_to_unshare))
-                        .set(project::ActiveModel {
-                            room_id: ActiveValue::Set(None),
-                            ..Default::default()
-                        })
-                        .exec(&*tx)
-                        .await?;
-                }
 
                 let (channel, room) = self.get_channel_room(room_id, &tx).await?;
                 let deleted = if room.participants.is_empty() {
@@ -1296,46 +1264,38 @@ impl Database {
         }
         drop(db_participants);
 
-        let db_projects = db_room
+        let mut db_projects = db_room
             .find_related(project::Entity)
             .find_with_related(worktree::Entity)
-            .all(tx)
+            .stream(tx)
             .await?;
 
-        for (db_project, db_worktrees) in db_projects {
+        while let Some(row) = db_projects.next().await {
+            let (db_project, db_worktree) = row?;
             let host_connection = db_project.host_connection()?;
             if let Some(participant) = participants.get_mut(&host_connection) {
-                participant.projects.push(proto::ParticipantProject {
-                    id: db_project.id.to_proto(),
-                    worktree_root_names: Default::default(),
-                });
-                let project = participant.projects.last_mut().unwrap();
-
-                for db_worktree in db_worktrees {
-                    if db_worktree.visible {
-                        project.worktree_root_names.push(db_worktree.root_name);
-                    }
-                }
-            } else if let Some(remote_project_id) = db_project.remote_project_id {
-                let host = self.owner_for_remote_project(remote_project_id, tx).await?;
-                if let Some((_, participant)) = participants
+                let project = if let Some(project) = participant
+                    .projects
                     .iter_mut()
-                    .find(|(_, v)| v.user_id == host.to_proto())
+                    .find(|project| project.id == db_project.id.to_proto())
                 {
+                    project
+                } else {
                     participant.projects.push(proto::ParticipantProject {
                         id: db_project.id.to_proto(),
                         worktree_root_names: Default::default(),
                     });
-                    let project = participant.projects.last_mut().unwrap();
+                    participant.projects.last_mut().unwrap()
+                };
 
-                    for db_worktree in db_worktrees {
-                        if db_worktree.visible {
-                            project.worktree_root_names.push(db_worktree.root_name);
-                        }
+                if let Some(db_worktree) = db_worktree {
+                    if db_worktree.visible {
+                        project.worktree_root_names.push(db_worktree.root_name);
                     }
                 }
             }
         }
+        drop(db_projects);
 
         let mut db_followers = db_room.find_related(follower::Entity).stream(tx).await?;
         let mut followers = Vec::new();

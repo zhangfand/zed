@@ -1,15 +1,15 @@
 use refineable::Refineable as _;
 
-use crate::{Bounds, Element, IntoElement, Pixels, Style, StyleRefinement, Styled, WindowContext};
+use crate::{Bounds, Element, ElementContext, IntoElement, Pixels, Style, StyleRefinement, Styled};
 
 /// Construct a canvas element with the given paint callback.
 /// Useful for adding short term custom drawing to a view.
 pub fn canvas<T>(
-    prepaint: impl 'static + FnOnce(Bounds<Pixels>, &mut WindowContext) -> T,
-    paint: impl 'static + FnOnce(Bounds<Pixels>, T, &mut WindowContext),
+    after_layout: impl 'static + FnOnce(Bounds<Pixels>, &mut ElementContext) -> T,
+    paint: impl 'static + FnOnce(Bounds<Pixels>, T, &mut ElementContext),
 ) -> Canvas<T> {
     Canvas {
-        prepaint: Some(Box::new(prepaint)),
+        after_layout: Some(Box::new(after_layout)),
         paint: Some(Box::new(paint)),
         style: StyleRefinement::default(),
     }
@@ -18,8 +18,8 @@ pub fn canvas<T>(
 /// A canvas element, meant for accessing the low level paint API without defining a whole
 /// custom element
 pub struct Canvas<T> {
-    prepaint: Option<Box<dyn FnOnce(Bounds<Pixels>, &mut WindowContext) -> T>>,
-    paint: Option<Box<dyn FnOnce(Bounds<Pixels>, T, &mut WindowContext)>>,
+    after_layout: Option<Box<dyn FnOnce(Bounds<Pixels>, &mut ElementContext) -> T>>,
+    paint: Option<Box<dyn FnOnce(Bounds<Pixels>, T, &mut ElementContext)>>,
     style: StyleRefinement,
 }
 
@@ -32,38 +32,35 @@ impl<T: 'static> IntoElement for Canvas<T> {
 }
 
 impl<T: 'static> Element for Canvas<T> {
-    type RequestLayoutState = Style;
-    type PrepaintState = Option<T>;
+    type BeforeLayout = Style;
+    type AfterLayout = Option<T>;
 
-    fn request_layout(
-        &mut self,
-        cx: &mut WindowContext,
-    ) -> (crate::LayoutId, Self::RequestLayoutState) {
+    fn before_layout(&mut self, cx: &mut ElementContext) -> (crate::LayoutId, Self::BeforeLayout) {
         let mut style = Style::default();
         style.refine(&self.style);
         let layout_id = cx.request_layout(&style, []);
         (layout_id, style)
     }
 
-    fn prepaint(
+    fn after_layout(
         &mut self,
         bounds: Bounds<Pixels>,
-        _request_layout: &mut Style,
-        cx: &mut WindowContext,
+        _before_layout: &mut Style,
+        cx: &mut ElementContext,
     ) -> Option<T> {
-        Some(self.prepaint.take().unwrap()(bounds, cx))
+        Some(self.after_layout.take().unwrap()(bounds, cx))
     }
 
     fn paint(
         &mut self,
         bounds: Bounds<Pixels>,
         style: &mut Style,
-        prepaint: &mut Self::PrepaintState,
-        cx: &mut WindowContext,
+        after_layout: &mut Self::AfterLayout,
+        cx: &mut ElementContext,
     ) {
-        let prepaint = prepaint.take().unwrap();
+        let after_layout = after_layout.take().unwrap();
         style.paint(bounds, cx, |cx| {
-            (self.paint.take().unwrap())(bounds, prepaint, cx)
+            (self.paint.take().unwrap())(bounds, after_layout, cx)
         });
     }
 }

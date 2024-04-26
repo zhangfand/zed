@@ -14,9 +14,6 @@ use time::OffsetDateTime;
 use time::UtcOffset;
 use url::Url;
 
-#[cfg(windows)]
-use std::os::windows::process::CommandExt;
-
 pub use git2 as libgit;
 
 #[derive(Debug, Clone, Default)]
@@ -24,7 +21,6 @@ pub struct Blame {
     pub entries: Vec<BlameEntry>,
     pub messages: HashMap<Oid, String>,
     pub permalinks: HashMap<Oid, Url>,
-    pub remote_url: Option<String>,
 }
 
 impl Blame {
@@ -45,8 +41,6 @@ impl Blame {
 
         for entry in entries.iter_mut() {
             unique_shas.insert(entry.sha);
-            // DEPRECATED (18 Apr 24): Sending permalinks over the wire is deprecated. Clients
-            // now do the parsing.
             if let Some(remote) = parsed_remote_url.as_ref() {
                 permalinks.entry(entry.sha).or_insert_with(|| {
                     build_commit_permalink(BuildCommitPermalinkParams {
@@ -65,7 +59,6 @@ impl Blame {
             entries,
             permalinks,
             messages,
-            remote_url,
         })
     }
 }
@@ -79,9 +72,7 @@ fn run_git_blame(
     path: &Path,
     contents: &Rope,
 ) -> Result<String> {
-    let mut child = Command::new(git_binary);
-
-    child
+    let child = Command::new(git_binary)
         .current_dir(working_directory)
         .arg("blame")
         .arg("--incremental")
@@ -90,12 +81,7 @@ fn run_git_blame(
         .arg(path.as_os_str())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-
-    #[cfg(windows)]
-    child.creation_flags(windows::Win32::System::Threading::CREATE_NO_WINDOW.0);
-
-    let child = child
+        .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| anyhow!("Failed to start git blame process: {}", e))?;
 
@@ -336,10 +322,8 @@ mod tests {
         path.push("golden");
         path.push(format!("{}.json", golden_filename));
 
-        let mut have_json =
+        let have_json =
             serde_json::to_string_pretty(&entries).expect("could not serialize entries to JSON");
-        // We always want to save with a trailing newline.
-        have_json.push('\n');
 
         let update = std::env::var("UPDATE_GOLDEN")
             .map(|val| val.to_ascii_lowercase() == "true")

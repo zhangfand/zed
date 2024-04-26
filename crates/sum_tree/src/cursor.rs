@@ -405,7 +405,6 @@ where
         summary.0
     }
 
-    /// Returns whether we found the item you where seeking for
     fn seek_internal(
         &mut self,
         target: &dyn SeekTarget<'a, T::Summary, D>,

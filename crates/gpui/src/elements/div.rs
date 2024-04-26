@@ -17,11 +17,11 @@
 
 use crate::{
     point, px, size, Action, AnyDrag, AnyElement, AnyTooltip, AnyView, AppContext, Bounds,
-    ClickEvent, DispatchPhase, Element, ElementId, FocusHandle, Global, Hitbox, HitboxId,
-    IntoElement, IsZero, KeyContext, KeyDownEvent, KeyUpEvent, LayoutId, ModifiersChangedEvent,
-    MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, Pixels, Point,
-    Render, ScrollWheelEvent, SharedString, Size, Style, StyleRefinement, Styled, Task, TooltipId,
-    View, Visibility, WindowContext,
+    ClickEvent, DispatchPhase, Element, ElementContext, ElementId, FocusHandle, Global, Hitbox,
+    HitboxId, IntoElement, IsZero, KeyContext, KeyDownEvent, KeyUpEvent, LayoutId,
+    ModifiersChangedEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
+    ParentElement, Pixels, Point, Render, ScrollWheelEvent, SharedString, Size, Style,
+    StyleRefinement, Styled, Task, TooltipId, View, Visibility, WindowContext,
 };
 use collections::HashMap;
 use refineable::Refineable;
@@ -1120,17 +1120,17 @@ impl ParentElement for Div {
 }
 
 impl Element for Div {
-    type RequestLayoutState = DivFrameState;
-    type PrepaintState = Option<Hitbox>;
+    type BeforeLayout = DivFrameState;
+    type AfterLayout = Option<Hitbox>;
 
-    fn request_layout(&mut self, cx: &mut WindowContext) -> (LayoutId, Self::RequestLayoutState) {
+    fn before_layout(&mut self, cx: &mut ElementContext) -> (LayoutId, Self::BeforeLayout) {
         let mut child_layout_ids = SmallVec::new();
-        let layout_id = self.interactivity.request_layout(cx, |style, cx| {
+        let layout_id = self.interactivity.before_layout(cx, |style, cx| {
             cx.with_text_style(style.text_style().cloned(), |cx| {
                 child_layout_ids = self
                     .children
                     .iter_mut()
-                    .map(|child| child.request_layout(cx))
+                    .map(|child| child.before_layout(cx))
                     .collect::<SmallVec<_>>();
                 cx.request_layout(&style, child_layout_ids.iter().copied())
             })
@@ -1138,23 +1138,23 @@ impl Element for Div {
         (layout_id, DivFrameState { child_layout_ids })
     }
 
-    fn prepaint(
+    fn after_layout(
         &mut self,
         bounds: Bounds<Pixels>,
-        request_layout: &mut Self::RequestLayoutState,
-        cx: &mut WindowContext,
+        before_layout: &mut Self::BeforeLayout,
+        cx: &mut ElementContext,
     ) -> Option<Hitbox> {
         let mut child_min = point(Pixels::MAX, Pixels::MAX);
         let mut child_max = Point::default();
-        let content_size = if request_layout.child_layout_ids.is_empty() {
+        let content_size = if before_layout.child_layout_ids.is_empty() {
             bounds.size
         } else if let Some(scroll_handle) = self.interactivity.tracked_scroll_handle.as_ref() {
             let mut state = scroll_handle.0.borrow_mut();
-            state.child_bounds = Vec::with_capacity(request_layout.child_layout_ids.len());
+            state.child_bounds = Vec::with_capacity(before_layout.child_layout_ids.len());
             state.bounds = bounds;
             let requested = state.requested_scroll_top.take();
 
-            for (ix, child_layout_id) in request_layout.child_layout_ids.iter().enumerate() {
+            for (ix, child_layout_id) in before_layout.child_layout_ids.iter().enumerate() {
                 let child_bounds = cx.layout_bounds(*child_layout_id);
                 child_min = child_min.min(&child_bounds.origin);
                 child_max = child_max.max(&child_bounds.lower_right());
@@ -1169,7 +1169,7 @@ impl Element for Div {
             }
             (child_max - child_min).into()
         } else {
-            for child_layout_id in &request_layout.child_layout_ids {
+            for child_layout_id in &before_layout.child_layout_ids {
                 let child_bounds = cx.layout_bounds(*child_layout_id);
                 child_min = child_min.min(&child_bounds.origin);
                 child_max = child_max.max(&child_bounds.lower_right());
@@ -1177,14 +1177,14 @@ impl Element for Div {
             (child_max - child_min).into()
         };
 
-        self.interactivity.prepaint(
+        self.interactivity.after_layout(
             bounds,
             content_size,
             cx,
             |_style, scroll_offset, hitbox, cx| {
                 cx.with_element_offset(scroll_offset, |cx| {
                     for child in &mut self.children {
-                        child.prepaint(cx);
+                        child.after_layout(cx);
                     }
                 });
                 hitbox
@@ -1195,9 +1195,9 @@ impl Element for Div {
     fn paint(
         &mut self,
         bounds: Bounds<Pixels>,
-        _request_layout: &mut Self::RequestLayoutState,
+        _before_layout: &mut Self::BeforeLayout,
         hitbox: &mut Option<Hitbox>,
-        cx: &mut WindowContext,
+        cx: &mut ElementContext,
     ) {
         self.interactivity
             .paint(bounds, hitbox.as_ref(), cx, |_style, cx| {
@@ -1274,10 +1274,10 @@ pub struct Interactivity {
 
 impl Interactivity {
     /// Layout this element according to this interactivity state's configured styles
-    pub fn request_layout(
+    pub fn before_layout(
         &mut self,
-        cx: &mut WindowContext,
-        f: impl FnOnce(Style, &mut WindowContext) -> LayoutId,
+        cx: &mut ElementContext,
+        f: impl FnOnce(Style, &mut ElementContext) -> LayoutId,
     ) -> LayoutId {
         cx.with_element_state::<InteractiveElementState, _>(
             self.element_id.clone(),
@@ -1337,12 +1337,12 @@ impl Interactivity {
     }
 
     /// Commit the bounds of this element according to this interactivity state's configured styles.
-    pub fn prepaint<R>(
+    pub fn after_layout<R>(
         &mut self,
         bounds: Bounds<Pixels>,
         content_size: Size<Pixels>,
-        cx: &mut WindowContext,
-        f: impl FnOnce(&Style, Point<Pixels>, Option<Hitbox>, &mut WindowContext) -> R,
+        cx: &mut ElementContext,
+        f: impl FnOnce(&Style, Point<Pixels>, Option<Hitbox>, &mut ElementContext) -> R,
     ) -> R {
         self.content_size = content_size;
         cx.with_element_state::<InteractiveElementState, _>(
@@ -1406,7 +1406,7 @@ impl Interactivity {
         &mut self,
         bounds: Bounds<Pixels>,
         style: &Style,
-        cx: &mut WindowContext,
+        cx: &mut ElementContext,
     ) -> Point<Pixels> {
         if let Some(scroll_offset) = self.scroll_offset.as_ref() {
             if let Some(scroll_handle) = &self.tracked_scroll_handle {
@@ -1456,8 +1456,8 @@ impl Interactivity {
         &mut self,
         bounds: Bounds<Pixels>,
         hitbox: Option<&Hitbox>,
-        cx: &mut WindowContext,
-        f: impl FnOnce(&Style, &mut WindowContext),
+        cx: &mut ElementContext,
+        f: impl FnOnce(&Style, &mut ElementContext),
     ) {
         self.hovered = hitbox.map(|hitbox| hitbox.is_hovered(cx));
         cx.with_element_state::<InteractiveElementState, _>(
@@ -1482,7 +1482,7 @@ impl Interactivity {
                     return ((), element_state);
                 }
 
-                style.paint(bounds, cx, |cx: &mut WindowContext| {
+                style.paint(bounds, cx, |cx: &mut ElementContext| {
                     cx.with_text_style(style.text_style().cloned(), |cx| {
                         cx.with_content_mask(style.overflow_mask(bounds, cx.rem_size()), |cx| {
                             if let Some(hitbox) = hitbox {
@@ -1521,7 +1521,7 @@ impl Interactivity {
     }
 
     #[cfg(debug_assertions)]
-    fn paint_debug_info(&mut self, hitbox: &Hitbox, style: &Style, cx: &mut WindowContext) {
+    fn paint_debug_info(&mut self, hitbox: &Hitbox, style: &Style, cx: &mut ElementContext) {
         if self.element_id.is_some()
             && (style.debug || style.debug_below || cx.has_global::<crate::DebugBelow>())
             && hitbox.is_hovered(cx)
@@ -1530,7 +1530,7 @@ impl Interactivity {
             let element_id = format!("{:?}", self.element_id.as_ref().unwrap());
             let str_len = element_id.len();
 
-            let render_debug_text = |cx: &mut WindowContext| {
+            let render_debug_text = |cx: &mut ElementContext| {
                 if let Some(text) = cx
                     .text_system()
                     .shape_text(
@@ -1629,7 +1629,7 @@ impl Interactivity {
         &mut self,
         hitbox: &Hitbox,
         element_state: Option<&mut InteractiveElementState>,
-        cx: &mut WindowContext,
+        cx: &mut ElementContext,
     ) {
         // If this element can be focused, register a mouse down listener
         // that will automatically transfer focus when hitting the element.
@@ -1712,11 +1712,11 @@ impl Interactivity {
 
                                     let mut can_drop = true;
                                     if let Some(predicate) = &can_drop_predicate {
-                                        can_drop = predicate(drag.value.as_ref(), cx);
+                                        can_drop = predicate(drag.value.as_ref(), cx.deref_mut());
                                     }
 
                                     if can_drop {
-                                        listener(drag.value.as_ref(), cx);
+                                        listener(drag.value.as_ref(), cx.deref_mut());
                                         cx.refresh();
                                         cx.stop_propagation();
                                     }
@@ -1840,7 +1840,7 @@ impl Interactivity {
                         *was_hovered = is_hovered;
                         drop(was_hovered);
 
-                        hover_listener(&is_hovered, cx);
+                        hover_listener(&is_hovered, cx.deref_mut());
                     }
                 });
             }
@@ -1969,7 +1969,7 @@ impl Interactivity {
         }
     }
 
-    fn paint_keyboard_listeners(&mut self, cx: &mut WindowContext) {
+    fn paint_keyboard_listeners(&mut self, cx: &mut ElementContext) {
         let key_down_listeners = mem::take(&mut self.key_down_listeners);
         let key_up_listeners = mem::take(&mut self.key_up_listeners);
         let modifiers_changed_listeners = mem::take(&mut self.modifiers_changed_listeners);
@@ -2004,7 +2004,7 @@ impl Interactivity {
         }
     }
 
-    fn paint_hover_group_handler(&self, cx: &mut WindowContext) {
+    fn paint_hover_group_handler(&self, cx: &mut ElementContext) {
         let group_hitbox = self
             .group_hover_style
             .as_ref()
@@ -2021,7 +2021,7 @@ impl Interactivity {
         }
     }
 
-    fn paint_scroll_listener(&self, hitbox: &Hitbox, style: &Style, cx: &mut WindowContext) {
+    fn paint_scroll_listener(&self, hitbox: &Hitbox, style: &Style, cx: &mut ElementContext) {
         if let Some(scroll_offset) = self.scroll_offset.clone() {
             let overflow = style.overflow;
             let line_height = cx.line_height();
@@ -2064,7 +2064,7 @@ impl Interactivity {
     }
 
     /// Compute the visual style for this element, based on the current bounds and the element's state.
-    pub fn compute_style(&self, hitbox: Option<&Hitbox>, cx: &mut WindowContext) -> Style {
+    pub fn compute_style(&self, hitbox: Option<&Hitbox>, cx: &mut ElementContext) -> Style {
         cx.with_element_state(self.element_id.clone(), |element_state, cx| {
             let mut element_state =
                 element_state.map(|element_state| element_state.unwrap_or_default());
@@ -2078,7 +2078,7 @@ impl Interactivity {
         &self,
         hitbox: Option<&Hitbox>,
         element_state: Option<&mut InteractiveElementState>,
-        cx: &mut WindowContext,
+        cx: &mut ElementContext,
     ) -> Style {
         let mut style = Style::default();
         style.refine(&self.base_style);
@@ -2119,7 +2119,7 @@ impl Interactivity {
             if let Some(drag) = cx.active_drag.take() {
                 let mut can_drop = true;
                 if let Some(can_drop_predicate) = &self.can_drop_predicate {
-                    can_drop = can_drop_predicate(drag.value.as_ref(), cx);
+                    can_drop = can_drop_predicate(drag.value.as_ref(), cx.deref_mut());
                 }
 
                 if can_drop {
@@ -2261,30 +2261,30 @@ impl<E> Element for Focusable<E>
 where
     E: Element,
 {
-    type RequestLayoutState = E::RequestLayoutState;
-    type PrepaintState = E::PrepaintState;
+    type BeforeLayout = E::BeforeLayout;
+    type AfterLayout = E::AfterLayout;
 
-    fn request_layout(&mut self, cx: &mut WindowContext) -> (LayoutId, Self::RequestLayoutState) {
-        self.element.request_layout(cx)
+    fn before_layout(&mut self, cx: &mut ElementContext) -> (LayoutId, Self::BeforeLayout) {
+        self.element.before_layout(cx)
     }
 
-    fn prepaint(
+    fn after_layout(
         &mut self,
         bounds: Bounds<Pixels>,
-        state: &mut Self::RequestLayoutState,
-        cx: &mut WindowContext,
-    ) -> E::PrepaintState {
-        self.element.prepaint(bounds, state, cx)
+        state: &mut Self::BeforeLayout,
+        cx: &mut ElementContext,
+    ) -> E::AfterLayout {
+        self.element.after_layout(bounds, state, cx)
     }
 
     fn paint(
         &mut self,
         bounds: Bounds<Pixels>,
-        request_layout: &mut Self::RequestLayoutState,
-        prepaint: &mut Self::PrepaintState,
-        cx: &mut WindowContext,
+        before_layout: &mut Self::BeforeLayout,
+        after_layout: &mut Self::AfterLayout,
+        cx: &mut ElementContext,
     ) {
-        self.element.paint(bounds, request_layout, prepaint, cx)
+        self.element.paint(bounds, before_layout, after_layout, cx)
     }
 }
 
@@ -2344,30 +2344,30 @@ impl<E> Element for Stateful<E>
 where
     E: Element,
 {
-    type RequestLayoutState = E::RequestLayoutState;
-    type PrepaintState = E::PrepaintState;
+    type BeforeLayout = E::BeforeLayout;
+    type AfterLayout = E::AfterLayout;
 
-    fn request_layout(&mut self, cx: &mut WindowContext) -> (LayoutId, Self::RequestLayoutState) {
-        self.element.request_layout(cx)
+    fn before_layout(&mut self, cx: &mut ElementContext) -> (LayoutId, Self::BeforeLayout) {
+        self.element.before_layout(cx)
     }
 
-    fn prepaint(
+    fn after_layout(
         &mut self,
         bounds: Bounds<Pixels>,
-        state: &mut Self::RequestLayoutState,
-        cx: &mut WindowContext,
-    ) -> E::PrepaintState {
-        self.element.prepaint(bounds, state, cx)
+        state: &mut Self::BeforeLayout,
+        cx: &mut ElementContext,
+    ) -> E::AfterLayout {
+        self.element.after_layout(bounds, state, cx)
     }
 
     fn paint(
         &mut self,
         bounds: Bounds<Pixels>,
-        request_layout: &mut Self::RequestLayoutState,
-        prepaint: &mut Self::PrepaintState,
-        cx: &mut WindowContext,
+        before_layout: &mut Self::BeforeLayout,
+        after_layout: &mut Self::AfterLayout,
+        cx: &mut ElementContext,
     ) {
-        self.element.paint(bounds, request_layout, prepaint, cx);
+        self.element.paint(bounds, before_layout, after_layout, cx);
     }
 }
 

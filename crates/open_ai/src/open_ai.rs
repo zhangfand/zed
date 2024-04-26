@@ -1,7 +1,6 @@
 use anyhow::{anyhow, Context, Result};
 use futures::{io::BufReader, stream::BoxStream, AsyncBufReadExt, AsyncReadExt, StreamExt};
 use serde::{Deserialize, Serialize};
-use serde_json::{Map, Value};
 use std::{convert::TryFrom, future::Future};
 use util::http::{AsyncBody, HttpClient, Method, Request as HttpRequest};
 
@@ -13,7 +12,6 @@ pub enum Role {
     User,
     Assistant,
     System,
-    Tool,
 }
 
 impl TryFrom<String> for Role {
@@ -24,7 +22,6 @@ impl TryFrom<String> for Role {
             "user" => Ok(Self::User),
             "assistant" => Ok(Self::Assistant),
             "system" => Ok(Self::System),
-            "tool" => Ok(Self::Tool),
             _ => Err(anyhow!("invalid role '{value}'")),
         }
     }
@@ -36,7 +33,6 @@ impl From<Role> for String {
             Role::User => "user".to_owned(),
             Role::Assistant => "assistant".to_owned(),
             Role::System => "system".to_owned(),
-            Role::Tool => "tool".to_owned(),
         }
     }
 }
@@ -95,88 +91,18 @@ pub struct Request {
     pub stream: bool,
     pub stop: Vec<String>,
     pub temperature: f32,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tool_choice: Option<String>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub tools: Vec<ToolDefinition>,
-}
-
-#[derive(Debug, Serialize)]
-pub struct FunctionDefinition {
-    pub name: String,
-    pub description: Option<String>,
-    pub parameters: Option<Map<String, Value>>,
-}
-
-#[derive(Serialize, Debug)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum ToolDefinition {
-    #[allow(dead_code)]
-    Function { function: FunctionDefinition },
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
-#[serde(tag = "role", rename_all = "lowercase")]
-pub enum RequestMessage {
-    Assistant {
-        content: Option<String>,
-        #[serde(default, skip_serializing_if = "Vec::is_empty")]
-        tool_calls: Vec<ToolCall>,
-    },
-    User {
-        content: String,
-    },
-    System {
-        content: String,
-    },
-    Tool {
-        content: String,
-        tool_call_id: String,
-    },
+pub struct RequestMessage {
+    pub role: Role,
+    pub content: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
-pub struct ToolCall {
-    pub id: String,
-    #[serde(flatten)]
-    pub content: ToolCallContent,
-}
-
-#[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
-#[serde(tag = "type", rename_all = "lowercase")]
-pub enum ToolCallContent {
-    Function { function: FunctionContent },
-}
-
-#[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
-pub struct FunctionContent {
-    pub name: String,
-    pub arguments: String,
-}
-
-#[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
-pub struct ResponseMessageDelta {
+pub struct ResponseMessage {
     pub role: Option<Role>,
     pub content: Option<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub tool_calls: Vec<ToolCallChunk>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
-pub struct ToolCallChunk {
-    pub index: usize,
-    pub id: Option<String>,
-
-    // There is also an optional `type` field that would determine if a
-    // function is there. Sometimes this streams in with the `function` before
-    // it streams in the `type`
-    pub function: Option<FunctionChunk>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
-pub struct FunctionChunk {
-    pub name: Option<String>,
-    pub arguments: Option<String>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -189,7 +115,7 @@ pub struct Usage {
 #[derive(Deserialize, Debug)]
 pub struct ChoiceDelta {
     pub index: u32,
-    pub delta: ResponseMessageDelta,
+    pub delta: ResponseMessage,
     pub finish_reason: Option<String>,
 }
 

@@ -21,7 +21,5 @@
       "formatter": "prettier"
     }
   },
-  "formatter": "auto",
-  "remove_trailing_whitespace_on_save": true,
-  "ensure_final_newline_on_save": true
+  "formatter": "auto"
 }

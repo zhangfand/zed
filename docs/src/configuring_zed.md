@@ -1294,7 +1294,6 @@ Run the `theme selector: toggle` action in the command palette to see a current 
 
 ```json
 "project_panel": {
-  "button": true,
   "dock": "left",
   "git_status": true,
   "default_width": "N/A - width in pixels"

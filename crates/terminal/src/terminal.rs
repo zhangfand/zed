@@ -739,11 +739,6 @@ impl Terminal {
             InternalEvent::SetSelection(selection) => {
                 term.selection = selection.as_ref().map(|(sel, _)| sel.clone());
 
-                #[cfg(target_os = "linux")]
-                if let Some(selection_text) = term.selection_to_string() {
-                    cx.write_to_primary(ClipboardItem::new(selection_text));
-                }
-
                 if let Some((_, head)) = selection {
                     self.selection_head = Some(*head);
                 }
@@ -759,11 +754,6 @@ impl Terminal {
 
                     selection.update(point, side);
                     term.selection = Some(selection);
-
-                    #[cfg(target_os = "linux")]
-                    if let Some(selection_text) = term.selection_to_string() {
-                        cx.write_to_primary(ClipboardItem::new(selection_text));
-                    }
 
                     self.selection_head = Some(point);
                     cx.emit(Event::SelectionsChanged)
@@ -1191,12 +1181,7 @@ impl Terminal {
         Some(scroll_delta)
     }
 
-    pub fn mouse_down(
-        &mut self,
-        e: &MouseDownEvent,
-        origin: Point<Pixels>,
-        cx: &mut ModelContext<Self>,
-    ) {
+    pub fn mouse_down(&mut self, e: &MouseDownEvent, origin: Point<Pixels>) {
         let position = e.position - origin;
         let point = grid_point(
             position,
@@ -1232,11 +1217,6 @@ impl Terminal {
             if let Some(sel) = selection {
                 self.events
                     .push_back(InternalEvent::SetSelection(Some((sel, point))));
-            }
-        } else if e.button == MouseButton::Middle {
-            if let Some(item) = cx.read_from_primary() {
-                let text = item.text().to_string();
-                self.input(text);
             }
         }
     }
@@ -1497,7 +1477,7 @@ fn task_summary(task: &TaskState, error_code: Option<i32>) -> (String, String) {
 /// * ignores `\n` and \r` character input, requiring the `newline` call instead
 ///
 /// * does not alter grid state after `newline` call
-/// so its `bottommost_line` is always the same additions, and
+/// so its `bottommost_line` is always the the same additions, and
 /// the cursor's `point` is not updated to the new line and column values
 ///
 /// * ??? there could be more consequences, and any further "proper" streaming from the PTY might bug and/or panic.

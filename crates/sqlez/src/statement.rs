@@ -320,7 +320,6 @@ impl<'a> Statement<'a> {
             this: &mut Statement,
             callback: impl FnOnce(&mut Statement) -> Result<R>,
         ) -> Result<R> {
-            println!("{:?}", std::any::type_name::<R>());
             if this.step()? != StepResult::Row {
                 return Err(anyhow!("single called with query that returns no rows."));
             }

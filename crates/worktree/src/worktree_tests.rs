@@ -5,8 +5,8 @@ use crate::{
 use anyhow::Result;
 use client::Client;
 use clock::FakeSystemClock;
-use fs::{FakeFs, Fs, RealFs, RemoveOptions};
-use git::{repository::GitFileStatus, GITIGNORE};
+use fs::{repository::GitFileStatus, FakeFs, Fs, RealFs, RemoveOptions};
+use git::GITIGNORE;
 use gpui::{BorrowAppContext, ModelContext, Task, TestAppContext};
 use parking_lot::Mutex;
 use postage::stream::Stream;

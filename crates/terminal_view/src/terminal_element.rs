@@ -1,11 +1,11 @@
 use editor::{CursorLayout, HighlightedRange, HighlightedRangeLine};
 use gpui::{
-    div, fill, point, px, relative, AnyElement, Bounds, DispatchPhase, Element, FocusHandle, Font,
-    FontStyle, FontWeight, HighlightStyle, Hitbox, Hsla, InputHandler, InteractiveElement,
-    Interactivity, IntoElement, LayoutId, Model, ModelContext, ModifiersChangedEvent, MouseButton,
-    MouseMoveEvent, Pixels, Point, ShapedLine, StatefulInteractiveElement, StrikethroughStyle,
-    Styled, TextRun, TextStyle, UnderlineStyle, WeakView, WhiteSpace, WindowContext,
-    WindowTextSystem,
+    div, fill, point, px, relative, AnyElement, Bounds, DispatchPhase, Element, ElementContext,
+    FocusHandle, Font, FontStyle, FontWeight, HighlightStyle, Hitbox, Hsla, InputHandler,
+    InteractiveElement, Interactivity, IntoElement, LayoutId, Model, ModelContext,
+    ModifiersChangedEvent, MouseButton, MouseMoveEvent, Pixels, Point, ShapedLine,
+    StatefulInteractiveElement, StrikethroughStyle, Styled, TextRun, TextStyle, UnderlineStyle,
+    WeakView, WhiteSpace, WindowContext, WindowTextSystem,
 };
 use itertools::Itertools;
 use language::CursorShape;
@@ -85,7 +85,7 @@ impl LayoutCell {
         origin: Point<Pixels>,
         layout: &LayoutState,
         _visible_bounds: Bounds<Pixels>,
-        cx: &mut WindowContext,
+        cx: &mut ElementContext,
     ) {
         let pos = {
             let point = self.point;
@@ -124,7 +124,7 @@ impl LayoutRect {
         }
     }
 
-    fn paint(&self, origin: Point<Pixels>, layout: &LayoutState, cx: &mut WindowContext) {
+    fn paint(&self, origin: Point<Pixels>, layout: &LayoutState, cx: &mut ElementContext) {
         let position = {
             let alac_point = self.point;
             point(
@@ -418,7 +418,7 @@ impl TerminalElement {
         origin: Point<Pixels>,
         mode: TermMode,
         hitbox: &Hitbox,
-        cx: &mut WindowContext,
+        cx: &mut ElementContext,
     ) {
         let focus = self.focus.clone();
         let terminal = self.terminal.clone();
@@ -429,7 +429,7 @@ impl TerminalElement {
             move |e, cx| {
                 cx.focus(&focus);
                 terminal.update(cx, |terminal, cx| {
-                    terminal.mouse_down(&e, origin, cx);
+                    terminal.mouse_down(&e, origin);
                     cx.notify();
                 })
             }
@@ -479,17 +479,6 @@ impl TerminalElement {
                 },
             ),
         );
-        self.interactivity.on_mouse_down(
-            MouseButton::Middle,
-            TerminalElement::generic_button_handler(
-                terminal.clone(),
-                origin,
-                focus.clone(),
-                move |terminal, origin, e, cx| {
-                    terminal.mouse_down(&e, origin, cx);
-                },
-            ),
-        );
         self.interactivity.on_scroll_wheel({
             let terminal = terminal.clone();
             move |e, cx| {
@@ -509,8 +498,19 @@ impl TerminalElement {
                     terminal.clone(),
                     origin,
                     focus.clone(),
-                    move |terminal, origin, e, cx| {
-                        terminal.mouse_down(&e, origin, cx);
+                    move |terminal, origin, e, _cx| {
+                        terminal.mouse_down(&e, origin);
+                    },
+                ),
+            );
+            self.interactivity.on_mouse_down(
+                MouseButton::Middle,
+                TerminalElement::generic_button_handler(
+                    terminal.clone(),
+                    origin,
+                    focus.clone(),
+                    move |terminal, origin, e, _cx| {
+                        terminal.mouse_down(&e, origin);
                     },
                 ),
             );
@@ -541,12 +541,12 @@ impl TerminalElement {
 }
 
 impl Element for TerminalElement {
-    type RequestLayoutState = ();
-    type PrepaintState = LayoutState;
+    type BeforeLayout = ();
+    type AfterLayout = LayoutState;
 
-    fn request_layout(&mut self, cx: &mut WindowContext) -> (LayoutId, Self::RequestLayoutState) {
+    fn before_layout(&mut self, cx: &mut ElementContext) -> (LayoutId, Self::BeforeLayout) {
         self.interactivity.occlude_mouse();
-        let layout_id = self.interactivity.request_layout(cx, |mut style, cx| {
+        let layout_id = self.interactivity.before_layout(cx, |mut style, cx| {
             style.size.width = relative(1.).into();
             style.size.height = relative(1.).into();
             let layout_id = cx.request_layout(&style, None);
@@ -556,14 +556,14 @@ impl Element for TerminalElement {
         (layout_id, ())
     }
 
-    fn prepaint(
+    fn after_layout(
         &mut self,
         bounds: Bounds<Pixels>,
-        _: &mut Self::RequestLayoutState,
-        cx: &mut WindowContext,
-    ) -> Self::PrepaintState {
+        _: &mut Self::BeforeLayout,
+        cx: &mut ElementContext,
+    ) -> Self::AfterLayout {
         self.interactivity
-            .prepaint(bounds, bounds.size, cx, |_, _, hitbox, cx| {
+            .after_layout(bounds, bounds.size, cx, |_, _, hitbox, cx| {
                 let hitbox = hitbox.unwrap();
                 let settings = ThemeSettings::get_global(cx).clone();
 
@@ -578,8 +578,7 @@ impl Element for TerminalElement {
 
                 let font_features = terminal_settings
                     .font_features
-                    .clone()
-                    .unwrap_or(settings.buffer_font.features.clone());
+                    .unwrap_or(settings.buffer_font.features);
 
                 let line_height = terminal_settings.line_height.value();
                 let font_size = terminal_settings.font_size;
@@ -670,7 +669,7 @@ impl Element for TerminalElement {
                         .id("terminal-element")
                         .tooltip(move |cx| Tooltip::text(hovered_word.word.clone(), cx))
                         .into_any_element();
-                    element.prepaint_as_root(offset, bounds.size.into(), cx);
+                    element.layout(offset, bounds.size.into(), cx);
                     element
                 });
 
@@ -776,9 +775,9 @@ impl Element for TerminalElement {
     fn paint(
         &mut self,
         bounds: Bounds<Pixels>,
-        _: &mut Self::RequestLayoutState,
-        layout: &mut Self::PrepaintState,
-        cx: &mut WindowContext<'_>,
+        _: &mut Self::BeforeLayout,
+        layout: &mut Self::AfterLayout,
+        cx: &mut ElementContext<'_>,
     ) {
         cx.paint_quad(fill(bounds, layout.background_color));
         let origin = bounds.origin + Point::new(layout.gutter, px(0.));

@@ -1,7 +1,7 @@
-use gpui::{svg, Hsla, IntoElement, Rems, Transformation};
+use gpui::{svg, IntoElement, Rems, Transformation};
 use strum::EnumIter;
 
-use crate::{prelude::*, Indicator};
+use crate::prelude::*;
 
 #[derive(Default, PartialEq, Copy, Clone)]
 pub enum IconSize {
@@ -47,7 +47,6 @@ pub enum IconName {
     ChevronLeft,
     ChevronRight,
     ChevronUp,
-    ExpandVertical,
     Close,
     Collab,
     Command,
@@ -95,7 +94,6 @@ pub enum IconName {
     PageDown,
     PageUp,
     Pencil,
-    Person,
     Play,
     Plus,
     Public,
@@ -122,7 +120,6 @@ pub enum IconName {
     WholeWord,
     XCircle,
     ZedXCopilot,
-    PullRequest,
 }
 
 impl IconName {
@@ -150,7 +147,6 @@ impl IconName {
             IconName::ChevronLeft => "icons/chevron_left.svg",
             IconName::ChevronRight => "icons/chevron_right.svg",
             IconName::ChevronUp => "icons/chevron_up.svg",
-            IconName::ExpandVertical => "icons/expand_vertical.svg",
             IconName::Close => "icons/x.svg",
             IconName::Collab => "icons/user_group_16.svg",
             IconName::Command => "icons/command.svg",
@@ -197,7 +193,6 @@ impl IconName {
             IconName::Option => "icons/option.svg",
             IconName::PageDown => "icons/page_down.svg",
             IconName::PageUp => "icons/page_up.svg",
-            IconName::Person => "icons/person.svg",
             IconName::Pencil => "icons/pencil.svg",
             IconName::Play => "icons/play.svg",
             IconName::Plus => "icons/plus.svg",
@@ -225,7 +220,6 @@ impl IconName {
             IconName::WholeWord => "icons/word_search.svg",
             IconName::XCircle => "icons/error.svg",
             IconName::ZedXCopilot => "icons/zed_x_copilot.svg",
-            IconName::PullRequest => "icons/pull_request.svg",
         }
     }
 }
@@ -281,65 +275,5 @@ impl RenderOnce for Icon {
             .flex_none()
             .path(self.path)
             .text_color(self.color.color(cx))
-    }
-}
-
-#[derive(IntoElement)]
-pub struct IconWithIndicator {
-    icon: Icon,
-    indicator: Option<Indicator>,
-    indicator_border_color: Option<Hsla>,
-}
-
-impl IconWithIndicator {
-    pub fn new(icon: Icon, indicator: Option<Indicator>) -> Self {
-        Self {
-            icon,
-            indicator,
-            indicator_border_color: None,
-        }
-    }
-
-    pub fn indicator(mut self, indicator: Option<Indicator>) -> Self {
-        self.indicator = indicator;
-        self
-    }
-
-    pub fn indicator_color(mut self, color: Color) -> Self {
-        if let Some(indicator) = self.indicator.as_mut() {
-            indicator.color = color;
-        }
-        self
-    }
-
-    pub fn indicator_border_color(mut self, color: Option<Hsla>) -> Self {
-        self.indicator_border_color = color;
-        self
-    }
-}
-
-impl RenderOnce for IconWithIndicator {
-    fn render(self, cx: &mut WindowContext) -> impl IntoElement {
-        let indicator_border_color = self
-            .indicator_border_color
-            .unwrap_or_else(|| cx.theme().colors().elevated_surface_background);
-
-        div()
-            .relative()
-            .child(self.icon)
-            .when_some(self.indicator, |this, indicator| {
-                this.child(
-                    div()
-                        .absolute()
-                        .w_2()
-                        .h_2()
-                        .border()
-                        .border_color(indicator_border_color)
-                        .rounded_full()
-                        .neg_bottom_0p5()
-                        .neg_right_1()
-                        .child(indicator),
-                )
-            })
     }
 }

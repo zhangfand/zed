@@ -110,7 +110,7 @@ impl RenderOnce for WindowsCaptionButton {
             .content_center()
             .w(width)
             .h_full()
-            .font_family("Segoe Fluent Icons")
+            .font("Segoe Fluent Icons")
             .text_size(px(10.0))
             .hover(|style| style.bg(self.hover_background_color))
             .active(|style| {

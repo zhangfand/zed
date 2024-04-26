@@ -173,11 +173,6 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
         with:
-          # We need to fetch more than one commit so that `script/draft-release-notes`
-          # is able to diff between the current and previous tag.
-          #
-          # 25 was chosen arbitrarily.
-          fetch-depth: 25
           clean: false
           submodules: "recursive"
 
@@ -211,8 +206,7 @@ jobs:
             exit 1
           fi
           mkdir -p target/
-          # Ignore any errors that occur while drafting release notes to not fail the build.
-          script/draft-release-notes "$version" "$channel" > target/release-notes.md || true
+          script/draft-release-notes "$version" "$channel" > target/release-notes.md
 
       - name: Generate license file
         run: script/generate-licenses
@@ -256,7 +250,7 @@ jobs:
             target/aarch64-apple-darwin/release/Zed-aarch64.dmg
             target/x86_64-apple-darwin/release/Zed-x86_64.dmg
             target/release/Zed.dmg
-          body_file: target/release-notes.md
+          body_path: target/release-notes.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

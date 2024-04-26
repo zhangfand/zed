@@ -275,7 +275,7 @@ impl ScrollManager {
         self.show_scrollbars
     }
 
-    pub fn autoscroll_requested(&self) -> bool {
+    pub fn has_autoscroll_request(&self) -> bool {
         self.autoscroll_request.is_some()
     }
 

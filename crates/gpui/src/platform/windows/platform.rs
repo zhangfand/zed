@@ -57,7 +57,7 @@ pub(crate) struct WindowsPlatformInner {
     background_executor: BackgroundExecutor,
     pub(crate) foreground_executor: ForegroundExecutor,
     main_receiver: flume::Receiver<Runnable>,
-    text_system: Arc<dyn PlatformTextSystem>,
+    text_system: Arc<CosmicTextSystem>,
     callbacks: Mutex<Callbacks>,
     pub raw_window_handles: RwLock<SmallVec<[HWND; 4]>>,
     pub(crate) dispatch_event: OwnedHandle,
@@ -77,13 +77,6 @@ impl WindowsPlatformInner {
             .iter()
             .find(|entry| *entry == &hwnd)
             .and_then(|hwnd| try_get_window_inner(*hwnd))
-    }
-
-    #[inline]
-    pub fn run_foreground_tasks(&self) {
-        for runnable in self.main_receiver.drain() {
-            runnable.run();
-        }
     }
 }
 
@@ -162,13 +155,7 @@ impl WindowsPlatform {
         let dispatcher = Arc::new(WindowsDispatcher::new(main_sender, dispatch_event.to_raw()));
         let background_executor = BackgroundExecutor::new(dispatcher.clone());
         let foreground_executor = ForegroundExecutor::new(dispatcher);
-        let text_system = if let Some(direct_write) = DirectWriteTextSystem::new().log_err() {
-            log::info!("Using direct write text system.");
-            Arc::new(direct_write) as Arc<dyn PlatformTextSystem>
-        } else {
-            log::info!("Using cosmic text system.");
-            Arc::new(CosmicTextSystem::new()) as Arc<dyn PlatformTextSystem>
-        };
+        let text_system = Arc::new(CosmicTextSystem::new());
         let callbacks = Mutex::new(Callbacks::default());
         let raw_window_handles = RwLock::new(SmallVec::new());
         let settings = RefCell::new(WindowsPlatformSystemSettings::new());
@@ -189,9 +176,10 @@ impl WindowsPlatform {
         Self { inner }
     }
 
-    #[inline]
     fn run_foreground_tasks(&self) {
-        self.inner.run_foreground_tasks();
+        for runnable in self.inner.main_receiver.drain() {
+            runnable.run();
+        }
     }
 
     fn redraw_all(&self) {
@@ -698,17 +686,11 @@ impl Platform for WindowsPlatform {
         false
     }
 
-    fn write_to_primary(&self, _item: ClipboardItem) {}
-
     fn write_to_clipboard(&self, item: ClipboardItem) {
         if item.text.len() > 0 {
             let mut ctx = ClipboardContext::new().unwrap();
             ctx.set_contents(item.text().to_owned()).unwrap();
         }
-    }
-
-    fn read_from_primary(&self) -> Option<ClipboardItem> {
-        None
     }
 
     fn read_from_clipboard(&self) -> Option<ClipboardItem> {

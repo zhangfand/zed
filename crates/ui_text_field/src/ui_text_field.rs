@@ -44,8 +44,6 @@ pub struct TextField {
     start_icon: Option<IconName>,
     /// The layout of the label relative to the text field.
     with_label: FieldLabelLayout,
-    /// Whether the text field is disabled.
-    disabled: bool,
 }
 
 impl FocusableView for TextField {
@@ -74,7 +72,6 @@ impl TextField {
             editor,
             start_icon: None,
             with_label: FieldLabelLayout::Hidden,
-            disabled: false,
         }
     }
 
@@ -87,16 +84,6 @@ impl TextField {
         self.with_label = layout;
         self
     }
-
-    pub fn set_disabled(&mut self, disabled: bool, cx: &mut ViewContext<Self>) {
-        self.disabled = disabled;
-        self.editor
-            .update(cx, |editor, _| editor.set_read_only(disabled))
-    }
-
-    pub fn editor(&self) -> &View<Editor> {
-        &self.editor
-    }
 }
 
 impl Render for TextField {
@@ -104,17 +91,17 @@ impl Render for TextField {
         let settings = ThemeSettings::get_global(cx);
         let theme_color = cx.theme().colors();
 
-        let mut style = TextFieldStyle {
+        let style = TextFieldStyle {
             text_color: theme_color.text,
             background_color: theme_color.ghost_element_background,
             border_color: theme_color.border,
         };
 
-        if self.disabled {
-            style.text_color = theme_color.text_disabled;
-            style.background_color = theme_color.ghost_element_disabled;
-            style.border_color = theme_color.border_disabled;
-        }
+        // if self.disabled {
+        //     style.text_color = theme_color.text_disabled;
+        //     style.background_color = theme_color.ghost_element_disabled;
+        //     style.border_color = theme_color.border_disabled;
+        // }
 
         // if self.error_message.is_some() {
         //     style.text_color = cx.theme().status().error;
@@ -123,7 +110,7 @@ impl Render for TextField {
 
         let text_style = TextStyle {
             font_family: settings.buffer_font.family.clone(),
-            font_features: settings.buffer_font.features.clone(),
+            font_features: settings.buffer_font.features,
             font_size: rems(0.875).into(),
             font_weight: FontWeight::NORMAL,
             font_style: FontStyle::Normal,
@@ -144,15 +131,7 @@ impl Render for TextField {
             .group("text-field")
             .w_full()
             .when(self.with_label == FieldLabelLayout::Stacked, |this| {
-                this.child(
-                    Label::new(self.label.clone())
-                        .size(LabelSize::Default)
-                        .color(if self.disabled {
-                            Color::Disabled
-                        } else {
-                            Color::Muted
-                        }),
-                )
+                this.child(Label::new(self.label.clone()).size(LabelSize::Default))
             })
             .child(
                 v_flex().w_full().child(

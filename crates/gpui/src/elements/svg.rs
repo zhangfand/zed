@@ -1,7 +1,7 @@
 use crate::{
-    geometry::Negate as _, point, px, radians, size, Bounds, Element, Hitbox, InteractiveElement,
-    Interactivity, IntoElement, LayoutId, Pixels, Point, Radians, SharedString, Size,
-    StyleRefinement, Styled, TransformationMatrix, WindowContext,
+    geometry::Negate as _, point, px, radians, size, Bounds, Element, ElementContext, Hitbox,
+    InteractiveElement, Interactivity, IntoElement, LayoutId, Pixels, Point, Radians, SharedString,
+    Size, StyleRefinement, Styled, TransformationMatrix,
 };
 use util::ResultExt;
 
@@ -37,32 +37,32 @@ impl Svg {
 }
 
 impl Element for Svg {
-    type RequestLayoutState = ();
-    type PrepaintState = Option<Hitbox>;
+    type BeforeLayout = ();
+    type AfterLayout = Option<Hitbox>;
 
-    fn request_layout(&mut self, cx: &mut WindowContext) -> (LayoutId, Self::RequestLayoutState) {
+    fn before_layout(&mut self, cx: &mut ElementContext) -> (LayoutId, Self::BeforeLayout) {
         let layout_id = self
             .interactivity
-            .request_layout(cx, |style, cx| cx.request_layout(&style, None));
+            .before_layout(cx, |style, cx| cx.request_layout(&style, None));
         (layout_id, ())
     }
 
-    fn prepaint(
+    fn after_layout(
         &mut self,
         bounds: Bounds<Pixels>,
-        _request_layout: &mut Self::RequestLayoutState,
-        cx: &mut WindowContext,
+        _before_layout: &mut Self::BeforeLayout,
+        cx: &mut ElementContext,
     ) -> Option<Hitbox> {
         self.interactivity
-            .prepaint(bounds, bounds.size, cx, |_, _, hitbox, _| hitbox)
+            .after_layout(bounds, bounds.size, cx, |_, _, hitbox, _| hitbox)
     }
 
     fn paint(
         &mut self,
         bounds: Bounds<Pixels>,
-        _request_layout: &mut Self::RequestLayoutState,
+        _before_layout: &mut Self::BeforeLayout,
         hitbox: &mut Option<Hitbox>,
-        cx: &mut WindowContext,
+        cx: &mut ElementContext,
     ) where
         Self: Sized,
     {

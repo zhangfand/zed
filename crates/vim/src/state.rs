@@ -194,7 +194,7 @@ impl EditorState {
     }
 
     pub fn keymap_context_layer(&self) -> KeyContext {
-        let mut context = KeyContext::new_with_defaults();
+        let mut context = KeyContext::default();
         context.set(
             "vim_mode",
             match self.mode {

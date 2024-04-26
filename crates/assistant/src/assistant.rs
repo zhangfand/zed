@@ -128,8 +128,6 @@ impl LanguageModelRequestMessage {
                 Role::System => proto::LanguageModelRole::LanguageModelSystem,
             } as i32,
             content: self.content.clone(),
-            tool_calls: Vec::new(),
-            tool_call_id: None,
         }
     }
 }
@@ -149,8 +147,6 @@ impl LanguageModelRequest {
             messages: self.messages.iter().map(|m| m.to_proto()).collect(),
             stop: self.stop.clone(),
             temperature: self.temperature,
-            tool_choice: None,
-            tools: Vec::new(),
         }
     }
 }
