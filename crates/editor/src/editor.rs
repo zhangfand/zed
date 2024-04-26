@@ -7745,13 +7745,7 @@ impl Editor {
                 .update(&mut cx, |editor, cx| {
                     editor.navigate_to_hover_links(
                         Some(kind),
-                        definitions
-                            .into_iter()
-                            .filter(|location| {
-                                hover_links::exclude_link_to_position(&buffer, &head, location, cx)
-                            })
-                            .map(HoverLink::Text)
-                            .collect::<Vec<_>>(),
+                        definitions.into_iter().map(HoverLink::Text).collect(),
                         split,
                         cx,
                     )
@@ -8991,10 +8985,6 @@ impl Editor {
             let Some(buffer) = self.buffer().read(cx).as_singleton() else {
                 return;
             };
-
-            if buffer.read(cx).file().is_none() {
-                return;
-            }
 
             let project = project.clone();
             let blame = cx.new_model(|cx| GitBlame::new(buffer, project, user_triggered, cx));
@@ -10340,7 +10330,7 @@ impl Render for Editor {
             EditorMode::SingleLine | EditorMode::AutoHeight { .. } => TextStyle {
                 color: cx.theme().colors().editor_foreground,
                 font_family: settings.ui_font.family.clone(),
-                font_features: settings.ui_font.features.clone(),
+                font_features: settings.ui_font.features,
                 font_size: rems(0.875).into(),
                 font_weight: FontWeight::NORMAL,
                 font_style: FontStyle::Normal,
@@ -10353,7 +10343,7 @@ impl Render for Editor {
             EditorMode::Full => TextStyle {
                 color: cx.theme().colors().editor_foreground,
                 font_family: settings.buffer_font.family.clone(),
-                font_features: settings.buffer_font.features.clone(),
+                font_features: settings.buffer_font.features,
                 font_size: settings.buffer_font_size(cx).into(),
                 font_weight: FontWeight::NORMAL,
                 font_style: FontStyle::Normal,
@@ -10778,7 +10768,7 @@ pub fn diagnostic_block_renderer(diagnostic: Diagnostic, _is_valid: bool) -> Ren
         let theme_settings = ThemeSettings::get_global(cx);
         text_style.font_family = theme_settings.buffer_font.family.clone();
         text_style.font_style = theme_settings.buffer_font.style;
-        text_style.font_features = theme_settings.buffer_font.features.clone();
+        text_style.font_features = theme_settings.buffer_font.features;
         text_style.font_weight = theme_settings.buffer_font.weight;
 
         let multi_line_diagnostic = diagnostic.message.contains('\n');

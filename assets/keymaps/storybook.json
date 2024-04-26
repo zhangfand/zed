@@ -17,11 +17,7 @@
       "cmd-enter": "menu::SecondaryConfirm",
       "escape": "menu::Cancel",
       "ctrl-c": "menu::Cancel",
-      "cmd-q": "storybook::Quit",
-      "backspace": "editor::Backspace",
-      "delete": "editor::Delete",
-      "left": "editor::MoveLeft",
-      "right": "editor::MoveRight"
+      "cmd-q": "storybook::Quit"
     }
   }
 ]

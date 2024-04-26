@@ -55,7 +55,6 @@ impl Render for ModeIndicator {
 
         Label::new(format!("{} -- {} --", self.operators, mode))
             .size(LabelSize::Small)
-            .line_height_style(LineHeightStyle::UiLabel)
             .into_any_element()
     }
 }

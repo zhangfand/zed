@@ -2,8 +2,9 @@ use std::{cell::RefCell, rc::Rc};
 
 use gpui::{
     anchored, deferred, div, AnchorCorner, AnyElement, Bounds, DismissEvent, DispatchPhase,
-    Element, ElementId, Hitbox, InteractiveElement, IntoElement, LayoutId, ManagedView,
-    MouseButton, MouseDownEvent, ParentElement, Pixels, Point, View, VisualContext, WindowContext,
+    Element, ElementContext, ElementId, Hitbox, InteractiveElement, IntoElement, LayoutId,
+    ManagedView, MouseButton, MouseDownEvent, ParentElement, Pixels, Point, View, VisualContext,
+    WindowContext,
 };
 
 pub struct RightClickMenu<M: ManagedView> {
@@ -40,8 +41,8 @@ impl<M: ManagedView> RightClickMenu<M> {
 
     fn with_element_state<R>(
         &mut self,
-        cx: &mut WindowContext,
-        f: impl FnOnce(&mut Self, &mut MenuHandleElementState<M>, &mut WindowContext) -> R,
+        cx: &mut ElementContext,
+        f: impl FnOnce(&mut Self, &mut MenuHandleElementState<M>, &mut ElementContext) -> R,
     ) -> R {
         cx.with_element_state::<MenuHandleElementState<M>, _>(
             Some(self.id.clone()),
@@ -88,24 +89,19 @@ impl<M> Default for MenuHandleElementState<M> {
     }
 }
 
-pub struct RequestLayoutState {
+pub struct MenuHandleFrameState {
     child_layout_id: Option<LayoutId>,
     child_element: Option<AnyElement>,
     menu_element: Option<AnyElement>,
 }
 
-pub struct PrepaintState {
-    hitbox: Hitbox,
-    child_bounds: Option<Bounds<Pixels>>,
-}
-
 impl<M: ManagedView> Element for RightClickMenu<M> {
-    type RequestLayoutState = RequestLayoutState;
-    type PrepaintState = PrepaintState;
+    type RequestLayoutState = MenuHandleFrameState;
+    type PrepaintState = Hitbox;
 
     fn request_layout(
         &mut self,
-        cx: &mut WindowContext,
+        cx: &mut ElementContext,
     ) -> (gpui::LayoutId, Self::RequestLayoutState) {
         self.with_element_state(cx, |this, element_state, cx| {
             let mut menu_layout_id = None;
@@ -141,7 +137,7 @@ impl<M: ManagedView> Element for RightClickMenu<M> {
 
             (
                 layout_id,
-                RequestLayoutState {
+                MenuHandleFrameState {
                     child_element,
                     child_layout_id,
                     menu_element,
@@ -154,8 +150,8 @@ impl<M: ManagedView> Element for RightClickMenu<M> {
         &mut self,
         bounds: Bounds<Pixels>,
         request_layout: &mut Self::RequestLayoutState,
-        cx: &mut WindowContext,
-    ) -> PrepaintState {
+        cx: &mut ElementContext,
+    ) -> Hitbox {
         cx.with_element_id(Some(self.id.clone()), |cx| {
             let hitbox = cx.insert_hitbox(bounds, false);
 
@@ -167,12 +163,7 @@ impl<M: ManagedView> Element for RightClickMenu<M> {
                 menu.prepaint(cx);
             }
 
-            PrepaintState {
-                hitbox,
-                child_bounds: request_layout
-                    .child_layout_id
-                    .map(|layout_id| cx.layout_bounds(layout_id)),
-            }
+            hitbox
         })
     }
 
@@ -180,8 +171,8 @@ impl<M: ManagedView> Element for RightClickMenu<M> {
         &mut self,
         _bounds: Bounds<gpui::Pixels>,
         request_layout: &mut Self::RequestLayoutState,
-        prepaint_state: &mut Self::PrepaintState,
-        cx: &mut WindowContext,
+        hitbox: &mut Self::PrepaintState,
+        cx: &mut ElementContext,
     ) {
         self.with_element_state(cx, |this, element_state, cx| {
             if let Some(mut child) = request_layout.child_element.take() {
@@ -200,9 +191,10 @@ impl<M: ManagedView> Element for RightClickMenu<M> {
             let attach = this.attach;
             let menu = element_state.menu.clone();
             let position = element_state.position.clone();
-            let child_bounds = prepaint_state.child_bounds;
+            let child_layout_id = request_layout.child_layout_id;
+            let child_bounds = cx.layout_bounds(child_layout_id.unwrap());
 
-            let hitbox_id = prepaint_state.hitbox.id;
+            let hitbox_id = hitbox.id;
             cx.on_mouse_event(move |event: &MouseDownEvent, phase, cx| {
                 if phase == DispatchPhase::Bubble
                     && event.button == MouseButton::Right
@@ -227,7 +219,7 @@ impl<M: ManagedView> Element for RightClickMenu<M> {
                     .detach();
                     cx.focus_view(&new_menu);
                     *menu.borrow_mut() = Some(new_menu);
-                    *position.borrow_mut() = if let Some(child_bounds) = child_bounds {
+                    *position.borrow_mut() = if child_layout_id.is_some() {
                         if let Some(attach) = attach {
                             attach.corner(child_bounds)
                         } else {

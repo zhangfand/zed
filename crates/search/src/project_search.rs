@@ -19,14 +19,14 @@ use gpui::{
     WeakModel, WeakView, WhiteSpace, WindowContext,
 };
 use menu::Confirm;
-use project::{search::SearchQuery, search_history::SearchHistoryCursor, Project, ProjectPath};
+use project::{search::SearchQuery, search_history::SearchHistoryCursor, Project};
 use settings::Settings;
 use smol::stream::StreamExt;
 use std::{
     any::{Any, TypeId},
     mem,
     ops::{Not, Range},
-    path::Path,
+    path::{Path, PathBuf},
 };
 use theme::ThemeSettings;
 use ui::{
@@ -439,7 +439,7 @@ impl Item for ProjectSearchView {
     fn save_as(
         &mut self,
         _: Model<Project>,
-        _: ProjectPath,
+        _: PathBuf,
         _: &mut ViewContext<Self>,
     ) -> Task<anyhow::Result<()>> {
         unreachable!("save_as should not have been called")
@@ -1307,7 +1307,7 @@ impl ProjectSearchBar {
                 cx.theme().colors().text
             },
             font_family: settings.buffer_font.family.clone(),
-            font_features: settings.buffer_font.features.clone(),
+            font_features: settings.buffer_font.features,
             font_size: rems(0.875).into(),
             font_weight: FontWeight::NORMAL,
             font_style: FontStyle::Normal,

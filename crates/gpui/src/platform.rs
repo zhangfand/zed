@@ -693,7 +693,7 @@ pub struct PathPromptOptions {
 }
 
 /// What kind of prompt styling to show
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug)]
 pub enum PromptLevel {
     /// A prompt that is shown when the user should be notified of something
     Info,
@@ -703,10 +703,6 @@ pub enum PromptLevel {
 
     /// A prompt that is shown when a critical problem has occurred
     Critical,
-
-    /// A prompt that is shown when asking the user to confirm a potentially destructive action
-    /// (overwriting a file for example)
-    Destructive,
 }
 
 /// The style of the cursor (pointer)

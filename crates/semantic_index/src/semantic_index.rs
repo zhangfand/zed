@@ -9,8 +9,8 @@ use fs::Fs;
 use futures::stream::StreamExt;
 use futures_batch::ChunksTimeoutStreamExt;
 use gpui::{
-    AppContext, AsyncAppContext, BorrowAppContext, Context, Entity, EntityId, EventEmitter, Global,
-    Model, ModelContext, Subscription, Task, WeakModel,
+    AppContext, AsyncAppContext, Context, EntityId, EventEmitter, Global, Model, ModelContext,
+    Subscription, Task, WeakModel,
 };
 use heed::types::{SerdeBincode, Str};
 use language::LanguageRegistry;
@@ -68,18 +68,6 @@ impl SemanticIndex {
         project: Model<Project>,
         cx: &mut AppContext,
     ) -> Model<ProjectIndex> {
-        let project_weak = project.downgrade();
-        project.update(cx, move |_, cx| {
-            cx.on_release(move |_, cx| {
-                if cx.has_global::<SemanticIndex>() {
-                    cx.update_global::<SemanticIndex, _>(|this, _| {
-                        this.project_indices.remove(&project_weak);
-                    })
-                }
-            })
-            .detach();
-        });
-
         self.project_indices
             .entry(project.downgrade())
             .or_insert_with(|| {
@@ -98,7 +86,7 @@ impl SemanticIndex {
 
 pub struct ProjectIndex {
     db_connection: heed::Env,
-    project: WeakModel<Project>,
+    project: Model<Project>,
     worktree_indices: HashMap<EntityId, WorktreeIndexHandle>,
     language_registry: Arc<LanguageRegistry>,
     fs: Arc<dyn Fs>,
@@ -128,7 +116,7 @@ impl ProjectIndex {
         let fs = project.read(cx).fs().clone();
         let mut this = ProjectIndex {
             db_connection,
-            project: project.downgrade(),
+            project: project.clone(),
             worktree_indices: HashMap::default(),
             language_registry,
             fs,
@@ -155,11 +143,8 @@ impl ProjectIndex {
     }
 
     fn update_worktree_indices(&mut self, cx: &mut ModelContext<Self>) {
-        let Some(project) = self.project.upgrade() else {
-            return;
-        };
-
-        let worktrees = project
+        let worktrees = self
+            .project
             .read(cx)
             .visible_worktrees(cx)
             .filter_map(|worktree| {
