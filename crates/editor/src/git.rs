@@ -108,9 +108,10 @@ mod tests {
         let project = Project::test(fs, [], cx).await;
 
         // buffer has two modified hunks with two rows each
-        let buffer_1 = project.update(cx, |project, cx| {
-            project.create_local_buffer(
-                "
+        let buffer_1 = project
+            .update(cx, |project, cx| {
+                project.create_buffer(
+                    "
                         1.zero
                         1.ONE
                         1.TWO
@@ -119,12 +120,13 @@ mod tests {
                         1.FIVE
                         1.six
                     "
-                .unindent()
-                .as_str(),
-                None,
-                cx,
-            )
-        });
+                    .unindent()
+                    .as_str(),
+                    None,
+                    cx,
+                )
+            })
+            .unwrap();
         buffer_1.update(cx, |buffer, cx| {
             buffer.set_diff_base(
                 Some(
@@ -144,9 +146,10 @@ mod tests {
         });
 
         // buffer has a deletion hunk and an insertion hunk
-        let buffer_2 = project.update(cx, |project, cx| {
-            project.create_local_buffer(
-                "
+        let buffer_2 = project
+            .update(cx, |project, cx| {
+                project.create_buffer(
+                    "
                         2.zero
                         2.one
                         2.two
@@ -155,12 +158,13 @@ mod tests {
                         2.five
                         2.six
                     "
-                .unindent()
-                .as_str(),
-                None,
-                cx,
-            )
-        });
+                    .unindent()
+                    .as_str(),
+                    None,
+                    cx,
+                )
+            })
+            .unwrap();
         buffer_2.update(cx, |buffer, cx| {
             buffer.set_diff_base(
                 Some(

@@ -2,9 +2,9 @@ use std::{iter, mem, ops::Range};
 
 use crate::{
     black, phi, point, quad, rems, AbsoluteLength, Bounds, ContentMask, Corners, CornersRefinement,
-    CursorStyle, DefiniteLength, Edges, EdgesRefinement, Font, FontFeatures, FontStyle, FontWeight,
-    Hsla, Length, Pixels, Point, PointRefinement, Rgba, SharedString, Size, SizeRefinement, Styled,
-    TextRun, WindowContext,
+    CursorStyle, DefiniteLength, Edges, EdgesRefinement, ElementContext, Font, FontFeatures,
+    FontStyle, FontWeight, Hsla, Length, Pixels, Point, PointRefinement, Rgba, SharedString, Size,
+    SizeRefinement, Styled, TextRun,
 };
 use collections::HashSet;
 use refineable::Refineable;
@@ -262,7 +262,7 @@ impl TextStyle {
     pub fn font(&self) -> Font {
         Font {
             family: self.font_family.clone(),
-            features: self.font_features.clone(),
+            features: self.font_features,
             weight: self.font_weight,
             style: self.font_style,
         }
@@ -391,8 +391,8 @@ impl Style {
     pub fn paint(
         &self,
         bounds: Bounds<Pixels>,
-        cx: &mut WindowContext,
-        continuation: impl FnOnce(&mut WindowContext),
+        cx: &mut ElementContext,
+        continuation: impl FnOnce(&mut ElementContext),
     ) {
         #[cfg(debug_assertions)]
         if self.debug_below {
@@ -628,13 +628,6 @@ impl From<&TextStyle> for HighlightStyle {
 }
 
 impl HighlightStyle {
-    /// Create a highlight style with just a color
-    pub fn color(color: Hsla) -> Self {
-        Self {
-            color: Some(color),
-            ..Default::default()
-        }
-    }
     /// Blend this highlight style with another.
     /// Non-continuous properties, like font_weight and font_style, are overwritten.
     pub fn highlight(&mut self, other: HighlightStyle) {

@@ -20,7 +20,7 @@ pub trait AssetSource: 'static + Send + Sync {
 impl AssetSource for () {
     fn load(&self, path: &str) -> Result<Cow<'static, [u8]>> {
         Err(anyhow!(
-            "load called on empty asset provider with \"{}\"",
+            "get called on empty asset provider with \"{}\"",
             path
         ))
     }

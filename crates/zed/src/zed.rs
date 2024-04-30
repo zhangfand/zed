@@ -102,7 +102,6 @@ pub fn build_window_options(display_uuid: Option<Uuid>, cx: &mut AppContext) -> 
         display_id: display.map(|display| display.id()),
         fullscreen: false,
         window_background: cx.theme().window_background_appearance(),
-        app_id: Some("dev.zed.Zed".to_owned()),
     }
 }
 
@@ -599,9 +598,9 @@ fn open_log_file(workspace: &mut Workspace, cx: &mut ViewContext<Workspace>) {
                             return;
                         };
                         let project = workspace.project().clone();
-                        let buffer = project.update(cx, |project, cx| {
-                            project.create_local_buffer(&log, None, cx)
-                        });
+                        let buffer = project
+                            .update(cx, |project, cx| project.create_buffer(&log, None, cx))
+                            .expect("creating buffers on a local workspace always succeeds");
 
                         let buffer = cx.new_model(|cx| {
                             MultiBuffer::singleton(buffer, cx).with_title("Log".into())
@@ -618,7 +617,7 @@ fn open_log_file(workspace: &mut Workspace, cx: &mut ViewContext<Workspace>) {
                             })
                         });
 
-                        workspace.add_item_to_active_pane(Box::new(editor), None, cx);
+                        workspace.add_item_to_active_pane(Box::new(editor), cx);
                     })
                     .log_err();
             })
@@ -812,7 +811,8 @@ fn open_telemetry_log_file(workspace: &mut Workspace, cx: &mut ViewContext<Works
             workspace.update(&mut cx, |workspace, cx| {
                 let project = workspace.project().clone();
                 let buffer = project
-                    .update(cx, |project, cx| project.create_local_buffer("", None, cx));
+                    .update(cx, |project, cx| project.create_buffer("", None, cx))
+                    .expect("creating buffers on a local workspace always succeeds");
                 buffer.update(cx, |buffer, cx| {
                     buffer.set_language(json, cx);
                     buffer.edit(
@@ -836,7 +836,7 @@ fn open_telemetry_log_file(workspace: &mut Workspace, cx: &mut ViewContext<Works
                 });
                 workspace.add_item_to_active_pane(
                     Box::new(cx.new_view(|cx| Editor::for_multibuffer(buffer, Some(project), cx))),
-                    None,cx,
+                    cx,
                 );
             }).log_err()?;
 
@@ -861,7 +861,9 @@ fn open_bundled_file(
                 workspace.with_local_workspace(cx, |workspace, cx| {
                     let project = workspace.project();
                     let buffer = project.update(cx, move |project, cx| {
-                        project.create_local_buffer(text.as_ref(), language, cx)
+                        project
+                            .create_buffer(text.as_ref(), language, cx)
+                            .expect("creating buffers on a local workspace always succeeds")
                     });
                     let buffer = cx.new_model(|cx| {
                         MultiBuffer::singleton(buffer, cx).with_title(title.into())
@@ -870,7 +872,6 @@ fn open_bundled_file(
                         Box::new(cx.new_view(|cx| {
                             Editor::for_multibuffer(buffer, Some(project.clone()), cx)
                         })),
-                        None,
                         cx,
                     );
                 })
@@ -1332,7 +1333,6 @@ mod tests {
             })
         })
         .await;
-        cx.run_until_parked();
 
         let workspace = cx
             .update(|cx| cx.windows().first().unwrap().downcast::<Workspace>())
@@ -2840,12 +2840,11 @@ mod tests {
             handle_keymap_file_changes(keymap_rx, cx);
         });
         workspace
-            .update(cx, |workspace, cx| {
+            .update(cx, |workspace, _| {
                 workspace.register_action(|_, _: &A, _cx| {});
                 workspace.register_action(|_, _: &B, _cx| {});
                 workspace.register_action(|_, _: &ActivatePreviousPane, _cx| {});
                 workspace.register_action(|_, _: &ActivatePrevItem, _cx| {});
-                cx.notify();
             })
             .unwrap();
         executor.run_until_parked();

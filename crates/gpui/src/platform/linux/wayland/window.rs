@@ -2,14 +2,16 @@ use std::any::Any;
 use std::cell::{Ref, RefCell, RefMut};
 use std::ffi::c_void;
 use std::num::NonZeroU32;
-use std::ptr::NonNull;
 use std::rc::{Rc, Weak};
 use std::sync::Arc;
 
 use blade_graphics as gpu;
+use blade_rwh::{HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle};
 use collections::{HashMap, HashSet};
 use futures::channel::oneshot::Receiver;
-use raw_window_handle as rwh;
+use raw_window_handle::{
+    DisplayHandle, HandleError, HasDisplayHandle, HasWindowHandle, WindowHandle,
+};
 use wayland_backend::client::ObjectId;
 use wayland_client::WEnum;
 use wayland_client::{protocol::wl_surface, Proxy};
@@ -47,24 +49,24 @@ struct RawWindow {
     display: *mut c_void,
 }
 
-impl rwh::HasWindowHandle for RawWindow {
-    fn window_handle(&self) -> Result<rwh::WindowHandle<'_>, rwh::HandleError> {
-        let window = NonNull::new(self.window).unwrap();
-        let handle = rwh::WaylandWindowHandle::new(window);
-        Ok(unsafe { rwh::WindowHandle::borrow_raw(handle.into()) })
+unsafe impl HasRawWindowHandle for RawWindow {
+    fn raw_window_handle(&self) -> RawWindowHandle {
+        let mut wh = blade_rwh::WaylandWindowHandle::empty();
+        wh.surface = self.window;
+        wh.into()
     }
 }
-impl rwh::HasDisplayHandle for RawWindow {
-    fn display_handle(&self) -> Result<rwh::DisplayHandle<'_>, rwh::HandleError> {
-        let display = NonNull::new(self.display).unwrap();
-        let handle = rwh::WaylandDisplayHandle::new(display);
-        Ok(unsafe { rwh::DisplayHandle::borrow_raw(handle.into()) })
+
+unsafe impl HasRawDisplayHandle for RawWindow {
+    fn raw_display_handle(&self) -> RawDisplayHandle {
+        let mut dh = blade_rwh::WaylandDisplayHandle::empty();
+        dh.display = self.display;
+        dh.into()
     }
 }
 
 pub struct WaylandWindowState {
     xdg_surface: xdg_surface::XdgSurface,
-    acknowledged_first_configure: bool,
     pub surface: wl_surface::WlSurface,
     decoration: Option<zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1>,
     toplevel: xdg_toplevel::XdgToplevel,
@@ -132,7 +134,6 @@ impl WaylandWindowState {
 
         Self {
             xdg_surface,
-            acknowledged_first_configure: false,
             surface,
             decoration,
             toplevel,
@@ -229,6 +230,8 @@ impl WaylandWindow {
             .as_ref()
             .map(|viewporter| viewporter.get_viewport(&surface, &globals.qh, ()));
 
+        surface.frame(&globals.qh, surface.id());
+
         let this = Self(WaylandWindowStatePtr {
             state: Rc::new(RefCell::new(WaylandWindowState::new(
                 surface.clone(),
@@ -255,8 +258,8 @@ impl WaylandWindowStatePtr {
         Rc::ptr_eq(&self.state, &other.state)
     }
 
-    pub fn frame(&self, request_frame_callback: bool) {
-        if request_frame_callback {
+    pub fn frame(&self, from_frame_callback: bool) {
+        if from_frame_callback {
             let state = self.state.borrow_mut();
             state.surface.frame(&state.globals.qh, state.surface.id());
             drop(state);
@@ -270,12 +273,10 @@ impl WaylandWindowStatePtr {
     pub fn handle_xdg_surface_event(&self, event: xdg_surface::Event) {
         match event {
             xdg_surface::Event::Configure { serial } => {
-                let mut state = self.state.borrow_mut();
+                let state = self.state.borrow();
                 state.xdg_surface.ack_configure(serial);
-                let request_frame_callback = !state.acknowledged_first_configure;
-                state.acknowledged_first_configure = true;
                 drop(state);
-                self.frame(request_frame_callback);
+                self.frame(false);
             }
             _ => {}
         }
@@ -324,7 +325,7 @@ impl WaylandWindowStatePtr {
                 self.resize(width, height);
                 self.set_fullscreen(fullscreen);
                 let mut state = self.state.borrow_mut();
-                state.maximized = maximized;
+                state.maximized = true;
 
                 false
             }
@@ -519,13 +520,14 @@ impl WaylandWindowStatePtr {
     }
 }
 
-impl rwh::HasWindowHandle for WaylandWindow {
-    fn window_handle(&self) -> Result<rwh::WindowHandle<'_>, rwh::HandleError> {
+impl HasWindowHandle for WaylandWindow {
+    fn window_handle(&self) -> Result<WindowHandle<'_>, HandleError> {
         unimplemented!()
     }
 }
-impl rwh::HasDisplayHandle for WaylandWindow {
-    fn display_handle(&self) -> Result<rwh::DisplayHandle<'_>, rwh::HandleError> {
+
+impl HasDisplayHandle for WaylandWindow {
+    fn display_handle(&self) -> Result<DisplayHandle<'_>, HandleError> {
         unimplemented!()
     }
 }
@@ -609,10 +611,6 @@ impl PlatformWindow for WaylandWindow {
 
     fn set_title(&mut self, title: &str) {
         self.borrow_mut().toplevel.set_title(title.to_string());
-    }
-
-    fn set_app_id(&mut self, app_id: &str) {
-        self.borrow_mut().toplevel.set_app_id(app_id.to_owned());
     }
 
     fn set_background_appearance(&mut self, _background_appearance: WindowBackgroundAppearance) {

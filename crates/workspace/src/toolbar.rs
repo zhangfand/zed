@@ -158,10 +158,8 @@ impl Toolbar {
     {
         let location = item.set_active_pane_item(self.active_item.as_deref(), cx);
         cx.subscribe(&item, |this, item, event, cx| {
-            if let Some((_, current_location)) = this
-                .items
-                .iter_mut()
-                .find(|(i, _)| i.id() == item.entity_id())
+            if let Some((_, current_location)) =
+                this.items.iter_mut().find(|(i, _)| i.id() == item.id())
             {
                 match event {
                     ToolbarItemEvent::ChangeLocation(new_location) => {

@@ -21,7 +21,6 @@ const SUGGESTIONS_BY_EXTENSION_ID: &[(&str, &[&str])] = &[
     ("dart", &["dart"]),
     ("dockerfile", &["Dockerfile"]),
     ("elisp", &["el"]),
-    ("elixir", &["ex", "exs", "heex"]),
     ("elm", &["elm"]),
     ("erlang", &["erl", "hrl"]),
     ("fish", &["fish"]),

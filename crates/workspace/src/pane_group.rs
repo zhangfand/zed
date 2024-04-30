@@ -597,9 +597,9 @@ mod element {
     use std::{cell::RefCell, iter, rc::Rc, sync::Arc};
 
     use gpui::{
-        px, relative, Along, AnyElement, Axis, Bounds, Element, GlobalElementId, IntoElement,
-        MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, Pixels, Point, Size, Style,
-        WeakView, WindowContext,
+        px, relative, Along, AnyElement, Axis, Bounds, Element, IntoElement, MouseDownEvent,
+        MouseMoveEvent, MouseUpEvent, ParentElement, Pixels, Point, Size, Style, WeakView,
+        WindowContext,
     };
     use gpui::{CursorStyle, Hitbox};
     use parking_lot::Mutex;
@@ -749,7 +749,7 @@ mod element {
             }
 
             workspace
-                .update(cx, |this, cx| this.serialize_workspace(cx))
+                .update(cx, |this, cx| this.schedule_serialize(cx))
                 .log_err();
             cx.stop_propagation();
             cx.refresh();
@@ -759,7 +759,7 @@ mod element {
         fn layout_handle(
             axis: Axis,
             pane_bounds: Bounds<Pixels>,
-            cx: &mut WindowContext,
+            cx: &mut ElementContext,
         ) -> PaneAxisHandleLayout {
             let handle_bounds = Bounds {
                 origin: pane_bounds.origin.apply_along(axis, |origin| {
@@ -795,14 +795,9 @@ mod element {
         type RequestLayoutState = ();
         type PrepaintState = PaneAxisLayout;
 
-        fn id(&self) -> Option<ElementId> {
-            Some(self.basis.into())
-        }
-
         fn request_layout(
             &mut self,
-            _global_id: Option<&GlobalElementId>,
-            cx: &mut ui::prelude::WindowContext,
+            cx: &mut ui::prelude::ElementContext,
         ) -> (gpui::LayoutId, Self::RequestLayoutState) {
             let mut style = Style::default();
             style.flex_grow = 1.;
@@ -815,16 +810,17 @@ mod element {
 
         fn prepaint(
             &mut self,
-            global_id: Option<&GlobalElementId>,
             bounds: Bounds<Pixels>,
             _state: &mut Self::RequestLayoutState,
-            cx: &mut WindowContext,
+            cx: &mut ElementContext,
         ) -> PaneAxisLayout {
             let dragged_handle = cx.with_element_state::<Rc<RefCell<Option<usize>>>, _>(
-                global_id.unwrap(),
+                Some(self.basis.into()),
                 |state, _cx| {
-                    let state = state.unwrap_or_else(|| Rc::new(RefCell::new(None)));
-                    (state.clone(), state)
+                    let state = state
+                        .unwrap()
+                        .unwrap_or_else(|| Rc::new(RefCell::new(None)));
+                    (state.clone(), Some(state))
                 },
             );
             let flexes = self.flexes.lock().clone();
@@ -901,11 +897,10 @@ mod element {
 
         fn paint(
             &mut self,
-            _id: Option<&GlobalElementId>,
             bounds: gpui::Bounds<ui::prelude::Pixels>,
             _: &mut Self::RequestLayoutState,
             layout: &mut Self::PrepaintState,
-            cx: &mut ui::prelude::WindowContext,
+            cx: &mut ui::prelude::ElementContext,
         ) {
             for child in &mut layout.children {
                 child.element.paint(cx);
@@ -935,7 +930,7 @@ mod element {
                                     let mut borrow = flexes.lock();
                                     *borrow = vec![1.; borrow.len()];
                                     workspace
-                                        .update(cx, |this, cx| this.serialize_workspace(cx))
+                                        .update(cx, |this, cx| this.schedule_serialize(cx))
                                         .log_err();
 
                                     cx.refresh();

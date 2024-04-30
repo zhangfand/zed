@@ -142,9 +142,11 @@ impl FeedbackModal {
 
             cx.spawn(|workspace, mut cx| async move {
                 let markdown = markdown.await.log_err();
-                let buffer = project.update(&mut cx, |project, cx| {
-                    project.create_local_buffer("", markdown, cx)
-                })?;
+                let buffer = project
+                    .update(&mut cx, |project, cx| {
+                        project.create_buffer("", markdown, cx)
+                    })?
+                    .expect("creating buffers on a local workspace always succeeds");
 
                 workspace.update(&mut cx, |workspace, cx| {
                     let system_specs = SystemSpecs::new(cx);
