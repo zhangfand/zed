@@ -180,8 +180,7 @@ impl DevServer {
         _: Arc<Client>,
         cx: AsyncAppContext,
     ) -> Result<proto::Ack> {
-        let expanded = shellexpand::tilde(&envelope.payload.path).to_string();
-        let path = std::path::Path::new(&expanded);
+        let path = std::path::Path::new(&envelope.payload.path);
         let fs = cx.read_model(&this, |this, _| this.app_state.fs.clone())?;
 
         let path_exists = fs.is_dir(path).await;
@@ -233,11 +232,9 @@ impl DevServer {
             (this.client.clone(), project)
         })?;
 
-        let path = shellexpand::tilde(&remote_project.path).to_string();
-
         project
             .update(cx, |project, cx| {
-                project.find_or_create_local_worktree(&path, true, cx)
+                project.find_or_create_local_worktree(&remote_project.path, true, cx)
             })?
             .await?;
 

@@ -2450,8 +2450,7 @@ async fn test_propagate_saves_and_fs_changes(
     });
 
     let new_buffer_a = project_a
-        .update(cx_a, |p, cx| p.create_buffer(cx))
-        .await
+        .update(cx_a, |p, cx| p.create_buffer("", None, cx))
         .unwrap();
 
     let new_buffer_id = new_buffer_a.read_with(cx_a, |buffer, _| buffer.remote_id());
@@ -2469,12 +2468,7 @@ async fn test_propagate_saves_and_fs_changes(
     });
     project_a
         .update(cx_a, |project, cx| {
-            let path = ProjectPath {
-                path: Arc::from(Path::new("file3.rs")),
-                worktree_id: worktree_a.read(cx).id(),
-            };
-
-            project.save_buffer_as(new_buffer_a.clone(), path, cx)
+            project.save_buffer_as(new_buffer_a.clone(), "/a/file3.rs".into(), cx)
         })
         .await
         .unwrap();
@@ -3191,7 +3185,7 @@ async fn test_fs_operations(
 
     project_b
         .update(cx_b, |project, cx| {
-            project.delete_entry(dir_entry.id, false, cx).unwrap()
+            project.delete_entry(dir_entry.id, cx).unwrap()
         })
         .await
         .unwrap();
@@ -3219,7 +3213,7 @@ async fn test_fs_operations(
 
     project_b
         .update(cx_b, |project, cx| {
-            project.delete_entry(entry.id, false, cx).unwrap()
+            project.delete_entry(entry.id, cx).unwrap()
         })
         .await
         .unwrap();

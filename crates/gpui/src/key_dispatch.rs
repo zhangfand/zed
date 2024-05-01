@@ -50,8 +50,9 @@
 ///  KeyBinding::new("cmd-k left", pane::SplitLeft, Some("Pane"))
 ///
 use crate::{
-    Action, ActionRegistry, DispatchPhase, EntityId, FocusId, KeyBinding, KeyContext, Keymap,
-    KeymatchResult, Keystroke, KeystrokeMatcher, ModifiersChangedEvent, WindowContext,
+    Action, ActionRegistry, DispatchPhase, ElementContext, EntityId, FocusId, KeyBinding,
+    KeyContext, Keymap, KeymatchResult, Keystroke, KeystrokeMatcher, ModifiersChangedEvent,
+    WindowContext,
 };
 use collections::FxHashMap;
 use smallvec::SmallVec;
@@ -106,8 +107,8 @@ impl ReusedSubtree {
     }
 }
 
-type KeyListener = Rc<dyn Fn(&dyn Any, DispatchPhase, &mut WindowContext)>;
-type ModifiersChangedListener = Rc<dyn Fn(&ModifiersChangedEvent, &mut WindowContext)>;
+type KeyListener = Rc<dyn Fn(&dyn Any, DispatchPhase, &mut ElementContext)>;
+type ModifiersChangedListener = Rc<dyn Fn(&ModifiersChangedEvent, &mut ElementContext)>;
 
 #[derive(Clone)]
 pub(crate) struct DispatchActionListener {

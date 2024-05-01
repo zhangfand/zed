@@ -120,8 +120,7 @@ impl EventStream {
     {
         self.state.callback = Some(Box::new(f));
         unsafe {
-            let run_loop =
-                core_foundation::base::CFRetain(cf::CFRunLoopGetCurrent()) as *mut c_void;
+            let run_loop = cf::CFRunLoopGetCurrent();
             {
                 let mut state = self.lifecycle.lock();
                 match *state {
@@ -249,7 +248,6 @@ impl Drop for Handle {
         if let Lifecycle::Running(run_loop) = *state {
             unsafe {
                 cf::CFRunLoopStop(run_loop);
-                cf::CFRelease(run_loop)
             }
         }
         *state = Lifecycle::Stopped;

@@ -1,37 +1,34 @@
-use crate::{prelude::*, AnyIcon};
+use gpui::Position;
+
+use crate::prelude::*;
 
 #[derive(Default)]
-enum IndicatorKind {
+pub enum IndicatorStyle {
     #[default]
     Dot,
     Bar,
-    Icon(AnyIcon),
 }
 
 #[derive(IntoElement)]
 pub struct Indicator {
-    kind: IndicatorKind,
+    position: Position,
+    style: IndicatorStyle,
     pub color: Color,
 }
 
 impl Indicator {
     pub fn dot() -> Self {
         Self {
-            kind: IndicatorKind::Dot,
+            position: Position::Relative,
+            style: IndicatorStyle::Dot,
             color: Color::Default,
         }
     }
 
     pub fn bar() -> Self {
         Self {
-            kind: IndicatorKind::Bar,
-            color: Color::Default,
-        }
-    }
-
-    pub fn icon(icon: impl Into<AnyIcon>) -> Self {
-        Self {
-            kind: IndicatorKind::Icon(icon.into()),
+            position: Position::Relative,
+            style: IndicatorStyle::Dot,
             color: Color::Default,
         }
     }
@@ -40,25 +37,22 @@ impl Indicator {
         self.color = color;
         self
     }
+
+    pub fn absolute(mut self) -> Self {
+        self.position = Position::Absolute;
+        self
+    }
 }
 
 impl RenderOnce for Indicator {
     fn render(self, cx: &mut WindowContext) -> impl IntoElement {
-        let container = div().flex_none();
-
-        match self.kind {
-            IndicatorKind::Icon(icon) => container
-                .child(icon.map(|icon| icon.custom_size(rems_from_px(8.)).color(self.color))),
-            IndicatorKind::Dot => container
-                .w_1p5()
-                .h_1p5()
-                .rounded_full()
-                .bg(self.color.color(cx)),
-            IndicatorKind::Bar => container
-                .w_full()
-                .h_1p5()
-                .rounded_t_md()
-                .bg(self.color.color(cx)),
-        }
+        div()
+            .flex_none()
+            .map(|this| match self.style {
+                IndicatorStyle::Dot => this.w_1p5().h_1p5().rounded_full(),
+                IndicatorStyle::Bar => this.w_full().h_1p5().rounded_t_md(),
+            })
+            .when(self.position == Position::Absolute, |this| this.absolute())
+            .bg(self.color.color(cx))
     }
 }

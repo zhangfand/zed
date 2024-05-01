@@ -221,9 +221,9 @@ fn view_release_notes_locally(workspace: &mut Workspace, cx: &mut ViewContext<Wo
                     workspace
                         .update(&mut cx, |workspace, cx| {
                             let project = workspace.project().clone();
-                            let buffer = project.update(cx, |project, cx| {
-                                project.create_local_buffer("", markdown, cx)
-                            });
+                            let buffer = project
+                                .update(cx, |project, cx| project.create_buffer("", markdown, cx))
+                                .expect("creating buffers on a local workspace always succeeds");
                             buffer.update(cx, |buffer, cx| {
                                 buffer.edit([(0..0, body.release_notes)], None, cx)
                             });
@@ -243,7 +243,7 @@ fn view_release_notes_locally(workspace: &mut Workspace, cx: &mut ViewContext<Wo
                                 Some(tab_description),
                                 cx,
                             );
-                            workspace.add_item_to_active_pane(Box::new(view.clone()), None, cx);
+                            workspace.add_item_to_active_pane(Box::new(view.clone()), cx);
                             cx.notify();
                         })
                         .log_err();

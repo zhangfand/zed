@@ -60,12 +60,6 @@ impl RemoteProjects {
         .detach();
     }
 
-    pub fn open(workspace: View<Workspace>, cx: &mut WindowContext) {
-        workspace.update(cx, |workspace, cx| {
-            workspace.toggle_modal(cx, |cx| Self::new(cx))
-        })
-    }
-
     pub fn new(cx: &mut ViewContext<Self>) -> Self {
         let remote_project_path_input = cx.new_view(|cx| TextField::new(cx, "", "Project path"));
         let dev_server_name_input =
@@ -222,7 +216,7 @@ impl RemoteProjects {
 
     fn delete_dev_server(&mut self, id: DevServerId, cx: &mut ViewContext<Self>) {
         let answer = cx.prompt(
-            gpui::PromptLevel::Destructive,
+            gpui::PromptLevel::Info,
             "Are you sure?",
             Some("This will delete the dev server and all of its remote projects."),
             &["Delete", "Cancel"],
@@ -392,7 +386,7 @@ impl RemoteProjects {
             .on_click(cx.listener(move |_, _, cx| {
                 if let Some(project_id) = project_id {
                     if let Some(app_state) = AppState::global(cx).upgrade() {
-                        workspace::join_remote_project(project_id, app_state, None, cx)
+                        workspace::join_remote_project(project_id, app_state, cx)
                             .detach_and_prompt_err("Could not join project", cx, |_, _| None)
                     }
                 } else {

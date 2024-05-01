@@ -98,9 +98,12 @@ fn chunk_lines(text: &str) -> Vec<Chunk> {
 
     chunk_ranges
         .into_iter()
-        .map(|range| Chunk {
-            digest: Sha256::digest(&text[range.clone()]).into(),
-            range,
+        .map(|range| {
+            let mut hasher = Sha256::new();
+            hasher.update(&text[range.clone()]);
+            let mut digest = [0u8; 32];
+            digest.copy_from_slice(hasher.finalize().as_slice());
+            Chunk { range, digest }
         })
         .collect()
 }
@@ -185,7 +188,6 @@ mod tests {
                         kind: WindowKind::PopUp,
                         is_movable: false,
                         fullscreen: false,
-                        app_id: None,
                     }
                 };
 
@@ -237,7 +239,7 @@ mod tests {
         // The break between chunks is right before the "Specify the display_id" comment
 
         assert_eq!(chunks[1].range.start, 1498);
-        assert_eq!(chunks[1].range.end, 2434);
+        assert_eq!(chunks[1].range.end, 2396);
     }
 
     #[test]

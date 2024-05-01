@@ -1,10 +1,5 @@
-use crate::{
-    motion::{self, Motion},
-    object::Object,
-    state::Mode,
-    Vim,
-};
-use editor::{movement, scroll::Autoscroll, Bias};
+use crate::{motion::Motion, object::Object, state::Mode, Vim};
+use editor::{scroll::Autoscroll, Bias};
 use gpui::WindowContext;
 use language::BracketPair;
 use serde::Deserialize;
@@ -28,7 +23,6 @@ impl<'de> Deserialize<'de> for SurroundsType {
 pub fn add_surrounds(text: Arc<str>, target: SurroundsType, cx: &mut WindowContext) {
     Vim::update(cx, |vim, cx| {
         vim.stop_recording();
-        let count = vim.take_count(cx);
         vim.update_active_editor(cx, |_, editor, cx| {
             let text_layout_details = editor.text_layout_details(cx);
             editor.transact(cx, |editor, cx| {
@@ -53,36 +47,13 @@ pub fn add_surrounds(text: Arc<str>, target: SurroundsType, cx: &mut WindowConte
                         SurroundsType::Object(object) => {
                             object.range(&display_map, selection.clone(), false)
                         }
-                        SurroundsType::Motion(motion) => {
-                            let range = motion
-                                .range(
-                                    &display_map,
-                                    selection.clone(),
-                                    count,
-                                    true,
-                                    &text_layout_details,
-                                )
-                                .map(|mut range| {
-                                    // The Motion::CurrentLine operation will contain the newline of the current line and leading/trailing whitespace
-                                    if let Motion::CurrentLine = motion {
-                                        range.start = motion::first_non_whitespace(
-                                            &display_map,
-                                            false,
-                                            range.start,
-                                        );
-                                        range.end = movement::saturating_right(
-                                            &display_map,
-                                            motion::last_non_whitespace(
-                                                &display_map,
-                                                movement::left(&display_map, range.end),
-                                                1,
-                                            ),
-                                        );
-                                    }
-                                    range
-                                });
-                            range
-                        }
+                        SurroundsType::Motion(motion) => motion.range(
+                            &display_map,
+                            selection.clone(),
+                            Some(1),
+                            true,
+                            &text_layout_details,
+                        ),
                     };
 
                     if let Some(range) = range {
@@ -618,47 +589,6 @@ mod test {
             The quˇ1ick brown1
             fox jumps over
             the laˇ1zy dog.1"},
-            Mode::Normal,
-        );
-
-        // test add surrounds with motion current line
-        cx.set_state(
-            indoc! {"
-            The quˇick brown
-            fox jumps over
-            the lazy dog."},
-            Mode::Normal,
-        );
-        cx.simulate_keystrokes(["y", "s", "s", "{"]);
-        cx.assert_state(
-            indoc! {"
-            ˇ{ The quick brown }
-            fox jumps over
-            the lazy dog."},
-            Mode::Normal,
-        );
-
-        cx.set_state(
-            indoc! {"
-                The quˇick brown•
-            fox jumps over
-            the lazy dog."},
-            Mode::Normal,
-        );
-        cx.simulate_keystrokes(["y", "s", "s", "{"]);
-        cx.assert_state(
-            indoc! {"
-                ˇ{ The quick brown }•
-            fox jumps over
-            the lazy dog."},
-            Mode::Normal,
-        );
-        cx.simulate_keystrokes(["2", "y", "s", "s", ")"]);
-        cx.assert_state(
-            indoc! {"
-                ˇ({ The quick brown }•
-            fox jumps over)
-            the lazy dog."},
             Mode::Normal,
         );
     }

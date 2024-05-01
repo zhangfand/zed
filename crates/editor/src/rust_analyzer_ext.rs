@@ -97,20 +97,15 @@ pub fn expand_macro_recursively(
             return Ok(());
         }
 
-        let buffer = project
-            .update(&mut cx, |project, cx| project.create_buffer(cx))?
-            .await?;
+        let buffer = project.update(&mut cx, |project, cx| {
+            project.create_buffer(&macro_expansion.expansion, Some(rust_language), cx)
+        })??;
         workspace.update(&mut cx, |workspace, cx| {
-            buffer.update(cx, |buffer, cx| {
-                buffer.edit([(0..0, macro_expansion.expansion)], None, cx);
-                buffer.set_language(Some(rust_language), cx)
-            });
-            let multibuffer = cx.new_model(|cx| {
+            let buffer = cx.new_model(|cx| {
                 MultiBuffer::singleton(buffer, cx).with_title(macro_expansion.name)
             });
             workspace.add_item_to_active_pane(
-                Box::new(cx.new_view(|cx| Editor::for_multibuffer(multibuffer, Some(project), cx))),
-                None,
+                Box::new(cx.new_view(|cx| Editor::for_multibuffer(buffer, Some(project), cx))),
                 cx,
             );
         })
