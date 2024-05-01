@@ -104,17 +104,15 @@ impl Render for Toolbar {
         let has_right_items = self.right_items().count() > 0;
 
         v_flex()
-            .p(Spacing::Large.rems(cx))
-            .when(has_left_items || has_right_items, |this| {
-                this.gap(Spacing::Large.rems(cx))
-            })
+            .p_2()
+            .when(has_left_items || has_right_items, |this| this.gap_2())
             .border_b()
             .border_color(cx.theme().colors().border_variant)
             .bg(cx.theme().colors().toolbar_background)
             .child(
                 h_flex()
                     .justify_between()
-                    .gap(Spacing::Large.rems(cx))
+                    .gap_2()
                     .when(has_left_items, |this| {
                         this.child(
                             h_flex()
@@ -160,10 +158,8 @@ impl Toolbar {
     {
         let location = item.set_active_pane_item(self.active_item.as_deref(), cx);
         cx.subscribe(&item, |this, item, event, cx| {
-            if let Some((_, current_location)) = this
-                .items
-                .iter_mut()
-                .find(|(i, _)| i.id() == item.entity_id())
+            if let Some((_, current_location)) =
+                this.items.iter_mut().find(|(i, _)| i.id() == item.id())
             {
                 match event {
                     ToolbarItemEvent::ChangeLocation(new_location) => {

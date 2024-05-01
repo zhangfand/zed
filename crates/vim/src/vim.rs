@@ -526,7 +526,7 @@ impl Vim {
                 | Operator::ChangeSurrounds { .. }
                 | Operator::DeleteSurrounds
         ) {
-            self.update_state(|state| state.operator_stack.clear());
+            self.clear_operator(cx);
         };
         self.update_state(|state| state.operator_stack.push(operator));
         self.sync_vim_settings(cx);

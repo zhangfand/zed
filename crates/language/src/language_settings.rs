@@ -335,8 +335,6 @@ pub struct FeaturesContent {
 pub enum SoftWrap {
     /// Do not soft wrap.
     None,
-    /// Prefer a single line generally, unless an overly long line is encountered.
-    PreferLine,
     /// Soft wrap lines that overflow the editor
     EditorWidth,
     /// Soft wrap lines at the preferred line length
@@ -790,25 +788,6 @@ mod tests {
                 &available_language_servers
             ),
             language_server_names(&["deno", "eslint", "tailwind"])
-        );
-
-        // Adding a language server not in the list of available language servers adds it to the list.
-        assert_eq!(
-            LanguageSettings::resolve_language_servers(
-                &[
-                    "my-cool-language-server".into(),
-                    LanguageSettings::REST_OF_LANGUAGE_SERVERS.into()
-                ],
-                &available_language_servers
-            ),
-            language_server_names(&[
-                "my-cool-language-server",
-                "typescript-language-server",
-                "biome",
-                "deno",
-                "eslint",
-                "tailwind",
-            ])
         );
     }
 }

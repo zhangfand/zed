@@ -106,9 +106,9 @@ impl WasmHost {
         wasm_bytes: Vec<u8>,
         manifest: Arc<ExtensionManifest>,
         executor: BackgroundExecutor,
-    ) -> Task<Result<WasmExtension>> {
+    ) -> impl 'static + Future<Output = Result<WasmExtension>> {
         let this = self.clone();
-        executor.clone().spawn(async move {
+        async move {
             let zed_api_version = parse_wasm_extension_version(&manifest.id, &wasm_bytes)?;
 
             let component = Component::from_binary(&this.engine, &wasm_bytes)
@@ -147,7 +147,7 @@ impl WasmHost {
                 tx,
                 zed_api_version,
             })
-        })
+        }
     }
 
     async fn build_wasi_ctx(&self, manifest: &Arc<ExtensionManifest>) -> Result<wasi::WasiCtx> {

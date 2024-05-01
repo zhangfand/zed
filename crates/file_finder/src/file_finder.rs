@@ -1,8 +1,6 @@
 #[cfg(test)]
 mod file_finder_tests;
 
-mod new_path_prompt;
-
 use collections::{HashMap, HashSet};
 use editor::{scroll::Autoscroll, Bias, Editor};
 use fuzzy::{CharBag, PathMatch, PathMatchCandidate};
@@ -12,7 +10,6 @@ use gpui::{
     ViewContext, VisualContext, WeakView,
 };
 use itertools::Itertools;
-use new_path_prompt::NewPathPrompt;
 use picker::{Picker, PickerDelegate};
 use project::{PathMatchCandidateSet, Project, ProjectPath, WorktreeId};
 use settings::Settings;
@@ -40,7 +37,6 @@ pub struct FileFinder {
 
 pub fn init(cx: &mut AppContext) {
     cx.observe_new_views(FileFinder::register).detach();
-    cx.observe_new_views(NewPathPrompt::register).detach();
 }
 
 impl FileFinder {
@@ -458,7 +454,6 @@ impl FileFinderDelegate {
                         .root_entry()
                         .map_or(false, |entry| entry.is_ignored),
                     include_root_name,
-                    directories_only: false,
                 }
             })
             .collect::<Vec<_>>();

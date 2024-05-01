@@ -97,7 +97,6 @@ pub fn init(cx: &mut AppContext) {
                     Box::new(cx.new_view(|cx| {
                         LspLogView::new(workspace.project().clone(), log_store.clone(), cx)
                     })),
-                    None,
                     cx,
                 );
             }

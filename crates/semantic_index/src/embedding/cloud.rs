@@ -72,11 +72,10 @@ impl EmbeddingProvider for CloudEmbeddingProvider {
             texts
                 .iter()
                 .map(|to_embed| {
-                    let embedding =
-                        embeddings.get(&to_embed.digest).cloned().with_context(|| {
-                            format!("server did not return an embedding for {:?}", to_embed)
-                        })?;
-                    Ok(Embedding::new(embedding))
+                    let dimensions = embeddings.remove(&to_embed.digest).with_context(|| {
+                        format!("server did not return an embedding for {:?}", to_embed)
+                    })?;
+                    Ok(Embedding::new(dimensions))
                 })
                 .collect()
         }

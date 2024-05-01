@@ -1,4 +1,4 @@
-use crate::{git_author::GitAuthor, http::HttpClient};
+use crate::http::HttpClient;
 use anyhow::{anyhow, bail, Context, Result};
 use futures::AsyncReadExt;
 use isahc::{config::Configurable, AsyncBody, Request};
@@ -40,12 +40,24 @@ struct Commit {
 
 #[derive(Debug, Deserialize)]
 struct Author {
+    name: String,
     email: String,
+    date: String,
 }
 
 #[derive(Debug, Deserialize)]
 struct User {
+    pub login: String,
     pub id: u64,
+    pub node_id: String,
+    pub avatar_url: String,
+    pub gravatar_id: String,
+}
+
+#[derive(Debug)]
+pub struct GitHubAuthor {
+    pub id: u64,
+    pub email: String,
     pub avatar_url: String,
 }
 
@@ -54,7 +66,7 @@ pub async fn fetch_github_commit_author(
     repo: &str,
     commit: &str,
     client: &Arc<dyn HttpClient>,
-) -> Result<Option<GitAuthor>> {
+) -> Result<Option<GitHubAuthor>> {
     let url = format!("https://api.github.com/repos/{repo_owner}/{repo}/commits/{commit}");
 
     let mut request = Request::get(&url)
@@ -86,8 +98,10 @@ pub async fn fetch_github_commit_author(
     serde_json::from_str::<CommitDetails>(body_str)
         .map(|github_commit| {
             if let Some(author) = github_commit.author {
-                Some(GitAuthor {
+                Some(GitHubAuthor {
+                    id: author.id,
                     avatar_url: author.avatar_url,
+                    email: github_commit.commit.author.email,
                 })
             } else {
                 None

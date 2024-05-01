@@ -1,45 +1,7 @@
-use gpui::{svg, AnimationElement, Hsla, IntoElement, Rems, Transformation};
+use gpui::{svg, Hsla, IntoElement, Rems, Transformation};
 use strum::EnumIter;
 
 use crate::{prelude::*, Indicator};
-
-#[derive(IntoElement)]
-pub enum AnyIcon {
-    Icon(Icon),
-    AnimatedIcon(AnimationElement<Icon>),
-}
-
-impl AnyIcon {
-    /// Returns a new [`AnyIcon`] after applying the given mapping function
-    /// to the contained [`Icon`].
-    pub fn map(self, f: impl FnOnce(Icon) -> Icon) -> Self {
-        match self {
-            Self::Icon(icon) => Self::Icon(f(icon)),
-            Self::AnimatedIcon(animated_icon) => Self::AnimatedIcon(animated_icon.map_element(f)),
-        }
-    }
-}
-
-impl From<Icon> for AnyIcon {
-    fn from(value: Icon) -> Self {
-        Self::Icon(value)
-    }
-}
-
-impl From<AnimationElement<Icon>> for AnyIcon {
-    fn from(value: AnimationElement<Icon>) -> Self {
-        Self::AnimatedIcon(value)
-    }
-}
-
-impl RenderOnce for AnyIcon {
-    fn render(self, _cx: &mut WindowContext) -> impl IntoElement {
-        match self {
-            Self::Icon(icon) => icon.into_any_element(),
-            Self::AnimatedIcon(animated_icon) => animated_icon.into_any_element(),
-        }
-    }
-}
 
 #[derive(Default, PartialEq, Copy, Clone)]
 pub enum IconSize {
@@ -160,7 +122,6 @@ pub enum IconName {
     WholeWord,
     XCircle,
     ZedXCopilot,
-    ZedAssistant,
     PullRequest,
 }
 
@@ -264,7 +225,6 @@ impl IconName {
             IconName::WholeWord => "icons/word_search.svg",
             IconName::XCircle => "icons/error.svg",
             IconName::ZedXCopilot => "icons/zed_x_copilot.svg",
-            IconName::ZedAssistant => "icons/zed_assistant.svg",
             IconName::PullRequest => "icons/pull_request.svg",
         }
     }
@@ -274,7 +234,7 @@ impl IconName {
 pub struct Icon {
     path: SharedString,
     color: Color,
-    size: Rems,
+    size: IconSize,
     transformation: Transformation,
 }
 
@@ -283,7 +243,7 @@ impl Icon {
         Self {
             path: icon.path().into(),
             color: Color::default(),
-            size: IconSize::default().rems(),
+            size: IconSize::default(),
             transformation: Transformation::default(),
         }
     }
@@ -292,7 +252,7 @@ impl Icon {
         Self {
             path: path.into(),
             color: Color::default(),
-            size: IconSize::default().rems(),
+            size: IconSize::default(),
             transformation: Transformation::default(),
         }
     }
@@ -303,14 +263,6 @@ impl Icon {
     }
 
     pub fn size(mut self, size: IconSize) -> Self {
-        self.size = size.rems();
-        self
-    }
-
-    /// Sets a custom size for the icon, in [`Rems`].
-    ///
-    /// Not to be exposed outside of the `ui` crate.
-    pub(crate) fn custom_size(mut self, size: Rems) -> Self {
         self.size = size;
         self
     }
@@ -325,7 +277,7 @@ impl RenderOnce for Icon {
     fn render(self, cx: &mut WindowContext) -> impl IntoElement {
         svg()
             .with_transformation(self.transformation)
-            .size(self.size)
+            .size(self.size.rems())
             .flex_none()
             .path(self.path)
             .text_color(self.color.color(cx))

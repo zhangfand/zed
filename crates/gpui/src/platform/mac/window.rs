@@ -31,7 +31,10 @@ use objc::{
     sel, sel_impl,
 };
 use parking_lot::Mutex;
-use raw_window_handle as rwh;
+use raw_window_handle::{
+    AppKitDisplayHandle, AppKitWindowHandle, DisplayHandle, HasDisplayHandle, HasWindowHandle,
+    RawWindowHandle, WindowHandle,
+};
 use smallvec::SmallVec;
 use std::{
     any::Any,
@@ -904,7 +907,7 @@ impl PlatformWindow for MacWindow {
             let alert_style = match level {
                 PromptLevel::Info => 1,
                 PromptLevel::Warning => 0,
-                PromptLevel::Critical | PromptLevel::Destructive => 2,
+                PromptLevel::Critical => 2,
             };
             let _: () = msg_send![alert, setAlertStyle: alert_style];
             let _: () = msg_send![alert, setMessageText: ns_string(msg)];
@@ -919,16 +922,10 @@ impl PlatformWindow for MacWindow {
             {
                 let button: id = msg_send![alert, addButtonWithTitle: ns_string(answer)];
                 let _: () = msg_send![button, setTag: ix as NSInteger];
-                if level == PromptLevel::Destructive && answer != &"Cancel" {
-                    let _: () = msg_send![button, setHasDestructiveAction: YES];
-                }
             }
             if let Some((ix, answer)) = latest_non_cancel_label {
                 let button: id = msg_send![alert, addButtonWithTitle: ns_string(answer)];
                 let _: () = msg_send![button, setTag: ix as NSInteger];
-                if level == PromptLevel::Destructive {
-                    let _: () = msg_send![button, setHasDestructiveAction: YES];
-                }
             }
 
             let (done_tx, done_rx) = oneshot::channel();
@@ -982,8 +979,6 @@ impl PlatformWindow for MacWindow {
         }
     }
 
-    fn set_app_id(&mut self, _app_id: &str) {}
-
     fn set_background_appearance(&mut self, background_appearance: WindowBackgroundAppearance) {
         let this = self.0.as_ref().lock();
         let blur_radius = if background_appearance == WindowBackgroundAppearance::Blurred {
@@ -998,8 +993,6 @@ impl PlatformWindow for MacWindow {
         };
         unsafe {
             this.native_window.setOpaque_(opaque);
-            // Shadows for transparent windows cause artifacts and performance issues
-            this.native_window.setHasShadow_(opaque);
             let clear_color = if opaque == YES {
                 NSColor::colorWithSRGBRed_green_blue_alpha_(nil, 0f64, 0f64, 0f64, 1f64)
             } else {
@@ -1148,25 +1141,25 @@ impl PlatformWindow for MacWindow {
     }
 }
 
-impl rwh::HasWindowHandle for MacWindow {
-    fn window_handle(&self) -> Result<rwh::WindowHandle<'_>, rwh::HandleError> {
+impl HasWindowHandle for MacWindow {
+    fn window_handle(
+        &self,
+    ) -> Result<raw_window_handle::WindowHandle<'_>, raw_window_handle::HandleError> {
         // SAFETY: The AppKitWindowHandle is a wrapper around a pointer to an NSView
         unsafe {
-            Ok(rwh::WindowHandle::borrow_raw(rwh::RawWindowHandle::AppKit(
-                rwh::AppKitWindowHandle::new(self.0.lock().native_view.cast()),
+            Ok(WindowHandle::borrow_raw(RawWindowHandle::AppKit(
+                AppKitWindowHandle::new(self.0.lock().native_view.cast()),
             )))
         }
     }
 }
 
-impl rwh::HasDisplayHandle for MacWindow {
-    fn display_handle(&self) -> Result<rwh::DisplayHandle<'_>, rwh::HandleError> {
+impl HasDisplayHandle for MacWindow {
+    fn display_handle(
+        &self,
+    ) -> Result<raw_window_handle::DisplayHandle<'_>, raw_window_handle::HandleError> {
         // SAFETY: This is a no-op on macOS
-        unsafe {
-            Ok(rwh::DisplayHandle::borrow_raw(
-                rwh::AppKitDisplayHandle::new().into(),
-            ))
-        }
+        unsafe { Ok(DisplayHandle::borrow_raw(AppKitDisplayHandle::new().into())) }
     }
 }
 

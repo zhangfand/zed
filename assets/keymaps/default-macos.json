@@ -159,8 +159,6 @@
       "ctrl-cmd-space": "editor::ShowCharacterPalette",
       "cmd-;": "editor::ToggleLineNumbers",
       "cmd-alt-z": "editor::RevertSelectedHunks",
-      "cmd-'": "editor::ToggleHunkDiff",
-      "cmd-\"": "editor::ExpandAllHunkDiffs",
       "cmd-alt-g b": "editor::ToggleGitBlame"
     }
   },
@@ -214,8 +212,7 @@
     "context": "AssistantChat > Editor", // Used in the assistant2 crate
     "bindings": {
       "enter": ["assistant2::Submit", "Simple"],
-      "cmd-enter": ["assistant2::Submit", "Codebase"],
-      "escape": "assistant2::Cancel"
+      "cmd-enter": ["assistant2::Submit", "Codebase"]
     }
   },
   {
@@ -578,8 +575,8 @@
       "alt-cmd-shift-c": "project_panel::CopyRelativePath",
       "f2": "project_panel::Rename",
       "enter": "project_panel::Rename",
-      "backspace": "project_panel::Trash",
-      "delete": "project_panel::Trash",
+      "backspace": "project_panel::Delete",
+      "delete": "project_panel::Delete",
       "cmd-backspace": ["project_panel::Delete", { "skip_prompt": true }],
       "cmd-delete": ["project_panel::Delete", { "skip_prompt": true }],
       "alt-cmd-r": "project_panel::RevealInFinder",

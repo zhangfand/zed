@@ -209,7 +209,6 @@ pub(crate) trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     fn activate(&self);
     fn is_active(&self) -> bool;
     fn set_title(&mut self, title: &str);
-    fn set_app_id(&mut self, app_id: &str);
     fn set_background_appearance(&mut self, background_appearance: WindowBackgroundAppearance);
     fn set_edited(&mut self, edited: bool);
     fn show_character_palette(&self);
@@ -558,9 +557,6 @@ pub struct WindowOptions {
 
     /// The appearance of the window background.
     pub window_background: WindowBackgroundAppearance,
-
-    /// Application identifier of the window. Can by used by desktop environments to group applications together.
-    pub app_id: Option<String>,
 }
 
 /// The variables that can be configured when creating a new window
@@ -603,7 +599,6 @@ impl Default for WindowOptions {
             display_id: None,
             fullscreen: false,
             window_background: WindowBackgroundAppearance::default(),
-            app_id: None,
         }
     }
 }
@@ -698,7 +693,7 @@ pub struct PathPromptOptions {
 }
 
 /// What kind of prompt styling to show
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug)]
 pub enum PromptLevel {
     /// A prompt that is shown when the user should be notified of something
     Info,
@@ -708,14 +703,10 @@ pub enum PromptLevel {
 
     /// A prompt that is shown when a critical problem has occurred
     Critical,
-
-    /// A prompt that is shown when asking the user to confirm a potentially destructive action
-    /// (overwriting a file for example)
-    Destructive,
 }
 
 /// The style of the cursor (pointer)
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug)]
 pub enum CursorStyle {
     /// The default cursor
     Arrow,

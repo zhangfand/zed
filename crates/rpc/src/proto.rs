@@ -319,8 +319,7 @@ messages!(
     (MultiLspQueryResponse, Background),
     (RemoteProjectsUpdate, Foreground),
     (ValidateRemoteProjectRequest, Background),
-    (DeleteDevServer, Foreground),
-    (OpenNewBuffer, Foreground)
+    (DeleteDevServer, Foreground)
 );
 
 request_messages!(
@@ -378,7 +377,6 @@ request_messages!(
     (OpenBufferById, OpenBufferResponse),
     (OpenBufferByPath, OpenBufferResponse),
     (OpenBufferForSymbol, OpenBufferForSymbolResponse),
-    (OpenNewBuffer, OpenBufferResponse),
     (PerformRename, PerformRenameResponse),
     (Ping, Ack),
     (PrepareRename, PrepareRenameResponse),
@@ -455,7 +453,6 @@ entity_messages!(
     LeaveProject,
     MultiLspQuery,
     OnTypeFormatting,
-    OpenNewBuffer,
     OpenBufferById,
     OpenBufferByPath,
     OpenBufferForSymbol,

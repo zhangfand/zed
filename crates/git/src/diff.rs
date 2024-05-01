@@ -5,7 +5,7 @@ use text::{Anchor, BufferId, BufferSnapshot, OffsetRangeExt, Point};
 pub use git2 as libgit;
 use libgit::{DiffLineType as GitDiffLineType, DiffOptions as GitOptions, Patch as GitPatch};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DiffHunkStatus {
     Added,
     Modified,
@@ -173,8 +173,7 @@ impl BufferDiff {
         })
     }
 
-    #[cfg(test)]
-    fn clear(&mut self, buffer: &text::BufferSnapshot) {
+    pub fn clear(&mut self, buffer: &text::BufferSnapshot) {
         self.last_buffer_version = Some(buffer.version().clone());
         self.tree = SumTree::new();
     }
