@@ -1,4 +1,5 @@
 use crate::Project;
+use anyhow::Context as _;
 use collections::HashMap;
 use gpui::{AnyWindowHandle, Context, Entity, Model, ModelContext, WeakModel};
 use settings::{Settings, SettingsLocation};
@@ -26,10 +27,22 @@ impl Project {
         window: AnyWindowHandle,
         cx: &mut ModelContext<Self>,
     ) -> anyhow::Result<Model<Terminal>> {
-        anyhow::ensure!(
-            !self.is_remote(),
-            "creating terminals as a guest is not supported yet"
-        );
+        // TODO kb only do that for remote projects where I am the owner
+        let a = if self.is_remote() {
+            let client = self.client();
+            let remote_id = self
+                .remote_id()
+                .context("remote project without a remote id")?;
+
+            //
+            "remote"
+        } else {
+            "local"
+        };
+        // anyhow::ensure!(
+        //     !self.is_remote(),
+        //     "creating terminals as a guest is not supported yet"
+        // );
 
         // used only for TerminalSettings::get
         let worktree = {
@@ -224,10 +237,6 @@ impl Project {
         command.push(b'\n');
 
         terminal_handle.update(cx, |this, _| this.input_bytes(command));
-    }
-
-    pub fn local_terminal_handles(&self) -> &Vec<WeakModel<terminal::Terminal>> {
-        &self.terminals.local_handles
     }
 }
 

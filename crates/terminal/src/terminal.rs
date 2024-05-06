@@ -1,4 +1,5 @@
 pub mod mappings;
+mod remote_pty;
 
 pub use alacritty_terminal;
 
