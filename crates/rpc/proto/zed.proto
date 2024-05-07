@@ -245,7 +245,15 @@ message Envelope {
 
         RegenerateDevServerToken regenerate_dev_server_token = 200;
         RegenerateDevServerTokenResponse regenerate_dev_server_token_response = 201;
-        RenameDevServer rename_dev_server = 202; // Current max
+        RenameDevServer rename_dev_server = 202;
+
+        CreateRemoteTerminal create_remote_terminal = 203;
+        CreateRemoteTerminalResponse create_remote_terminal_response = 204;
+        // TODO kb would one update terminal message kind be enough?
+        UpdateRemoteTerminal update_remote_terminal = 205;
+        UpdateRemoteTerminalResponse update_remote_terminal_response = 206;
+        InputRemoteTerminal input_remote_terminal = 207;
+        InputRemoteTerminalResponse input_remote_terminal_response = 208; // Current max
     }
 
     reserved 158 to 161;
@@ -2110,4 +2118,32 @@ message GetSupermavenApiKey {}
 
 message GetSupermavenApiKeyResponse {
     string api_key = 1;
+}
+
+message CreateRemoteTerminal {
+    uint64 project_id = 1;
+}
+
+message CreateRemoteTerminalResponse {
+    uint64 terminal_id = 1;
+}
+
+message UpdateRemoteTerminal {
+    uint64 project_id = 1;
+    uint64 terminal_id = 2;
+    bytes data = 3;
+}
+
+message UpdateRemoteTerminalResponse {
+    uint64 terminal_id = 1;
+}
+
+message InputRemoteTerminal {
+    uint64 project_id = 1;
+    uint64 terminal_id = 2;
+    bytes data = 3;
+}
+
+message InputRemoteTerminalResponse {
+    uint64 terminal_id = 1;
 }

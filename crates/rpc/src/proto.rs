@@ -326,7 +326,13 @@ messages!(
     (RegenerateDevServerToken, Foreground),
     (RegenerateDevServerTokenResponse, Foreground),
     (RenameDevServer, Foreground),
-    (OpenNewBuffer, Foreground)
+    (OpenNewBuffer, Foreground),
+    (CreateRemoteTerminal, Foreground),
+    (CreateRemoteTerminalResponse, Background),
+    (UpdateRemoteTerminal, Background),
+    (UpdateRemoteTerminalResponse, Background),
+    (InputRemoteTerminalResponse, Background),
+    (InputRemoteTerminal, Background),
 );
 
 request_messages!(
@@ -434,7 +440,10 @@ request_messages!(
     (DeleteDevServer, Ack),
     (DeleteDevServerProject, Ack),
     (RegenerateDevServerToken, RegenerateDevServerTokenResponse),
-    (RenameDevServer, Ack)
+    (RenameDevServer, Ack),
+    (CreateRemoteTerminal, CreateRemoteTerminalResponse),
+    (UpdateRemoteTerminal, UpdateRemoteTerminalResponse),
+    (InputRemoteTerminal, InputRemoteTerminalResponse),
 );
 
 entity_messages!(
@@ -492,6 +501,9 @@ entity_messages!(
     UpdateWorktree,
     UpdateWorktreeSettings,
     LspExtExpandMacro,
+    CreateRemoteTerminal,
+    UpdateRemoteTerminal,
+    InputRemoteTerminal,
 );
 
 entity_messages!(

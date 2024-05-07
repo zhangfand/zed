@@ -729,6 +729,7 @@ impl Project {
                 nonce: StdRng::from_entropy().gen(),
                 terminals: Terminals {
                     local_handles: Vec::new(),
+                    remote_handles: HashMap::default(),
                 },
                 current_lsp_settings: ProjectSettings::get_global(cx).lsp.clone(),
                 node: Some(node),
@@ -881,6 +882,7 @@ impl Project {
                 nonce: StdRng::from_entropy().gen(),
                 terminals: Terminals {
                     local_handles: Vec::new(),
+                    remote_handles: HashMap::default(),
                 },
                 current_lsp_settings: ProjectSettings::get_global(cx).lsp.clone(),
                 node: None,

@@ -1,3 +1,4 @@
+use anyhow::Context;
 use util::ResultExt;
 
 use super::*;
@@ -1296,6 +1297,26 @@ impl Database {
 
             let room = self.get_room(room_id, &tx).await?;
             Ok(room)
+        })
+        .await
+    }
+
+    pub async fn update_remote_terminal(
+        &self,
+        update: &proto::UpdateRemoteTerminal,
+        connection: ConnectionId,
+    ) -> Result<TransactionGuard<Vec<ConnectionId>>> {
+        let project_id = ProjectId::from_proto(update.project_id);
+        self.project_transaction(project_id, |tx| async move {
+            // Ensure the update comes from the host.
+            let project = project::Entity::find_by_id(project_id)
+                .one(&*tx)
+                .await?
+                .with_context(|| format!("no project for id {project_id}"))?;
+            if project.host_connection()? != connection {
+                return Err(anyhow!("can't update a project hosted by someone else"))?;
+            }
+            self.project_guest_connection_ids(project_id, &tx).await
         })
         .await
     }

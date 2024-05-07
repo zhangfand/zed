@@ -1,4 +1,4 @@
-use std::{io::Write, os::unix::net::UnixStream};
+use std::{future::Future, io::Write, ops::ControlFlow, os::unix::net::UnixStream};
 
 use alacritty_terminal::{
     event::OnResize,
@@ -6,10 +6,10 @@ use alacritty_terminal::{
 };
 use anyhow::Context;
 use futures::{
-    channel::mpsc::{self, UnboundedReceiver, UnboundedSender},
-    AsyncReadExt, SinkExt,
+    channel::mpsc::{self, UnboundedSender},
+    AsyncReadExt,
 };
-use gpui::AsyncAppContext;
+use gpui::{AppContext, Task};
 use polling::{Event, PollMode, Poller};
 use smol::stream::StreamExt;
 use util::ResultExt;
@@ -17,16 +17,20 @@ use util::ResultExt;
 pub struct RemotePty {
     reader: UnixStream,
     writer: UnixStream,
-    host_data_writer_task: Task<()>,
-    host_input_task: Task<()>,
+    _host_data_writer_task: Task<()>,
+    _host_input_task: Task<()>,
 }
 
 impl RemotePty {
-    pub async fn new(
-        cx: &AsyncAppContext,
-    ) -> anyhow::Result<(Self, UnboundedSender<Vec<u8>>, UnboundedReceiver<Vec<u8>>)> {
+    pub fn new<F, Fut>(
+        send_remotely: F,
+        cx: &AppContext,
+    ) -> anyhow::Result<(Self, UnboundedSender<Vec<u8>>)>
+    where
+        F: Fn(Vec<u8>) -> Fut + Send + 'static,
+        Fut: Future<Output = ControlFlow<(), ()>> + Send + 'static,
+    {
         let (host_tx, mut host_rx) = mpsc::unbounded::<Vec<u8>>();
-        let (mut input_tx, input_rx) = mpsc::unbounded();
         // TODO kb this would not work on Windows, and can we have less channels around?
         let (mut sender, reader) =
             UnixStream::pair().context("creating remote pty reader counterpart")?;
@@ -53,13 +57,14 @@ impl RemotePty {
             let mut receiver = smol::Unblock::new(receiver);
             loop {
                 match receiver.read(&mut buffer).await.log_err() {
-                    Some(0) => break,
+                    None | Some(0) => break,
                     Some(bytes_read) => {
-                        if input_tx.send(buffer[..bytes_read].to_vec()).await.is_err() {
-                            break;
+                        let input_bytes = buffer[..bytes_read].to_vec();
+                        match send_remotely(input_bytes).await {
+                            ControlFlow::Continue(()) => {}
+                            ControlFlow::Break(()) => break,
                         }
                     }
-                    None => {}
                 }
             }
         });
@@ -67,11 +72,11 @@ impl RemotePty {
         let remote_pty = Self {
             reader,
             writer,
-            host_data_writer_task,
-            host_input_task,
+            _host_data_writer_task: host_data_writer_task,
+            _host_input_task: host_input_task,
         };
 
-        Ok((remote_pty, host_tx, input_rx))
+        Ok((remote_pty, host_tx))
     }
 }
 

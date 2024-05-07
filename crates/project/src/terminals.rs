@@ -1,14 +1,19 @@
 use crate::Project;
 use anyhow::Context as _;
 use collections::HashMap;
+use futures::channel::mpsc::UnboundedSender;
 use gpui::{AnyWindowHandle, Context, Entity, Model, ModelContext, WeakModel};
+use rpc::proto;
 use settings::{Settings, SettingsLocation};
 use smol::channel::bounded;
-use std::path::{Path, PathBuf};
+use std::{
+    ops::ControlFlow,
+    path::{Path, PathBuf},
+};
 use task::SpawnInTerminal;
 use terminal::{
     terminal_settings::{self, Shell, TerminalSettings, VenvSettingsContent},
-    TaskState, TaskStatus, Terminal, TerminalBuilder,
+    RemotePty, TaskState, TaskStatus, Terminal, TerminalBuilder,
 };
 use util::ResultExt;
 
@@ -17,6 +22,7 @@ use util::ResultExt;
 
 pub struct Terminals {
     pub(crate) local_handles: Vec<WeakModel<terminal::Terminal>>,
+    pub(crate) remote_handles: HashMap<u64, UnboundedSender<Vec<u8>>>,
 }
 
 impl Project {
@@ -28,128 +34,155 @@ impl Project {
         cx: &mut ModelContext<Self>,
     ) -> anyhow::Result<Model<Terminal>> {
         // TODO kb only do that for remote projects where I am the owner
-        let a = if self.is_remote() {
+        if self.is_remote() {
+            let new_terminal_id = if true { todo!("TODO kb ") } else { 0 };
             let client = self.client();
-            let remote_id = self
+            let project_id = self
                 .remote_id()
                 .context("remote project without a remote id")?;
-
-            //
-            "remote"
-        } else {
-            "local"
-        };
-        // anyhow::ensure!(
-        //     !self.is_remote(),
-        //     "creating terminals as a guest is not supported yet"
-        // );
-
-        // used only for TerminalSettings::get
-        let worktree = {
-            let terminal_cwd = working_directory.as_deref();
-            let task_cwd = spawn_task
-                .as_ref()
-                .and_then(|spawn_task| spawn_task.cwd.as_deref());
-
-            terminal_cwd
-                .and_then(|terminal_cwd| self.find_local_worktree(terminal_cwd, cx))
-                .or_else(|| task_cwd.and_then(|spawn_cwd| self.find_local_worktree(spawn_cwd, cx)))
-        };
-
-        let settings_location = worktree.as_ref().map(|(worktree, path)| SettingsLocation {
-            worktree_id: worktree.read(cx).id().to_usize(),
-            path,
-        });
-
-        let is_terminal = spawn_task.is_none();
-        let settings = TerminalSettings::get(settings_location, cx);
-        let python_settings = settings.detect_venv.clone();
-        let (completion_tx, completion_rx) = bounded(1);
-
-        let mut env = settings.env.clone();
-        // Alacritty uses parent project's working directory when no working directory is provided
-        // https://github.com/alacritty/alacritty/blob/fd1a3cc79192d1d03839f0fd8c72e1f8d0fce42e/extra/man/alacritty.5.scd?plain=1#L47-L52
-
-        let venv_base_directory = working_directory
-            .as_deref()
-            .unwrap_or_else(|| Path::new(""));
-
-        let (spawn_task, shell) = if let Some(spawn_task) = spawn_task {
-            log::debug!("Spawning task: {spawn_task:?}");
-            env.extend(spawn_task.env);
-            // Activate minimal Python virtual environment
-            if let Some(python_settings) = &python_settings.as_option() {
-                self.set_python_venv_path_for_tasks(python_settings, venv_base_directory, &mut env);
-            }
-            (
-                Some(TaskState {
-                    id: spawn_task.id,
-                    full_label: spawn_task.full_label,
-                    label: spawn_task.label,
-                    command_label: spawn_task.command_label,
-                    status: TaskStatus::Running,
-                    completion_rx,
-                }),
-                Shell::WithArguments {
-                    program: spawn_task.command,
-                    args: spawn_task.args,
+            let (remote_pty, host_tx) = RemotePty::new(
+                move |data| {
+                    let client = client.clone();
+                    async move {
+                        match client
+                            // TODO kb instead, have a streaming response to avoid sending many messages with bytes
+                            .request(proto::InputRemoteTerminal {
+                                project_id,
+                                terminal_id: new_terminal_id,
+                                data,
+                            })
+                            .await
+                            .log_err()
+                        {
+                            Some(_response) => {
+                                // TODO kb return a cancellation here?
+                                ControlFlow::Continue(())
+                            }
+                            None => ControlFlow::Break(()),
+                        }
+                    }
                 },
+                cx,
             )
-        } else {
-            (None, settings.shell.clone())
-        };
-
-        let terminal = TerminalBuilder::new(
-            working_directory.clone(),
-            spawn_task,
-            shell,
-            env,
-            Some(settings.blinking.clone()),
-            settings.alternate_scroll,
-            settings.max_scroll_history_lines,
-            window,
-            completion_tx,
-        )
-        .map(|builder| {
-            let terminal_handle = cx.new_model(|cx| builder.subscribe(cx));
-
+            .context("remote pty creation")?;
             self.terminals
-                .local_handles
-                .push(terminal_handle.downgrade());
+                .remote_handles
+                .insert(new_terminal_id, host_tx);
+            todo!("TODO kb")
+        } else {
+            // used only for TerminalSettings::get
+            let worktree = {
+                let terminal_cwd = working_directory.as_deref();
+                let task_cwd = spawn_task
+                    .as_ref()
+                    .and_then(|spawn_task| spawn_task.cwd.as_deref());
 
-            let id = terminal_handle.entity_id();
-            cx.observe_release(&terminal_handle, move |project, _terminal, cx| {
-                let handles = &mut project.terminals.local_handles;
+                terminal_cwd
+                    .and_then(|terminal_cwd| self.find_local_worktree(terminal_cwd, cx))
+                    .or_else(|| {
+                        task_cwd.and_then(|spawn_cwd| self.find_local_worktree(spawn_cwd, cx))
+                    })
+            };
 
-                if let Some(index) = handles
-                    .iter()
-                    .position(|terminal| terminal.entity_id() == id)
-                {
-                    handles.remove(index);
-                    cx.notify();
-                }
-            })
-            .detach();
+            let settings_location = worktree.as_ref().map(|(worktree, path)| SettingsLocation {
+                worktree_id: worktree.read(cx).id().to_usize(),
+                path,
+            });
 
-            // if the terminal is not a task, activate full Python virtual environment
-            if is_terminal {
+            let is_terminal = spawn_task.is_none();
+            let settings = TerminalSettings::get(settings_location, cx);
+            let python_settings = settings.detect_venv.clone();
+            let (completion_tx, completion_rx) = bounded(1);
+
+            let mut env = settings.env.clone();
+            // Alacritty uses parent project's working directory when no working directory is provided
+            // https://github.com/alacritty/alacritty/blob/fd1a3cc79192d1d03839f0fd8c72e1f8d0fce42e/extra/man/alacritty.5.scd?plain=1#L47-L52
+
+            let venv_base_directory = working_directory
+                .as_deref()
+                .unwrap_or_else(|| Path::new(""));
+
+            let (spawn_task, shell) = if let Some(spawn_task) = spawn_task {
+                log::debug!("Spawning task: {spawn_task:?}");
+                env.extend(spawn_task.env);
+                // Activate minimal Python virtual environment
                 if let Some(python_settings) = &python_settings.as_option() {
-                    if let Some(activate_script_path) =
-                        self.find_activate_script_path(python_settings, venv_base_directory)
+                    self.set_python_venv_path_for_tasks(
+                        python_settings,
+                        venv_base_directory,
+                        &mut env,
+                    );
+                }
+                (
+                    Some(TaskState {
+                        id: spawn_task.id,
+                        full_label: spawn_task.full_label,
+                        label: spawn_task.label,
+                        command_label: spawn_task.command_label,
+                        status: TaskStatus::Running,
+                        completion_rx,
+                    }),
+                    Shell::WithArguments {
+                        program: spawn_task.command,
+                        args: spawn_task.args,
+                    },
+                )
+            } else {
+                (None, settings.shell.clone())
+            };
+
+            let terminal = TerminalBuilder::new(
+                working_directory.clone(),
+                spawn_task,
+                shell,
+                env,
+                Some(settings.blinking.clone()),
+                settings.alternate_scroll,
+                settings.max_scroll_history_lines,
+                window,
+                completion_tx,
+            )
+            .map(|builder| {
+                let terminal_handle = cx.new_model(|cx| builder.subscribe(cx));
+
+                self.terminals
+                    .local_handles
+                    .push(terminal_handle.downgrade());
+
+                let id = terminal_handle.entity_id();
+                cx.observe_release(&terminal_handle, move |project, _terminal, cx| {
+                    let handles = &mut project.terminals.local_handles;
+
+                    if let Some(index) = handles
+                        .iter()
+                        .position(|terminal| terminal.entity_id() == id)
                     {
-                        self.activate_python_virtual_environment(
-                            Project::get_activate_command(python_settings),
-                            activate_script_path,
-                            &terminal_handle,
-                            cx,
-                        );
+                        handles.remove(index);
+                        cx.notify();
+                    }
+                })
+                .detach();
+
+                // if the terminal is not a task, activate full Python virtual environment
+                if is_terminal {
+                    if let Some(python_settings) = &python_settings.as_option() {
+                        if let Some(activate_script_path) =
+                            self.find_activate_script_path(python_settings, venv_base_directory)
+                        {
+                            self.activate_python_virtual_environment(
+                                Project::get_activate_command(python_settings),
+                                activate_script_path,
+                                &terminal_handle,
+                                cx,
+                            );
+                        }
                     }
                 }
-            }
-            terminal_handle
-        });
+                terminal_handle
+            });
 
-        terminal
+            terminal
+        }
     }
 
     pub fn find_activate_script_path(

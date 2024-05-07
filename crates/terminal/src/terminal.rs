@@ -2,6 +2,7 @@ pub mod mappings;
 mod remote_pty;
 
 pub use alacritty_terminal;
+pub use remote_pty::RemotePty;
 
 mod pty_info;
 pub mod terminal_settings;

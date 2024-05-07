@@ -621,7 +621,14 @@ impl Server {
                         app_state.config.openai_api_key.clone(),
                     )
                 })
-            });
+            })
+            .add_request_handler(user_handler(
+                forward_read_only_project_request::<proto::CreateRemoteTerminal>,
+            ))
+            .add_request_handler(user_handler(
+                forward_read_only_project_request::<proto::InputRemoteTerminal>,
+            ))
+            .add_message_handler(update_remote_terminal);
 
         Arc::new(server)
     }
@@ -2768,6 +2775,31 @@ async fn update_worktree_settings(
         .db()
         .await
         .update_worktree_settings(&message, session.connection_id)
+        .await?;
+
+    broadcast(
+        Some(session.connection_id),
+        guest_connection_ids.iter().copied(),
+        |connection_id| {
+            session
+                .peer
+                .forward_send(session.connection_id, connection_id, message.clone())
+        },
+    );
+
+    Ok(())
+}
+
+// TODO kb too many DB queries due to this?
+/// Updates other participants with changes to the host terminal contents
+async fn update_remote_terminal(
+    message: proto::UpdateRemoteTerminal,
+    session: Session,
+) -> Result<()> {
+    let guest_connection_ids = session
+        .db()
+        .await
+        .update_remote_terminal(&message, session.connection_id)
         .await?;
 
     broadcast(
