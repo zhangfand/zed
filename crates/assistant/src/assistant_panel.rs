@@ -1,6 +1,7 @@
 use crate::{
     assistant_settings::{AssistantDockPosition, AssistantSettings, ZedDotDevModel},
     codegen::{self, Codegen, CodegenKind},
+    contexts::log_contexts,
     embedded_scope::EmbeddedScope,
     prompts::generate_content_prompt,
     Assist, CompletionProvider, CycleMessageRole, InlineAssist, LanguageModel,
@@ -116,6 +117,8 @@ impl AssistantPanel {
                 .await
                 .log_err()
                 .unwrap_or_default();
+
+            log_contexts(fs.clone());
 
             // TODO: deserialize state.
             let workspace_handle = workspace.clone();

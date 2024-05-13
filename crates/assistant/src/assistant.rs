@@ -2,11 +2,11 @@ pub mod assistant_panel;
 pub mod assistant_settings;
 mod codegen;
 mod completion_provider;
+mod contexts;
+mod embedded_scope;
 mod prompts;
 mod saved_conversation;
 mod streaming_diff;
-
-mod embedded_scope;
 
 pub use assistant_panel::AssistantPanel;
 use assistant_settings::{AssistantSettings, OpenAiModel, ZedDotDevModel};
@@ -14,6 +14,7 @@ use chrono::{DateTime, Local};
 use client::{proto, Client};
 use command_palette_hooks::CommandPaletteFilter;
 pub(crate) use completion_provider::*;
+use contexts::log_contexts;
 use gpui::{actions, AppContext, BorrowAppContext, Global, SharedString};
 pub(crate) use saved_conversation::*;
 use serde::{Deserialize, Serialize};
