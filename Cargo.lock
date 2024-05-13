@@ -6488,6 +6488,50 @@ dependencies = [
 ]
 
 [[package]]
+name = "notebook_editor"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "assets",
+ "assistant_tooling",
+ "chrono",
+ "client",
+ "collections",
+ "db",
+ "editor",
+ "env_logger",
+ "feature_flags",
+ "file_icons",
+ "fs",
+ "futures 0.3.28",
+ "fuzzy",
+ "gpui",
+ "http 0.1.0",
+ "language",
+ "languages",
+ "log",
+ "markdown",
+ "node_runtime",
+ "open_ai",
+ "picker",
+ "project",
+ "rand 0.8.5",
+ "regex",
+ "release_channel",
+ "schemars",
+ "semantic_index",
+ "serde",
+ "serde_json",
+ "settings",
+ "story",
+ "theme",
+ "ui",
+ "unindent",
+ "util",
+ "workspace",
+]
+
+[[package]]
 name = "notifications"
 version = "0.1.0"
 dependencies = [
@@ -12935,6 +12979,7 @@ dependencies = [
  "mimalloc",
  "nix 0.28.0",
  "node_runtime",
+ "notebook_editor",
  "notifications",
  "outline",
  "parking_lot",

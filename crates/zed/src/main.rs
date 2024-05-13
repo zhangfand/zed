@@ -21,6 +21,7 @@ use gpui::{App, AppContext, AsyncAppContext, Context, Global, Task, VisualContex
 use image_viewer;
 use language::LanguageRegistry;
 use log::LevelFilter;
+use notebook_editor;
 
 use assets::Assets;
 use node_runtime::RealNodeRuntime;
@@ -132,6 +133,7 @@ fn init_ui(app_state: Arc<AppState>, cx: &mut AppContext) -> Result<()> {
     command_palette::init(cx);
     editor::init(cx);
     image_viewer::init(cx);
+    notebook_editor::init(cx);
     diagnostics::init(cx);
 
     audio::init(Assets, cx);

@@ -67,6 +67,7 @@ menu.workspace = true
 mimalloc = { version = "0.1", optional = true }
 nix = {workspace = true, features = ["pthread", "signal"] }
 node_runtime.workspace = true
+notebook_editor.workspace = true
 notifications.workspace = true
 outline.workspace = true
 parking_lot.workspace = true
