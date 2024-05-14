@@ -21,6 +21,8 @@ use workspace::{
 };
 use worktree::File;
 
+mod jupyter;
+
 const NOTEBOOK_EDITOR_KIND: &str = "NotebookEditor";
 
 // We either need to store the notebook in memory as individual cells or we make
@@ -107,6 +109,13 @@ impl NotebookItem {
 
         cx.spawn(|mut cx| async move {
             let buffer = buffer_task.await?;
+
+            let text = cx.update(|cx| {
+                let text = buffer.read(cx).text();
+
+                text
+            })?;
+
             // We probably read the cells in ~this point.
 
             cx.new_model(|_| NotebookItem {

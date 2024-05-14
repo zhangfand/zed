@@ -6494,6 +6494,7 @@ dependencies = [
  "anyhow",
  "assets",
  "assistant_tooling",
+ "bytes 1.5.0",
  "chrono",
  "client",
  "collections",
@@ -6528,6 +6529,7 @@ dependencies = [
  "ui",
  "unindent",
  "util",
+ "uuid",
  "workspace",
  "worktree",
 ]
