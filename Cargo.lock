@@ -6529,6 +6529,7 @@ dependencies = [
  "unindent",
  "util",
  "workspace",
+ "worktree",
 ]
 
 [[package]]

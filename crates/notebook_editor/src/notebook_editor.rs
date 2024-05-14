@@ -1,3 +1,6 @@
+use editor::Editor;
+#[allow(unused_imports)]
+use gpui::ModelContext;
 #[allow(unused_imports)]
 use gpui::{
     canvas, div, fill, img, opaque_grey, point, size, AnyElement, AppContext, Bounds, Context,
@@ -5,22 +8,52 @@ use gpui::{
     ObjectFit, ParentElement, Render, Styled, Task, View, ViewContext, VisualContext, WeakView,
     WindowContext,
 };
+use language::{Buffer, File as _};
 use persistence::NOTEBOOK_EDITOR;
-use ui::prelude::*;
-
 use project::{Project, ProjectEntryId, ProjectPath};
-use std::{ffi::OsStr, path::PathBuf};
+#[allow(unused_imports)]
+use std::{ffi::OsStr, path::PathBuf, sync::Arc};
+use ui::prelude::*;
 use util::ResultExt;
 use workspace::{
     item::{Item, ProjectItem, TabContentParams},
     ItemId, Pane, Workspace, WorkspaceId,
 };
+use worktree::File;
 
 const NOTEBOOK_EDITOR_KIND: &str = "NotebookEditor";
 
+// We either need to store the notebook in memory as individual cells or we make
+// one big buffer that contains all the cells. Nate suggested that we try out a multi-buffer.
+// For now, I'm tempted to use the approach from assistant2, where we had individual entries in a
+// GPUI List. That won't be as performant as a single buffer, but it'll be the most accurate.
+pub struct Output {}
+
+pub struct CodeCell {
+    source: View<Editor>,
+    outputs: Vec<Output>,
+}
+
+pub struct MarkdownCell {
+    source: View<Editor>,
+}
+
+/// Raw cell is a cell that contains raw text, for fairly arcane purposes.
+/// Just render a text cell.
+pub struct RawCell {
+    source: View<Editor>,
+}
+
+enum NotebookCell {
+    CodeCell(CodeCell),
+    MarkdownCell(MarkdownCell),
+}
+
 pub struct NotebookItem {
-    path: PathBuf,
+    // path: PathBuf,
     project_path: ProjectPath,
+    buffer: Model<Buffer>,
+    cells: Vec<NotebookCell>,
 }
 
 impl project::Item for NotebookItem {
@@ -40,14 +73,23 @@ impl project::Item for NotebookItem {
 
         // Only open the item if it's a Jupyter notebook (.ipynb)
         if ext.contains("ipynb") {
+            let buffer_task =
+                project.update(cx, |project, cx| project.open_buffer(path.clone(), cx));
+
             Some(cx.spawn(|mut cx| async move {
-                let abs_path = project
-                    .read_with(&cx, |project, cx| project.absolute_path(&path, cx))?
-                    .ok_or_else(|| anyhow::anyhow!("Failed to find the absolute path"))?;
+                let buffer = buffer_task.await?;
+
+                // let abs_path = project
+                //     .read_with(&cx, |project, cx| project.absolute_path(&path, cx))?
+                //     .ok_or_else(|| anyhow::anyhow!("Failed to find the absolute path"))?;
+
+                // We probably read the cells in ~this point.
 
                 cx.new_model(|_| NotebookItem {
-                    path: abs_path,
+                    // path: abs_path,
                     project_path: path,
+                    buffer,
+                    cells: vec![],
                 })
             }))
         } else {
@@ -55,30 +97,58 @@ impl project::Item for NotebookItem {
         }
     }
 
-    fn entry_id(&self, _: &AppContext) -> Option<ProjectEntryId> {
-        None
+    fn entry_id(&self, cx: &AppContext) -> Option<ProjectEntryId> {
+        File::from_dyn(self.buffer.read(cx).file()).and_then(|file| file.project_entry_id(cx))
     }
 
-    fn project_path(&self, _: &AppContext) -> Option<ProjectPath> {
-        Some(self.project_path.clone())
+    fn project_path(&self, cx: &AppContext) -> Option<ProjectPath> {
+        File::from_dyn(self.buffer.read(cx).file()).map(|file| ProjectPath {
+            worktree_id: file.worktree_id(cx),
+            path: file.path().clone(),
+        })
     }
 }
 
 pub struct NotebookEditor {
-    path: PathBuf,
     focus_handle: FocusHandle,
+    notebook: Model<NotebookItem>,
 }
+
+// impl NotebookEditor {
+//     pub fn open_path(&mut self, path: ProjectPath, cx: &mut ModelContext<Self>) {
+//         let notebook = NotebookItem::try_open(project, path, cx);
+
+//         let task = self.open_buffer(path.clone(), cx);
+
+//         cx.spawn(move |_, cx| async move {
+//             let buffer = task.await?;
+//             let project_entry_id = buffer.read_with(&cx, |buffer, cx| {
+//                 File::from_dyn(buffer.file()).and_then(|file| file.project_entry_id(cx))
+//             })?;
+
+//             let buffer: &AnyModel = &buffer;
+//             Ok((project_entry_id, buffer.clone()))
+//         })
+//     }
+
+//     fn open_buffer(&self, clone: ProjectPath, cx: &mut ModelContext<NotebookEditor>) -> _ {
+//         todo!()
+//     }
+// }
 
 impl Item for NotebookEditor {
     type Event = ();
 
     fn tab_content(&self, params: TabContentParams, _cx: &WindowContext) -> AnyElement {
-        let title = self
-            .path
-            .file_name()
-            .unwrap_or_else(|| self.path.as_os_str())
-            .to_string_lossy()
-            .to_string();
+        let title = "Untitled.ipynb".to_string();
+
+        // let title = self
+        //     .path
+        //     .file_name()
+        //     .unwrap_or_else(|| self.path.as_os_str())
+        //     .to_string_lossy()
+        //     .to_string();
+
         Label::new(title)
             .single_line()
             .color(if params.selected {
@@ -93,14 +163,21 @@ impl Item for NotebookEditor {
     fn added_to_workspace(&mut self, workspace: &mut Workspace, cx: &mut ViewContext<Self>) {
         let item_id = cx.entity_id().as_u64();
         let workspace_id = workspace.database_id();
-        let image_path = self.path.clone();
+
+        let notebook_path = self
+            .notebook
+            .read(cx)
+            .project_path
+            .path
+            .clone()
+            .to_path_buf();
 
         cx.background_executor()
             .spawn({
-                let image_path = image_path.clone();
+                let notebook_path = notebook_path.clone();
                 async move {
                     NOTEBOOK_EDITOR
-                        .save_notebook_path(item_id, workspace_id, image_path)
+                        .save_notebook_path(item_id, workspace_id, notebook_path)
                         .await
                         .log_err();
                 }
@@ -120,12 +197,12 @@ impl Item for NotebookEditor {
         cx: &mut ViewContext<Pane>,
     ) -> Task<anyhow::Result<View<Self>>> {
         cx.spawn(|_pane, mut cx| async move {
-            let image_path = NOTEBOOK_EDITOR
+            let notebook_path = NOTEBOOK_EDITOR
                 .get_notebook_path(item_id, workspace_id)?
                 .ok_or_else(|| anyhow::anyhow!("No image path found"))?;
 
             cx.new_view(|cx| NotebookEditor {
-                path: image_path,
+                notebook: todo!(),
                 focus_handle: cx.focus_handle(),
             })
         })
@@ -140,7 +217,7 @@ impl Item for NotebookEditor {
         Self: Sized,
     {
         Some(cx.new_view(|cx| Self {
-            path: self.path.clone(),
+            notebook: todo!(),
             focus_handle: cx.focus_handle(),
         }))
     }
@@ -163,7 +240,7 @@ impl ProjectItem for NotebookEditor {
     type Item = NotebookItem;
 
     fn for_project_item(
-        _project: Model<Project>,
+        project: Model<Project>,
         item: Model<Self::Item>,
         cx: &mut ViewContext<Self>,
     ) -> Self
@@ -171,8 +248,8 @@ impl ProjectItem for NotebookEditor {
         Self: Sized,
     {
         Self {
-            path: item.read(cx).path.clone(),
             focus_handle: cx.focus_handle(),
+            notebook: item,
         }
     }
 }
@@ -221,16 +298,16 @@ mod persistence {
             pub async fn save_notebook_path(
                 item_id: ItemId,
                 workspace_id: WorkspaceId,
-                image_path: PathBuf
+                notebook_path: PathBuf
             ) -> Result<()> {
-                INSERT OR REPLACE INTO notebooks(item_id, workspace_id, image_path)
+                INSERT OR REPLACE INTO notebooks(item_id, workspace_id, notebook_path)
                 VALUES (?, ?, ?)
             }
         }
 
         query! {
             pub fn get_notebook_path(item_id: ItemId, workspace_id: WorkspaceId) -> Result<Option<PathBuf>> {
-                SELECT image_path
+                SELECT notebook_path
                 FROM notebooks
                 WHERE item_id = ? AND workspace_id = ?
             }

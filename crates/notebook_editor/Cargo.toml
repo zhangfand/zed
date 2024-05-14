@@ -46,6 +46,7 @@ theme.workspace = true
 ui.workspace = true
 util.workspace = true
 unindent.workspace = true
+worktree.workspace = true
 workspace.workspace = true
 
 [dev-dependencies]
