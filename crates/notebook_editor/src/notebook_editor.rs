@@ -22,6 +22,7 @@ use workspace::{
 use worktree::File;
 
 mod jupyter;
+mod nbformat;
 
 const NOTEBOOK_EDITOR_KIND: &str = "NotebookEditor";
 
@@ -33,26 +34,52 @@ pub struct Output {}
 
 #[allow(dead_code)]
 pub struct CodeCell {
-    source: View<Editor>,
-    outputs: Vec<Output>,
+    buffer: Model<Buffer>,
+    outputs: Vec<nbformat::Output>,
 }
 
 #[allow(dead_code)]
 pub struct MarkdownCell {
-    source: View<Editor>,
+    buffer: Model<Buffer>,
 }
 
 /// Raw cell is a cell that contains raw text, for fairly arcane purposes.
 /// Just render a text cell.
 #[allow(dead_code)]
 pub struct RawCell {
-    source: View<Editor>,
+    buffer: Model<Buffer>,
 }
 
 #[allow(dead_code)]
 enum NotebookCell {
     CodeCell(CodeCell),
     MarkdownCell(MarkdownCell),
+    RawCell(RawCell),
+}
+
+impl NotebookCell {
+    pub fn from_ipynb_cell(cell: nbformat::NotebookCell, cx: &mut AppContext) -> Self {
+        match cell {
+            nbformat::NotebookCell::Code(cell) => NotebookCell::CodeCell(CodeCell {
+                buffer: cx.new_model(|cx| Buffer::local(cell.source, cx)),
+                outputs: vec![],
+            }),
+            nbformat::NotebookCell::Markdown(cell) => NotebookCell::MarkdownCell(MarkdownCell {
+                buffer: cx.new_model(|cx| Buffer::local(cell.source, cx)),
+            }),
+            nbformat::NotebookCell::Raw(cell) => NotebookCell::RawCell(RawCell {
+                buffer: cx.new_model(|cx| Buffer::local(cell.source, cx)),
+            }),
+        }
+    }
+
+    pub fn buffer(&self) -> Model<Buffer> {
+        match self {
+            NotebookCell::CodeCell(cell) => cell.buffer.clone(),
+            NotebookCell::MarkdownCell(cell) => cell.buffer.clone(),
+            NotebookCell::RawCell(cell) => cell.buffer.clone(),
+        }
+    }
 }
 
 #[allow(dead_code)]
@@ -110,19 +137,29 @@ impl NotebookItem {
         cx.spawn(|mut cx| async move {
             let buffer = buffer_task.await?;
 
-            let text = cx.update(|cx| {
+            let notebook = cx.update(|cx| {
+                let mut notebook = NotebookItem {
+                    project_path: path.clone(),
+                    buffer: buffer.clone(),
+                    cells: vec![],
+                };
+
                 let text = buffer.read(cx).text();
 
-                text
-            })?;
+                let notebook_raw = serde_json::from_str::<nbformat::Notebookv4>(&text)?;
 
-            // We probably read the cells in ~this point.
+                let cells = notebook_raw
+                    .cells
+                    .into_iter()
+                    .map(|cell| NotebookCell::from_ipynb_cell(cell, cx))
+                    .collect::<Vec<_>>();
 
-            cx.new_model(|_| NotebookItem {
-                project_path: path.clone(),
-                buffer,
-                cells: vec![],
-            })
+                notebook.cells = cells;
+
+                anyhow::Ok(notebook)
+            })??;
+
+            cx.new_model(|_| notebook)
         })
     }
 }
@@ -249,8 +286,31 @@ impl FocusableView for NotebookEditor {
 }
 
 impl Render for NotebookEditor {
-    fn render(&mut self, _cx: &mut ViewContext<Self>) -> impl IntoElement {
-        div().child("Notebook Viewer")
+    fn render(&mut self, cx: &mut ViewContext<Self>) -> impl IntoElement {
+        let notebook = self.notebook.read(cx);
+
+        let buffers = notebook
+            .cells
+            .iter()
+            .map(|cell| cell.buffer())
+            .collect::<Vec<_>>();
+
+        div().h_full().w_full().children(
+            buffers
+                .iter()
+                .map(|buffer| cx.new_view(|cx| Editor::for_buffer(buffer.clone(), None, cx))),
+        )
+
+        // div().children(notebook.cells.iter().map(|cell| {
+        //     // Use a method to render each cell, passing the cell and context
+        //     self.render_cell(cell, cx)
+        // }))
+    }
+}
+
+impl NotebookEditor {
+    pub fn render_cell(&self, cell: &NotebookCell, cx: &mut ViewContext<Self>) -> impl IntoElement {
+        cx.new_view(|cx| Editor::for_buffer(cell.buffer(), None, cx))
     }
 }
 
