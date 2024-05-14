@@ -577,6 +577,51 @@ pub struct Status {
     pub execution_state: String,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum NotebookCell {
+    CodeCell(CodeCell),
+    MarkdownCell(MarkdownCell),
+    RawCell(RawCell),
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct CodeCell {
+    pub source: String,
+    pub outputs: Vec<NotebookOutput>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct NotebookOutput {
+    pub output_type: String,
+    pub data: HashMap<String, String>,
+    pub metadata: HashMap<String, String>,
+}
+
+impl From<NotebookOutput> for Output {
+    fn from(output: NotebookOutput) -> Self {
+        Output {
+            output_type: output.output_type,
+            data: output.data,
+            metadata: output.metadata,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct MarkdownCell {
+    pub source: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct RawCell {
+    pub source: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Notebookv4 {
+    pub cells: Vec<NotebookCell>,
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
