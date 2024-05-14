@@ -1,7 +1,5 @@
 use serde::{Deserialize, Deserializer, Serialize};
 
-use crate::jupyter::{DisplayData, ErrorReply, ExecuteResult};
-
 // Custom deserialization for source field since it may be a Vec<String> or String
 pub fn list_or_string_to_string<'de, D>(deserializer: D) -> Result<String, D::Error>
 where
@@ -49,7 +47,28 @@ pub enum Output {
     Stream(StreamContent),
     DisplayData(DisplayData),
     ExecuteResult(ExecuteResult),
-    Error(ErrorReply),
+    Error(ErrorContent),
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ErrorContent {
+    pub ename: String,
+    #[serde(deserialize_with = "list_or_string_to_string")]
+    pub evalue: String,
+    pub traceback: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct DisplayData {
+    // pub data: MimeBundle,
+    // pub metadata: HashMap<String, String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ExecuteResult {
+    pub execution_count: i64,
+    // pub data: HashMap<String, String>,
+    // pub metadata: HashMap<String, String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

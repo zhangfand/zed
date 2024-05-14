@@ -32,25 +32,25 @@ const NOTEBOOK_EDITOR_KIND: &str = "NotebookEditor";
 // GPUI List. That won't be as performant as a single buffer, but it'll be the most accurate.
 pub struct Output {}
 
-#[allow(dead_code)]
+#[derive(Clone)]
 pub struct CodeCell {
     buffer: Model<Buffer>,
     outputs: Vec<nbformat::Output>,
 }
 
-#[allow(dead_code)]
+#[derive(Clone)]
 pub struct MarkdownCell {
     buffer: Model<Buffer>,
 }
 
 /// Raw cell is a cell that contains raw text, for fairly arcane purposes.
 /// Just render a text cell.
-#[allow(dead_code)]
+#[derive(Clone)]
 pub struct RawCell {
     buffer: Model<Buffer>,
 }
 
-#[allow(dead_code)]
+#[derive(Clone)]
 enum NotebookCell {
     CodeCell(CodeCell),
     MarkdownCell(MarkdownCell),
@@ -82,7 +82,7 @@ impl NotebookCell {
     }
 }
 
-#[allow(dead_code)]
+#[derive(Clone)]
 pub struct NotebookItem {
     // path: PathBuf,
     project_path: ProjectPath,
@@ -287,29 +287,27 @@ impl FocusableView for NotebookEditor {
 
 impl Render for NotebookEditor {
     fn render(&mut self, cx: &mut ViewContext<Self>) -> impl IntoElement {
-        let notebook = self.notebook.read(cx);
+        let cells = {
+            let notebook = self.notebook.read(cx);
+            let cells = notebook.cells.clone();
 
-        let buffers = notebook
-            .cells
-            .iter()
-            .map(|cell| cell.buffer())
-            .collect::<Vec<_>>();
-
-        div().h_full().w_full().children(
-            buffers
+            cells
                 .iter()
-                .map(|buffer| cx.new_view(|cx| Editor::for_buffer(buffer.clone(), None, cx))),
-        )
+                .map(move |cell| self.render_cell(&cell.clone(), cx))
+                .collect::<Vec<_>>()
+        };
 
-        // div().children(notebook.cells.iter().map(|cell| {
-        //     // Use a method to render each cell, passing the cell and context
-        //     self.render_cell(cell, cx)
-        // }))
+        div()
+            .h_full()
+            .w_full()
+            .gap_3()
+            .children(cells)
+            .into_any_element()
     }
 }
 
 impl NotebookEditor {
-    pub fn render_cell(&self, cell: &NotebookCell, cx: &mut ViewContext<Self>) -> impl IntoElement {
+    fn render_cell(&self, cell: &NotebookCell, cx: &mut ViewContext<Self>) -> impl IntoElement {
         cx.new_view(|cx| Editor::for_buffer(cell.buffer(), None, cx))
     }
 }
