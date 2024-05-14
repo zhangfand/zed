@@ -10,13 +10,13 @@ use gpui::{
 };
 use language::{Buffer, File as _};
 use persistence::NOTEBOOK_EDITOR;
-use project::{Project, ProjectEntryId, ProjectPath};
+use project::{Item, Project, ProjectEntryId, ProjectPath};
 #[allow(unused_imports)]
 use std::{ffi::OsStr, path::PathBuf, sync::Arc};
 use ui::prelude::*;
 use util::ResultExt;
 use workspace::{
-    item::{Item, ProjectItem, TabContentParams},
+    item::{ProjectItem, TabContentParams},
     ItemId, Pane, Workspace, WorkspaceId,
 };
 use worktree::File;
@@ -29,26 +29,31 @@ const NOTEBOOK_EDITOR_KIND: &str = "NotebookEditor";
 // GPUI List. That won't be as performant as a single buffer, but it'll be the most accurate.
 pub struct Output {}
 
+#[allow(dead_code)]
 pub struct CodeCell {
     source: View<Editor>,
     outputs: Vec<Output>,
 }
 
+#[allow(dead_code)]
 pub struct MarkdownCell {
     source: View<Editor>,
 }
 
 /// Raw cell is a cell that contains raw text, for fairly arcane purposes.
 /// Just render a text cell.
+#[allow(dead_code)]
 pub struct RawCell {
     source: View<Editor>,
 }
 
+#[allow(dead_code)]
 enum NotebookCell {
     CodeCell(CodeCell),
     MarkdownCell(MarkdownCell),
 }
 
+#[allow(dead_code)]
 pub struct NotebookItem {
     // path: PathBuf,
     project_path: ProjectPath,
@@ -114,40 +119,15 @@ pub struct NotebookEditor {
     notebook: Model<NotebookItem>,
 }
 
-// impl NotebookEditor {
-//     pub fn open_path(&mut self, path: ProjectPath, cx: &mut ModelContext<Self>) {
-//         let notebook = NotebookItem::try_open(project, path, cx);
-
-//         let task = self.open_buffer(path.clone(), cx);
-
-//         cx.spawn(move |_, cx| async move {
-//             let buffer = task.await?;
-//             let project_entry_id = buffer.read_with(&cx, |buffer, cx| {
-//                 File::from_dyn(buffer.file()).and_then(|file| file.project_entry_id(cx))
-//             })?;
-
-//             let buffer: &AnyModel = &buffer;
-//             Ok((project_entry_id, buffer.clone()))
-//         })
-//     }
-
-//     fn open_buffer(&self, clone: ProjectPath, cx: &mut ModelContext<NotebookEditor>) -> _ {
-//         todo!()
-//     }
-// }
-
-impl Item for NotebookEditor {
+impl workspace::item::Item for NotebookEditor {
     type Event = ();
 
-    fn tab_content(&self, params: TabContentParams, _cx: &WindowContext) -> AnyElement {
-        let title = "Untitled.ipynb".to_string();
+    fn tab_content(&self, params: TabContentParams, cx: &WindowContext) -> AnyElement {
+        let project_path = self.notebook.read(cx).buffer.read(cx).project_path(cx);
 
-        // let title = self
-        //     .path
-        //     .file_name()
-        //     .unwrap_or_else(|| self.path.as_os_str())
-        //     .to_string_lossy()
-        //     .to_string();
+        let title = project_path
+            .map(|path| path.path.file_name().unwrap().to_string_lossy().to_string())
+            .unwrap_or_else(|| "Untitled.ipynb".to_string());
 
         Label::new(title)
             .single_line()
