@@ -1,8 +1,8 @@
 use crate::{
     assistant_settings::{AssistantDockPosition, AssistantSettings, ZedDotDevModel},
     codegen::{self, Codegen, CodegenKind},
-    contexts::log_contexts,
     embedded_scope::EmbeddedScope,
+    prompt_library::{self, prompt_library_example, PromptLibrary},
     prompts::generate_content_prompt,
     Assist, CompletionProvider, CycleMessageRole, InlineAssist, LanguageModel,
     LanguageModelRequest, LanguageModelRequestMessage, MessageId, MessageMetadata, MessageStatus,
@@ -87,6 +87,7 @@ pub struct AssistantPanel {
     focus_handle: FocusHandle,
     toolbar: View<Toolbar>,
     languages: Arc<LanguageRegistry>,
+    prompt_library: PromptLibrary,
     fs: Arc<dyn Fs>,
     _subscriptions: Vec<Subscription>,
     next_inline_assist_id: usize,
@@ -118,7 +119,9 @@ impl AssistantPanel {
                 .log_err()
                 .unwrap_or_default();
 
-            log_contexts(fs.clone());
+            let mut prompt_library = PromptLibrary::new();
+
+            prompt_library.load_prompts(fs.clone()).log_err();
 
             // TODO: deserialize state.
             let workspace_handle = workspace.clone();
@@ -182,6 +185,7 @@ impl AssistantPanel {
                         focus_handle,
                         toolbar,
                         languages: workspace.app_state().languages.clone(),
+                        prompt_library,
                         fs: workspace.app_state().fs.clone(),
                         width: None,
                         height: None,
