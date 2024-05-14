@@ -78,25 +78,7 @@ impl project::Item for NotebookItem {
 
         // Only open the item if it's a Jupyter notebook (.ipynb)
         if ext.contains("ipynb") {
-            let buffer_task =
-                project.update(cx, |project, cx| project.open_buffer(path.clone(), cx));
-
-            Some(cx.spawn(|mut cx| async move {
-                let buffer = buffer_task.await?;
-
-                // let abs_path = project
-                //     .read_with(&cx, |project, cx| project.absolute_path(&path, cx))?
-                //     .ok_or_else(|| anyhow::anyhow!("Failed to find the absolute path"))?;
-
-                // We probably read the cells in ~this point.
-
-                cx.new_model(|_| NotebookItem {
-                    // path: abs_path,
-                    project_path: path,
-                    buffer,
-                    cells: vec![],
-                })
-            }))
+            Some(Self::load_notebook(&project, &path, cx))
         } else {
             None
         }
@@ -110,6 +92,28 @@ impl project::Item for NotebookItem {
         File::from_dyn(self.buffer.read(cx).file()).map(|file| ProjectPath {
             worktree_id: file.worktree_id(cx),
             path: file.path().clone(),
+        })
+    }
+}
+
+impl NotebookItem {
+    pub fn load_notebook(
+        project: &Model<Project>,
+        path: &ProjectPath,
+        cx: &mut AppContext,
+    ) -> Task<anyhow::Result<Model<Self>>> {
+        let buffer_task = project.update(cx, |project, cx| project.open_buffer(path.clone(), cx));
+        let path = path.clone();
+
+        cx.spawn(|mut cx| async move {
+            let buffer = buffer_task.await?;
+            // We probably read the cells in ~this point.
+
+            cx.new_model(|_| NotebookItem {
+                project_path: path.clone(),
+                buffer,
+                cells: vec![],
+            })
         })
     }
 }
@@ -170,19 +174,43 @@ impl workspace::item::Item for NotebookEditor {
     }
 
     fn deserialize(
-        _project: Model<Project>,
+        project: Model<Project>,
         _workspace: WeakView<Workspace>,
         workspace_id: WorkspaceId,
         item_id: ItemId,
         cx: &mut ViewContext<Pane>,
     ) -> Task<anyhow::Result<View<Self>>> {
+        let notebook_path = NOTEBOOK_EDITOR.get_notebook_path(item_id, workspace_id);
+
+        let notebook_path = match notebook_path {
+            Ok(Some(path)) => path,
+            Ok(None) => return Task::ready(Err(anyhow::anyhow!("No notebook path found"))),
+            Err(e) => return Task::ready(Err(e)),
+        };
+
+        let local_worktree = project
+            .read(cx)
+            .find_local_worktree(notebook_path.as_path(), cx);
+
+        let (worktree, path) = match local_worktree {
+            Some(local_worktree) => local_worktree,
+            None => {
+                return Task::ready(Err(anyhow::anyhow!("No worktree found for notebook path")))
+            }
+        };
+
+        let project_path = ProjectPath {
+            worktree_id: worktree.read(cx).id(),
+            path: path.into(),
+        };
+
+        let notebook = NotebookItem::load_notebook(&project, &project_path.clone(), cx);
+
         cx.spawn(|_pane, mut cx| async move {
-            let notebook_path = NOTEBOOK_EDITOR
-                .get_notebook_path(item_id, workspace_id)?
-                .ok_or_else(|| anyhow::anyhow!("No image path found"))?;
+            let notebook = notebook.await?;
 
             cx.new_view(|cx| NotebookEditor {
-                notebook: todo!(),
+                notebook,
                 focus_handle: cx.focus_handle(),
             })
         })
@@ -197,7 +225,8 @@ impl workspace::item::Item for NotebookEditor {
         Self: Sized,
     {
         Some(cx.new_view(|cx| Self {
-            notebook: todo!(),
+            // todo!(): check on if this is ok
+            notebook: self.notebook.clone(),
             focus_handle: cx.focus_handle(),
         }))
     }
@@ -220,7 +249,7 @@ impl ProjectItem for NotebookEditor {
     type Item = NotebookItem;
 
     fn for_project_item(
-        project: Model<Project>,
+        _project: Model<Project>,
         item: Model<Self::Item>,
         cx: &mut ViewContext<Self>,
     ) -> Self
