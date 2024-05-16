@@ -3,7 +3,6 @@
 #[cfg(test)]
 mod test;
 
-mod change_list;
 mod command;
 mod editor_events;
 mod insert;
@@ -18,7 +17,6 @@ mod utils;
 mod visual;
 
 use anyhow::Result;
-use change_list::push_to_change_list;
 use collections::HashMap;
 use command_palette_hooks::{CommandPaletteFilter, CommandPaletteInterceptor};
 use editor::{
@@ -32,10 +30,7 @@ use gpui::{
 use language::{CursorShape, Point, SelectionGoal, TransactionId};
 pub use mode_indicator::ModeIndicator;
 use motion::Motion;
-use normal::{
-    mark::{create_mark, create_mark_after, create_mark_before},
-    normal_replace,
-};
+use normal::normal_replace;
 use replace::multi_replace;
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -161,7 +156,6 @@ fn register(workspace: &mut Workspace, cx: &mut ViewContext<Workspace>) {
     replace::register(workspace, cx);
     object::register(workspace, cx);
     visual::register(workspace, cx);
-    change_list::register(workspace, cx);
 }
 
 /// Called whenever an keystroke is typed so vim can observe all actions
@@ -200,9 +194,7 @@ fn observe_keystrokes(keystroke_event: &KeystrokeEvent, cx: &mut WindowContext) 
             | Operator::Replace
             | Operator::AddSurrounds { .. }
             | Operator::ChangeSurrounds { .. }
-            | Operator::DeleteSurrounds
-            | Operator::Mark
-            | Operator::Jump { .. },
+            | Operator::DeleteSurrounds,
         ) => {}
         Some(_) => {
             vim.clear_operator(cx);
@@ -267,7 +259,6 @@ impl Vim {
             EditorEvent::TransactionUndone { transaction_id } => Vim::update(cx, |vim, cx| {
                 vim.transaction_undone(transaction_id, cx);
             }),
-            EditorEvent::Edited => Vim::update(cx, |vim, cx| vim.transaction_ended(editor, cx)),
             _ => {}
         }));
 
@@ -426,10 +417,6 @@ impl Vim {
 
         // Sync editor settings like clip mode
         self.sync_vim_settings(cx);
-
-        if mode != Mode::Insert && last_mode == Mode::Insert {
-            create_mark_after(self, "^".into(), cx)
-        }
 
         if leave_selections {
             return;
@@ -622,16 +609,11 @@ impl Vim {
         self.switch_mode(Mode::Normal, true, cx)
     }
 
-    fn transaction_ended(&mut self, editor: View<Editor>, cx: &mut WindowContext) {
-        push_to_change_list(self, editor, cx)
-    }
-
     fn local_selections_changed(&mut self, editor: View<Editor>, cx: &mut WindowContext) {
         let newest = editor.read(cx).selections.newest_anchor().clone();
         let is_multicursor = editor.read(cx).selections.count() > 1;
 
         let state = self.state();
-        let mut is_visual = state.mode.is_visual();
         if state.mode == Mode::Insert && state.current_tx.is_some() {
             if state.current_anchor.is_none() {
                 self.update_state(|state| state.current_anchor = Some(newest));
@@ -648,18 +630,11 @@ impl Vim {
             } else {
                 self.switch_mode(Mode::Visual, false, cx)
             }
-            is_visual = true;
         } else if newest.start == newest.end
             && !is_multicursor
             && [Mode::Visual, Mode::VisualLine, Mode::VisualBlock].contains(&state.mode)
         {
-            self.switch_mode(Mode::Normal, true, cx);
-            is_visual = false;
-        }
-
-        if is_visual {
-            create_mark_before(self, ">".into(), cx);
-            create_mark(self, "<".into(), true, cx)
+            self.switch_mode(Mode::Normal, true, cx)
         }
     }
 
@@ -731,10 +706,6 @@ impl Vim {
                 }
                 _ => Vim::update(cx, |vim, cx| vim.clear_operator(cx)),
             },
-            Some(Operator::Mark) => Vim::update(cx, |vim, cx| {
-                normal::mark::create_mark(vim, text, false, cx)
-            }),
-            Some(Operator::Jump { line }) => normal::mark::jump(text, line, cx),
             _ => match Vim::read(cx).state().mode {
                 Mode::Replace => multi_replace(text, cx),
                 _ => {}
@@ -813,11 +784,12 @@ impl Vim {
             editor.set_input_enabled(!state.vim_controlled());
             editor.set_autoindent(state.should_autoindent());
             editor.selections.line_mode = matches!(state.mode, Mode::VisualLine);
-            if editor.is_focused(cx) || editor.mouse_menu_is_focused(cx) {
+            if editor.is_focused(cx) {
                 editor.set_keymap_context_layer::<Self>(state.keymap_context_layer(), cx);
-                // disable vim mode if a sub-editor (inline assist, rename, etc.) is focused
+            // disables vim if the rename editor is focused,
+            // but not if the command palette is open.
             } else if editor.focus_handle(cx).contains_focused(cx) {
-                editor.remove_keymap_context_layer::<Self>(cx);
+                editor.remove_keymap_context_layer::<Self>(cx)
             }
         });
     }

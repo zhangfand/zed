@@ -5,66 +5,57 @@ use gpui::{AppContext, DismissEvent, EventEmitter, FocusHandle, FocusableView, V
 use picker::{Picker, PickerDelegate};
 use ui::{prelude::*, HighlightedLabel, ListItem, ListItemSpacing};
 use util::ResultExt;
+use workspace::{ModalView, Workspace};
 
-use crate::saved_conversation::SavedConversationMetadata;
+use crate::saved_conversation::{self, SavedConversation};
+use crate::ToggleSavedConversations;
 
-pub struct SavedConversations {
-    focus_handle: FocusHandle,
-    picker: Option<View<Picker<SavedConversationPickerDelegate>>>,
+pub struct SavedConversationPicker {
+    picker: View<Picker<SavedConversationPickerDelegate>>,
 }
 
-impl EventEmitter<DismissEvent> for SavedConversations {}
+impl EventEmitter<DismissEvent> for SavedConversationPicker {}
 
-impl FocusableView for SavedConversations {
+impl ModalView for SavedConversationPicker {}
+
+impl FocusableView for SavedConversationPicker {
     fn focus_handle(&self, cx: &AppContext) -> FocusHandle {
-        if let Some(picker) = self.picker.as_ref() {
-            picker.focus_handle(cx)
-        } else {
-            self.focus_handle.clone()
-        }
+        self.picker.focus_handle(cx)
     }
 }
 
-impl SavedConversations {
-    pub fn new(cx: &mut ViewContext<Self>) -> Self {
-        Self {
-            focus_handle: cx.focus_handle(),
-            picker: None,
-        }
+impl SavedConversationPicker {
+    pub fn register(workspace: &mut Workspace, _cx: &mut ViewContext<Workspace>) {
+        workspace.register_action(|workspace, _: &ToggleSavedConversations, cx| {
+            workspace.toggle_modal(cx, move |cx| {
+                let delegate = SavedConversationPickerDelegate::new(cx.view().downgrade());
+                Self::new(delegate, cx)
+            });
+        });
     }
 
-    pub fn init(
-        &mut self,
-        saved_conversations: Vec<SavedConversationMetadata>,
-        cx: &mut ViewContext<Self>,
-    ) {
-        let delegate =
-            SavedConversationPickerDelegate::new(cx.view().downgrade(), saved_conversations);
-        self.picker = Some(cx.new_view(|cx| Picker::uniform_list(delegate, cx).modal(false)));
+    pub fn new(delegate: SavedConversationPickerDelegate, cx: &mut ViewContext<Self>) -> Self {
+        let picker = cx.new_view(|cx| Picker::uniform_list(delegate, cx));
+        Self { picker }
     }
 }
 
-impl Render for SavedConversations {
-    fn render(&mut self, cx: &mut ViewContext<Self>) -> impl IntoElement {
-        v_flex()
-            .w_full()
-            .bg(cx.theme().colors().panel_background)
-            .children(self.picker.clone())
+impl Render for SavedConversationPicker {
+    fn render(&mut self, _cx: &mut ViewContext<Self>) -> impl IntoElement {
+        v_flex().w(rems(34.)).child(self.picker.clone())
     }
 }
 
 pub struct SavedConversationPickerDelegate {
-    view: WeakView<SavedConversations>,
-    saved_conversations: Vec<SavedConversationMetadata>,
+    view: WeakView<SavedConversationPicker>,
+    saved_conversations: Vec<SavedConversation>,
     selected_index: usize,
     matches: Vec<StringMatch>,
 }
 
 impl SavedConversationPickerDelegate {
-    pub fn new(
-        weak_view: WeakView<SavedConversations>,
-        saved_conversations: Vec<SavedConversationMetadata>,
-    ) -> Self {
+    pub fn new(weak_view: WeakView<SavedConversationPicker>) -> Self {
+        let saved_conversations = saved_conversation::placeholder_conversations();
         let matches = saved_conversations
             .iter()
             .map(|conversation| StringMatch {
@@ -185,6 +176,7 @@ impl PickerDelegate for SavedConversationPickerDelegate {
 
         Some(
             ListItem::new(ix)
+                .inset(true)
                 .spacing(ListItemSpacing::Sparse)
                 .selected(selected)
                 .child(HighlightedLabel::new(

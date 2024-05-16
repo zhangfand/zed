@@ -1,20 +1,19 @@
 use editor::{
-    display_map::{DisplayRow, DisplaySnapshot, FoldPoint, ToDisplayPoint},
+    display_map::{DisplaySnapshot, FoldPoint, ToDisplayPoint},
     movement::{
         self, find_boundary, find_preceding_boundary_display_point, FindRange, TextLayoutDetails,
     },
     scroll::Autoscroll,
-    Anchor, Bias, DisplayPoint, RowExt, ToOffset,
+    Anchor, Bias, DisplayPoint, ToOffset,
 };
 use gpui::{actions, impl_actions, px, ViewContext, WindowContext};
 use language::{char_kind, CharKind, Point, Selection, SelectionGoal};
-use multi_buffer::MultiBufferRow;
 use serde::Deserialize;
 use std::ops::Range;
 use workspace::Workspace;
 
 use crate::{
-    normal::{mark, normal_motion},
+    normal::normal_motion,
     state::{Mode, Operator},
     surrounds::SurroundsType,
     utils::coerce_punctuation,
@@ -105,10 +104,6 @@ pub enum Motion {
     ZedSearchResult {
         prior_selections: Vec<Range<Anchor>>,
         new_selections: Vec<Range<Anchor>>,
-    },
-    Jump {
-        anchor: Anchor,
-        line: bool,
     },
 }
 
@@ -474,7 +469,6 @@ impl Motion {
             | WindowTop
             | WindowMiddle
             | WindowBottom
-            | Jump { line: true, .. }
             | EndOfParagraph => true,
             EndOfLine { .. }
             | Matching
@@ -498,7 +492,6 @@ impl Motion {
             | FindBackward { .. }
             | RepeatFind { .. }
             | RepeatFindReversed { .. }
-            | Jump { line: false, .. }
             | ZedSearchResult { .. } => false,
         }
     }
@@ -538,8 +531,7 @@ impl Motion {
             | WindowMiddle
             | WindowBottom
             | NextLineStart
-            | ZedSearchResult { .. }
-            | Jump { .. } => false,
+            | ZedSearchResult { .. } => false,
         }
     }
 
@@ -578,7 +570,6 @@ impl Motion {
             | PreviousSubwordStart { .. }
             | FirstNonWhitespace { .. }
             | FindBackward { .. }
-            | Jump { .. }
             | ZedSearchResult { .. } => false,
             RepeatFind { last_find: motion } | RepeatFindReversed { last_find: motion } => {
                 motion.inclusive()
@@ -770,7 +761,6 @@ impl Motion {
             WindowTop => window_top(map, point, &text_layout_details, times - 1),
             WindowMiddle => window_middle(map, point, &text_layout_details),
             WindowBottom => window_bottom(map, point, &text_layout_details, times - 1),
-            Jump { line, anchor } => mark::jump_motion(map, *anchor, *line),
             ZedSearchResult { new_selections, .. } => {
                 // There will be only one selection, as
                 // Search::SelectNextMatch selects a single match.
@@ -844,7 +834,7 @@ impl Motion {
                         selection.end = map.clip_point(selection.end, Bias::Right);
                         // Don't reset the end here
                         return Some(selection.start..selection.end);
-                    } else if selection.start.row().0 > 0 {
+                    } else if selection.start.row() > 0 {
                         *selection.start.row_mut() -= 1;
                         *selection.start.column_mut() = map.line_len(selection.start.row());
                         selection.start = map.clip_point(selection.start, Bias::Left);
@@ -861,10 +851,10 @@ impl Motion {
                     ignore_punctuation: _,
                 } = self
                 {
-                    let start_row = MultiBufferRow(selection.start.to_point(&map).row);
-                    if selection.end.to_point(&map).row > start_row.0 {
+                    let start_row = selection.start.to_point(&map).row;
+                    if selection.end.to_point(&map).row > start_row {
                         selection.end =
-                            Point::new(start_row.0, map.buffer_snapshot.line_len(start_row))
+                            Point::new(start_row, map.buffer_snapshot.line_len(start_row))
                                 .to_display_point(&map)
                     }
                 }
@@ -998,7 +988,7 @@ fn up_down_buffer_rows(
         map.fold_snapshot
             .clip_point(FoldPoint::new(start.row(), 0), Bias::Left),
     );
-    let select_nth_wrapped_row = point.row().0 - begin_folded_line.row().0;
+    let select_nth_wrapped_row = point.row() - begin_folded_line.row();
 
     let (goal_wrap, goal_x) = match goal {
         SelectionGoal::WrappedHorizontalPosition((row, x)) => (row, x),
@@ -1021,7 +1011,7 @@ fn up_down_buffer_rows(
 
     let mut i = 0;
     while i < goal_wrap && begin_folded_line.row() < map.max_point().row() {
-        let next_folded_line = DisplayPoint::new(begin_folded_line.row().next_row(), 0);
+        let next_folded_line = DisplayPoint::new(begin_folded_line.row() + 1, 0);
         if map
             .display_point_to_fold_point(next_folded_line, Bias::Right)
             .row()
@@ -1104,7 +1094,7 @@ pub(crate) fn next_char(
         *new_point.row_mut() += 1;
         *new_point.column_mut() = 0;
     }
-    map.clip_ignoring_line_ends(new_point, Bias::Right)
+    new_point
 }
 
 pub(crate) fn next_word_start(
@@ -1216,7 +1206,7 @@ fn previous_word_end(
     let scope = map.buffer_snapshot.language_scope_at(point.to_point(map));
     let mut point = point.to_point(map);
 
-    if point.column < map.buffer_snapshot.line_len(MultiBufferRow(point.row)) {
+    if point.column < map.buffer_snapshot.line_len(point.row) {
         point.column += 1;
     }
     for _ in 0..times {
@@ -1376,7 +1366,7 @@ fn previous_subword_end(
     let scope = map.buffer_snapshot.language_scope_at(point.to_point(map));
     let mut point = point.to_point(map);
 
-    if point.column < map.buffer_snapshot.line_len(MultiBufferRow(point.row)) {
+    if point.column < map.buffer_snapshot.line_len(point.row) {
         point.column += 1;
     }
     for _ in 0..times {
@@ -1498,7 +1488,7 @@ fn end_of_document(
     let new_row = if let Some(line) = line {
         (line - 1) as u32
     } else {
-        map.max_buffer_row().0
+        map.max_buffer_row()
     };
 
     let new_point = Point::new(new_row, point.column());
@@ -1673,24 +1663,22 @@ fn window_top(
         .anchor
         .to_display_point(map);
 
-    if first_visible_line.row() != DisplayRow(0)
-        && text_layout_details.vertical_scroll_margin as usize > times
+    if first_visible_line.row() != 0 && text_layout_details.vertical_scroll_margin as usize > times
     {
         times = text_layout_details.vertical_scroll_margin.ceil() as usize;
     }
 
     if let Some(visible_rows) = text_layout_details.visible_rows {
-        let bottom_row = first_visible_line.row().0 + visible_rows as u32;
-        let new_row = (first_visible_line.row().0 + (times as u32))
+        let bottom_row = first_visible_line.row() + visible_rows as u32;
+        let new_row = (first_visible_line.row() + (times as u32))
             .min(bottom_row)
-            .min(map.max_point().row().0);
+            .min(map.max_point().row());
         let new_col = point.column().min(map.line_len(first_visible_line.row()));
 
-        let new_point = DisplayPoint::new(DisplayRow(new_row), new_col);
+        let new_point = DisplayPoint::new(new_row, new_col);
         (map.clip_point(new_point, Bias::Left), SelectionGoal::None)
     } else {
-        let new_row =
-            DisplayRow((first_visible_line.row().0 + (times as u32)).min(map.max_point().row().0));
+        let new_row = (first_visible_line.row() + (times as u32)).min(map.max_point().row());
         let new_col = point.column().min(map.line_len(first_visible_line.row()));
 
         let new_point = DisplayPoint::new(new_row, new_col);
@@ -1710,11 +1698,10 @@ fn window_middle(
             .to_display_point(map);
 
         let max_visible_rows =
-            (visible_rows as u32).min(map.max_point().row().0 - first_visible_line.row().0);
+            (visible_rows as u32).min(map.max_point().row() - first_visible_line.row());
 
         let new_row =
-            (first_visible_line.row().0 + (max_visible_rows / 2)).min(map.max_point().row().0);
-        let new_row = DisplayRow(new_row);
+            (first_visible_line.row() + (max_visible_rows / 2)).min(map.max_point().row());
         let new_col = point.column().min(map.line_len(new_row));
         let new_point = DisplayPoint::new(new_row, new_col);
         (map.clip_point(new_point, Bias::Left), SelectionGoal::None)
@@ -1734,19 +1721,18 @@ fn window_bottom(
             .scroll_anchor
             .anchor
             .to_display_point(map);
-        let bottom_row = first_visible_line.row().0
+        let bottom_row = first_visible_line.row()
             + (visible_rows + text_layout_details.scroll_anchor.offset.y - 1.).floor() as u32;
-        if bottom_row < map.max_point().row().0
+        if bottom_row < map.max_point().row()
             && text_layout_details.vertical_scroll_margin as usize > times
         {
             times = text_layout_details.vertical_scroll_margin.ceil() as usize;
         }
-        let bottom_row_capped = bottom_row.min(map.max_point().row().0);
-        let new_row = if bottom_row_capped.saturating_sub(times as u32) < first_visible_line.row().0
-        {
+        let bottom_row_capped = bottom_row.min(map.max_point().row());
+        let new_row = if bottom_row_capped.saturating_sub(times as u32) < first_visible_line.row() {
             first_visible_line.row()
         } else {
-            DisplayRow(bottom_row_capped.saturating_sub(times as u32))
+            bottom_row_capped.saturating_sub(times as u32)
         };
         let new_col = point.column().min(map.line_len(new_row));
         let new_point = DisplayPoint::new(new_row, new_col);
@@ -1779,8 +1765,8 @@ mod test {
 
         // goes down once
         cx.set_shared_state(initial_state).await;
-        cx.simulate_shared_keystrokes("}").await;
-        cx.shared_state().await.assert_eq(indoc! {r"abc
+        cx.simulate_shared_keystrokes(["}"]).await;
+        cx.assert_shared_state(indoc! {r"abc
             def
             ˇ
             paragraph
@@ -1789,15 +1775,16 @@ mod test {
 
 
             third and
-            final"});
+            final"})
+            .await;
 
         // goes up once
-        cx.simulate_shared_keystrokes("{").await;
-        cx.shared_state().await.assert_eq(initial_state);
+        cx.simulate_shared_keystrokes(["{"]).await;
+        cx.assert_shared_state(initial_state).await;
 
         // goes down twice
-        cx.simulate_shared_keystrokes("2 }").await;
-        cx.shared_state().await.assert_eq(indoc! {r"abc
+        cx.simulate_shared_keystrokes(["2", "}"]).await;
+        cx.assert_shared_state(indoc! {r"abc
             def
 
             paragraph
@@ -1806,11 +1793,12 @@ mod test {
 
 
             third and
-            final"});
+            final"})
+            .await;
 
         // goes down over multiple blanks
-        cx.simulate_shared_keystrokes("}").await;
-        cx.shared_state().await.assert_eq(indoc! {r"abc
+        cx.simulate_shared_keystrokes(["}"]).await;
+        cx.assert_shared_state(indoc! {r"abc
                 def
 
                 paragraph
@@ -1819,11 +1807,12 @@ mod test {
 
 
                 third and
-                finaˇl"});
+                finaˇl"})
+            .await;
 
         // goes up twice
-        cx.simulate_shared_keystrokes("2 {").await;
-        cx.shared_state().await.assert_eq(indoc! {r"abc
+        cx.simulate_shared_keystrokes(["2", "{"]).await;
+        cx.assert_shared_state(indoc! {r"abc
                 def
                 ˇ
                 paragraph
@@ -1832,7 +1821,8 @@ mod test {
 
 
                 third and
-                final"});
+                final"})
+            .await
     }
 
     #[gpui::test]
@@ -1843,41 +1833,39 @@ mod test {
                 do(something(with<Types>.and_arrays[0, 2]))
             }"})
             .await;
-        cx.simulate_shared_keystrokes("%").await;
-        cx.shared_state()
-            .await
-            .assert_eq(indoc! {r"func (a stringˇ) {
+        cx.simulate_shared_keystrokes(["%"]).await;
+        cx.assert_shared_state(indoc! {r"func (a stringˇ) {
                 do(something(with<Types>.and_arrays[0, 2]))
-            }"});
+            }"})
+            .await;
 
         // test it works on the last character of the line
         cx.set_shared_state(indoc! {r"func (a string) ˇ{
             do(something(with<Types>.and_arrays[0, 2]))
             }"})
             .await;
-        cx.simulate_shared_keystrokes("%").await;
-        cx.shared_state()
-            .await
-            .assert_eq(indoc! {r"func (a string) {
+        cx.simulate_shared_keystrokes(["%"]).await;
+        cx.assert_shared_state(indoc! {r"func (a string) {
             do(something(with<Types>.and_arrays[0, 2]))
-            ˇ}"});
+            ˇ}"})
+            .await;
 
         // test it works on immediate nesting
         cx.set_shared_state("ˇ{()}").await;
-        cx.simulate_shared_keystrokes("%").await;
-        cx.shared_state().await.assert_eq("{()ˇ}");
-        cx.simulate_shared_keystrokes("%").await;
-        cx.shared_state().await.assert_eq("ˇ{()}");
+        cx.simulate_shared_keystrokes(["%"]).await;
+        cx.assert_shared_state("{()ˇ}").await;
+        cx.simulate_shared_keystrokes(["%"]).await;
+        cx.assert_shared_state("ˇ{()}").await;
 
         // test it works on immediate nesting inside braces
         cx.set_shared_state("{\n    ˇ{()}\n}").await;
-        cx.simulate_shared_keystrokes("%").await;
-        cx.shared_state().await.assert_eq("{\n    {()ˇ}\n}");
+        cx.simulate_shared_keystrokes(["%"]).await;
+        cx.assert_shared_state("{\n    {()ˇ}\n}").await;
 
         // test it jumps to the next paren on a line
         cx.set_shared_state("func ˇboop() {\n}").await;
-        cx.simulate_shared_keystrokes("%").await;
-        cx.shared_state().await.assert_eq("func boop(ˇ) {\n}");
+        cx.simulate_shared_keystrokes(["%"]).await;
+        cx.assert_shared_state("func boop(ˇ) {\n}").await;
     }
 
     #[gpui::test]
@@ -1886,33 +1874,33 @@ mod test {
 
         // f and F
         cx.set_shared_state("ˇone two three four").await;
-        cx.simulate_shared_keystrokes("f o").await;
-        cx.shared_state().await.assert_eq("one twˇo three four");
-        cx.simulate_shared_keystrokes(",").await;
-        cx.shared_state().await.assert_eq("ˇone two three four");
-        cx.simulate_shared_keystrokes("2 ;").await;
-        cx.shared_state().await.assert_eq("one two three fˇour");
-        cx.simulate_shared_keystrokes("shift-f e").await;
-        cx.shared_state().await.assert_eq("one two threˇe four");
-        cx.simulate_shared_keystrokes("2 ;").await;
-        cx.shared_state().await.assert_eq("onˇe two three four");
-        cx.simulate_shared_keystrokes(",").await;
-        cx.shared_state().await.assert_eq("one two thrˇee four");
+        cx.simulate_shared_keystrokes(["f", "o"]).await;
+        cx.assert_shared_state("one twˇo three four").await;
+        cx.simulate_shared_keystrokes([","]).await;
+        cx.assert_shared_state("ˇone two three four").await;
+        cx.simulate_shared_keystrokes(["2", ";"]).await;
+        cx.assert_shared_state("one two three fˇour").await;
+        cx.simulate_shared_keystrokes(["shift-f", "e"]).await;
+        cx.assert_shared_state("one two threˇe four").await;
+        cx.simulate_shared_keystrokes(["2", ";"]).await;
+        cx.assert_shared_state("onˇe two three four").await;
+        cx.simulate_shared_keystrokes([","]).await;
+        cx.assert_shared_state("one two thrˇee four").await;
 
         // t and T
         cx.set_shared_state("ˇone two three four").await;
-        cx.simulate_shared_keystrokes("t o").await;
-        cx.shared_state().await.assert_eq("one tˇwo three four");
-        cx.simulate_shared_keystrokes(",").await;
-        cx.shared_state().await.assert_eq("oˇne two three four");
-        cx.simulate_shared_keystrokes("2 ;").await;
-        cx.shared_state().await.assert_eq("one two three ˇfour");
-        cx.simulate_shared_keystrokes("shift-t e").await;
-        cx.shared_state().await.assert_eq("one two threeˇ four");
-        cx.simulate_shared_keystrokes("3 ;").await;
-        cx.shared_state().await.assert_eq("oneˇ two three four");
-        cx.simulate_shared_keystrokes(",").await;
-        cx.shared_state().await.assert_eq("one two thˇree four");
+        cx.simulate_shared_keystrokes(["t", "o"]).await;
+        cx.assert_shared_state("one tˇwo three four").await;
+        cx.simulate_shared_keystrokes([","]).await;
+        cx.assert_shared_state("oˇne two three four").await;
+        cx.simulate_shared_keystrokes(["2", ";"]).await;
+        cx.assert_shared_state("one two three ˇfour").await;
+        cx.simulate_shared_keystrokes(["shift-t", "e"]).await;
+        cx.assert_shared_state("one two threeˇ four").await;
+        cx.simulate_shared_keystrokes(["3", ";"]).await;
+        cx.assert_shared_state("oneˇ two three four").await;
+        cx.simulate_shared_keystrokes([","]).await;
+        cx.assert_shared_state("one two thˇree four").await;
     }
 
     #[gpui::test]
@@ -1920,26 +1908,26 @@ mod test {
         let mut cx = NeovimBackedTestContext::new(cx).await;
         let initial_state = indoc! {r"something(ˇfoo)"};
         cx.set_shared_state(initial_state).await;
-        cx.simulate_shared_keystrokes("}").await;
-        cx.shared_state().await.assert_eq("something(fooˇ)");
+        cx.simulate_shared_keystrokes(["}"]).await;
+        cx.assert_shared_state(indoc! {r"something(fooˇ)"}).await;
     }
 
     #[gpui::test]
     async fn test_next_line_start(cx: &mut gpui::TestAppContext) {
         let mut cx = NeovimBackedTestContext::new(cx).await;
         cx.set_shared_state("ˇone\n  two\nthree").await;
-        cx.simulate_shared_keystrokes("enter").await;
-        cx.shared_state().await.assert_eq("one\n  ˇtwo\nthree");
+        cx.simulate_shared_keystrokes(["enter"]).await;
+        cx.assert_shared_state("one\n  ˇtwo\nthree").await;
     }
 
     #[gpui::test]
     async fn test_end_of_line_downward(cx: &mut gpui::TestAppContext) {
         let mut cx = NeovimBackedTestContext::new(cx).await;
         cx.set_shared_state("ˇ one \n two \nthree").await;
-        cx.simulate_shared_keystrokes("g _").await;
-        cx.shared_state().await.assert_eq(" onˇe \n two \nthree");
-        cx.simulate_shared_keystrokes("2 g _").await;
-        cx.shared_state().await.assert_eq(" one \n twˇo \nthree");
+        cx.simulate_shared_keystrokes(["g", "_"]).await;
+        cx.assert_shared_state(" onˇe \n two \nthree").await;
+        cx.simulate_shared_keystrokes(["2", "g", "_"]).await;
+        cx.assert_shared_state(" one \n twˇo \nthree").await;
     }
 
     #[gpui::test]
@@ -1953,13 +1941,14 @@ mod test {
           final"};
 
         cx.set_shared_state(initial_state).await;
-        cx.simulate_shared_keystrokes("shift-h").await;
-        cx.shared_state().await.assert_eq(indoc! {r"abˇc
+        cx.simulate_shared_keystrokes(["shift-h"]).await;
+        cx.assert_shared_state(indoc! {r"abˇc
           def
           paragraph
           the second
           third and
-          final"});
+          final"})
+            .await;
 
         // clip point
         cx.set_shared_state(indoc! {r"
@@ -1968,12 +1957,13 @@ mod test {
           7 8 ˇ9
           "})
             .await;
-        cx.simulate_shared_keystrokes("shift-h").await;
-        cx.shared_state().await.assert_eq(indoc! {"
+        cx.simulate_shared_keystrokes(["shift-h"]).await;
+        cx.assert_shared_state(indoc! {r"
           1 2 ˇ3
           4 5 6
           7 8 9
-          "});
+          "})
+            .await;
 
         cx.set_shared_state(indoc! {r"
           1 2 3
@@ -1981,23 +1971,25 @@ mod test {
           ˇ7 8 9
           "})
             .await;
-        cx.simulate_shared_keystrokes("shift-h").await;
-        cx.shared_state().await.assert_eq(indoc! {"
+        cx.simulate_shared_keystrokes(["shift-h"]).await;
+        cx.assert_shared_state(indoc! {r"
           ˇ1 2 3
           4 5 6
           7 8 9
-          "});
+          "})
+            .await;
 
         cx.set_shared_state(indoc! {r"
           1 2 3
           4 5 ˇ6
           7 8 9"})
             .await;
-        cx.simulate_shared_keystrokes("9 shift-h").await;
-        cx.shared_state().await.assert_eq(indoc! {"
+        cx.simulate_shared_keystrokes(["9", "shift-h"]).await;
+        cx.assert_shared_state(indoc! {r"
           1 2 3
           4 5 6
-          7 8 ˇ9"});
+          7 8 ˇ9"})
+            .await;
     }
 
     #[gpui::test]
@@ -2011,13 +2003,14 @@ mod test {
           final"};
 
         cx.set_shared_state(initial_state).await;
-        cx.simulate_shared_keystrokes("shift-m").await;
-        cx.shared_state().await.assert_eq(indoc! {r"abc
+        cx.simulate_shared_keystrokes(["shift-m"]).await;
+        cx.assert_shared_state(indoc! {r"abc
           def
           paˇragraph
           the second
           third and
-          final"});
+          final"})
+            .await;
 
         cx.set_shared_state(indoc! {r"
           1 2 3
@@ -2025,60 +2018,65 @@ mod test {
           7 8 ˇ9
           "})
             .await;
-        cx.simulate_shared_keystrokes("shift-m").await;
-        cx.shared_state().await.assert_eq(indoc! {"
+        cx.simulate_shared_keystrokes(["shift-m"]).await;
+        cx.assert_shared_state(indoc! {r"
           1 2 3
           4 5 ˇ6
           7 8 9
-          "});
+          "})
+            .await;
         cx.set_shared_state(indoc! {r"
           1 2 3
           4 5 6
           ˇ7 8 9
           "})
             .await;
-        cx.simulate_shared_keystrokes("shift-m").await;
-        cx.shared_state().await.assert_eq(indoc! {"
+        cx.simulate_shared_keystrokes(["shift-m"]).await;
+        cx.assert_shared_state(indoc! {r"
           1 2 3
           ˇ4 5 6
           7 8 9
-          "});
+          "})
+            .await;
         cx.set_shared_state(indoc! {r"
           ˇ1 2 3
           4 5 6
           7 8 9
           "})
             .await;
-        cx.simulate_shared_keystrokes("shift-m").await;
-        cx.shared_state().await.assert_eq(indoc! {"
+        cx.simulate_shared_keystrokes(["shift-m"]).await;
+        cx.assert_shared_state(indoc! {r"
           1 2 3
           ˇ4 5 6
           7 8 9
-          "});
+          "})
+            .await;
         cx.set_shared_state(indoc! {r"
           1 2 3
           ˇ4 5 6
           7 8 9
           "})
             .await;
-        cx.simulate_shared_keystrokes("shift-m").await;
-        cx.shared_state().await.assert_eq(indoc! {"
+        cx.simulate_shared_keystrokes(["shift-m"]).await;
+        cx.assert_shared_state(indoc! {r"
           1 2 3
           ˇ4 5 6
           7 8 9
-          "});
+          "})
+            .await;
         cx.set_shared_state(indoc! {r"
           1 2 3
           4 5 ˇ6
           7 8 9
           "})
             .await;
-        cx.simulate_shared_keystrokes("shift-m").await;
-        cx.shared_state().await.assert_eq(indoc! {"
+        cx.simulate_shared_keystrokes(["shift-m"]).await;
+        cx.assert_shared_state(indoc! {r"
           1 2 3
           4 5 ˇ6
           7 8 9
-          "});
+          "})
+            .await;
     }
 
     #[gpui::test]
@@ -2092,13 +2090,14 @@ mod test {
           final"};
 
         cx.set_shared_state(initial_state).await;
-        cx.simulate_shared_keystrokes("shift-l").await;
-        cx.shared_state().await.assert_eq(indoc! {r"abc
+        cx.simulate_shared_keystrokes(["shift-l"]).await;
+        cx.assert_shared_state(indoc! {r"abc
           def
           paragraph
           the second
           third and
-          fiˇnal"});
+          fiˇnal"})
+            .await;
 
         cx.set_shared_state(indoc! {r"
           1 2 3
@@ -2106,12 +2105,13 @@ mod test {
           7 8 9
           "})
             .await;
-        cx.simulate_shared_keystrokes("shift-l").await;
-        cx.shared_state().await.assert_eq(indoc! {"
+        cx.simulate_shared_keystrokes(["shift-l"]).await;
+        cx.assert_shared_state(indoc! {r"
           1 2 3
           4 5 6
           7 8 9
-          ˇ"});
+          ˇ"})
+            .await;
 
         cx.set_shared_state(indoc! {r"
           1 2 3
@@ -2119,12 +2119,13 @@ mod test {
           7 8 9
           "})
             .await;
-        cx.simulate_shared_keystrokes("shift-l").await;
-        cx.shared_state().await.assert_eq(indoc! {"
+        cx.simulate_shared_keystrokes(["shift-l"]).await;
+        cx.assert_shared_state(indoc! {r"
           1 2 3
           4 5 6
           7 8 9
-          ˇ"});
+          ˇ"})
+            .await;
 
         cx.set_shared_state(indoc! {r"
           1 2 ˇ3
@@ -2132,12 +2133,13 @@ mod test {
           7 8 9
           "})
             .await;
-        cx.simulate_shared_keystrokes("shift-l").await;
-        cx.shared_state().await.assert_eq(indoc! {"
+        cx.simulate_shared_keystrokes(["shift-l"]).await;
+        cx.assert_shared_state(indoc! {r"
           1 2 3
           4 5 6
           7 8 9
-          ˇ"});
+          ˇ"})
+            .await;
 
         cx.set_shared_state(indoc! {r"
           ˇ1 2 3
@@ -2145,12 +2147,13 @@ mod test {
           7 8 9
           "})
             .await;
-        cx.simulate_shared_keystrokes("shift-l").await;
-        cx.shared_state().await.assert_eq(indoc! {"
+        cx.simulate_shared_keystrokes(["shift-l"]).await;
+        cx.assert_shared_state(indoc! {r"
           1 2 3
           4 5 6
           7 8 9
-          ˇ"});
+          ˇ"})
+            .await;
 
         cx.set_shared_state(indoc! {r"
           1 2 3
@@ -2158,12 +2161,13 @@ mod test {
           7 8 9
           "})
             .await;
-        cx.simulate_shared_keystrokes("9 shift-l").await;
-        cx.shared_state().await.assert_eq(indoc! {"
+        cx.simulate_shared_keystrokes(["9", "shift-l"]).await;
+        cx.assert_shared_state(indoc! {r"
           1 2 ˇ3
           4 5 6
           7 8 9
-          "});
+          "})
+            .await;
     }
 
     #[gpui::test]
@@ -2173,10 +2177,11 @@ mod test {
         456 5ˇ67 678
         "})
             .await;
-        cx.simulate_shared_keystrokes("g e").await;
-        cx.shared_state().await.assert_eq(indoc! {"
+        cx.simulate_shared_keystrokes(["g", "e"]).await;
+        cx.assert_shared_state(indoc! {r"
         45ˇ6 567 678
-        "});
+        "})
+            .await;
 
         // Test times
         cx.set_shared_state(indoc! {r"
@@ -2184,11 +2189,12 @@ mod test {
         456 5ˇ67 678
         "})
             .await;
-        cx.simulate_shared_keystrokes("4 g e").await;
-        cx.shared_state().await.assert_eq(indoc! {"
+        cx.simulate_shared_keystrokes(["4", "g", "e"]).await;
+        cx.assert_shared_state(indoc! {r"
         12ˇ3 234 345
         456 567 678
-        "});
+        "})
+            .await;
 
         // With punctuation
         cx.set_shared_state(indoc! {r"
@@ -2197,12 +2203,13 @@ mod test {
         789 890 901
         "})
             .await;
-        cx.simulate_shared_keystrokes("g e").await;
-        cx.shared_state().await.assert_eq(indoc! {"
+        cx.simulate_shared_keystrokes(["g", "e"]).await;
+        cx.assert_shared_state(indoc! {r"
           123 234 345
           4;5.ˇ6 567 678
           789 890 901
-        "});
+        "})
+            .await;
 
         // With punctuation and count
         cx.set_shared_state(indoc! {r"
@@ -2211,12 +2218,13 @@ mod test {
         789 890 901
         "})
             .await;
-        cx.simulate_shared_keystrokes("5 g e").await;
-        cx.shared_state().await.assert_eq(indoc! {"
+        cx.simulate_shared_keystrokes(["5", "g", "e"]).await;
+        cx.assert_shared_state(indoc! {r"
           123 234 345
           ˇ4;5.6 567 678
           789 890 901
-        "});
+        "})
+            .await;
 
         // newlines
         cx.set_shared_state(indoc! {r"
@@ -2225,18 +2233,20 @@ mod test {
         78ˇ9 890 901
         "})
             .await;
-        cx.simulate_shared_keystrokes("g e").await;
-        cx.shared_state().await.assert_eq(indoc! {"
+        cx.simulate_shared_keystrokes(["g", "e"]).await;
+        cx.assert_shared_state(indoc! {r"
           123 234 345
           ˇ
           789 890 901
-        "});
-        cx.simulate_shared_keystrokes("g e").await;
-        cx.shared_state().await.assert_eq(indoc! {"
+        "})
+            .await;
+        cx.simulate_shared_keystrokes(["g", "e"]).await;
+        cx.assert_shared_state(indoc! {r"
           123 234 34ˇ5
 
           789 890 901
-        "});
+        "})
+            .await;
 
         // With punctuation
         cx.set_shared_state(indoc! {r"
@@ -2245,12 +2255,13 @@ mod test {
         789 890 901
         "})
             .await;
-        cx.simulate_shared_keystrokes("g shift-e").await;
-        cx.shared_state().await.assert_eq(indoc! {"
+        cx.simulate_shared_keystrokes(["g", "shift-e"]).await;
+        cx.assert_shared_state(indoc! {r"
           123 234 34ˇ5
           4;5.6 567 678
           789 890 901
-        "});
+        "})
+            .await;
     }
 
     #[gpui::test]
@@ -2263,11 +2274,12 @@ mod test {
             }
         "})
             .await;
-        cx.simulate_shared_keystrokes("v $ %").await;
-        cx.shared_state().await.assert_eq(indoc! {"
+        cx.simulate_shared_keystrokes(["v", "$", "%"]).await;
+        cx.assert_shared_state(indoc! {"
             fn a«() {
               return
             }ˇ»
-        "});
+        "})
+            .await;
     }
 }

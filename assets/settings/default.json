@@ -73,17 +73,6 @@
   "drop_target_size": 0.2,
   // Whether the cursor blinks in the editor.
   "cursor_blink": true,
-  // How to highlight the current line in the editor.
-  //
-  // 1. Don't highlight the current line:
-  //    "none"
-  // 2. Highlight the gutter area:
-  //    "gutter"
-  // 3. Highlight the editor area:
-  //    "line"
-  // 4. Highlight the full line (default):
-  //    "all"
-  "current_line_highlight": "all",
   // Whether to pop the completions menu while typing in an editor without
   // explicitly requesting it.
   "show_completions_on_input": true,
@@ -103,7 +92,14 @@
   // Hide the values of in variables from visual display in private files
   "redact_private_values": false,
   // Globs to match against file paths to determine if a file is private.
-  "private_files": ["**/.env*", "**/*.pem", "**/*.key", "**/*.cert", "**/*.crt", "**/secrets.yml"],
+  "private_files": [
+    "**/.env*",
+    "**/*.pem",
+    "**/*.key",
+    "**/*.cert",
+    "**/*.crt",
+    "**/secrets.yml"
+  ],
   // Whether to use additional LSP queries to format (and amend) the code after
   // every "trigger" symbol input, defined by LSP server capabilities.
   "use_on_type_format": true,
@@ -293,8 +289,7 @@
       // 1. "gpt-3.5-turbo"
       // 2. "gpt-4"
       // 3. "gpt-4-turbo-preview"
-      // 4. "gpt-4o"
-      "default_model": "gpt-4o"
+      "default_model": "gpt-4-turbo-preview"
     }
   },
   // Whether the screen sharing icon is shown in the os status bar.
@@ -304,7 +299,9 @@
   // The list of language servers to use (or disable) for all languages.
   //
   // This is typically customized on a per-language basis.
-  "language_servers": ["..."],
+  "language_servers": [
+    "..."
+  ],
   // When to automatically save edited buffers. This setting can
   // take four values.
   //
@@ -319,8 +316,6 @@
   "autosave": "off",
   // Settings related to the editor's tab bar.
   "tab_bar": {
-    // Whether or not to show the tab bar in the editor
-    "show": true,
     // Whether or not to show the navigation history buttons.
     "show_nav_history_buttons": true
   },
@@ -352,8 +347,6 @@
   // when saving it.
   "ensure_final_newline_on_save": true,
   // Whether or not to perform a buffer format before saving
-  //
-  // Keep in mind, if the autosave with delay is enabled, format_on_save will be ignored
   "format_on_save": "on",
   // How to perform a buffer format. This setting can take 4 values:
   //
@@ -439,7 +432,9 @@
   "copilot": {
     // The set of glob patterns for which copilot should be disabled
     // in any matching file.
-    "disabled_globs": [".env"]
+    "disabled_globs": [
+      ".env"
+    ]
   },
   // Settings specific to journaling
   "journal": {
@@ -468,7 +463,7 @@
     //         }
     //     }
     "shell": "system",
-    // Where to dock terminals panel. Can be `left`, `right`, `bottom`.
+    // Where to dock terminals panel. Can be 'left', 'right', 'bottom'.
     "dock": "bottom",
     // Default width when the terminal is docked to the left or right.
     "default_width": 640,
@@ -550,8 +545,13 @@
         // Default directories to search for virtual environments, relative
         // to the current working directory. We recommend overriding this
         // in your project's settings, rather than globally.
-        "directories": [".env", "env", ".venv", "venv"],
-        // Can also be `csh`, `fish`, and `nushell`
+        "directories": [
+          ".env",
+          "env",
+          ".venv",
+          "venv"
+        ],
+        // Can also be 'csh', 'fish', and `nushell`
         "activate_script": "default"
       }
     },
@@ -576,7 +576,7 @@
   // use those languages.
   //
   // For example, to treat files like `foo.notjs` as JavaScript,
-  // and `Embargo.lock` as TOML:
+  // and 'Embargo.lock' as TOML:
   //
   // {
   //   "JavaScript": ["notjs"],
@@ -593,30 +593,19 @@
   },
   // Different settings for specific languages.
   "languages": {
-    "Astro": {
-      "prettier": {
-        "allowed": true,
-        "plugins": ["prettier-plugin-astro"]
-      }
-    },
-    "Blade": {
-      "prettier": {
-        "allowed": true
-      }
+    "C++": {
+      "format_on_save": "off"
     },
     "C": {
       "format_on_save": "off"
     },
-    "C++": {
-      "format_on_save": "off"
-    },
-    "CSS": {
-      "prettier": {
-        "allowed": true
-      }
-    },
     "Elixir": {
-      "language_servers": ["elixir-ls", "!next-ls", "!lexical", "..."]
+      "language_servers": [
+        "elixir-ls",
+        "!next-ls",
+        "!lexical",
+        "..."
+      ]
     },
     "Gleam": {
       "tab_size": 2
@@ -626,120 +615,26 @@
         "source.organizeImports": true
       }
     },
-    "GraphQL": {
-      "prettier": {
-        "allowed": true
-      }
-    },
     "HEEX": {
-      "language_servers": ["elixir-ls", "!next-ls", "!lexical", "..."]
-    },
-    "HTML": {
-      "prettier": {
-        "allowed": true
-      }
-    },
-    "Java": {
-      "prettier": {
-        "allowed": true,
-        "plugins": ["prettier-plugin-java"]
-      }
-    },
-    "JavaScript": {
-      "prettier": {
-        "allowed": true
-      }
-    },
-    "JSON": {
-      "prettier": {
-        "allowed": true
-      }
+      "language_servers": [
+        "elixir-ls",
+        "!next-ls",
+        "!lexical",
+        "..."
+      ]
     },
     "Make": {
       "hard_tabs": true
     },
-    "Markdown": {
-      "format_on_save": "off",
-      "prettier": {
-        "allowed": true
-      }
-    },
-    "PHP": {
-      "prettier": {
-        "allowed": true,
-        "plugins": ["@prettier/plugin-php"]
-      }
-    },
     "Prisma": {
       "tab_size": 2
-    },
-    "Ruby": {
-      "language_servers": ["solargraph", "!ruby-lsp", "..."]
-    },
-    "SCSS": {
-      "prettier": {
-        "allowed": true
-      }
-    },
-    "SQL": {
-      "prettier": {
-        "allowed": true,
-        "plugins": ["prettier-plugin-sql"]
-      }
-    },
-    "Svelte": {
-      "prettier": {
-        "allowed": true,
-        "plugins": ["prettier-plugin-svelte"]
-      }
-    },
-    "TSX": {
-      "prettier": {
-        "allowed": true
-      }
-    },
-    "Twig": {
-      "prettier": {
-        "allowed": true
-      }
-    },
-    "TypeScript": {
-      "prettier": {
-        "allowed": true
-      }
-    },
-    "Vue.js": {
-      "prettier": {
-        "allowed": true
-      }
-    },
-    "XML": {
-      "prettier": {
-        "allowed": true,
-        "plugins": ["@prettier/plugin-xml"]
-      }
-    },
-    "YAML": {
-      "prettier": {
-        "allowed": true
-      }
     }
   },
   // Zed's Prettier integration settings.
-  // Allows to enable/disable formatting with Prettier
-  // and configure default Prettier, used when no project-level Prettier installation is found.
+  // If Prettier is enabled, Zed will use this for its Prettier instance for any applicable file, if
+  // project has no other Prettier installed.
   "prettier": {
-    // // Whether to consider prettier formatter or not when attempting to format a file.
-    // "allowed": false,
-    //
-    // // Use regular Prettier json configuration.
-    // // If Prettier is allowed, Zed will use this for its Prettier instance for any applicable file, if
-    // // the project has no other Prettier installed.
-    // "plugins": [],
-    //
-    // // Use regular Prettier json configuration.
-    // // If Prettier is allowed, Zed will use this for its Prettier instance for any applicable file, if
-    // // the project has no other Prettier installed.
+    // Use regular Prettier json configuration:
     // "trailingComma": "es5",
     // "tabWidth": 4,
     // "semi": false,

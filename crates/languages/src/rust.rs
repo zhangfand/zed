@@ -3,7 +3,6 @@ use async_compression::futures::bufread::GzipDecoder;
 use async_trait::async_trait;
 use futures::{io::BufReader, StreamExt};
 use gpui::AsyncAppContext;
-use http::github::{latest_github_release, GitHubLspBinaryVersion};
 pub use language::*;
 use lazy_static::lazy_static;
 use lsp::LanguageServerBinary;
@@ -19,7 +18,11 @@ use std::{
     sync::Arc,
 };
 use task::{TaskTemplate, TaskTemplates, TaskVariables, VariableName};
-use util::{fs::remove_matching, maybe, ResultExt};
+use util::{
+    fs::remove_matching,
+    github::{latest_github_release, GitHubLspBinaryVersion},
+    maybe, ResultExt,
+};
 
 pub struct RustLspAdapter;
 

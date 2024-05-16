@@ -14,8 +14,7 @@ use util::post_inc;
 use crate::{
     display_map::{DisplayMap, DisplaySnapshot, ToDisplayPoint},
     movement::TextLayoutDetails,
-    Anchor, DisplayPoint, DisplayRow, ExcerptId, MultiBuffer, MultiBufferSnapshot, SelectMode,
-    ToOffset,
+    Anchor, DisplayPoint, ExcerptId, MultiBuffer, MultiBufferSnapshot, SelectMode, ToOffset,
 };
 
 #[derive(Debug, Clone)]
@@ -309,7 +308,7 @@ impl SelectionsCollection {
     pub fn build_columnar_selection(
         &mut self,
         display_map: &DisplaySnapshot,
-        row: DisplayRow,
+        row: u32,
         positions: &Range<Pixels>,
         reversed: bool,
         text_layout_details: &TextLayoutDetails,

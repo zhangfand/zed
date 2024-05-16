@@ -20,7 +20,6 @@ use gpui::{
     actions, AnyModel, AnyWeakModel, AppContext, AsyncAppContext, BorrowAppContext, Global, Model,
     Task, WeakModel,
 };
-use http::{HttpClient, HttpClientWithUrl};
 use lazy_static::lazy_static;
 use parking_lot::RwLock;
 use postage::watch;
@@ -48,6 +47,7 @@ use std::{
 use telemetry::Telemetry;
 use thiserror::Error;
 use url::Url;
+use util::http::{HttpClient, HttpClientWithUrl};
 use util::{ResultExt, TryFutureExt};
 
 pub use rpc::*;
@@ -204,7 +204,7 @@ pub enum EstablishConnectionError {
     #[error("{0}")]
     Other(#[from] anyhow::Error),
     #[error("{0}")]
-    Http(#[from] http::Error),
+    Http(#[from] util::http::Error),
     #[error("{0}")]
     Io(#[from] std::io::Error),
     #[error("{0}")]
@@ -1679,10 +1679,10 @@ mod tests {
 
     use clock::FakeSystemClock;
     use gpui::{BackgroundExecutor, Context, TestAppContext};
-    use http::FakeHttpClient;
     use parking_lot::Mutex;
     use settings::SettingsStore;
     use std::future;
+    use util::http::FakeHttpClient;
 
     #[gpui::test(iterations = 10)]
     async fn test_reconnection(cx: &mut TestAppContext) {

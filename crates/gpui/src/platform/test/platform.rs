@@ -23,7 +23,6 @@ pub(crate) struct TestPlatform {
     active_display: Rc<dyn PlatformDisplay>,
     active_cursor: Mutex<CursorStyle>,
     current_clipboard_item: Mutex<Option<ClipboardItem>>,
-    #[cfg(target_os = "linux")]
     current_primary_item: Mutex<Option<ClipboardItem>>,
     pub(crate) prompts: RefCell<TestPrompts>,
     pub opened_url: RefCell<Option<String>>,
@@ -46,7 +45,6 @@ impl TestPlatform {
             active_display: Rc::new(TestDisplay::new()),
             active_window: Default::default(),
             current_clipboard_item: Mutex::new(None),
-            #[cfg(target_os = "linux")]
             current_primary_item: Mutex::new(None),
             weak: weak.clone(),
             opened_url: Default::default(),
@@ -142,7 +140,7 @@ impl Platform for TestPlatform {
 
     fn quit(&self) {}
 
-    fn restart(&self, _: Option<PathBuf>) {
+    fn restart(&self) {
         unimplemented!()
     }
 
@@ -274,7 +272,6 @@ impl Platform for TestPlatform {
         false
     }
 
-    #[cfg(target_os = "linux")]
     fn write_to_primary(&self, item: ClipboardItem) {
         *self.current_primary_item.lock() = Some(item);
     }
@@ -283,7 +280,6 @@ impl Platform for TestPlatform {
         *self.current_clipboard_item.lock() = Some(item);
     }
 
-    #[cfg(target_os = "linux")]
     fn read_from_primary(&self) -> Option<ClipboardItem> {
         self.current_primary_item.lock().clone()
     }

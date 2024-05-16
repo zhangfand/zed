@@ -1,6 +1,5 @@
 use std::fmt;
 
-pub use anthropic::Model as AnthropicModel;
 use gpui::Pixels;
 pub use open_ai::Model as OpenAiModel;
 use schemars::{
@@ -17,9 +16,8 @@ use settings::{Settings, SettingsSources};
 pub enum ZedDotDevModel {
     Gpt3Point5Turbo,
     Gpt4,
-    Gpt4Turbo,
     #[default]
-    Gpt4Omni,
+    Gpt4Turbo,
     Claude3Opus,
     Claude3Sonnet,
     Claude3Haiku,
@@ -57,7 +55,6 @@ impl<'de> Deserialize<'de> for ZedDotDevModel {
                     "gpt-3.5-turbo" => Ok(ZedDotDevModel::Gpt3Point5Turbo),
                     "gpt-4" => Ok(ZedDotDevModel::Gpt4),
                     "gpt-4-turbo-preview" => Ok(ZedDotDevModel::Gpt4Turbo),
-                    "gpt-4o" => Ok(ZedDotDevModel::Gpt4Omni),
                     _ => Ok(ZedDotDevModel::Custom(value.to_owned())),
                 }
             }
@@ -77,7 +74,6 @@ impl JsonSchema for ZedDotDevModel {
             "gpt-3.5-turbo".to_owned(),
             "gpt-4".to_owned(),
             "gpt-4-turbo-preview".to_owned(),
-            "gpt-4o".to_owned(),
         ];
         Schema::Object(SchemaObject {
             instance_type: Some(InstanceType::String.into()),
@@ -104,7 +100,6 @@ impl ZedDotDevModel {
             Self::Gpt3Point5Turbo => "gpt-3.5-turbo",
             Self::Gpt4 => "gpt-4",
             Self::Gpt4Turbo => "gpt-4-turbo-preview",
-            Self::Gpt4Omni => "gpt-4o",
             Self::Claude3Opus => "claude-3-opus",
             Self::Claude3Sonnet => "claude-3-sonnet",
             Self::Claude3Haiku => "claude-3-haiku",
@@ -117,7 +112,6 @@ impl ZedDotDevModel {
             Self::Gpt3Point5Turbo => "GPT 3.5 Turbo",
             Self::Gpt4 => "GPT 4",
             Self::Gpt4Turbo => "GPT 4 Turbo",
-            Self::Gpt4Omni => "GPT 4 Omni",
             Self::Claude3Opus => "Claude 3 Opus",
             Self::Claude3Sonnet => "Claude 3 Sonnet",
             Self::Claude3Haiku => "Claude 3 Haiku",
@@ -129,7 +123,7 @@ impl ZedDotDevModel {
         match self {
             Self::Gpt3Point5Turbo => 2048,
             Self::Gpt4 => 4096,
-            Self::Gpt4Turbo | Self::Gpt4Omni => 128000,
+            Self::Gpt4Turbo => 128000,
             Self::Claude3Opus | Self::Claude3Sonnet | Self::Claude3Haiku => 200000,
             Self::Custom(_) => 4096, // TODO: Make this configurable
         }
@@ -159,17 +153,6 @@ pub enum AssistantProvider {
         default_model: OpenAiModel,
         #[serde(default = "open_ai_url")]
         api_url: String,
-        #[serde(default)]
-        low_speed_timeout_in_seconds: Option<u64>,
-    },
-    #[serde(rename = "anthropic")]
-    Anthropic {
-        #[serde(default)]
-        default_model: AnthropicModel,
-        #[serde(default = "anthropic_api_url")]
-        api_url: String,
-        #[serde(default)]
-        low_speed_timeout_in_seconds: Option<u64>,
     },
 }
 
@@ -182,11 +165,7 @@ impl Default for AssistantProvider {
 }
 
 fn open_ai_url() -> String {
-    open_ai::OPEN_AI_API_URL.to_string()
-}
-
-fn anthropic_api_url() -> String {
-    anthropic::ANTHROPIC_API_URL.to_string()
+    "https://api.openai.com/v1".into()
 }
 
 #[derive(Default, Debug, Deserialize, Serialize)]
@@ -243,14 +222,12 @@ impl AssistantSettingsContent {
                     Some(AssistantProvider::OpenAi {
                         default_model: settings.default_open_ai_model.clone().unwrap_or_default(),
                         api_url: open_ai_api_url.clone(),
-                        low_speed_timeout_in_seconds: None,
                     })
                 } else {
                     settings.default_open_ai_model.clone().map(|open_ai_model| {
                         AssistantProvider::OpenAi {
                             default_model: open_ai_model,
                             api_url: open_ai_url(),
-                            low_speed_timeout_in_seconds: None,
                         }
                     })
                 },
@@ -387,17 +364,14 @@ impl Settings for AssistantSettings {
                         AssistantProvider::OpenAi {
                             default_model,
                             api_url,
-                            low_speed_timeout_in_seconds,
                         },
                         AssistantProvider::OpenAi {
                             default_model: default_model_override,
                             api_url: api_url_override,
-                            low_speed_timeout_in_seconds: low_speed_timeout_in_seconds_override,
                         },
                     ) => {
                         *default_model = default_model_override;
                         *api_url = api_url_override;
-                        *low_speed_timeout_in_seconds = low_speed_timeout_in_seconds_override;
                     }
                     (merged, provider_override) => {
                         *merged = provider_override;
@@ -433,9 +407,8 @@ mod tests {
         assert_eq!(
             AssistantSettings::get_global(cx).provider,
             AssistantProvider::OpenAi {
-                default_model: OpenAiModel::FourOmni,
-                api_url: open_ai_url(),
-                low_speed_timeout_in_seconds: None,
+                default_model: OpenAiModel::FourTurbo,
+                api_url: open_ai_url()
             }
         );
 
@@ -455,9 +428,8 @@ mod tests {
         assert_eq!(
             AssistantSettings::get_global(cx).provider,
             AssistantProvider::OpenAi {
-                default_model: OpenAiModel::FourOmni,
-                api_url: "test-url".into(),
-                low_speed_timeout_in_seconds: None,
+                default_model: OpenAiModel::FourTurbo,
+                api_url: "test-url".into()
             }
         );
         cx.update_global::<SettingsStore, _>(|store, cx| {
@@ -476,8 +448,7 @@ mod tests {
             AssistantSettings::get_global(cx).provider,
             AssistantProvider::OpenAi {
                 default_model: OpenAiModel::Four,
-                api_url: open_ai_url(),
-                low_speed_timeout_in_seconds: None,
+                api_url: open_ai_url()
             }
         );
 

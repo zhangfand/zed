@@ -42,7 +42,6 @@ use futures::{
     stream::FuturesUnordered,
     FutureExt, SinkExt, StreamExt, TryStreamExt,
 };
-use http::IsahcHttpClient;
 use prometheus::{register_int_gauge, IntGauge};
 use rpc::{
     proto::{
@@ -74,6 +73,7 @@ use tracing::{
     field::{self},
     info_span, instrument, Instrument,
 };
+use util::http::IsahcHttpClient;
 
 use self::connection_pool::VersionedMessage;
 
@@ -2032,34 +2032,23 @@ async fn unshare_project_internal(
     user_id: Option<UserId>,
     session: &Session,
 ) -> Result<()> {
-    let delete = {
-        let room_guard = session
-            .db()
-            .await
-            .unshare_project(project_id, connection_id, user_id)
-            .await?;
+    let (room, guest_connection_ids) = &*session
+        .db()
+        .await
+        .unshare_project(project_id, connection_id, user_id)
+        .await?;
 
-        let (delete, room, guest_connection_ids) = &*room_guard;
-
-        let message = proto::UnshareProject {
-            project_id: project_id.to_proto(),
-        };
-
-        broadcast(
-            Some(connection_id),
-            guest_connection_ids.iter().copied(),
-            |conn_id| session.peer.send(conn_id, message.clone()),
-        );
-        if let Some(room) = room {
-            room_updated(room, &session.peer);
-        }
-
-        *delete
+    let message = proto::UnshareProject {
+        project_id: project_id.to_proto(),
     };
 
-    if delete {
-        let db = session.db().await;
-        db.delete_project(project_id).await?;
+    broadcast(
+        Some(connection_id),
+        guest_connection_ids.iter().copied(),
+        |conn_id| session.peer.send(conn_id, message.clone()),
+    );
+    if let Some(room) = room {
+        room_updated(room, &session.peer);
     }
 
     Ok(())
@@ -4344,7 +4333,6 @@ async fn complete_with_open_ai(
         OPEN_AI_API_URL,
         &api_key,
         crate::ai::language_model_request_to_open_ai(request)?,
-        None,
     )
     .await
     .context("open_ai::stream_completion request failed within collab")?;
@@ -4489,8 +4477,8 @@ async fn complete_with_anthropic(
         .collect();
 
     let mut stream = anthropic::stream_completion(
-        session.http_client.as_ref(),
-        anthropic::ANTHROPIC_API_URL,
+        session.http_client.clone(),
+        "https://api.anthropic.com",
         &api_key,
         anthropic::Request {
             model,
@@ -4499,7 +4487,6 @@ async fn complete_with_anthropic(
             system: system_message,
             max_tokens: 4092,
         },
-        None,
     )
     .await?;
 

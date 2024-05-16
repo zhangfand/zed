@@ -2,14 +2,17 @@ use anyhow::{anyhow, bail, Context, Result};
 use async_trait::async_trait;
 use futures::StreamExt;
 use gpui::AsyncAppContext;
-use http::github::{latest_github_release, GitHubLspBinaryVersion};
 pub use language::*;
 use lsp::LanguageServerBinary;
 use project::project_settings::{BinarySettings, ProjectSettings};
 use settings::Settings;
 use smol::fs::{self, File};
 use std::{any::Any, env::consts, path::PathBuf, sync::Arc};
-use util::{fs::remove_matching, maybe, ResultExt};
+use util::{
+    fs::remove_matching,
+    github::{latest_github_release, GitHubLspBinaryVersion},
+    maybe, ResultExt,
+};
 
 pub struct CLspAdapter;
 

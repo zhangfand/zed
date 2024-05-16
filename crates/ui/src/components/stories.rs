@@ -14,7 +14,6 @@ mod tab;
 mod tab_bar;
 mod title_bar;
 mod toggle_button;
-mod tool_strip;
 
 pub use avatar::*;
 pub use button::*;
@@ -32,4 +31,3 @@ pub use tab::*;
 pub use tab_bar::*;
 pub use title_bar::*;
 pub use toggle_button::*;
-pub use tool_strip::*;

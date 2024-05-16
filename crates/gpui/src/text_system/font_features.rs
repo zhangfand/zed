@@ -1,4 +1,6 @@
+#[cfg(target_os = "windows")]
 use crate::SharedString;
+#[cfg(target_os = "windows")]
 use itertools::Itertools;
 use schemars::{
     schema::{InstanceType, Schema, SchemaObject, SingleOrVec},
@@ -13,7 +15,9 @@ macro_rules! create_definitions {
         pub struct FontFeatures {
             enabled: u64,
             disabled: u64,
+            #[cfg(target_os = "windows")]
             other_enabled: SharedString,
+            #[cfg(target_os = "windows")]
             other_disabled: SharedString,
         }
 
@@ -33,6 +37,7 @@ macro_rules! create_definitions {
 
             /// Get the tag name list of the font OpenType features
             /// only enabled or disabled features are returned
+            #[cfg(target_os = "windows")]
             pub fn tag_value_list(&self) -> Vec<(String, bool)> {
                 let mut result = Vec::new();
                 $(
@@ -100,6 +105,29 @@ macro_rules! create_definitions {
                         formatter.write_str("a map of font features")
                     }
 
+                    #[cfg(not(target_os = "windows"))]
+                    fn visit_map<M>(self, mut access: M) -> Result<Self::Value, M::Error>
+                    where
+                        M: MapAccess<'de>,
+                    {
+                        let mut enabled: u64 = 0;
+                        let mut disabled: u64 = 0;
+
+                        while let Some((key, value)) = access.next_entry::<String, Option<bool>>()? {
+                            let idx = match key.as_str() {
+                                $(stringify!($name) => $idx,)*
+                                _ => continue,
+                            };
+                            match value {
+                                Some(true) => enabled |= 1 << idx,
+                                Some(false) => disabled |= 1 << idx,
+                                None => {}
+                            };
+                        }
+                        Ok(FontFeatures { enabled, disabled })
+                    }
+
+                    #[cfg(target_os = "windows")]
                     fn visit_map<M>(self, mut access: M) -> Result<Self::Value, M::Error>
                     where
                         M: MapAccess<'de>,

@@ -5,7 +5,6 @@ use chrono::{DateTime, Utc};
 use clock::SystemClock;
 use futures::Future;
 use gpui::{AppContext, AppMetadata, BackgroundExecutor, Task};
-use http::{self, HttpClient, HttpClientWithUrl, Method};
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 use release_channel::ReleaseChannel;
@@ -20,6 +19,7 @@ use telemetry_events::{
     SettingEvent,
 };
 use tempfile::NamedTempFile;
+use util::http::{self, HttpClient, HttpClientWithUrl, Method};
 #[cfg(not(debug_assertions))]
 use util::ResultExt;
 use util::TryFutureExt;
@@ -261,15 +261,11 @@ impl Telemetry {
         conversation_id: Option<String>,
         kind: AssistantKind,
         model: String,
-        response_latency: Option<Duration>,
-        error_message: Option<String>,
     ) {
         let event = Event::Assistant(AssistantEvent {
             conversation_id,
             kind,
             model: model.to_string(),
-            response_latency,
-            error_message,
         });
 
         self.report_event(event)
@@ -501,7 +497,7 @@ mod tests {
     use chrono::TimeZone;
     use clock::FakeSystemClock;
     use gpui::TestAppContext;
-    use http::FakeHttpClient;
+    use util::http::FakeHttpClient;
 
     #[gpui::test]
     fn test_telemetry_flush_on_max_queue_size(cx: &mut TestAppContext) {

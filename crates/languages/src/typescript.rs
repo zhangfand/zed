@@ -4,7 +4,6 @@ use async_tar::Archive;
 use async_trait::async_trait;
 use collections::HashMap;
 use gpui::AsyncAppContext;
-use http::github::{build_tarball_url, GitHubLspBinaryVersion};
 use language::{LanguageServerName, LspAdapter, LspAdapterDelegate};
 use lsp::{CodeActionKind, LanguageServerBinary};
 use node_runtime::NodeRuntime;
@@ -18,7 +17,11 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
-use util::{fs::remove_matching, maybe, ResultExt};
+use util::{
+    fs::remove_matching,
+    github::{build_tarball_url, GitHubLspBinaryVersion},
+    maybe, ResultExt,
+};
 
 fn typescript_server_binary_arguments(server_path: &Path) -> Vec<OsString> {
     vec![server_path.into(), "--stdio".into()]
@@ -319,15 +322,6 @@ impl LspAdapter for EsLintLspAdapter {
                 },
                 "problems": problems,
                 "codeActionOnSave": code_action_on_save,
-                "codeAction": {
-                    "disableRuleComment": {
-                        "enable": true,
-                        "location": "separateLine",
-                    },
-                    "showDocumentation": {
-                        "enable": true
-                    }
-                },
                 "experimental": {
                     "useFlatConfig": use_flat_config,
                 },

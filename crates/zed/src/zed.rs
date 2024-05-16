@@ -1,7 +1,6 @@
 mod app_menus;
 pub mod inline_completion_registry;
-#[cfg(not(target_os = "linux"))]
-pub(crate) mod only_instance;
+mod only_instance;
 mod open_listener;
 
 pub use app_menus::*;
@@ -13,6 +12,7 @@ use gpui::{
     actions, point, px, AppContext, AsyncAppContext, Context, FocusableView, PromptLevel,
     TitlebarOptions, View, ViewContext, VisualContext, WindowKind, WindowOptions,
 };
+pub use only_instance::*;
 pub use open_listener::*;
 
 use anyhow::Context as _;
@@ -174,7 +174,7 @@ pub fn initialize_workspace(app_state: Arc<AppState>, cx: &mut AppContext) {
                             id_base: "global_tasks",
                             abs_path: paths::TASKS.clone(),
                         },
-                        |tx, cx| StaticSource::new(TrackedFile::new(tasks_file_rx, tx, cx)),
+                        StaticSource::new(TrackedFile::new(tasks_file_rx, cx)),
                         cx,
                     );
                 })
@@ -910,7 +910,7 @@ mod tests {
     use super::*;
     use assets::Assets;
     use collections::HashSet;
-    use editor::{display_map::DisplayRow, scroll::Autoscroll, DisplayPoint, Editor};
+    use editor::{scroll::Autoscroll, DisplayPoint, Editor};
     use gpui::{
         actions, Action, AnyWindowHandle, AppContext, AssetSource, BorrowAppContext, Entity,
         TestAppContext, VisualTestContext, WindowHandle,
@@ -2229,8 +2229,9 @@ mod tests {
             .update(cx, |_, cx| {
                 editor1.update(cx, |editor, cx| {
                     editor.change_selections(Some(Autoscroll::fit()), cx, |s| {
-                        s.select_display_ranges([DisplayPoint::new(DisplayRow(10), 0)
-                            ..DisplayPoint::new(DisplayRow(10), 0)])
+                        s.select_display_ranges(
+                            [DisplayPoint::new(10, 0)..DisplayPoint::new(10, 0)],
+                        )
                     });
                 });
             })
@@ -2255,8 +2256,9 @@ mod tests {
             .update(cx, |_, cx| {
                 editor3.update(cx, |editor, cx| {
                     editor.change_selections(Some(Autoscroll::fit()), cx, |s| {
-                        s.select_display_ranges([DisplayPoint::new(DisplayRow(12), 0)
-                            ..DisplayPoint::new(DisplayRow(12), 0)])
+                        s.select_display_ranges(
+                            [DisplayPoint::new(12, 0)..DisplayPoint::new(12, 0)],
+                        )
                     });
                     editor.newline(&Default::default(), cx);
                     editor.newline(&Default::default(), cx);
@@ -2277,7 +2279,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             active_location(&workspace, cx),
-            (file3.clone(), DisplayPoint::new(DisplayRow(16), 0), 12.5)
+            (file3.clone(), DisplayPoint::new(16, 0), 12.5)
         );
 
         workspace
@@ -2287,7 +2289,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             active_location(&workspace, cx),
-            (file3.clone(), DisplayPoint::new(DisplayRow(0), 0), 0.)
+            (file3.clone(), DisplayPoint::new(0, 0), 0.)
         );
 
         workspace
@@ -2297,7 +2299,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             active_location(&workspace, cx),
-            (file2.clone(), DisplayPoint::new(DisplayRow(0), 0), 0.)
+            (file2.clone(), DisplayPoint::new(0, 0), 0.)
         );
 
         workspace
@@ -2307,7 +2309,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             active_location(&workspace, cx),
-            (file1.clone(), DisplayPoint::new(DisplayRow(10), 0), 0.)
+            (file1.clone(), DisplayPoint::new(10, 0), 0.)
         );
 
         workspace
@@ -2317,7 +2319,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             active_location(&workspace, cx),
-            (file1.clone(), DisplayPoint::new(DisplayRow(0), 0), 0.)
+            (file1.clone(), DisplayPoint::new(0, 0), 0.)
         );
 
         // Go back one more time and ensure we don't navigate past the first item in the history.
@@ -2328,7 +2330,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             active_location(&workspace, cx),
-            (file1.clone(), DisplayPoint::new(DisplayRow(0), 0), 0.)
+            (file1.clone(), DisplayPoint::new(0, 0), 0.)
         );
 
         workspace
@@ -2338,7 +2340,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             active_location(&workspace, cx),
-            (file1.clone(), DisplayPoint::new(DisplayRow(10), 0), 0.)
+            (file1.clone(), DisplayPoint::new(10, 0), 0.)
         );
 
         workspace
@@ -2348,7 +2350,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             active_location(&workspace, cx),
-            (file2.clone(), DisplayPoint::new(DisplayRow(0), 0), 0.)
+            (file2.clone(), DisplayPoint::new(0, 0), 0.)
         );
 
         // Go forward to an item that has been closed, ensuring it gets re-opened at the same
@@ -2371,7 +2373,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             active_location(&workspace, cx),
-            (file3.clone(), DisplayPoint::new(DisplayRow(0), 0), 0.)
+            (file3.clone(), DisplayPoint::new(0, 0), 0.)
         );
 
         workspace
@@ -2381,7 +2383,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             active_location(&workspace, cx),
-            (file3.clone(), DisplayPoint::new(DisplayRow(16), 0), 12.5)
+            (file3.clone(), DisplayPoint::new(16, 0), 12.5)
         );
 
         workspace
@@ -2391,7 +2393,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             active_location(&workspace, cx),
-            (file3.clone(), DisplayPoint::new(DisplayRow(0), 0), 0.)
+            (file3.clone(), DisplayPoint::new(0, 0), 0.)
         );
 
         // Go back to an item that has been closed and removed from disk
@@ -2420,7 +2422,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             active_location(&workspace, cx),
-            (file2.clone(), DisplayPoint::new(DisplayRow(0), 0), 0.)
+            (file2.clone(), DisplayPoint::new(0, 0), 0.)
         );
         workspace
             .update(cx, |w, cx| w.go_forward(w.active_pane().downgrade(), cx))
@@ -2429,7 +2431,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             active_location(&workspace, cx),
-            (file3.clone(), DisplayPoint::new(DisplayRow(0), 0), 0.)
+            (file3.clone(), DisplayPoint::new(0, 0), 0.)
         );
 
         // Modify file to collapse multiple nav history entries into the same location.
@@ -2438,8 +2440,9 @@ mod tests {
             .update(cx, |_, cx| {
                 editor1.update(cx, |editor, cx| {
                     editor.change_selections(None, cx, |s| {
-                        s.select_display_ranges([DisplayPoint::new(DisplayRow(15), 0)
-                            ..DisplayPoint::new(DisplayRow(15), 0)])
+                        s.select_display_ranges(
+                            [DisplayPoint::new(15, 0)..DisplayPoint::new(15, 0)],
+                        )
                     })
                 });
             })
@@ -2449,8 +2452,9 @@ mod tests {
                 .update(cx, |_, cx| {
                     editor1.update(cx, |editor, cx| {
                         editor.change_selections(None, cx, |s| {
-                            s.select_display_ranges([DisplayPoint::new(DisplayRow(3), 0)
-                                ..DisplayPoint::new(DisplayRow(3), 0)])
+                            s.select_display_ranges([
+                                DisplayPoint::new(3, 0)..DisplayPoint::new(3, 0)
+                            ])
                         });
                     });
                 })
@@ -2460,8 +2464,9 @@ mod tests {
                 .update(cx, |_, cx| {
                     editor1.update(cx, |editor, cx| {
                         editor.change_selections(None, cx, |s| {
-                            s.select_display_ranges([DisplayPoint::new(DisplayRow(13), 0)
-                                ..DisplayPoint::new(DisplayRow(13), 0)])
+                            s.select_display_ranges([
+                                DisplayPoint::new(13, 0)..DisplayPoint::new(13, 0)
+                            ])
                         })
                     });
                 })
@@ -2472,8 +2477,9 @@ mod tests {
                 editor1.update(cx, |editor, cx| {
                     editor.transact(cx, |editor, cx| {
                         editor.change_selections(None, cx, |s| {
-                            s.select_display_ranges([DisplayPoint::new(DisplayRow(2), 0)
-                                ..DisplayPoint::new(DisplayRow(14), 0)])
+                            s.select_display_ranges([
+                                DisplayPoint::new(2, 0)..DisplayPoint::new(14, 0)
+                            ])
                         });
                         editor.insert("", cx);
                     })
@@ -2485,8 +2491,7 @@ mod tests {
             .update(cx, |_, cx| {
                 editor1.update(cx, |editor, cx| {
                     editor.change_selections(None, cx, |s| {
-                        s.select_display_ranges([DisplayPoint::new(DisplayRow(1), 0)
-                            ..DisplayPoint::new(DisplayRow(1), 0)])
+                        s.select_display_ranges([DisplayPoint::new(1, 0)..DisplayPoint::new(1, 0)])
                     })
                 });
             })
@@ -2498,7 +2503,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             active_location(&workspace, cx),
-            (file1.clone(), DisplayPoint::new(DisplayRow(2), 0), 0.)
+            (file1.clone(), DisplayPoint::new(2, 0), 0.)
         );
         workspace
             .update(cx, |w, cx| w.go_back(w.active_pane().downgrade(), cx))
@@ -2507,7 +2512,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             active_location(&workspace, cx),
-            (file1.clone(), DisplayPoint::new(DisplayRow(3), 0), 0.)
+            (file1.clone(), DisplayPoint::new(3, 0), 0.)
         );
 
         fn active_location(

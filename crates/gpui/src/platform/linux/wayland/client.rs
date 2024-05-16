@@ -23,7 +23,6 @@ use wayland_client::globals::{registry_queue_init, GlobalList, GlobalListContent
 use wayland_client::protocol::wl_callback::{self, WlCallback};
 use wayland_client::protocol::wl_data_device_manager::DndAction;
 use wayland_client::protocol::wl_pointer::{AxisRelativeDirection, AxisSource};
-use wayland_client::protocol::wl_seat::WlSeat;
 use wayland_client::protocol::{
     wl_data_device, wl_data_device_manager, wl_data_offer, wl_data_source, wl_output, wl_region,
 };
@@ -81,7 +80,6 @@ pub struct Globals {
     pub data_device_manager: Option<wl_data_device_manager::WlDataDeviceManager>,
     pub wm_base: xdg_wm_base::XdgWmBase,
     pub shm: wl_shm::WlShm,
-    pub seat: wl_seat::WlSeat,
     pub viewporter: Option<wp_viewporter::WpViewporter>,
     pub fractional_scale_manager:
         Option<wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1>,
@@ -95,7 +93,6 @@ impl Globals {
         globals: GlobalList,
         executor: ForegroundExecutor,
         qh: QueueHandle<WaylandClientStatePtr>,
-        seat: wl_seat::WlSeat,
     ) -> Self {
         Globals {
             activation: globals.bind(&qh, 1..=1, ()).ok(),
@@ -116,7 +113,6 @@ impl Globals {
                 )
                 .ok(),
             shm: globals.bind(&qh, 1..=1, ()).unwrap(),
-            seat,
             wm_base: globals.bind(&qh, 1..=1, ()).unwrap(),
             viewporter: globals.bind(&qh, 1..=1, ()).ok(),
             fractional_scale_manager: globals.bind(&qh, 1..=1, ()).ok(),
@@ -195,10 +191,6 @@ impl WaylandClientStatePtr {
         self.0
             .upgrade()
             .expect("The pointer should always be valid when dispatching in wayland")
-    }
-
-    pub fn get_serial(&self, kind: SerialKind) -> u32 {
-        self.0.upgrade().unwrap().borrow().serial_tracker.get(kind)
     }
 
     pub fn drop_window(&self, surface_id: &ObjectId) {
@@ -311,12 +303,7 @@ impl WaylandClient {
         });
 
         let seat = seat.unwrap();
-        let globals = Globals::new(
-            globals,
-            common.foreground_executor.clone(),
-            qh.clone(),
-            seat.clone(),
-        );
+        let globals = Globals::new(globals, common.foreground_executor.clone(), qh.clone());
 
         let data_device = globals
             .data_device_manager
@@ -975,7 +962,6 @@ impl Dispatch<wl_pointer::WlPointer, ()> for WaylandClientStatePtr {
             } => {
                 state.serial_tracker.update(SerialKind::MouseEnter, serial);
                 state.mouse_location = Some(point(px(surface_x as f32), px(surface_y as f32)));
-                state.button_pressed = None;
 
                 if let Some(window) = get_window(&mut state, &surface.id()) {
                     state.mouse_focused_window = Some(window.clone());
@@ -1004,7 +990,6 @@ impl Dispatch<wl_pointer::WlPointer, ()> for WaylandClientStatePtr {
                     });
                     state.mouse_focused_window = None;
                     state.mouse_location = None;
-                    state.button_pressed = None;
 
                     drop(state);
                     focused_window.handle_input(input);

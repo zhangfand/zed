@@ -5,7 +5,6 @@ use db::kvp::KEY_VALUE_STORE;
 use gpui::{App, AppContext, SemanticVersion};
 use isahc::config::Configurable;
 
-use http::{self, HttpClient, HttpClientWithUrl};
 use paths::{CRASHES_DIR, CRASHES_RETIRED_DIR};
 use release_channel::ReleaseChannel;
 use release_channel::RELEASE_CHANNEL;
@@ -18,7 +17,10 @@ use std::{
     sync::{atomic::Ordering, Arc},
 };
 use std::{io::Write, panic, sync::atomic::AtomicU32, thread};
-use util::{paths, ResultExt};
+use util::{
+    http::{self, HttpClient, HttpClientWithUrl},
+    paths, ResultExt,
+};
 
 use crate::stdout_is_a_pty;
 
@@ -196,13 +198,13 @@ pub fn monitor_main_thread_hangs(
 
     use parking_lot::Mutex;
 
-    use http::Method;
     use std::{
         ffi::c_int,
         sync::{mpsc, OnceLock},
         time::Duration,
     };
     use telemetry_events::{BacktraceFrame, HangReport};
+    use util::http::Method;
 
     use nix::sys::pthread;
 

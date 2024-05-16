@@ -1,19 +1,12 @@
-use std::{ops::Range, path::Path};
+use std::path::Path;
 
-use crate::{Location, Runnable};
+use crate::Location;
 
 use anyhow::Result;
-use collections::HashMap;
 use gpui::AppContext;
 use task::{TaskTemplates, TaskVariables, VariableName};
-use text::{BufferId, Point, ToPoint};
+use text::{Point, ToPoint};
 
-pub struct RunnableRange {
-    pub buffer_id: BufferId,
-    pub run_range: Range<usize>,
-    pub runnable: Runnable,
-    pub extra_captures: HashMap<String, String>,
-}
 /// Language Contexts are used by Zed tasks to extract information about the source file where the tasks are supposed to be scheduled from.
 /// Multiple context providers may be used together: by default, Zed provides a base [`BasicContextProvider`] context that fills all non-custom [`VariableName`] variants.
 ///

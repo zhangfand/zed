@@ -145,9 +145,9 @@ impl VimTestContext {
         assert_eq!(self.mode(), mode, "{}", self.assertion_context());
     }
 
-    pub fn assert_binding(
+    pub fn assert_binding<const COUNT: usize>(
         &mut self,
-        keystrokes: &str,
+        keystrokes: [&str; COUNT],
         initial_state: &str,
         initial_mode: Mode,
         state_after: &str,
@@ -160,9 +160,9 @@ impl VimTestContext {
         assert_eq!(self.active_operator(), None, "{}", self.assertion_context());
     }
 
-    pub fn assert_binding_normal(
+    pub fn assert_binding_normal<const COUNT: usize>(
         &mut self,
-        keystrokes: &str,
+        keystrokes: [&str; COUNT],
         initial_state: &str,
         state_after: &str,
     ) {

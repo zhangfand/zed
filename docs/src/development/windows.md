@@ -5,7 +5,11 @@
 
 ## Repository
 
-Clone down the [Zed repository](https://github.com/zed-industries/zed).
+After cloning the repository, ensure all git submodules are initialized:
+
+```shell
+git submodule update --init --recursive
+```
 
 ## Dependencies
 

@@ -2,7 +2,7 @@ use anyhow::Context;
 use collections::{HashMap, HashSet};
 use fs::Fs;
 use gpui::{AsyncAppContext, Model};
-use language::{language_settings::language_settings, Buffer, Diff};
+use language::{language_settings::language_settings, Buffer, Diff, LanguageRegistry};
 use lsp::{LanguageServer, LanguageServerId};
 use node_runtime::NodeRuntime;
 use serde::{Deserialize, Serialize};
@@ -25,6 +25,7 @@ pub struct RealPrettier {
     default: bool,
     prettier_dir: PathBuf,
     server: Arc<LanguageServer>,
+    language_registry: Arc<LanguageRegistry>,
 }
 
 #[cfg(any(test, feature = "test-support"))]
@@ -155,6 +156,7 @@ impl Prettier {
         _: LanguageServerId,
         prettier_dir: PathBuf,
         _: Arc<dyn NodeRuntime>,
+        _: Arc<LanguageRegistry>,
         _: AsyncAppContext,
     ) -> anyhow::Result<Self> {
         Ok(Self::Test(TestPrettier {
@@ -168,6 +170,7 @@ impl Prettier {
         server_id: LanguageServerId,
         prettier_dir: PathBuf,
         node: Arc<dyn NodeRuntime>,
+        language_registry: Arc<LanguageRegistry>,
         cx: AsyncAppContext,
     ) -> anyhow::Result<Self> {
         use lsp::LanguageServerBinary;
@@ -206,6 +209,7 @@ impl Prettier {
         Ok(Self::Real(RealPrettier {
             server,
             default: prettier_dir == DEFAULT_PRETTIER_DIR.as_path(),
+            language_registry,
             prettier_dir,
         }))
     }
@@ -221,19 +225,22 @@ impl Prettier {
                 let params = buffer
                     .update(cx, |buffer, cx| {
                         let buffer_language = buffer.language();
-                        let language_settings = language_settings(buffer_language, buffer.file(), cx);
-                        let prettier_settings = &language_settings.prettier;
-                        anyhow::ensure!(
-                            prettier_settings.allowed,
-                            "Cannot format: prettier is not allowed for language {buffer_language:?}"
-                        );
+                        let parser_with_plugins = buffer_language.and_then(|l| {
+                            let prettier_parser = l.prettier_parser_name()?;
+                            let mut prettier_plugins =
+                                local.language_registry.all_prettier_plugins();
+                            prettier_plugins.dedup();
+                            Some((prettier_parser, prettier_plugins))
+                        });
+
                         let prettier_node_modules = self.prettier_dir().join("node_modules");
                         anyhow::ensure!(
                             prettier_node_modules.is_dir(),
                             "Prettier node_modules dir does not exist: {prettier_node_modules:?}"
                         );
-                        let plugin_name_into_path = |plugin_name: &str| {
-                            let prettier_plugin_dir = prettier_node_modules.join(plugin_name);
+                        let plugin_name_into_path = |plugin_name: Arc<str>| {
+                            let prettier_plugin_dir =
+                                prettier_node_modules.join(plugin_name.as_ref());
                             [
                                 prettier_plugin_dir.join("dist").join("index.mjs"),
                                 prettier_plugin_dir.join("dist").join("index.js"),
@@ -248,34 +255,45 @@ impl Prettier {
                             .into_iter()
                             .find(|possible_plugin_path| possible_plugin_path.is_file())
                         };
+                        let (parser, located_plugins) = match parser_with_plugins {
+                            Some((parser, plugins)) => {
+                                // Tailwind plugin requires being added last
+                                // https://github.com/tailwindlabs/prettier-plugin-tailwindcss#compatibility-with-other-prettier-plugins
+                                let mut add_tailwind_back = false;
 
-                        // Tailwind plugin requires being added last
-                        // https://github.com/tailwindlabs/prettier-plugin-tailwindcss#compatibility-with-other-prettier-plugins
-                        let mut add_tailwind_back = false;
-
-                        let mut located_plugins = prettier_settings.plugins.iter()
-                            .filter(|plugin_name| {
-                                if plugin_name.as_str() == TAILWIND_PRETTIER_PLUGIN_PACKAGE_NAME {
-                                    add_tailwind_back = true;
-                                    false
-                                } else {
-                                    true
+                                let mut plugins = plugins
+                                    .into_iter()
+                                    .filter(|plugin_name| {
+                                        if plugin_name.as_ref()
+                                            == TAILWIND_PRETTIER_PLUGIN_PACKAGE_NAME
+                                        {
+                                            add_tailwind_back = true;
+                                            false
+                                        } else {
+                                            true
+                                        }
+                                    })
+                                    .map(|plugin_name| {
+                                        (plugin_name.clone(), plugin_name_into_path(plugin_name))
+                                    })
+                                    .collect::<Vec<_>>();
+                                if add_tailwind_back {
+                                    plugins.push((
+                                        TAILWIND_PRETTIER_PLUGIN_PACKAGE_NAME.into(),
+                                        plugin_name_into_path(
+                                            TAILWIND_PRETTIER_PLUGIN_PACKAGE_NAME.into(),
+                                        ),
+                                    ));
                                 }
-                            })
-                            .map(|plugin_name| {
-                                let plugin_path = plugin_name_into_path(plugin_name);
-                                (plugin_name.clone(), plugin_path)
-                            })
-                            .collect::<Vec<_>>();
-                        if add_tailwind_back {
-                            located_plugins.push((
-                                TAILWIND_PRETTIER_PLUGIN_PACKAGE_NAME.to_owned(),
-                                plugin_name_into_path(TAILWIND_PRETTIER_PLUGIN_PACKAGE_NAME),
-                            ));
-                        }
+                                (Some(parser.to_string()), plugins)
+                            }
+                            None => (None, Vec::new()),
+                        };
 
                         let prettier_options = if self.is_default() {
-                            let mut options = prettier_settings.options.clone();
+                            let language_settings =
+                                language_settings(buffer_language, buffer.file(), cx);
+                            let mut options = language_settings.prettier.clone();
                             if !options.contains_key("tabWidth") {
                                 options.insert(
                                     "tabWidth".to_string(),
@@ -303,7 +321,11 @@ impl Prettier {
                                 match located_plugin_path {
                                     Some(path) => Some(path),
                                     None => {
-                                        log::error!("Have not found plugin path for {plugin_name:?} inside {prettier_node_modules:?}");
+                                        log::error!(
+                                            "Have not found plugin path for {:?} inside {:?}",
+                                            plugin_name,
+                                            prettier_node_modules
+                                        );
                                         None
                                     }
                                 }
@@ -319,7 +341,7 @@ impl Prettier {
                         anyhow::Ok(FormatParams {
                             text: buffer.text(),
                             options: FormatOptions {
-                                parser: prettier_settings.parser.clone(),
+                                parser,
                                 plugins,
                                 path: buffer_path,
                                 prettier_options,
@@ -338,19 +360,9 @@ impl Prettier {
             #[cfg(any(test, feature = "test-support"))]
             Self::Test(_) => Ok(buffer
                 .update(cx, |buffer, cx| {
-                    match buffer
-                        .language()
-                        .map(|language| language.lsp_id())
-                        .as_deref()
-                    {
-                        Some("rust") => anyhow::bail!("prettier does not support Rust"),
-                        Some(_other) => {
-                            let formatted_text = buffer.text() + FORMAT_SUFFIX;
-                            Ok(buffer.diff(formatted_text, cx))
-                        }
-                        None => panic!("Should not format buffer without a language with prettier"),
-                    }
-                })??
+                    let formatted_text = buffer.text() + FORMAT_SUFFIX;
+                    buffer.diff(formatted_text, cx)
+                })?
                 .await),
         }
     }

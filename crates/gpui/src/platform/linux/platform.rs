@@ -136,21 +136,17 @@ impl<P: LinuxClient + 'static> Platform for P {
         self.with_common(|common| common.signal.stop());
     }
 
-    fn restart(&self, binary_path: Option<PathBuf>) {
+    fn restart(&self) {
         use std::os::unix::process::CommandExt as _;
 
         // get the process id of the current process
         let app_pid = std::process::id().to_string();
         // get the path to the executable
-        let app_path = if let Some(path) = binary_path {
-            path
-        } else {
-            match self.app_path() {
-                Ok(path) => path,
-                Err(err) => {
-                    log::error!("Failed to get app path: {:?}", err);
-                    return;
-                }
+        let app_path = match self.app_path() {
+            Ok(path) => path,
+            Err(err) => {
+                log::error!("Failed to get app path: {:?}", err);
+                return;
             }
         };
 
@@ -305,12 +301,12 @@ impl<P: LinuxClient + 'static> Platform for P {
 
     fn reveal_path(&self, path: &Path) {
         if path.is_dir() {
-            open::that_detached(path);
+            open::that(path);
             return;
         }
         // If `path` is a file, the system may try to open it in a text editor
         let dir = path.parent().unwrap_or(Path::new(""));
-        open::that_detached(dir);
+        open::that(dir);
     }
 
     fn on_quit(&self, callback: Box<dyn FnMut()>) {

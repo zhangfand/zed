@@ -69,7 +69,6 @@ use rand::prelude::*;
 use search_history::SearchHistory;
 use worktree::LocalSnapshot;
 
-use http::{HttpClient, Url};
 use rpc::{ErrorCode, ErrorExt as _};
 use search::SearchQuery;
 use serde::Serialize;
@@ -100,7 +99,9 @@ use task::static_source::{StaticSource, TrackedFile};
 use terminals::Terminals;
 use text::{Anchor, BufferId, LineEnding};
 use util::{
-    debug_panic, defer, maybe, merge_json_value_into, parse_env_output,
+    debug_panic, defer,
+    http::{HttpClient, Url},
+    maybe, merge_json_value_into, parse_env_output,
     paths::{
         LOCAL_SETTINGS_RELATIVE_PATH, LOCAL_TASKS_RELATIVE_PATH, LOCAL_VSCODE_TASKS_RELATIVE_PATH,
     },
@@ -550,7 +551,6 @@ pub enum FormatTrigger {
 
 // Currently, formatting operations are represented differently depending on
 // whether they come from a language server or an external command.
-#[derive(Debug)]
 enum FormatOperation {
     Lsp(Vec<(Range<Anchor>, String)>),
     External(Diff),
@@ -1003,7 +1003,7 @@ impl Project {
         let fs = Arc::new(RealFs::default());
         let languages = LanguageRegistry::test(cx.background_executor().clone());
         let clock = Arc::new(FakeSystemClock::default());
-        let http_client = http::FakeHttpClient::with_404_response();
+        let http_client = util::http::FakeHttpClient::with_404_response();
         let client = cx
             .update(|cx| client::Client::new(clock, http_client.clone(), cx))
             .unwrap();
@@ -1047,7 +1047,7 @@ impl Project {
 
         let languages = LanguageRegistry::test(cx.executor());
         let clock = Arc::new(FakeSystemClock::default());
-        let http_client = http::FakeHttpClient::with_404_response();
+        let http_client = util::http::FakeHttpClient::with_404_response();
         let client = cx.update(|cx| client::Client::new(clock, http_client.clone(), cx));
         let user_store = cx.new_model(|cx| UserStore::new(client.clone(), cx));
         let project = cx.update(|cx| {
@@ -1089,8 +1089,11 @@ impl Project {
                                 .push((file.worktree.clone(), Arc::clone(language)));
                         }
                     }
-                    language_formatters_to_check
-                        .push((buffer_file.map(|f| f.worktree_id(cx)), settings.clone()));
+                    language_formatters_to_check.push((
+                        buffer_file.map(|f| f.worktree_id(cx)),
+                        Arc::clone(language),
+                        settings.clone(),
+                    ));
                 }
             }
         }
@@ -1146,9 +1149,9 @@ impl Project {
         }
 
         let mut prettier_plugins_by_worktree = HashMap::default();
-        for (worktree, language_settings) in language_formatters_to_check {
+        for (worktree, language, settings) in language_formatters_to_check {
             if let Some(plugins) =
-                prettier_support::prettier_plugins_for_language(&language_settings)
+                prettier_support::prettier_plugins_for_language(&language, &settings)
             {
                 prettier_plugins_by_worktree
                     .entry(worktree)
@@ -1157,11 +1160,7 @@ impl Project {
             }
         }
         for (worktree, prettier_plugins) in prettier_plugins_by_worktree {
-            self.install_default_prettier(
-                worktree,
-                prettier_plugins.into_iter().map(Arc::from),
-                cx,
-            );
+            self.install_default_prettier(worktree, prettier_plugins.into_iter(), cx);
         }
 
         // Start all the newly-enabled language servers.
@@ -3072,12 +3071,10 @@ impl Project {
         let settings = language_settings(Some(&new_language), buffer_file.as_ref(), cx).clone();
         let buffer_file = File::from_dyn(buffer_file.as_ref());
         let worktree = buffer_file.as_ref().map(|f| f.worktree_id(cx));
-        if let Some(prettier_plugins) = prettier_support::prettier_plugins_for_language(&settings) {
-            self.install_default_prettier(
-                worktree,
-                prettier_plugins.iter().map(|s| Arc::from(s.as_str())),
-                cx,
-            );
+        if let Some(prettier_plugins) =
+            prettier_support::prettier_plugins_for_language(&new_language, &settings)
+        {
+            self.install_default_prettier(worktree, prettier_plugins.iter().cloned(), cx);
         };
         if let Some(file) = buffer_file {
             let worktree = file.worktree.clone();
@@ -4790,11 +4787,6 @@ impl Project {
                 .zip(buffer_abs_path.as_ref());
 
             let mut format_operation = None;
-            let prettier_settings = buffer.read_with(&mut cx, |buffer, cx| {
-                language_settings(buffer.language(), buffer.file(), cx)
-                    .prettier
-                    .clone()
-            })?;
             match (&settings.formatter, &settings.format_on_save) {
                 (_, FormatOnSave::Off) if trigger == FormatTrigger::Save => {}
 
@@ -4854,18 +4846,11 @@ impl Project {
                     }
                 }
                 (Formatter::Auto, FormatOnSave::On | FormatOnSave::Off) => {
-                    let prettier = if prettier_settings.allowed {
-                        prettier_support::format_with_prettier(&project, buffer, &mut cx)
-                            .await
-                            .transpose()
-                            .ok()
-                            .flatten()
-                    } else {
-                        None
-                    };
+                    let prettier =
+                        prettier_support::format_with_prettier(&project, buffer, &mut cx).await;
 
                     if let Some(operation) = prettier {
-                        format_operation = Some(operation);
+                        format_operation = Some(operation?);
                     } else if let Some((language_server, buffer_abs_path)) = server_and_buffer {
                         format_operation = Some(FormatOperation::Lsp(
                             Self::format_via_lsp(
@@ -4882,12 +4867,11 @@ impl Project {
                     }
                 }
                 (Formatter::Prettier, FormatOnSave::On | FormatOnSave::Off) => {
-                    if prettier_settings.allowed {
-                        if let Some(operation) =
-                            prettier_support::format_with_prettier(&project, buffer, &mut cx).await
-                        {
-                            format_operation = Some(operation?);
-                        }
+                    let prettier =
+                        prettier_support::format_with_prettier(&project, buffer, &mut cx).await;
+
+                    if let Some(operation) = prettier {
+                        format_operation = Some(operation?);
                     }
                 }
             };
@@ -7553,12 +7537,13 @@ impl Project {
                         .flatten()
                         .chain(current_buffers)
                         .filter_map(|(buffer, path, abs_path)| {
-                            let (repo_entry, local_repo_entry) = snapshot.repo_for_path(&path)?;
-                            Some((buffer, path, abs_path, repo_entry, local_repo_entry))
+                            let (work_directory, repo) =
+                                snapshot.repository_and_work_directory_for_path(&path)?;
+                            let repo_entry = snapshot.get_local_repo(&repo)?;
+                            Some((buffer, path, abs_path, work_directory, repo_entry))
                         })
-                        .map(|(buffer, path, abs_path, repo, local_repo_entry)| {
+                        .map(|(buffer, path, abs_path, work_directory, repo_entry)| {
                             let fs = fs.clone();
-                            let snapshot = snapshot.clone();
                             async move {
                                 let abs_path_metadata = fs
                                     .metadata(&abs_path)
@@ -7573,11 +7558,8 @@ impl Project {
                                 {
                                     None
                                 } else {
-                                    let relative_path = repo.relativize(&snapshot, &path).ok()?;
-                                    local_repo_entry
-                                        .repo()
-                                        .lock()
-                                        .load_index_text(&relative_path)
+                                    let relative_path = path.strip_prefix(&work_directory).ok()?;
+                                    repo_entry.repo().lock().load_index_text(relative_path)
                                 };
                                 Some((buffer, base_text))
                             }
@@ -7672,7 +7654,7 @@ impl Project {
                                 abs_path,
                                 id_base: "local_tasks_for_worktree",
                             },
-                            |tx, cx| StaticSource::new(TrackedFile::new(tasks_file_rx, tx, cx)),
+                            StaticSource::new(TrackedFile::new(tasks_file_rx, cx)),
                             cx,
                         );
                     }
@@ -7692,13 +7674,12 @@ impl Project {
                                 abs_path,
                                 id_base: "local_vscode_tasks_for_worktree",
                             },
-                            |tx, cx| {
-                                StaticSource::new(TrackedFile::new_convertible::<
-                                    task::VsCodeTaskFile,
-                                >(
-                                    tasks_file_rx, tx, cx
-                                ))
-                            },
+                            StaticSource::new(
+                                TrackedFile::new_convertible::<task::VsCodeTaskFile>(
+                                    tasks_file_rx,
+                                    cx,
+                                ),
+                            ),
                             cx,
                         );
                     }
@@ -7883,18 +7864,6 @@ impl Project {
         })
     }
 
-    pub fn project_path_for_absolute_path(
-        &self,
-        abs_path: &Path,
-        cx: &AppContext,
-    ) -> Option<ProjectPath> {
-        self.find_local_worktree(abs_path, cx)
-            .map(|(worktree, relative_path)| ProjectPath {
-                worktree_id: worktree.read(cx).id(),
-                path: relative_path.into(),
-            })
-    }
-
     pub fn get_workspace_root(
         &self,
         project_path: &ProjectPath,
@@ -7920,16 +7889,6 @@ impl Project {
             .local_git_repo(&project_path.path)
     }
 
-    pub fn get_first_worktree_root_repo(
-        &self,
-        cx: &AppContext,
-    ) -> Option<Arc<Mutex<dyn GitRepository>>> {
-        let worktree = self.visible_worktrees(cx).next()?.read(cx).as_local()?;
-        let root_entry = worktree.root_git_entry()?;
-
-        worktree.get_local_repo(&root_entry)?.repo().clone().into()
-    }
-
     pub fn blame_buffer(
         &self,
         buffer: &Model<Buffer>,
@@ -7951,17 +7910,24 @@ impl Project {
                     .context("worktree was not local")?
                     .snapshot();
 
-                let (repo_entry, local_repo_entry) =
-                    match worktree.repo_for_path(&buffer_project_path.path) {
-                        Some(repo_for_path) => repo_for_path,
-                        None => anyhow::bail!(NoRepositoryError {}),
-                    };
+                let (work_directory, repo) = match worktree
+                    .repository_and_work_directory_for_path(&buffer_project_path.path)
+                {
+                    Some(work_dir_repo) => work_dir_repo,
+                    None => anyhow::bail!(NoRepositoryError {}),
+                };
 
-                let relative_path = repo_entry
-                    .relativize(&worktree, &buffer_project_path.path)
-                    .context("failed to relativize buffer path")?;
+                let repo_entry = match worktree.get_local_repo(&repo) {
+                    Some(repo_entry) => repo_entry,
+                    None => anyhow::bail!(NoRepositoryError {}),
+                };
 
-                let repo = local_repo_entry.repo().clone();
+                let repo = repo_entry.repo().clone();
+
+                let relative_path = buffer_project_path
+                    .path
+                    .strip_prefix(&work_directory)?
+                    .to_path_buf();
 
                 let content = match version {
                     Some(version) => buffer.rope_for_version(&version).clone(),
@@ -7975,7 +7941,7 @@ impl Project {
                 let (repo, relative_path, content) = blame_params?;
                 let lock = repo.lock();
                 lock.blame(&relative_path, content)
-                    .with_context(|| format!("Failed to blame {:?}", relative_path.0))
+                    .with_context(|| format!("Failed to blame {relative_path:?}"))
             })
         } else {
             let project_id = self.remote_id();

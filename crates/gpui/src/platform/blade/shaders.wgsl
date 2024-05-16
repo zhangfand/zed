@@ -88,14 +88,6 @@ fn distance_from_clip_rect(unit_vertex: vec2<f32>, bounds: Bounds, clip_bounds: 
     return distance_from_clip_rect_impl(position, clip_bounds);
 }
 
-// https://gamedev.stackexchange.com/questions/92015/optimized-linear-to-srgb-glsl
-fn srgb_to_linear(srgb: vec3<f32>) -> vec3<f32> {
-    let cutoff = srgb < vec3<f32>(0.04045);
-    let higher = pow((srgb + vec3<f32>(0.055)) / vec3<f32>(1.055), vec3<f32>(2.4));
-    let lower = srgb / vec3<f32>(12.92);
-    return select(higher, lower, cutoff);
-}
-
 fn hsla_to_rgba(hsla: Hsla) -> vec4<f32> {
     let h = hsla.h * 6.0; // Now, it's an angle but scaled in [0, 6) range
     let s = hsla.s;
@@ -105,7 +97,8 @@ fn hsla_to_rgba(hsla: Hsla) -> vec4<f32> {
     let c = (1.0 - abs(2.0 * l - 1.0)) * s;
     let x = c * (1.0 - abs(h % 2.0 - 1.0));
     let m = l - c / 2.0;
-    var color = vec3<f32>(m);
+
+    var color = vec4<f32>(m, m, m, a);
 
     if (h >= 0.0 && h < 1.0) {
         color.r += c;
@@ -127,12 +120,7 @@ fn hsla_to_rgba(hsla: Hsla) -> vec4<f32> {
         color.b += x;
     }
 
-    // Input colors are assumed to be in sRGB space,
-    // but blending and rendering needs to happen in linear space.
-    // The output will be converted to sRGB by either the target
-    // texture format or the swapchain color space.
-    let linear = srgb_to_linear(color);
-    return vec4<f32>(linear, a);
+    return color;
 }
 
 fn over(below: vec4<f32>, above: vec4<f32>) -> vec4<f32> {
@@ -193,8 +181,7 @@ fn quad_sdf(point: vec2<f32>, bounds: Bounds, corner_radii: Corners) -> f32 {
 // target alpha compositing mode.
 fn blend_color(color: vec4<f32>, alpha_factor: f32) -> vec4<f32> {
     let alpha = color.a * alpha_factor;
-    let multiplier = select(1.0, alpha, globals.premultiplied_alpha != 0u);
-    return vec4<f32>(color.rgb * multiplier, alpha);
+    return select(vec4<f32>(color.rgb, alpha), vec4<f32>(color.rgb, 1.0) * alpha, globals.premultiplied_alpha != 0u);
 }
 
 // --- quads --- //
@@ -483,7 +470,7 @@ fn fs_underline(input: UnderlineVarying) -> @location(0) vec4<f32> {
     let underline = b_underlines[input.underline_id];
     if ((underline.wavy & 0xFFu) == 0u)
     {
-        return blend_color(input.color, input.color.a);
+        return vec4<f32>(0.0);
     }
 
     let half_thickness = underline.thickness * 0.5;
@@ -497,7 +484,7 @@ fn fs_underline(input: UnderlineVarying) -> @location(0) vec4<f32> {
     let distance_from_top_border = distance_in_pixels - half_thickness;
     let distance_from_bottom_border = distance_in_pixels + half_thickness;
     let alpha = saturate(0.5 - max(-distance_from_bottom_border, distance_from_top_border));
-    return blend_color(input.color, alpha * input.color.a);
+    return blend_color(input.color, alpha);
 }
 
 // --- monochrome sprites --- //

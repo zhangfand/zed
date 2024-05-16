@@ -360,7 +360,9 @@ impl BladeRenderer {
             size: config.size,
             usage: gpu::TextureUsage::TARGET,
             display_sync: gpu::DisplaySync::Recent,
-            color_space: gpu::ColorSpace::Linear,
+            //Note: this matches the original logic of the Metal backend,
+            // but ultimaterly we need to switch to `Linear`.
+            color_space: gpu::ColorSpace::Srgb,
             allow_exclusive_full_screen: false,
             transparent: config.transparent,
         };

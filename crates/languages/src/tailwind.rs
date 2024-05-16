@@ -6,9 +6,7 @@ use gpui::AsyncAppContext;
 use language::{LanguageServerName, LspAdapter, LspAdapterDelegate};
 use lsp::LanguageServerBinary;
 use node_runtime::NodeRuntime;
-use project::project_settings::ProjectSettings;
 use serde_json::{json, Value};
-use settings::Settings;
 use smol::fs;
 use std::{
     any::Any,
@@ -29,8 +27,6 @@ pub struct TailwindLspAdapter {
 }
 
 impl TailwindLspAdapter {
-    const SERVER_NAME: &'static str = "tailwindcss-language-server";
-
     pub fn new(node: Arc<dyn NodeRuntime>) -> Self {
         TailwindLspAdapter { node }
     }
@@ -39,7 +35,7 @@ impl TailwindLspAdapter {
 #[async_trait(?Send)]
 impl LspAdapter for TailwindLspAdapter {
     fn name(&self) -> LanguageServerName {
-        LanguageServerName(Self::SERVER_NAME.into())
+        LanguageServerName("tailwindcss-language-server".into())
     }
 
     async fn fetch_latest_server_version(
@@ -114,34 +110,11 @@ impl LspAdapter for TailwindLspAdapter {
     async fn workspace_configuration(
         self: Arc<Self>,
         _: &Arc<dyn LspAdapterDelegate>,
-        cx: &mut AsyncAppContext,
+        _cx: &mut AsyncAppContext,
     ) -> Result<Value> {
-        let tailwind_user_settings = cx.update(|cx| {
-            ProjectSettings::get_global(cx)
-                .lsp
-                .get(Self::SERVER_NAME)
-                .and_then(|s| s.settings.clone())
-                .unwrap_or_default()
-        })?;
-
-        // We need to set this to null if it's not set, because tailwindcss-languageserver
-        // will check whether it's an object and if it is (even if it's empty) it will
-        // ignore the `userLanguages` from the initialization options.
-        let include_languages = tailwind_user_settings
-            .get("includeLanguages")
-            .cloned()
-            .unwrap_or(Value::Null);
-
-        let experimental = tailwind_user_settings
-            .get("experimental")
-            .cloned()
-            .unwrap_or_else(|| json!([]));
-
         Ok(json!({
             "tailwindCSS": {
                 "emmetCompletions": true,
-                "includeLanguages": include_languages,
-                "experimental": experimental,
             }
         }))
     }

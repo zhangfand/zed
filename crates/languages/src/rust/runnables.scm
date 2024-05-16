@@ -1,11 +1,6 @@
 (
-    (attribute_item (attribute
-        [((identifier) @_attribute)
-        (scoped_identifier (identifier) @_attribute)
-            ])
-        (#eq? @_attribute "test"))
-    .
-    (attribute_item) *
+    (attribute_item (attribute) @_attribute
+        (#match? @_attribute ".*test"))
     .
     (function_item
         name: (_) @run)

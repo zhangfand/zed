@@ -6,6 +6,7 @@ pub(super) fn bash_task_context() -> ContextProviderWithTasks {
         TaskTemplate {
             label: "execute selection".to_owned(),
             command: VariableName::SelectedText.template_value(),
+            ignore_previously_resolved: true,
             ..TaskTemplate::default()
         },
         TaskTemplate {

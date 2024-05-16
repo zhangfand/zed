@@ -27,7 +27,6 @@ use collections::{HashMap, HashSet};
 use futures::Future;
 use gpui::{AppContext, AsyncAppContext, Model, Task};
 pub use highlight_map::HighlightMap;
-use http::HttpClient;
 use lazy_static::lazy_static;
 use lsp::{CodeActionKind, LanguageServerBinary};
 use parking_lot::Mutex;
@@ -58,11 +57,10 @@ use std::{
 };
 use syntax_map::{QueryCursorHandle, SyntaxSnapshot};
 use task::RunnableTag;
-pub use task_context::{
-    BasicContextProvider, ContextProvider, ContextProviderWithTasks, RunnableRange,
-};
+pub use task_context::{BasicContextProvider, ContextProvider, ContextProviderWithTasks};
 use theme::SyntaxTheme;
 use tree_sitter::{self, wasmtime, Query, QueryCursor, WasmStore};
+use util::http::HttpClient;
 
 pub use buffer::Operation;
 pub use buffer::*;
@@ -602,6 +600,13 @@ pub struct LanguageConfig {
     /// or a whole-word search in buffer search.
     #[serde(default)]
     pub word_characters: HashSet<char>,
+    /// The name of a Prettier parser that should be used for this language.
+    #[serde(default)]
+    pub prettier_parser_name: Option<String>,
+    /// The names of any Prettier plugins that should be used for this language.
+    #[serde(default)]
+    pub prettier_plugins: Vec<Arc<str>>,
+
     /// Whether to indent lines using tab characters, as opposed to multiple
     /// spaces.
     #[serde(default)]
@@ -693,6 +698,8 @@ impl Default for LanguageConfig {
             scope_opt_in_language_servers: Default::default(),
             overrides: Default::default(),
             word_characters: Default::default(),
+            prettier_parser_name: None,
+            prettier_plugins: Default::default(),
             collapsed_placeholder: Default::default(),
             hard_tabs: Default::default(),
             tab_size: Default::default(),
@@ -1364,6 +1371,14 @@ impl Language {
             language: self.clone(),
             override_id: None,
         }
+    }
+
+    pub fn prettier_parser_name(&self) -> Option<&str> {
+        self.config.prettier_parser_name.as_deref()
+    }
+
+    pub fn prettier_plugins(&self) -> &Vec<Arc<str>> {
+        &self.config.prettier_plugins
     }
 
     pub fn lsp_id(&self) -> String {
