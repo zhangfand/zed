@@ -129,8 +129,9 @@ impl LogStore {
 
         let copilot_subscription = Copilot::global(cx).map(|copilot| {
             let copilot = &copilot;
-            cx.subscribe(copilot, |this, copilot, inline_completion_event, cx| {
-                match inline_completion_event {
+            cx.subscribe(
+                copilot,
+                |this, copilot, copilot_event, cx| match copilot_event {
                     copilot::Event::CopilotLanguageServerStarted => {
                         if let Some(server) = copilot.read(cx).language_server() {
                             let server_id = server.server_id();
@@ -158,8 +159,8 @@ impl LogStore {
                             );
                         }
                     }
-                }
-            })
+                },
+            )
         });
 
         let this = Self {

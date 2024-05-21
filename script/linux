@@ -1,9 +1,12 @@
-#!/usr/bin/env bash
+#!/usr/bin/bash
 
-set -ex
+set -e
+
+# Install our submodule dependencies
+git submodule update --init --recursive
 
 # install the wasm toolchain
-which rustup > /dev/null 2>&1 || curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+rustup target add wasm32-wasi
 
 # if sudo is not installed, define an empty alias
 maysudo=$(command -v sudo || command -v doas || true)
@@ -41,11 +44,6 @@ if [[ -n $dnf ]]; then
     libxkbcommon-x11-devel
     openssl-devel
     libzstd-devel
-    # Perl dependencies are needed for openssl-sys crate see https://docs.rs/openssl/latest/openssl/
-    perl-FindBin
-    perl-IPC-Cmd
-    perl-File-Compare
-    perl-File-Copy
     vulkan-loader
   )
 

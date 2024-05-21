@@ -44,10 +44,6 @@
   (float)
 ] @number
 
-; Variables
-(assignment
-  left: (identifier) @variable)
-
 (comment) @comment
 (string) @string
 (escape_sequence) @escape

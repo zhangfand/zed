@@ -144,7 +144,6 @@ impl OutlineViewDelegate {
                 active_editor.highlight_rows::<OutlineRowHighlights>(
                     outline_item.range.start..=outline_item.range.end,
                     Some(cx.theme().colors().editor_highlighted_line_background),
-                    true,
                     cx,
                 );
                 active_editor.request_autoscroll(Autoscroll::center(), cx);
@@ -317,13 +316,15 @@ impl PickerDelegate for OutlineViewDelegate {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use collections::HashSet;
     use gpui::{TestAppContext, VisualTestContext};
     use indoc::indoc;
     use language::{Language, LanguageConfig, LanguageMatcher};
     use project::{FakeFs, Project};
     use serde_json::json;
     use workspace::{AppState, Workspace};
+
+    use super::*;
 
     #[gpui::test]
     async fn test_outline_view_row_highlights(cx: &mut TestAppContext) {
@@ -483,9 +484,8 @@ mod tests {
     fn highlighted_display_rows(editor: &View<Editor>, cx: &mut VisualTestContext) -> Vec<u32> {
         editor.update(cx, |editor, cx| {
             editor
-                .highlighted_display_rows(cx)
+                .highlighted_display_rows(HashSet::default(), cx)
                 .into_keys()
-                .map(|r| r.0)
                 .collect()
         })
     }

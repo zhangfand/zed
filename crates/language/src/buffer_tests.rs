@@ -184,10 +184,6 @@ async fn test_language_for_file_with_custom_file_types(cx: &mut TestAppContext) 
             settings.file_types.extend([
                 ("TypeScript".into(), vec!["js".into()]),
                 ("C++".into(), vec!["c".into()]),
-                (
-                    "Dockerfile".into(),
-                    vec!["Dockerfile".into(), "Dockerfile.*".into()],
-                ),
             ]);
         })
     });
@@ -227,14 +223,6 @@ async fn test_language_for_file_with_custom_file_types(cx: &mut TestAppContext) 
             },
             ..Default::default()
         },
-        LanguageConfig {
-            name: "Dockerfile".into(),
-            matcher: LanguageMatcher {
-                path_suffixes: vec!["Dockerfile".to_string()],
-                ..Default::default()
-            },
-            ..Default::default()
-        },
     ] {
         languages.add(Arc::new(Language::new(config, None)));
     }
@@ -249,11 +237,6 @@ async fn test_language_for_file_with_custom_file_types(cx: &mut TestAppContext) 
         .await
         .unwrap();
     assert_eq!(language.name().as_ref(), "C++");
-    let language = cx
-        .read(|cx| languages.language_for_file(&file("Dockerfile.dev"), None, cx))
-        .await
-        .unwrap();
-    assert_eq!(language.name().as_ref(), "Dockerfile");
 }
 
 fn file(path: &str) -> Arc<dyn File> {

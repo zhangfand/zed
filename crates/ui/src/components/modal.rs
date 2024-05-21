@@ -3,7 +3,6 @@ use smallvec::SmallVec;
 
 use crate::{
     h_flex, Clickable, IconButton, IconButtonShape, IconName, Label, LabelCommon, LabelSize,
-    Spacing,
 };
 
 #[derive(IntoElement)]
@@ -36,17 +35,17 @@ impl ModalHeader {
 }
 
 impl ParentElement for ModalHeader {
-    fn extend(&mut self, elements: impl IntoIterator<Item = AnyElement>) {
+    fn extend(&mut self, elements: impl Iterator<Item = AnyElement>) {
         self.children.extend(elements)
     }
 }
 
 impl RenderOnce for ModalHeader {
-    fn render(self, cx: &mut WindowContext) -> impl IntoElement {
+    fn render(self, _cx: &mut WindowContext) -> impl IntoElement {
         h_flex()
             .id(self.id)
             .w_full()
-            .px(Spacing::Large.rems(cx))
+            .px_2()
             .py_1p5()
             .when(self.show_back_button, |this| {
                 this.child(
@@ -87,7 +86,7 @@ impl ModalContent {
 }
 
 impl ParentElement for ModalContent {
-    fn extend(&mut self, elements: impl IntoIterator<Item = AnyElement>) {
+    fn extend(&mut self, elements: impl Iterator<Item = AnyElement>) {
         self.children.extend(elements)
     }
 }
@@ -112,7 +111,7 @@ impl ModalRow {
 }
 
 impl ParentElement for ModalRow {
-    fn extend(&mut self, elements: impl IntoIterator<Item = AnyElement>) {
+    fn extend(&mut self, elements: impl Iterator<Item = AnyElement>) {
         self.children.extend(elements)
     }
 }

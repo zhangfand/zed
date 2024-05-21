@@ -15,7 +15,6 @@ doctest = false
 [dependencies]
 anyhow.workspace = true
 futures.workspace = true
-http.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 smol.workspace = true

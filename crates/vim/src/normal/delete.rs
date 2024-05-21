@@ -7,7 +7,6 @@ use editor::{
 };
 use gpui::WindowContext;
 use language::{Point, Selection};
-use multi_buffer::MultiBufferRow;
 
 pub fn delete_motion(vim: &mut Vim, motion: Motion, times: Option<usize>, cx: &mut WindowContext) {
     vim.stop_recording();
@@ -30,7 +29,7 @@ pub fn delete_motion(vim: &mut Vim, motion: Motion, times: Option<usize>, cx: &m
                         if selection.is_empty()
                             && map
                                 .buffer_snapshot
-                                .line_len(MultiBufferRow(selection.start.to_point(&map).row))
+                                .line_len(selection.start.to_point(&map).row)
                                 == 0
                         {
                             selection.end = map
@@ -80,7 +79,7 @@ pub fn delete_object(vim: &mut Vim, object: Object, around: bool, cx: &mut Windo
                     let mut move_selection_start_to_previous_line =
                         |map: &DisplaySnapshot, selection: &mut Selection<DisplayPoint>| {
                             let start = selection.start.to_offset(map, Bias::Left);
-                            if selection.start.row().0 > 0 {
+                            if selection.start.row() > 0 {
                                 should_move_to_start.insert(selection.id);
                                 selection.start = (start - '\n'.len_utf8()).to_display_point(map);
                             }
@@ -158,358 +157,280 @@ mod test {
 
     use crate::{
         state::Mode,
-        test::{NeovimBackedTestContext, VimTestContext},
+        test::{ExemptionFeatures, NeovimBackedTestContext, VimTestContext},
     };
 
     #[gpui::test]
     async fn test_delete_h(cx: &mut gpui::TestAppContext) {
-        let mut cx = NeovimBackedTestContext::new(cx).await;
-        cx.simulate("d h", "Teˇst").await.assert_matches();
-        cx.simulate("d h", "Tˇest").await.assert_matches();
-        cx.simulate("d h", "ˇTest").await.assert_matches();
-        cx.simulate(
-            "d h",
-            indoc! {"
+        let mut cx = NeovimBackedTestContext::new(cx).await.binding(["d", "h"]);
+        cx.assert("Teˇst").await;
+        cx.assert("Tˇest").await;
+        cx.assert("ˇTest").await;
+        cx.assert(indoc! {"
             Test
-            ˇtest"},
-        )
-        .await
-        .assert_matches();
+            ˇtest"})
+            .await;
     }
 
     #[gpui::test]
     async fn test_delete_l(cx: &mut gpui::TestAppContext) {
-        let mut cx = NeovimBackedTestContext::new(cx).await;
-        cx.simulate("d l", "ˇTest").await.assert_matches();
-        cx.simulate("d l", "Teˇst").await.assert_matches();
-        cx.simulate("d l", "Tesˇt").await.assert_matches();
-        cx.simulate(
-            "d l",
-            indoc! {"
+        let mut cx = NeovimBackedTestContext::new(cx).await.binding(["d", "l"]);
+        cx.assert("ˇTest").await;
+        cx.assert("Teˇst").await;
+        cx.assert("Tesˇt").await;
+        cx.assert(indoc! {"
                 Tesˇt
-                test"},
-        )
-        .await
-        .assert_matches();
+                test"})
+            .await;
     }
 
     #[gpui::test]
     async fn test_delete_w(cx: &mut gpui::TestAppContext) {
         let mut cx = NeovimBackedTestContext::new(cx).await;
-        cx.simulate(
-            "d w",
+        cx.assert_neovim_compatible(
             indoc! {"
             Test tesˇt
                 test"},
+            ["d", "w"],
         )
-        .await
-        .assert_matches();
+        .await;
 
-        cx.simulate("d w", "Teˇst").await.assert_matches();
-        cx.simulate("d w", "Tˇest test").await.assert_matches();
-        cx.simulate(
-            "d w",
+        cx.assert_neovim_compatible("Teˇst", ["d", "w"]).await;
+        cx.assert_neovim_compatible("Tˇest test", ["d", "w"]).await;
+        cx.assert_neovim_compatible(
             indoc! {"
             Test teˇst
             test"},
+            ["d", "w"],
         )
-        .await
-        .assert_matches();
-        cx.simulate(
-            "d w",
+        .await;
+        cx.assert_neovim_compatible(
             indoc! {"
             Test tesˇt
             test"},
+            ["d", "w"],
         )
-        .await
-        .assert_matches();
+        .await;
 
-        cx.simulate(
-            "d w",
+        cx.assert_neovim_compatible(
             indoc! {"
             Test test
             ˇ
             test"},
+            ["d", "w"],
         )
-        .await
-        .assert_matches();
+        .await;
 
-        cx.simulate("d shift-w", "Test teˇst-test test")
-            .await
-            .assert_matches();
+        let mut cx = cx.binding(["d", "shift-w"]);
+        cx.assert_neovim_compatible("Test teˇst-test test", ["d", "shift-w"])
+            .await;
     }
 
     #[gpui::test]
     async fn test_delete_next_word_end(cx: &mut gpui::TestAppContext) {
-        let mut cx = NeovimBackedTestContext::new(cx).await;
-        cx.simulate("d e", "Teˇst Test\n").await.assert_matches();
-        cx.simulate("d e", "Tˇest test\n").await.assert_matches();
-        cx.simulate(
-            "d e",
-            indoc! {"
+        let mut cx = NeovimBackedTestContext::new(cx).await.binding(["d", "e"]);
+        // cx.assert("Teˇst Test").await;
+        // cx.assert("Tˇest test").await;
+        cx.assert(indoc! {"
             Test teˇst
-            test"},
-        )
-        .await
-        .assert_matches();
-        cx.simulate(
-            "d e",
-            indoc! {"
+            test"})
+            .await;
+        cx.assert(indoc! {"
             Test tesˇt
+            test"})
+            .await;
+        cx.assert_exempted(
+            indoc! {"
+            Test test
+            ˇ
             test"},
+            ExemptionFeatures::OperatorLastNewlineRemains,
         )
-        .await
-        .assert_matches();
+        .await;
 
-        cx.simulate("d e", "Test teˇst-test test")
-            .await
-            .assert_matches();
+        let mut cx = cx.binding(["d", "shift-e"]);
+        cx.assert("Test teˇst-test test").await;
     }
 
     #[gpui::test]
     async fn test_delete_b(cx: &mut gpui::TestAppContext) {
-        let mut cx = NeovimBackedTestContext::new(cx).await;
-        cx.simulate("d b", "Teˇst Test").await.assert_matches();
-        cx.simulate("d b", "Test ˇtest").await.assert_matches();
-        cx.simulate("d b", "Test1 test2 ˇtest3")
-            .await
-            .assert_matches();
-        cx.simulate(
-            "d b",
-            indoc! {"
+        let mut cx = NeovimBackedTestContext::new(cx).await.binding(["d", "b"]);
+        cx.assert("Teˇst Test").await;
+        cx.assert("Test ˇtest").await;
+        cx.assert("Test1 test2 ˇtest3").await;
+        cx.assert(indoc! {"
             Test test
-            ˇtest"},
-        )
-        .await
-        .assert_matches();
-        cx.simulate(
-            "d b",
-            indoc! {"
+            ˇtest"})
+            .await;
+        cx.assert(indoc! {"
             Test test
             ˇ
-            test"},
-        )
-        .await
-        .assert_matches();
+            test"})
+            .await;
 
-        cx.simulate("d shift-b", "Test test-test ˇtest")
-            .await
-            .assert_matches();
+        let mut cx = cx.binding(["d", "shift-b"]);
+        cx.assert("Test test-test ˇtest").await;
     }
 
     #[gpui::test]
     async fn test_delete_end_of_line(cx: &mut gpui::TestAppContext) {
-        let mut cx = NeovimBackedTestContext::new(cx).await;
-        cx.simulate(
-            "d $",
-            indoc! {"
+        let mut cx = NeovimBackedTestContext::new(cx).await.binding(["d", "$"]);
+        cx.assert(indoc! {"
             The qˇuick
-            brown fox"},
-        )
-        .await
-        .assert_matches();
-        cx.simulate(
-            "d $",
-            indoc! {"
+            brown fox"})
+            .await;
+        cx.assert(indoc! {"
             The quick
             ˇ
-            brown fox"},
-        )
-        .await
-        .assert_matches();
+            brown fox"})
+            .await;
     }
 
     #[gpui::test]
     async fn test_delete_0(cx: &mut gpui::TestAppContext) {
-        let mut cx = NeovimBackedTestContext::new(cx).await;
-        cx.simulate(
-            "d 0",
-            indoc! {"
+        let mut cx = NeovimBackedTestContext::new(cx).await.binding(["d", "0"]);
+        cx.assert(indoc! {"
             The qˇuick
-            brown fox"},
-        )
-        .await
-        .assert_matches();
-        cx.simulate(
-            "d 0",
-            indoc! {"
+            brown fox"})
+            .await;
+        cx.assert(indoc! {"
             The quick
             ˇ
-            brown fox"},
-        )
-        .await
-        .assert_matches();
+            brown fox"})
+            .await;
     }
 
     #[gpui::test]
     async fn test_delete_k(cx: &mut gpui::TestAppContext) {
-        let mut cx = NeovimBackedTestContext::new(cx).await;
-        cx.simulate(
-            "d k",
-            indoc! {"
+        let mut cx = NeovimBackedTestContext::new(cx).await.binding(["d", "k"]);
+        cx.assert(indoc! {"
             The quick
             brown ˇfox
-            jumps over"},
-        )
-        .await
-        .assert_matches();
-        cx.simulate(
-            "d k",
-            indoc! {"
+            jumps over"})
+            .await;
+        cx.assert(indoc! {"
             The quick
             brown fox
-            jumps ˇover"},
-        )
-        .await
-        .assert_matches();
-        cx.simulate(
-            "d k",
-            indoc! {"
+            jumps ˇover"})
+            .await;
+        cx.assert(indoc! {"
             The qˇuick
             brown fox
-            jumps over"},
-        )
-        .await
-        .assert_matches();
-        cx.simulate(
-            "d k",
-            indoc! {"
+            jumps over"})
+            .await;
+        cx.assert(indoc! {"
             ˇbrown fox
-            jumps over"},
-        )
-        .await
-        .assert_matches();
+            jumps over"})
+            .await;
     }
 
     #[gpui::test]
     async fn test_delete_j(cx: &mut gpui::TestAppContext) {
-        let mut cx = NeovimBackedTestContext::new(cx).await;
-        cx.simulate(
-            "d j",
-            indoc! {"
+        let mut cx = NeovimBackedTestContext::new(cx).await.binding(["d", "j"]);
+        cx.assert(indoc! {"
             The quick
             brown ˇfox
-            jumps over"},
-        )
-        .await
-        .assert_matches();
-        cx.simulate(
-            "d j",
-            indoc! {"
+            jumps over"})
+            .await;
+        cx.assert(indoc! {"
             The quick
             brown fox
-            jumps ˇover"},
-        )
-        .await
-        .assert_matches();
-        cx.simulate(
-            "d j",
-            indoc! {"
+            jumps ˇover"})
+            .await;
+        cx.assert(indoc! {"
             The qˇuick
             brown fox
-            jumps over"},
-        )
-        .await
-        .assert_matches();
-        cx.simulate(
-            "d j",
-            indoc! {"
+            jumps over"})
+            .await;
+        cx.assert(indoc! {"
             The quick
             brown fox
-            ˇ"},
-        )
-        .await
-        .assert_matches();
+            ˇ"})
+            .await;
     }
 
     #[gpui::test]
     async fn test_delete_end_of_document(cx: &mut gpui::TestAppContext) {
         let mut cx = NeovimBackedTestContext::new(cx).await;
-        cx.simulate(
-            "d shift-g",
+        cx.assert_neovim_compatible(
             indoc! {"
             The quick
             brownˇ fox
             jumps over
             the lazy"},
+            ["d", "shift-g"],
         )
-        .await
-        .assert_matches();
-        cx.simulate(
-            "d shift-g",
+        .await;
+        cx.assert_neovim_compatible(
             indoc! {"
             The quick
             brownˇ fox
             jumps over
             the lazy"},
+            ["d", "shift-g"],
         )
-        .await
-        .assert_matches();
-        cx.simulate(
-            "d shift-g",
+        .await;
+        cx.assert_neovim_compatible(
             indoc! {"
             The quick
             brown fox
             jumps over
             the lˇazy"},
+            ["d", "shift-g"],
         )
-        .await
-        .assert_matches();
-        cx.simulate(
-            "d shift-g",
+        .await;
+        cx.assert_neovim_compatible(
             indoc! {"
             The quick
             brown fox
             jumps over
             ˇ"},
+            ["d", "shift-g"],
         )
-        .await
-        .assert_matches();
+        .await;
     }
 
     #[gpui::test]
     async fn test_delete_gg(cx: &mut gpui::TestAppContext) {
-        let mut cx = NeovimBackedTestContext::new(cx).await;
-        cx.simulate(
-            "d g g",
+        let mut cx = NeovimBackedTestContext::new(cx)
+            .await
+            .binding(["d", "g", "g"]);
+        cx.assert_neovim_compatible(
             indoc! {"
             The quick
             brownˇ fox
             jumps over
             the lazy"},
+            ["d", "g", "g"],
         )
-        .await
-        .assert_matches();
-        cx.simulate(
-            "d g g",
+        .await;
+        cx.assert_neovim_compatible(
             indoc! {"
             The quick
             brown fox
             jumps over
             the lˇazy"},
+            ["d", "g", "g"],
         )
-        .await
-        .assert_matches();
-        cx.simulate(
-            "d g g",
+        .await;
+        cx.assert_neovim_compatible(
             indoc! {"
             The qˇuick
             brown fox
             jumps over
             the lazy"},
+            ["d", "g", "g"],
         )
-        .await
-        .assert_matches();
-        cx.simulate(
-            "d g g",
+        .await;
+        cx.assert_neovim_compatible(
             indoc! {"
             ˇ
             brown fox
             jumps over
             the lazy"},
+            ["d", "g", "g"],
         )
-        .await
-        .assert_matches();
+        .await;
     }
 
     #[gpui::test]
@@ -524,7 +445,7 @@ mod test {
         );
 
         // Canceling operator twice reverts to normal mode with no active operator
-        cx.simulate_keystrokes("d escape k");
+        cx.simulate_keystrokes(["d", "escape", "k"]);
         assert_eq!(cx.active_operator(), None);
         assert_eq!(cx.mode(), Mode::Normal);
         cx.assert_editor_state(indoc! {"
@@ -545,7 +466,7 @@ mod test {
         );
 
         // Canceling operator twice reverts to normal mode with no active operator
-        cx.simulate_keystrokes("d y");
+        cx.simulate_keystrokes(["d", "y"]);
         assert_eq!(cx.active_operator(), None);
         assert_eq!(cx.mode(), Mode::Normal);
     }
@@ -558,18 +479,20 @@ mod test {
                 fox jumps over
                 the lazy dog"})
             .await;
-        cx.simulate_shared_keystrokes("d 2 d").await;
-        cx.shared_state().await.assert_eq(indoc! {"
-        the ˇlazy dog"});
+        cx.simulate_shared_keystrokes(["d", "2", "d"]).await;
+        cx.assert_shared_state(indoc! {"
+        the ˇlazy dog"})
+            .await;
 
         cx.set_shared_state(indoc! {"
                 The ˇquick brown
                 fox jumps over
                 the lazy dog"})
             .await;
-        cx.simulate_shared_keystrokes("2 d d").await;
-        cx.shared_state().await.assert_eq(indoc! {"
-        the ˇlazy dog"});
+        cx.simulate_shared_keystrokes(["2", "d", "d"]).await;
+        cx.assert_shared_state(indoc! {"
+        the ˇlazy dog"})
+            .await;
 
         cx.set_shared_state(indoc! {"
                 The ˇquick brown
@@ -578,15 +501,16 @@ mod test {
                 a star, and
                 the lazy dog"})
             .await;
-        cx.simulate_shared_keystrokes("2 d 2 d").await;
-        cx.shared_state().await.assert_eq(indoc! {"
-        the ˇlazy dog"});
+        cx.simulate_shared_keystrokes(["2", "d", "2", "d"]).await;
+        cx.assert_shared_state(indoc! {"
+        the ˇlazy dog"})
+            .await;
     }
 
     #[gpui::test]
     async fn test_delete_to_adjacent_character(cx: &mut gpui::TestAppContext) {
         let mut cx = NeovimBackedTestContext::new(cx).await;
-        cx.simulate("d t x", "ˇax").await.assert_matches();
-        cx.simulate("d t x", "aˇx").await.assert_matches();
+        cx.assert_neovim_compatible("ˇax", ["d", "t", "x"]).await;
+        cx.assert_neovim_compatible("aˇx", ["d", "t", "x"]).await;
     }
 }

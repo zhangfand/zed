@@ -1,7 +1,6 @@
 use itertools::Itertools;
 use smallvec::SmallVec;
 use std::rc::Rc;
-use util::ResultExt;
 use uuid::Uuid;
 use windows::{
     core::*,
@@ -108,22 +107,6 @@ impl WindowsDisplay {
         Some(WindowsDisplay::new_with_handle(monitor))
     }
 
-    /// Check if the center point of given bounds is inside this monitor
-    pub fn check_given_bounds(&self, bounds: Bounds<DevicePixels>) -> bool {
-        let center = bounds.center();
-        let center = POINT {
-            x: center.x.0,
-            y: center.y.0,
-        };
-        let monitor = unsafe { MonitorFromPoint(center, MONITOR_DEFAULTTONULL) };
-        if monitor.is_invalid() {
-            false
-        } else {
-            let display = WindowsDisplay::new_with_handle(monitor);
-            display.uuid == self.uuid
-        }
-    }
-
     pub fn displays() -> Vec<Rc<dyn PlatformDisplay>> {
         available_monitors()
             .into_iter()
@@ -151,11 +134,6 @@ impl WindowsDisplay {
             .then(|| devmode.dmDisplayFrequency)
         })
     }
-
-    /// Check if this monitor is still online
-    pub fn is_connected(hmonitor: HMONITOR) -> bool {
-        available_monitors().iter().contains(&hmonitor)
-    }
 }
 
 impl PlatformDisplay for WindowsDisplay {
@@ -180,9 +158,7 @@ fn available_monitors() -> SmallVec<[HMONITOR; 4]> {
             None,
             Some(monitor_enum_proc),
             LPARAM(&mut monitors as *mut _ as _),
-        )
-        .ok()
-        .log_err();
+        );
     }
     monitors
 }

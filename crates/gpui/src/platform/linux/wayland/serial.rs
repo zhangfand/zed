@@ -5,7 +5,6 @@ use collections::HashMap;
 #[derive(Debug, Hash, PartialEq, Eq)]
 pub(crate) enum SerialKind {
     DataDevice,
-    InputMethod,
     MouseEnter,
     MousePress,
     KeyPress,

@@ -77,7 +77,6 @@ mod element;
 mod elements;
 mod executor;
 mod geometry;
-mod global;
 mod input;
 mod interactive;
 mod key_dispatch;
@@ -126,7 +125,6 @@ pub use element::*;
 pub use elements::*;
 pub use executor::*;
 pub use geometry::*;
-pub use global::*;
 pub use gpui_macros::{register_action, test, IntoElement, Render};
 pub use input::*;
 pub use interactive::*;
@@ -328,4 +326,16 @@ impl<T> Flatten<T> for Result<T> {
     fn flatten(self) -> Result<T> {
         self
     }
+}
+
+/// A marker trait for types that can be stored in GPUI's global state.
+///
+/// This trait exists to provide type-safe access to globals by restricting
+/// the scope from which they can be accessed. For instance, the actual type
+/// that implements [`Global`] can be private, with public accessor functions
+/// that enforce correct usage.
+///
+/// Implement this on types you want to store in the context as a global.
+pub trait Global: 'static {
+    // This trait is intentionally left empty, by virtue of being a marker trait.
 }

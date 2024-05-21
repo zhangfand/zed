@@ -10,7 +10,6 @@ use collections::BTreeMap;
 use fs::{FakeFs, Fs, RealFs};
 use futures::{io::BufReader, AsyncReadExt, StreamExt};
 use gpui::{Context, TestAppContext};
-use http::{FakeHttpClient, Response};
 use language::{LanguageMatcher, LanguageRegistry, LanguageServerBinaryStatus, LanguageServerName};
 use node_runtime::FakeNodeRuntime;
 use parking_lot::Mutex;
@@ -23,7 +22,10 @@ use std::{
     sync::Arc,
 };
 use theme::ThemeRegistry;
-use util::test::temp_tree;
+use util::{
+    http::{FakeHttpClient, Response},
+    test::temp_tree,
+};
 
 #[cfg(test)]
 #[ctor::ctor]

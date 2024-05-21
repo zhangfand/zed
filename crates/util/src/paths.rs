@@ -24,11 +24,6 @@ lazy_static::lazy_static! {
     } else {
         SUPPORT_DIR.join("conversations")
     };
-    pub static ref PROMPTS_DIR: PathBuf = if cfg!(target_os = "macos") {
-        CONFIG_DIR.join("prompts")
-    } else {
-        SUPPORT_DIR.join("prompts")
-    };
     pub static ref EMBEDDINGS_DIR: PathBuf = if cfg!(target_os = "macos") {
         CONFIG_DIR.join("embeddings")
     } else {

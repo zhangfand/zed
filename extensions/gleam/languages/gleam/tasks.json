@@ -1,10 +1,5 @@
 [
   {
-    "label": "gleam test",
-    "command": "gleam",
-    "args": ["test"]
-  },
-  {
     "label": "gleam test $ZED_SYMBOL",
     "command": "gleam",
     "args": ["test", "--", "--test-name-filter=$ZED_SYMBOL"],

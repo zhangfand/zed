@@ -13,7 +13,6 @@ pub enum CliRequest {
         paths: Vec<String>,
         wait: bool,
         open_new_workspace: Option<bool>,
-        dev_server_token: Option<String>,
     },
 }
 

@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Context, Result};
 use collections::{btree_map, hash_map, BTreeMap, HashMap};
-use gpui::{AppContext, AsyncAppContext, BorrowAppContext, Global, UpdateGlobal};
+use gpui::{AppContext, AsyncAppContext, BorrowAppContext, Global};
 use lazy_static::lazy_static;
 use schemars::{gen::SchemaGenerator, schema::RootSchema, JsonSchema};
 use serde::{de::DeserializeOwned, Deserialize as _, Serialize};
@@ -49,7 +49,7 @@ pub trait Settings: 'static + Send + Sync {
     where
         Self: Sized,
     {
-        SettingsStore::update_global(cx, |store, cx| {
+        cx.update_global(|store: &mut SettingsStore, cx| {
             store.register_setting::<Self>(cx);
         });
     }

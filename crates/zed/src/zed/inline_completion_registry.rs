@@ -118,9 +118,7 @@ fn assign_inline_completion_provider(
         }
         language::language_settings::InlineCompletionProvider::Supermaven => {
             if let Some(supermaven) = Supermaven::global(cx) {
-                let provider = cx.new_model(|_| {
-                    SupermavenCompletionProvider::new(supermaven).with_telemetry(telemetry.clone())
-                });
+                let provider = cx.new_model(|_| SupermavenCompletionProvider::new(supermaven));
                 editor.set_inline_completion_provider(Some(provider), cx);
             }
         }

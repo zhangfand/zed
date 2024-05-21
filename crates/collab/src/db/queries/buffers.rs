@@ -440,7 +440,12 @@ impl Database {
         channel_id: ChannelId,
         user: UserId,
         operations: &[proto::Operation],
-    ) -> Result<(HashSet<ConnectionId>, i32, Vec<proto::VectorClockEntry>)> {
+    ) -> Result<(
+        Vec<ConnectionId>,
+        Vec<UserId>,
+        i32,
+        Vec<proto::VectorClockEntry>,
+    )> {
         self.transaction(move |tx| async move {
             let channel = self.get_channel_internal(channel_id, &tx).await?;
 
@@ -474,6 +479,7 @@ impl Database {
                 .filter_map(|op| operation_to_storage(op, &buffer, serialization_version))
                 .collect::<Vec<_>>();
 
+            let mut channel_members;
             let max_version;
 
             if !operations.is_empty() {
@@ -498,6 +504,12 @@ impl Database {
                 )
                 .await?;
 
+                channel_members = self.get_channel_participants(&channel, &tx).await?;
+                let collaborators = self
+                    .get_channel_buffer_collaborators_internal(channel_id, &tx)
+                    .await?;
+                channel_members.retain(|member| !collaborators.contains(member));
+
                 buffer_operation::Entity::insert_many(operations)
                     .on_conflict(
                         OnConflict::columns([
@@ -512,10 +524,11 @@ impl Database {
                     .exec(&*tx)
                     .await?;
             } else {
+                channel_members = Vec::new();
                 max_version = Vec::new();
             }
 
-            let mut connections = HashSet::default();
+            let mut connections = Vec::new();
             let mut rows = channel_buffer_collaborator::Entity::find()
                 .filter(
                     Condition::all()
@@ -525,13 +538,13 @@ impl Database {
                 .await?;
             while let Some(row) = rows.next().await {
                 let row = row?;
-                connections.insert(ConnectionId {
+                connections.push(ConnectionId {
                     id: row.connection_id as u32,
                     owner_id: row.connection_server_id.0 as u32,
                 });
             }
 
-            Ok((connections, buffer.epoch, max_version))
+            Ok((connections, channel_members, buffer.epoch, max_version))
         })
         .await
     }

@@ -74,7 +74,6 @@ impl TerminalPanel {
             pane.set_can_split(false, cx);
             pane.set_can_navigate(false, cx);
             pane.display_nav_history_buttons(None);
-            pane.set_should_display_tab_bar(|_| true);
             pane.set_render_tab_bar_buttons(cx, move |pane, cx| {
                 h_flex()
                     .gap_2()
@@ -493,6 +492,14 @@ impl TerminalPanel {
         cx.spawn(|terminal_panel, mut cx| async move {
             let pane = terminal_panel.update(&mut cx, |this, _| this.pane.clone())?;
             workspace.update(&mut cx, |workspace, cx| {
+                if workspace.project().read(cx).is_remote() {
+                    workspace.show_error(
+                        &anyhow::anyhow!("Cannot open terminals on remote projects (yet!)"),
+                        cx,
+                    );
+                    return;
+                };
+
                 let working_directory = if let Some(working_directory) = working_directory {
                     Some(working_directory)
                 } else {

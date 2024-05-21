@@ -1,21 +1,20 @@
-mod ambient_context;
 pub mod assistant_panel;
 pub mod assistant_settings;
 mod codegen;
 mod completion_provider;
-mod prompt_library;
 mod prompts;
 mod saved_conversation;
-mod search;
 mod streaming_diff;
 
-use ambient_context::AmbientContextSnapshot;
+mod embedded_scope;
+
 pub use assistant_panel::AssistantPanel;
-use assistant_settings::{AnthropicModel, AssistantSettings, OpenAiModel, ZedDotDevModel};
+use assistant_settings::{AssistantSettings, OpenAiModel, ZedDotDevModel};
+use chrono::{DateTime, Local};
 use client::{proto, Client};
 use command_palette_hooks::CommandPaletteFilter;
 pub(crate) use completion_provider::*;
-use gpui::{actions, AppContext, Global, SharedString, UpdateGlobal};
+use gpui::{actions, AppContext, BorrowAppContext, Global, SharedString};
 pub(crate) use saved_conversation::*;
 use serde::{Deserialize, Serialize};
 use settings::{Settings, SettingsStore};
@@ -27,6 +26,7 @@ use std::{
 actions!(
     assistant,
     [
+        NewConversation,
         Assist,
         Split,
         CycleMessageRole,
@@ -34,10 +34,7 @@ actions!(
         ToggleFocus,
         ResetKey,
         InlineAssist,
-        InsertActivePrompt,
         ToggleIncludeConversation,
-        ToggleHistory,
-        ApplyEdit
     ]
 );
 
@@ -78,7 +75,6 @@ impl Display for Role {
 pub enum LanguageModel {
     ZedDotDev(ZedDotDevModel),
     OpenAi(OpenAiModel),
-    Anthropic(AnthropicModel),
 }
 
 impl Default for LanguageModel {
@@ -91,23 +87,20 @@ impl LanguageModel {
     pub fn telemetry_id(&self) -> String {
         match self {
             LanguageModel::OpenAi(model) => format!("openai/{}", model.id()),
-            LanguageModel::Anthropic(model) => format!("anthropic/{}", model.id()),
             LanguageModel::ZedDotDev(model) => format!("zed.dev/{}", model.id()),
         }
     }
 
     pub fn display_name(&self) -> String {
         match self {
-            LanguageModel::OpenAi(model) => model.display_name().into(),
-            LanguageModel::Anthropic(model) => model.display_name().into(),
-            LanguageModel::ZedDotDev(model) => model.display_name().into(),
+            LanguageModel::OpenAi(model) => format!("openai/{}", model.display_name()),
+            LanguageModel::ZedDotDev(model) => format!("zed.dev/{}", model.display_name()),
         }
     }
 
     pub fn max_token_count(&self) -> usize {
         match self {
             LanguageModel::OpenAi(model) => model.max_token_count(),
-            LanguageModel::Anthropic(model) => model.max_token_count(),
             LanguageModel::ZedDotDev(model) => model.max_token_count(),
         }
     }
@@ -115,7 +108,6 @@ impl LanguageModel {
     pub fn id(&self) -> &str {
         match self {
             LanguageModel::OpenAi(model) => model.id(),
-            LanguageModel::Anthropic(model) => model.id(),
             LanguageModel::ZedDotDev(model) => model.id(),
         }
     }
@@ -186,10 +178,8 @@ pub struct LanguageModelChoiceDelta {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct MessageMetadata {
     role: Role,
+    sent_at: DateTime<Local>,
     status: MessageStatus,
-    // todo!("delete this")
-    #[serde(skip)]
-    ambient_context: AmbientContextSnapshot,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -241,13 +231,13 @@ pub fn init(client: Arc<Client>, cx: &mut AppContext) {
     CommandPaletteFilter::update_global(cx, |filter, _cx| {
         filter.hide_namespace(Assistant::NAMESPACE);
     });
-    Assistant::update_global(cx, |assistant, cx| {
+    cx.update_global(|assistant: &mut Assistant, cx: &mut AppContext| {
         let settings = AssistantSettings::get_global(cx);
 
         assistant.set_enabled(settings.enabled, cx);
     });
     cx.observe_global::<SettingsStore>(|cx| {
-        Assistant::update_global(cx, |assistant, cx| {
+        cx.update_global(|assistant: &mut Assistant, cx: &mut AppContext| {
             let settings = AssistantSettings::get_global(cx);
 
             assistant.set_enabled(settings.enabled, cx);

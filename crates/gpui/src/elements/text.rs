@@ -17,7 +17,7 @@ use std::{
 use util::ResultExt;
 
 impl Element for &'static str {
-    type RequestLayoutState = TextLayout;
+    type RequestLayoutState = TextState;
     type PrepaintState = ();
 
     fn id(&self) -> Option<ElementId> {
@@ -29,7 +29,7 @@ impl Element for &'static str {
         _id: Option<&GlobalElementId>,
         cx: &mut WindowContext,
     ) -> (LayoutId, Self::RequestLayoutState) {
-        let mut state = TextLayout::default();
+        let mut state = TextState::default();
         let layout_id = state.layout(SharedString::from(*self), None, cx);
         (layout_id, state)
     }
@@ -37,22 +37,21 @@ impl Element for &'static str {
     fn prepaint(
         &mut self,
         _id: Option<&GlobalElementId>,
-        bounds: Bounds<Pixels>,
-        text_layout: &mut Self::RequestLayoutState,
+        _bounds: Bounds<Pixels>,
+        _text_state: &mut Self::RequestLayoutState,
         _cx: &mut WindowContext,
     ) {
-        text_layout.prepaint(bounds, self)
     }
 
     fn paint(
         &mut self,
         _id: Option<&GlobalElementId>,
-        _bounds: Bounds<Pixels>,
-        text_layout: &mut TextLayout,
+        bounds: Bounds<Pixels>,
+        text_state: &mut TextState,
         _: &mut (),
         cx: &mut WindowContext,
     ) {
-        text_layout.paint(self, cx)
+        text_state.paint(bounds, self, cx)
     }
 }
 
@@ -73,7 +72,7 @@ impl IntoElement for String {
 }
 
 impl Element for SharedString {
-    type RequestLayoutState = TextLayout;
+    type RequestLayoutState = TextState;
     type PrepaintState = ();
 
     fn id(&self) -> Option<ElementId> {
@@ -87,7 +86,7 @@ impl Element for SharedString {
 
         cx: &mut WindowContext,
     ) -> (LayoutId, Self::RequestLayoutState) {
-        let mut state = TextLayout::default();
+        let mut state = TextState::default();
         let layout_id = state.layout(self.clone(), None, cx);
         (layout_id, state)
     }
@@ -95,22 +94,22 @@ impl Element for SharedString {
     fn prepaint(
         &mut self,
         _id: Option<&GlobalElementId>,
-        bounds: Bounds<Pixels>,
-        text_layout: &mut Self::RequestLayoutState,
+        _bounds: Bounds<Pixels>,
+        _text_state: &mut Self::RequestLayoutState,
         _cx: &mut WindowContext,
     ) {
-        text_layout.prepaint(bounds, self.as_ref())
     }
 
     fn paint(
         &mut self,
         _id: Option<&GlobalElementId>,
-        _bounds: Bounds<Pixels>,
-        text_layout: &mut Self::RequestLayoutState,
+        bounds: Bounds<Pixels>,
+        text_state: &mut Self::RequestLayoutState,
         _: &mut Self::PrepaintState,
         cx: &mut WindowContext,
     ) {
-        text_layout.paint(self.as_ref(), cx)
+        let text_str: &str = self.as_ref();
+        text_state.paint(bounds, text_str, cx)
     }
 }
 
@@ -130,7 +129,6 @@ impl IntoElement for SharedString {
 pub struct StyledText {
     text: SharedString,
     runs: Option<Vec<TextRun>>,
-    layout: TextLayout,
 }
 
 impl StyledText {
@@ -139,13 +137,7 @@ impl StyledText {
         StyledText {
             text: text.into(),
             runs: None,
-            layout: TextLayout::default(),
         }
-    }
-
-    /// todo!()
-    pub fn layout(&self) -> &TextLayout {
-        &self.layout
     }
 
     /// Set the styling attributes for the given text, as well as
@@ -175,16 +167,10 @@ impl StyledText {
         self.runs = Some(runs);
         self
     }
-
-    /// Set the text runs for this piece of text.
-    pub fn with_runs(mut self, runs: Vec<TextRun>) -> Self {
-        self.runs = Some(runs);
-        self
-    }
 }
 
 impl Element for StyledText {
-    type RequestLayoutState = ();
+    type RequestLayoutState = TextState;
     type PrepaintState = ();
 
     fn id(&self) -> Option<ElementId> {
@@ -198,29 +184,29 @@ impl Element for StyledText {
 
         cx: &mut WindowContext,
     ) -> (LayoutId, Self::RequestLayoutState) {
-        let layout_id = self.layout.layout(self.text.clone(), self.runs.take(), cx);
-        (layout_id, ())
+        let mut state = TextState::default();
+        let layout_id = state.layout(self.text.clone(), self.runs.take(), cx);
+        (layout_id, state)
     }
 
     fn prepaint(
         &mut self,
         _id: Option<&GlobalElementId>,
-        bounds: Bounds<Pixels>,
-        _: &mut Self::RequestLayoutState,
+        _bounds: Bounds<Pixels>,
+        _state: &mut Self::RequestLayoutState,
         _cx: &mut WindowContext,
     ) {
-        self.layout.prepaint(bounds, &self.text)
     }
 
     fn paint(
         &mut self,
         _id: Option<&GlobalElementId>,
-        _bounds: Bounds<Pixels>,
-        _: &mut Self::RequestLayoutState,
+        bounds: Bounds<Pixels>,
+        text_state: &mut Self::RequestLayoutState,
         _: &mut Self::PrepaintState,
         cx: &mut WindowContext,
     ) {
-        self.layout.paint(&self.text, cx)
+        text_state.paint(bounds, &self.text, cx)
     }
 }
 
@@ -232,20 +218,19 @@ impl IntoElement for StyledText {
     }
 }
 
-/// todo!()
+#[doc(hidden)]
 #[derive(Default, Clone)]
-pub struct TextLayout(Arc<Mutex<Option<TextLayoutInner>>>);
+pub struct TextState(Arc<Mutex<Option<TextStateInner>>>);
 
-struct TextLayoutInner {
+struct TextStateInner {
     lines: SmallVec<[WrappedLine; 1]>,
     line_height: Pixels,
     wrap_width: Option<Pixels>,
     size: Option<Size<Pixels>>,
-    bounds: Option<Bounds<Pixels>>,
 }
 
-impl TextLayout {
-    fn lock(&self) -> MutexGuard<Option<TextLayoutInner>> {
+impl TextState {
+    fn lock(&self) -> MutexGuard<Option<TextStateInner>> {
         self.0.lock()
     }
 
@@ -280,11 +265,11 @@ impl TextLayout {
                     None
                 };
 
-                if let Some(text_layout) = element_state.0.lock().as_ref() {
-                    if text_layout.size.is_some()
-                        && (wrap_width.is_none() || wrap_width == text_layout.wrap_width)
+                if let Some(text_state) = element_state.0.lock().as_ref() {
+                    if text_state.size.is_some()
+                        && (wrap_width.is_none() || wrap_width == text_state.wrap_width)
                     {
-                        return text_layout.size.unwrap();
+                        return text_state.size.unwrap();
                     }
                 }
 
@@ -298,12 +283,11 @@ impl TextLayout {
                     )
                     .log_err()
                 else {
-                    element_state.lock().replace(TextLayoutInner {
+                    element_state.lock().replace(TextStateInner {
                         lines: Default::default(),
                         line_height,
                         wrap_width,
                         size: Some(Size::default()),
-                        bounds: None,
                     });
                     return Size::default();
                 };
@@ -315,12 +299,11 @@ impl TextLayout {
                     size.width = size.width.max(line_size.width).ceil();
                 }
 
-                element_state.lock().replace(TextLayoutInner {
+                element_state.lock().replace(TextStateInner {
                     lines,
                     line_height,
                     wrap_width,
                     size: Some(size),
-                    bounds: None,
                 });
 
                 size
@@ -330,24 +313,11 @@ impl TextLayout {
         layout_id
     }
 
-    fn prepaint(&mut self, bounds: Bounds<Pixels>, text: &str) {
-        let mut element_state = self.lock();
-        let element_state = element_state
-            .as_mut()
-            .ok_or_else(|| anyhow!("measurement has not been performed on {}", text))
-            .unwrap();
-        element_state.bounds = Some(bounds);
-    }
-
-    fn paint(&mut self, text: &str, cx: &mut WindowContext) {
+    fn paint(&mut self, bounds: Bounds<Pixels>, text: &str, cx: &mut WindowContext) {
         let element_state = self.lock();
         let element_state = element_state
             .as_ref()
             .ok_or_else(|| anyhow!("measurement has not been performed on {}", text))
-            .unwrap();
-        let bounds = element_state
-            .bounds
-            .ok_or_else(|| anyhow!("prepaint has not been performed on {:?}", text))
             .unwrap();
 
         let line_height = element_state.line_height;
@@ -358,19 +328,15 @@ impl TextLayout {
         }
     }
 
-    /// todo!()
-    pub fn index_for_position(&self, mut position: Point<Pixels>) -> Result<usize, usize> {
+    fn index_for_position(&self, bounds: Bounds<Pixels>, position: Point<Pixels>) -> Option<usize> {
+        if !bounds.contains(&position) {
+            return None;
+        }
+
         let element_state = self.lock();
         let element_state = element_state
             .as_ref()
             .expect("measurement has not been performed");
-        let bounds = element_state
-            .bounds
-            .expect("prepaint has not been performed");
-
-        if position.y < bounds.top() {
-            return Err(0);
-        }
 
         let line_height = element_state.line_height;
         let mut line_origin = bounds.origin;
@@ -382,68 +348,13 @@ impl TextLayout {
                 line_start_ix += line.len() + 1;
             } else {
                 let position_within_line = position - line_origin;
-                match line.index_for_position(position_within_line, line_height) {
-                    Ok(index_within_line) => return Ok(line_start_ix + index_within_line),
-                    Err(index_within_line) => return Err(line_start_ix + index_within_line),
-                }
-            }
-        }
-
-        Err(line_start_ix.saturating_sub(1))
-    }
-
-    /// todo!()
-    pub fn position_for_index(&self, index: usize) -> Option<Point<Pixels>> {
-        let element_state = self.lock();
-        let element_state = element_state
-            .as_ref()
-            .expect("measurement has not been performed");
-        let bounds = element_state
-            .bounds
-            .expect("prepaint has not been performed");
-        let line_height = element_state.line_height;
-
-        let mut line_origin = bounds.origin;
-        let mut line_start_ix = 0;
-
-        for line in &element_state.lines {
-            let line_end_ix = line_start_ix + line.len();
-            if index < line_start_ix {
-                break;
-            } else if index > line_end_ix {
-                line_origin.y += line.size(line_height).height;
-                line_start_ix = line_end_ix + 1;
-                continue;
-            } else {
-                let ix_within_line = index - line_start_ix;
-                return Some(line_origin + line.position_for_index(ix_within_line, line_height)?);
+                let index_within_line =
+                    line.index_for_position(position_within_line, line_height)?;
+                return Some(line_start_ix + index_within_line);
             }
         }
 
         None
-    }
-
-    /// todo!()
-    pub fn bounds(&self) -> Bounds<Pixels> {
-        self.0.lock().as_ref().unwrap().bounds.unwrap()
-    }
-
-    /// todo!()
-    pub fn line_height(&self) -> Pixels {
-        self.0.lock().as_ref().unwrap().line_height
-    }
-
-    /// todo!()
-    pub fn text(&self) -> String {
-        self.0
-            .lock()
-            .as_ref()
-            .unwrap()
-            .lines
-            .iter()
-            .map(|s| s.text.to_string())
-            .collect::<Vec<_>>()
-            .join("\n")
     }
 }
 
@@ -525,7 +436,7 @@ impl InteractiveText {
 }
 
 impl Element for InteractiveText {
-    type RequestLayoutState = ();
+    type RequestLayoutState = TextState;
     type PrepaintState = Hitbox;
 
     fn id(&self) -> Option<ElementId> {
@@ -573,18 +484,17 @@ impl Element for InteractiveText {
         &mut self,
         global_id: Option<&GlobalElementId>,
         bounds: Bounds<Pixels>,
-        _: &mut Self::RequestLayoutState,
+        text_state: &mut Self::RequestLayoutState,
         hitbox: &mut Hitbox,
         cx: &mut WindowContext,
     ) {
-        let text_layout = self.text.layout().clone();
         cx.with_element_state::<InteractiveTextState, _>(
             global_id.unwrap(),
             |interactive_state, cx| {
                 let mut interactive_state = interactive_state.unwrap_or_default();
                 if let Some(click_listener) = self.click_listener.take() {
                     let mouse_position = cx.mouse_position();
-                    if let Some(ix) = text_layout.index_for_position(mouse_position).ok() {
+                    if let Some(ix) = text_state.index_for_position(bounds, mouse_position) {
                         if self
                             .clickable_ranges
                             .iter()
@@ -594,7 +504,7 @@ impl Element for InteractiveText {
                         }
                     }
 
-                    let text_layout = text_layout.clone();
+                    let text_state = text_state.clone();
                     let mouse_down = interactive_state.mouse_down_index.clone();
                     if let Some(mouse_down_index) = mouse_down.get() {
                         let hitbox = hitbox.clone();
@@ -602,7 +512,7 @@ impl Element for InteractiveText {
                         cx.on_mouse_event(move |event: &MouseUpEvent, phase, cx| {
                             if phase == DispatchPhase::Bubble && hitbox.is_hovered(cx) {
                                 if let Some(mouse_up_index) =
-                                    text_layout.index_for_position(event.position).ok()
+                                    text_state.index_for_position(bounds, event.position)
                                 {
                                     click_listener(
                                         &clickable_ranges,
@@ -623,7 +533,7 @@ impl Element for InteractiveText {
                         cx.on_mouse_event(move |event: &MouseDownEvent, phase, cx| {
                             if phase == DispatchPhase::Bubble && hitbox.is_hovered(cx) {
                                 if let Some(mouse_down_index) =
-                                    text_layout.index_for_position(event.position).ok()
+                                    text_state.index_for_position(bounds, event.position)
                                 {
                                     mouse_down.set(Some(mouse_down_index));
                                     cx.refresh();
@@ -636,12 +546,12 @@ impl Element for InteractiveText {
                 cx.on_mouse_event({
                     let mut hover_listener = self.hover_listener.take();
                     let hitbox = hitbox.clone();
-                    let text_layout = text_layout.clone();
+                    let text_state = text_state.clone();
                     let hovered_index = interactive_state.hovered_index.clone();
                     move |event: &MouseMoveEvent, phase, cx| {
                         if phase == DispatchPhase::Bubble && hitbox.is_hovered(cx) {
                             let current = hovered_index.get();
-                            let updated = text_layout.index_for_position(event.position).ok();
+                            let updated = text_state.index_for_position(bounds, event.position);
                             if current != updated {
                                 hovered_index.set(updated);
                                 if let Some(hover_listener) = hover_listener.as_ref() {
@@ -657,10 +567,10 @@ impl Element for InteractiveText {
                     let hitbox = hitbox.clone();
                     let active_tooltip = interactive_state.active_tooltip.clone();
                     let pending_mouse_down = interactive_state.mouse_down_index.clone();
-                    let text_layout = text_layout.clone();
+                    let text_state = text_state.clone();
 
                     cx.on_mouse_event(move |event: &MouseMoveEvent, phase, cx| {
-                        let position = text_layout.index_for_position(event.position).ok();
+                        let position = text_state.index_for_position(bounds, event.position);
                         let is_hovered = position.is_some()
                             && hitbox.is_hovered(cx)
                             && pending_mouse_down.get().is_none();
@@ -711,7 +621,7 @@ impl Element for InteractiveText {
                     });
                 }
 
-                self.text.paint(None, bounds, &mut (), &mut (), cx);
+                self.text.paint(None, bounds, text_state, &mut (), cx);
 
                 ((), interactive_state)
             },

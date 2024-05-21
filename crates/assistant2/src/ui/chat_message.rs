@@ -119,7 +119,7 @@ impl RenderOnce for ChatMessage {
             )
             .when(self.messages.len() > 0, |el| {
                 el.child(
-                    h_flex().w_full().child(
+                    h_flex().child(
                         v_flex()
                             .relative()
                             .overflow_hidden()

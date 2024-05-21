@@ -415,7 +415,7 @@ impl Database {
         if is_serialization_error(error) && prev_attempt_count < SLEEPS.len() {
             let base_delay = SLEEPS[prev_attempt_count];
             let randomized_delay = base_delay * self.rng.lock().await.gen_range(0.5..=2.0);
-            log::warn!(
+            log::info!(
                 "retrying transaction after serialization error. delay: {} ms.",
                 randomized_delay
             );
@@ -509,7 +509,8 @@ pub type NotificationBatch = Vec<(UserId, proto::Notification)>;
 
 pub struct CreatedChannelMessage {
     pub message_id: MessageId,
-    pub participant_connection_ids: HashSet<ConnectionId>,
+    pub participant_connection_ids: Vec<ConnectionId>,
+    pub channel_members: Vec<UserId>,
     pub notifications: NotificationBatch,
 }
 

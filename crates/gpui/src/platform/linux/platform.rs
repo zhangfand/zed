@@ -34,7 +34,7 @@ use xkbcommon::xkb::{self, Keycode, Keysym, State};
 use crate::platform::linux::wayland::WaylandClient;
 use crate::{
     px, Action, AnyWindowHandle, BackgroundExecutor, ClipboardItem, CosmicTextSystem, CursorStyle,
-    DisplayId, ForegroundExecutor, Keymap, Keystroke, LinuxDispatcher, Menu, MenuItem, Modifiers,
+    DisplayId, ForegroundExecutor, Keymap, Keystroke, LinuxDispatcher, Menu, Modifiers,
     PathPromptOptions, Pixels, Platform, PlatformDisplay, PlatformInputHandler, PlatformTextSystem,
     PlatformWindow, Point, PromptLevel, Result, SemanticVersion, Size, Task, WindowAppearance,
     WindowOptions, WindowParams,
@@ -55,9 +55,6 @@ pub trait LinuxClient {
     fn displays(&self) -> Vec<Rc<dyn PlatformDisplay>>;
     fn primary_display(&self) -> Option<Rc<dyn PlatformDisplay>>;
     fn display(&self, id: DisplayId) -> Option<Rc<dyn PlatformDisplay>>;
-    fn can_open_windows(&self) -> anyhow::Result<()> {
-        Ok(())
-    }
     fn open_window(
         &self,
         handle: AnyWindowHandle,
@@ -135,29 +132,21 @@ impl<P: LinuxClient + 'static> Platform for P {
         });
     }
 
-    fn can_open_windows(&self) -> anyhow::Result<()> {
-        self.can_open_windows()
-    }
-
     fn quit(&self) {
         self.with_common(|common| common.signal.stop());
     }
 
-    fn restart(&self, binary_path: Option<PathBuf>) {
+    fn restart(&self) {
         use std::os::unix::process::CommandExt as _;
 
         // get the process id of the current process
         let app_pid = std::process::id().to_string();
         // get the path to the executable
-        let app_path = if let Some(path) = binary_path {
-            path
-        } else {
-            match self.app_path() {
-                Ok(path) => path,
-                Err(err) => {
-                    log::error!("Failed to get app path: {:?}", err);
-                    return;
-                }
+        let app_path = match self.app_path() {
+            Ok(path) => path,
+            Err(err) => {
+                log::error!("Failed to get app path: {:?}", err);
+                return;
             }
         };
 
@@ -312,12 +301,12 @@ impl<P: LinuxClient + 'static> Platform for P {
 
     fn reveal_path(&self, path: &Path) {
         if path.is_dir() {
-            open::that_detached(path);
+            open::that(path);
             return;
         }
         // If `path` is a file, the system may try to open it in a text editor
         let dir = path.parent().unwrap_or(Path::new(""));
-        open::that_detached(dir);
+        open::that(dir);
     }
 
     fn on_quit(&self, callback: Box<dyn FnMut()>) {
@@ -375,7 +364,6 @@ impl<P: LinuxClient + 'static> Platform for P {
 
     // todo(linux)
     fn set_menus(&self, menus: Vec<Menu>, keymap: &Keymap) {}
-    fn set_dock_menu(&self, menu: Vec<MenuItem>, keymap: &Keymap) {}
 
     fn local_timezone(&self) -> UtcOffset {
         UtcOffset::UTC
@@ -493,7 +481,7 @@ pub(super) fn open_uri_internal(uri: &str, activation_token: Option<&str>) {
         if let Some(token) = activation_token {
             command.env("XDG_ACTIVATION_TOKEN", token);
         }
-        match command.spawn() {
+        match command.status() {
             Ok(_) => return,
             Err(err) => last_err = Some(err),
         }
@@ -661,68 +649,6 @@ impl Keystroke {
             modifiers,
             key,
             ime_key,
-        }
-    }
-
-    /**
-     * Returns which symbol the dead key represents
-     * https://developer.mozilla.org/en-US/docs/Web/API/UI_Events/Keyboard_event_key_values#dead_keycodes_for_linux
-     */
-    pub fn underlying_dead_key(keysym: Keysym) -> Option<String> {
-        match keysym {
-            Keysym::dead_grave => Some("`".to_owned()),
-            Keysym::dead_acute => Some("´".to_owned()),
-            Keysym::dead_circumflex => Some("^".to_owned()),
-            Keysym::dead_tilde => Some("~".to_owned()),
-            Keysym::dead_perispomeni => Some("͂".to_owned()),
-            Keysym::dead_macron => Some("¯".to_owned()),
-            Keysym::dead_breve => Some("˘".to_owned()),
-            Keysym::dead_abovedot => Some("˙".to_owned()),
-            Keysym::dead_diaeresis => Some("¨".to_owned()),
-            Keysym::dead_abovering => Some("˚".to_owned()),
-            Keysym::dead_doubleacute => Some("˝".to_owned()),
-            Keysym::dead_caron => Some("ˇ".to_owned()),
-            Keysym::dead_cedilla => Some("¸".to_owned()),
-            Keysym::dead_ogonek => Some("˛".to_owned()),
-            Keysym::dead_iota => Some("ͅ".to_owned()),
-            Keysym::dead_voiced_sound => Some("゙".to_owned()),
-            Keysym::dead_semivoiced_sound => Some("゚".to_owned()),
-            Keysym::dead_belowdot => Some("̣̣".to_owned()),
-            Keysym::dead_hook => Some("̡".to_owned()),
-            Keysym::dead_horn => Some("̛".to_owned()),
-            Keysym::dead_stroke => Some("̶̶".to_owned()),
-            Keysym::dead_abovecomma => Some("̓̓".to_owned()),
-            Keysym::dead_psili => Some("᾿".to_owned()),
-            Keysym::dead_abovereversedcomma => Some("ʽ".to_owned()),
-            Keysym::dead_dasia => Some("῾".to_owned()),
-            Keysym::dead_doublegrave => Some("̏".to_owned()),
-            Keysym::dead_belowring => Some("˳".to_owned()),
-            Keysym::dead_belowmacron => Some("̱".to_owned()),
-            Keysym::dead_belowcircumflex => Some("ꞈ".to_owned()),
-            Keysym::dead_belowtilde => Some("̰".to_owned()),
-            Keysym::dead_belowbreve => Some("̮".to_owned()),
-            Keysym::dead_belowdiaeresis => Some("̤".to_owned()),
-            Keysym::dead_invertedbreve => Some("̯".to_owned()),
-            Keysym::dead_belowcomma => Some("̦".to_owned()),
-            Keysym::dead_currency => None,
-            Keysym::dead_lowline => None,
-            Keysym::dead_aboveverticalline => None,
-            Keysym::dead_belowverticalline => None,
-            Keysym::dead_longsolidusoverlay => None,
-            Keysym::dead_a => None,
-            Keysym::dead_A => None,
-            Keysym::dead_e => None,
-            Keysym::dead_E => None,
-            Keysym::dead_i => None,
-            Keysym::dead_I => None,
-            Keysym::dead_o => None,
-            Keysym::dead_O => None,
-            Keysym::dead_u => None,
-            Keysym::dead_U => None,
-            Keysym::dead_small_schwa => Some("ə".to_owned()),
-            Keysym::dead_capital_schwa => Some("Ə".to_owned()),
-            Keysym::dead_greek => None,
-            _ => None,
         }
     }
 }

@@ -1,7 +1,7 @@
 use crate::{Event, *};
 use fs::FakeFs;
 use futures::{future, StreamExt};
-use gpui::{AppContext, UpdateGlobal};
+use gpui::AppContext;
 use language::{
     language_settings::{AllLanguageSettings, LanguageSettingsContent},
     tree_sitter_rust, tree_sitter_typescript, Diagnostic, FakeLspAdapter, LanguageConfig,
@@ -242,25 +242,19 @@ async fn test_managing_project_specific_settings(cx: &mut gpui::TestAppContext) 
     }]))
     .unwrap();
     let (tx, rx) = futures::channel::mpsc::unbounded();
-    cx.update(|cx| {
-        project.update(cx, |project, cx| {
-            project.task_inventory().update(cx, |inventory, cx| {
-                inventory.remove_local_static_source(Path::new("/the-root/.zed/tasks.json"));
-                inventory.add_source(
-                    global_task_source_kind.clone(),
-                    |tx, cx| StaticSource::new(TrackedFile::new(rx, tx, cx)),
-                    cx,
-                );
-            });
-        })
-    });
+
+    let templates = cx.update(|cx| TrackedFile::new(rx, cx));
     tx.unbounded_send(tasks).unwrap();
 
+    let source = StaticSource::new(templates);
     cx.run_until_parked();
+
     cx.update(|cx| {
         let all_tasks = project
             .update(cx, |project, cx| {
-                project.task_inventory().update(cx, |inventory, _| {
+                project.task_inventory().update(cx, |inventory, cx| {
+                    inventory.remove_local_static_source(Path::new("/the-root/.zed/tasks.json"));
+                    inventory.add_source(global_task_source_kind.clone(), source, cx);
                     let (mut old, new) = inventory.used_and_current_resolved_tasks(
                         None,
                         Some(workree_id),
@@ -1501,7 +1495,7 @@ async fn test_toggling_enable_language_server(cx: &mut gpui::TestAppContext) {
 
     // Disable Rust language server, ensuring only that server gets stopped.
     cx.update(|cx| {
-        SettingsStore::update_global(cx, |settings, cx| {
+        cx.update_global(|settings: &mut SettingsStore, cx| {
             settings.update_user_settings::<AllLanguageSettings>(cx, |settings| {
                 settings.languages.insert(
                     Arc::from("Rust"),
@@ -1520,7 +1514,7 @@ async fn test_toggling_enable_language_server(cx: &mut gpui::TestAppContext) {
     // Enable Rust and disable JavaScript language servers, ensuring that the
     // former gets started again and that the latter stops.
     cx.update(|cx| {
-        SettingsStore::update_global(cx, |settings, cx| {
+        cx.update_global(|settings: &mut SettingsStore, cx| {
             settings.update_user_settings::<AllLanguageSettings>(cx, |settings| {
                 settings.languages.insert(
                     Arc::from("Rust"),

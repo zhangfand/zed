@@ -404,14 +404,15 @@ mod test {
             c"})
             .await;
 
-        cx.simulate_shared_keystrokes(": j enter").await;
+        cx.simulate_shared_keystrokes([":", "j", "enter"]).await;
 
         // hack: our cursor positionining after a join command is wrong
-        cx.simulate_shared_keystrokes("^").await;
-        cx.shared_state().await.assert_eq(indoc! {
+        cx.simulate_shared_keystrokes(["^"]).await;
+        cx.assert_shared_state(indoc! {
             "ˇa b
             c"
-        });
+        })
+        .await;
     }
 
     #[gpui::test]
@@ -423,11 +424,12 @@ mod test {
             b
             c"})
             .await;
-        cx.simulate_shared_keystrokes(": 3 enter").await;
-        cx.shared_state().await.assert_eq(indoc! {"
+        cx.simulate_shared_keystrokes([":", "3", "enter"]).await;
+        cx.assert_shared_state(indoc! {"
             a
             b
-            ˇc"});
+            ˇc"})
+            .await;
     }
 
     #[gpui::test]
@@ -439,17 +441,22 @@ mod test {
             b
             c"})
             .await;
-        cx.simulate_shared_keystrokes(": % s / b / d enter").await;
-        cx.shared_state().await.assert_eq(indoc! {"
+        cx.simulate_shared_keystrokes([":", "%", "s", "/", "b", "/", "d", "enter"])
+            .await;
+        cx.assert_shared_state(indoc! {"
             a
             ˇd
-            c"});
-        cx.simulate_shared_keystrokes(": % s : . : \\ 0 \\ 0 enter")
+            c"})
             .await;
-        cx.shared_state().await.assert_eq(indoc! {"
+        cx.simulate_shared_keystrokes([
+            ":", "%", "s", ":", ".", ":", "\\", "0", "\\", "0", "enter",
+        ])
+        .await;
+        cx.assert_shared_state(indoc! {"
             aa
             dd
-            ˇcc"});
+            ˇcc"})
+            .await;
     }
 
     #[gpui::test]
@@ -462,18 +469,22 @@ mod test {
                 a
                 c"})
             .await;
-        cx.simulate_shared_keystrokes(": / b enter").await;
-        cx.shared_state().await.assert_eq(indoc! {"
+        cx.simulate_shared_keystrokes([":", "/", "b", "enter"])
+            .await;
+        cx.assert_shared_state(indoc! {"
                 a
                 ˇb
                 a
-                c"});
-        cx.simulate_shared_keystrokes(": ? a enter").await;
-        cx.shared_state().await.assert_eq(indoc! {"
+                c"})
+            .await;
+        cx.simulate_shared_keystrokes([":", "?", "a", "enter"])
+            .await;
+        cx.assert_shared_state(indoc! {"
                 ˇa
                 b
                 a
-                c"});
+                c"})
+            .await;
     }
 
     #[gpui::test]
@@ -482,23 +493,23 @@ mod test {
         let path = Path::new("/root/dir/file.rs");
         let fs = cx.workspace(|workspace, cx| workspace.project().read(cx).fs().clone());
 
-        cx.simulate_keystrokes("i @ escape");
-        cx.simulate_keystrokes(": w enter");
+        cx.simulate_keystrokes(["i", "@", "escape"]);
+        cx.simulate_keystrokes([":", "w", "enter"]);
 
         assert_eq!(fs.load(&path).await.unwrap(), "@\n");
 
         fs.as_fake().insert_file(path, b"oops\n".to_vec()).await;
 
         // conflict!
-        cx.simulate_keystrokes("i @ escape");
-        cx.simulate_keystrokes(": w enter");
+        cx.simulate_keystrokes(["i", "@", "escape"]);
+        cx.simulate_keystrokes([":", "w", "enter"]);
         assert!(cx.has_pending_prompt());
         // "Cancel"
         cx.simulate_prompt_answer(0);
         assert_eq!(fs.load(&path).await.unwrap(), "oops\n");
         assert!(!cx.has_pending_prompt());
         // force overwrite
-        cx.simulate_keystrokes(": w ! enter");
+        cx.simulate_keystrokes([":", "w", "!", "enter"]);
         assert!(!cx.has_pending_prompt());
         assert_eq!(fs.load(&path).await.unwrap(), "@@\n");
     }
@@ -507,13 +518,13 @@ mod test {
     async fn test_command_quit(cx: &mut TestAppContext) {
         let mut cx = VimTestContext::new(cx, true).await;
 
-        cx.simulate_keystrokes(": n e w enter");
+        cx.simulate_keystrokes([":", "n", "e", "w", "enter"]);
         cx.workspace(|workspace, cx| assert_eq!(workspace.items(cx).count(), 2));
-        cx.simulate_keystrokes(": q enter");
+        cx.simulate_keystrokes([":", "q", "enter"]);
         cx.workspace(|workspace, cx| assert_eq!(workspace.items(cx).count(), 1));
-        cx.simulate_keystrokes(": n e w enter");
+        cx.simulate_keystrokes([":", "n", "e", "w", "enter"]);
         cx.workspace(|workspace, cx| assert_eq!(workspace.items(cx).count(), 2));
-        cx.simulate_keystrokes(": q a enter");
+        cx.simulate_keystrokes([":", "q", "a", "enter"]);
         cx.workspace(|workspace, cx| assert_eq!(workspace.items(cx).count(), 0));
     }
 }
