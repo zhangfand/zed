@@ -31,6 +31,7 @@ pub enum ComponentStory {
     OverflowScroll,
     Picker,
     Scroll,
+    SettingsMenu,
     Tab,
     TabBar,
     Text,
@@ -64,6 +65,9 @@ impl ComponentStory {
             Self::ListItem => cx.new_view(|_| ui::ListItemStory).into(),
             Self::OverflowScroll => cx.new_view(|_| crate::stories::OverflowScrollStory).into(),
             Self::Scroll => ScrollStory::view(cx).into(),
+            Self::SettingsMenu => cx
+                .new_view(|cx| settings_ui::SettingsMenuStory::init(cx))
+                .into(),
             Self::Text => TextStory::view(cx).into(),
             Self::Tab => cx.new_view(|_| ui::TabStory).into(),
             Self::TabBar => cx.new_view(|_| ui::TabBarStory).into(),

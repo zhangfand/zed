@@ -29,6 +29,7 @@ picker.workspace = true
 project.workspace = true
 rust-embed.workspace = true
 settings.workspace = true
+settings_ui = { workspace = true, features = ["stories"] }
 simplelog = "0.9"
 story.workspace = true
 strum = { version = "0.25.0", features = ["derive"] }

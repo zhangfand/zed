@@ -85,6 +85,7 @@ members = [
     "crates/semantic_index",
     "crates/semantic_version",
     "crates/settings",
+    "crates/settings_ui",
     "crates/snippet",
     "crates/sqlez",
     "crates/sqlez_macros",
@@ -233,6 +234,7 @@ search = { path = "crates/search" }
 semantic_index = { path = "crates/semantic_index" }
 semantic_version = { path = "crates/semantic_version" }
 settings = { path = "crates/settings" }
+settings_ui = { path = "crates/settings_ui" }
 snippet = { path = "crates/snippet" }
 sqlez = { path = "crates/sqlez" }
 sqlez_macros = { path = "crates/sqlez_macros" }

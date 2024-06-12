@@ -1,0 +1,27 @@
+[package]
+name = "settings_ui"
+version = "0.1.0"
+edition = "2021"
+publish = false
+license = "GPL-3.0-or-later"
+
+[lints]
+workspace = true
+
+[lib]
+name = "settings_ui"
+path = "src/settings_ui.rs"
+
+[dependencies]
+gpui.workspace = true
+itertools = { workspace = true, optional = true }
+menu.workspace = true
+settings.workspace = true
+smallvec.workspace = true
+story = { workspace = true, optional = true }
+theme.workspace = true
+ui.workspace = true
+
+[features]
+default = []
+stories = ["dep:itertools", "dep:story"]

@@ -29,3 +29,13 @@ impl Selection {
         }
     }
 }
+
+impl From<bool> for Selection {
+    fn from(selected: bool) -> Self {
+        if selected {
+            Self::Selected
+        } else {
+            Self::Unselected
+        }
+    }
+}
