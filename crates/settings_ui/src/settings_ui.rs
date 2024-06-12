@@ -203,6 +203,8 @@ struct SettingsItem {
     current_value: Option<SettingValue>,
     possible_values: Option<Vec<SettingValue>>,
     layout: SettingLayout,
+    hide_label: bool,
+    toggled: Option<bool>,
 }
 
 impl SettingsItem {
@@ -212,6 +214,11 @@ impl SettingsItem {
         setting_type: SettingType,
         current_value: Option<SettingValue>,
     ) -> Self {
+        let toggled = match setting_type {
+            SettingType::Toggle(_) | SettingType::ToggleAnd(_) => Some(false),
+            _ => None,
+        };
+
         Self {
             id: id.into(),
             name,
@@ -220,6 +227,8 @@ impl SettingsItem {
             current_value,
             possible_values: None,
             layout: SettingLayout::FullLine,
+            hide_label: false,
+            toggled,
         }
     }
 
@@ -240,15 +249,30 @@ impl SettingsItem {
         self.layout = layout;
         self
     }
+
+    pub fn toggled(mut self, toggled: bool) -> Self {
+        self.toggled = Some(toggled);
+        self
+    }
+
+    pub fn hide_label(mut self, hide_label: bool) -> Self {
+        self.hide_label = hide_label;
+        self
+    }
 }
 
 impl RenderOnce for SettingsItem {
     fn render(self, cx: &mut WindowContext) -> impl IntoElement {
         let id: ElementId = self.id.clone().into();
-        let setting_element_id: ElementId =
-            ElementId::Name(format!("setting-{}", self.id.0).to_string().into());
+
         let full_width = match self.layout {
             SettingLayout::FullLine | SettingLayout::FullLineJustified => true,
+            _ => false,
+        };
+
+        let justified = match (self.layout.clone(), self.setting_type.clone()) {
+            (_, SettingType::ToggleAnd(_)) => true,
+            (SettingLayout::FullLineJustified, _) => true,
             _ => false,
         };
 
@@ -296,13 +320,11 @@ impl RenderOnce for SettingsItem {
         item.id(id)
             .gap_1()
             .when(full_width, |this| this.w_full())
-            .when(self.layout == SettingLayout::FullLineJustified, |this| {
-                this.justify_between()
-            })
+            .when(justified, |this| this.justify_between())
             .when(toggleable, |this| {
                 let checkbox = Checkbox::new(
                     ElementId::Name(format!("toggle-{}", self.id.0).to_string().into()),
-                    current_value.is_some().into(),
+                    self.toggled.unwrap_or(false).into(),
                 );
 
                 let toggle_element = match self.setting_type.clone() {
@@ -318,11 +340,19 @@ impl RenderOnce for SettingsItem {
                     h_flex()
                         .gap_1()
                         .child(toggle_element)
-                        .child(Label::new(self.get_name().clone())),
+                        .children(if self.hide_label {
+                            None
+                        } else {
+                            Some(Label::new(self.name.clone()))
+                        }),
                 )
             })
             .when(!toggleable, |this| {
-                this.child(Label::new(self.get_name().clone()))
+                this.children(if self.hide_label {
+                    None
+                } else {
+                    Some(Label::new(self.name.clone()))
+                })
             })
             .children(setting_element)
     }
