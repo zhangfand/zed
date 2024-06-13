@@ -19,8 +19,8 @@ impl SettingsMenuStory {
     pub fn init(cx: &mut ViewContext<Self>) -> Self {
         let mut story = Self::new();
         story.empty_menu(cx);
-        story.menu_single_group(cx);
         story.editor_example(cx);
+        story.menu_single_group(cx);
         story
     }
 }
@@ -44,8 +44,9 @@ impl SettingsMenuStory {
             "theme-contrast",
             "Use high contrast theme".into(),
             SettingType::Toggle(ToggleType::Checkbox),
-            Some(true.into()),
-        );
+            None,
+        )
+        .toggled(false);
         let appearance_setting = SettingsItem::new(
             "switch-appearance",
             "Match system appearance".into(),
@@ -65,15 +66,56 @@ impl SettingsMenuStory {
     }
 
     pub fn editor_example(&mut self, cx: &mut ViewContext<Self>) {
-        let font_group = SettingsGroup::new("Font").add_setting(
-            SettingsItem::new(
-                "enable-ligatures",
-                "Enable Ligatures".into(),
-                SettingType::Toggle(ToggleType::Checkbox),
-                None,
+        let font_group = SettingsGroup::new("Font")
+            .add_setting(
+                SettingsItem::new(
+                    "font-family",
+                    "Font".into(),
+                    SettingType::Dropdown,
+                    Some("Berkeley Mono".to_string().into()),
+                )
+                .icon(IconName::Font)
+                .layout(SettingLayout::AutoWidth),
             )
-            .toggled(true),
-        );
+            .add_setting(
+                SettingsItem::new(
+                    "font-weifht",
+                    "Font Weight".into(),
+                    SettingType::Dropdown,
+                    Some("400".to_string().into()),
+                )
+                .icon(IconName::FontWeight)
+                .layout(SettingLayout::AutoWidth),
+            )
+            .add_setting(
+                SettingsItem::new(
+                    "font-size",
+                    "Font Size".into(),
+                    SettingType::Dropdown,
+                    Some("14".to_string().into()),
+                )
+                .icon(IconName::FontSize)
+                .layout(SettingLayout::AutoWidth),
+            )
+            .add_setting(
+                SettingsItem::new(
+                    "line-height",
+                    "Line Height".into(),
+                    SettingType::Dropdown,
+                    Some("1.35".to_string().into()),
+                )
+                .icon(IconName::LineHeight)
+                .layout(SettingLayout::AutoWidth),
+            )
+            .add_setting(
+                SettingsItem::new(
+                    "enable-ligatures",
+                    "Enable Ligatures".into(),
+                    SettingType::Toggle(ToggleType::Checkbox),
+                    None,
+                )
+                .toggled(true),
+            );
 
         let editor_group = SettingsGroup::new("Editor")
             .add_setting(
@@ -112,7 +154,8 @@ impl SettingsMenuStory {
                     SettingType::ToggleAnd(SecondarySettingType::Dropdown),
                     Some("Ascending".to_string().into()),
                 )
-                .toggled(true),
+                .toggled(true)
+                .layout(SettingLayout::FullLineJustified),
             );
 
         let scrollbar_group = SettingsGroup::new("Scrollbar")
@@ -123,8 +166,8 @@ impl SettingsMenuStory {
                     SettingType::Dropdown,
                     Some("Always Visible".to_string().into()),
                 )
-                .layout(SettingLayout::FullLine)
-                .hide_label(true),
+                .layout(SettingLayout::AutoWidth)
+                .icon(IconName::Visible),
             )
             .add_setting(
                 SettingsItem::new(

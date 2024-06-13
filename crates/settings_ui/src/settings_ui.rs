@@ -9,7 +9,7 @@ mod stories;
 #[cfg(feature = "stories")]
 pub use stories::*;
 
-use ui::{prelude::*, Checkbox, List, ListHeader};
+use ui::{prelude::*, Checkbox, ListHeader};
 
 #[derive(Debug, Clone, IntoElement)]
 struct DropdownMenu {
@@ -17,6 +17,7 @@ struct DropdownMenu {
     current_item: Option<SharedString>,
     items: Vec<SharedString>,
     full_width: bool,
+    disabled: bool,
 }
 
 impl DropdownMenu {
@@ -26,6 +27,7 @@ impl DropdownMenu {
             current_item: None,
             items: Vec::new(),
             full_width: false,
+            disabled: false,
         }
     }
 
@@ -38,25 +40,52 @@ impl DropdownMenu {
         self.full_width = full_width;
         self
     }
+
+    pub fn disabled(mut self, disabled: bool) -> Self {
+        self.disabled = disabled;
+        self
+    }
 }
 
 impl RenderOnce for DropdownMenu {
     fn render(self, cx: &mut WindowContext) -> impl IntoElement {
+        let disabled = self.disabled;
+
         h_flex()
             .id(self.id)
             .justify_between()
             .rounded_md()
             .bg(cx.theme().colors().editor_background)
-            .px_1p5()
+            .pl_2()
+            .pr_1p5()
             .py_0p5()
             .gap_2()
-            .when(self.full_width, |this| this.w_full())
-            .cursor_pointer()
-            .child(Label::new(self.current_item.unwrap_or("".into())))
+            .min_w_20()
+            .when_else(
+                self.full_width,
+                |full_width| full_width.w_full(),
+                |auto_width| auto_width.flex_none().w_auto(),
+            )
+            .when_else(
+                disabled,
+                |disabled| disabled.cursor_not_allowed(),
+                |enabled| enabled.cursor_pointer(),
+            )
             .child(
-                Icon::new(IconName::ChevronDown)
+                Label::new(self.current_item.unwrap_or("".into())).color(if disabled {
+                    Color::Disabled
+                } else {
+                    Color::Default
+                }),
+            )
+            .child(
+                Icon::new(IconName::ChevronUpDown)
                     .size(IconSize::XSmall)
-                    .color(Color::Muted),
+                    .color(if disabled {
+                        Color::Disabled
+                    } else {
+                        Color::Muted
+                    }),
             )
     }
 }
@@ -64,7 +93,7 @@ impl RenderOnce for DropdownMenu {
 #[derive(PartialEq, Clone, Eq, Debug)]
 pub enum ToggleType {
     Checkbox,
-    Switch,
+    // Switch,
 }
 
 impl From<ToggleType> for SettingType {
@@ -147,7 +176,7 @@ impl RenderOnce for SettingsGroup {
 #[derive(Debug, Clone, PartialEq)]
 enum SettingLayout {
     Stacked,
-    Inline,
+    AutoWidth,
     FullLine,
     FullLineJustified,
 }
@@ -197,13 +226,14 @@ impl From<SettingValue> for bool {
 #[derive(Debug, Clone, IntoElement)]
 struct SettingsItem {
     id: SettingId,
-    name: SharedString,
-    enabled: bool,
-    setting_type: SettingType,
     current_value: Option<SettingValue>,
-    possible_values: Option<Vec<SettingValue>>,
-    layout: SettingLayout,
+    disabled: bool,
     hide_label: bool,
+    icon: Option<IconName>,
+    layout: SettingLayout,
+    name: SharedString,
+    possible_values: Option<Vec<SettingValue>>,
+    setting_type: SettingType,
     toggled: Option<bool>,
 }
 
@@ -221,13 +251,14 @@ impl SettingsItem {
 
         Self {
             id: id.into(),
-            name,
-            enabled: true,
-            setting_type,
             current_value,
-            possible_values: None,
-            layout: SettingLayout::FullLine,
+            disabled: false,
             hide_label: false,
+            icon: None,
+            layout: SettingLayout::FullLine,
+            name,
+            possible_values: None,
+            setting_type,
             toggled,
         }
     }
@@ -259,16 +290,31 @@ impl SettingsItem {
         self.hide_label = hide_label;
         self
     }
+
+    pub fn icon(mut self, icon: IconName) -> Self {
+        self.icon = Some(icon);
+        self
+    }
+
+    pub fn disabled(mut self, disabled: bool) -> Self {
+        self.disabled = disabled;
+        self
+    }
 }
 
 impl RenderOnce for SettingsItem {
     fn render(self, cx: &mut WindowContext) -> impl IntoElement {
         let id: ElementId = self.id.clone().into();
 
+        // When the setting is disabled or toggled off, we don't want any secondary elements to be interactable
+        let secondary_element_disabled = self.disabled || self.toggled == Some(false);
+
         let full_width = match self.layout {
             SettingLayout::FullLine | SettingLayout::FullLineJustified => true,
             _ => false,
         };
+
+        let hide_label = self.hide_label || self.icon.is_some();
 
         let justified = match (self.layout.clone(), self.setting_type.clone()) {
             (_, SettingType::ToggleAnd(_)) => true,
@@ -295,6 +341,7 @@ impl RenderOnce for SettingsItem {
                 SecondarySettingType::Dropdown => Some(
                     DropdownMenu::new(id.clone(), &cx)
                         .current_item(current_string)
+                        .disabled(secondary_element_disabled)
                         .into_any_element(),
                 ),
             },
@@ -311,6 +358,20 @@ impl RenderOnce for SettingsItem {
             SettingType::Range => Some(div().child("range").into_any_element()),
         };
 
+        let checkbox = Checkbox::new(
+            ElementId::Name(format!("toggle-{}", self.id.0).to_string().into()),
+            self.toggled.unwrap_or(false).into(),
+        )
+        .disabled(self.disabled);
+
+        let toggle_element = match (toggleable, self.setting_type.clone()) {
+            (true, SettingType::Toggle(toggle_type)) => match toggle_type {
+                ToggleType::Checkbox => Some(checkbox.into_any_element()),
+            },
+            (true, SettingType::ToggleAnd(_)) => Some(checkbox.into_any_element()),
+            (_, _) => None,
+        };
+
         let item = if self.layout == SettingLayout::Stacked {
             v_flex()
         } else {
@@ -318,43 +379,31 @@ impl RenderOnce for SettingsItem {
         };
 
         item.id(id)
-            .gap_1()
-            .when(full_width, |this| this.w_full())
-            .when(justified, |this| this.justify_between())
-            .when(toggleable, |this| {
-                let checkbox = Checkbox::new(
-                    ElementId::Name(format!("toggle-{}", self.id.0).to_string().into()),
-                    self.toggled.unwrap_or(false).into(),
-                );
-
-                let toggle_element = match self.setting_type.clone() {
-                    SettingType::Toggle(toggle_type) => match toggle_type {
-                        ToggleType::Checkbox => checkbox,
-                        ToggleType::Switch => todo!(),
-                    },
-                    SettingType::ToggleAnd(_) => checkbox,
-                    _ => unreachable!(),
-                };
-
-                this.child(
-                    h_flex()
-                        .gap_1()
-                        .child(toggle_element)
-                        .children(if self.hide_label {
-                            None
-                        } else {
-                            Some(Label::new(self.name.clone()))
-                        }),
-                )
+            .gap_2()
+            .w_full()
+            .when_some(self.icon, |this, icon| {
+                this.child(div().px_0p5().child(Icon::new(icon).color(Color::Muted)))
             })
-            .when(!toggleable, |this| {
-                this.children(if self.hide_label {
-                    None
-                } else {
-                    Some(Label::new(self.name.clone()))
-                })
+            .children(toggle_element)
+            .children(if hide_label {
+                None
+            } else {
+                Some(Label::new(self.name.clone()))
             })
-            .children(setting_element)
+            .when(justified, |this| this.child(div().flex_1().size_full()))
+            .child(
+                h_flex()
+                    .when(full_width, |this| this.w_full())
+                    .when(self.layout == SettingLayout::FullLineJustified, |this| {
+                        this.justify_end()
+                    })
+                    .children(setting_element),
+            )
+            // help flex along when full width is disabled
+            //
+            // this probably isn't needed, but fighting with flex to
+            // get this right without inspection tools will be a pain
+            .when(!full_width, |this| this.child(div().size_full().flex_1()))
     }
 }
 
@@ -384,13 +433,18 @@ impl SettingsMenu {
 impl Render for SettingsMenu {
     fn render(&mut self, cx: &mut ui::ViewContext<Self>) -> impl IntoElement {
         let is_empty = self.groups.is_empty();
-        div()
+        v_flex()
             .elevation_2(cx)
             .min_w_56()
             .max_w_96()
             .max_h_2_3()
             .px_2()
-            .py_1()
+            .when_else(
+                is_empty,
+                |empty| empty.py_1(),
+                |not_empty| not_empty.pt_0().pb_1(),
+            )
+            .gap_1()
             .when(is_empty, |this| {
                 this.child(Label::new("No settings found").color(Color::Muted))
             })
