@@ -15,7 +15,7 @@ use ui::{prelude::*, Checkbox, ListHeader};
 struct DropdownMenu {
     id: ElementId,
     current_item: Option<SharedString>,
-    items: Vec<SharedString>,
+    // items: Vec<SharedString>,
     full_width: bool,
     disabled: bool,
 }
@@ -25,7 +25,7 @@ impl DropdownMenu {
         Self {
             id: id.into(),
             current_item: None,
-            items: Vec::new(),
+            // items: Vec::new(),
             full_width: false,
             disabled: false,
         }
@@ -128,11 +128,11 @@ pub enum SettingType {
     Range,
 }
 
-pub enum SettingsItems {
-    SettingsGroup(SettingsGroup),
-    SettingsItem(SettingsItem),
-    Button(ui::Button),
-}
+// pub enum SettingsItems {
+//     SettingsGroup(SettingsGroup),
+//     SettingsItem(SettingsItem),
+//     Button(ui::Button),
+// }
 
 #[derive(Debug, Clone, IntoElement)]
 struct SettingsGroup {
@@ -155,7 +155,7 @@ impl SettingsGroup {
 }
 
 impl RenderOnce for SettingsGroup {
-    fn render(self, cx: &mut WindowContext) -> impl IntoElement {
+    fn render(self, _cx: &mut WindowContext) -> impl IntoElement {
         let empty_message = format!("No settings available for {}", self.name);
 
         let header = ListHeader::new(self.name);
@@ -232,7 +232,7 @@ struct SettingsItem {
     icon: Option<IconName>,
     layout: SettingLayout,
     name: SharedString,
-    possible_values: Option<Vec<SettingValue>>,
+    // possible_values: Option<Vec<SettingValue>>,
     setting_type: SettingType,
     toggled: Option<bool>,
 }
@@ -257,23 +257,10 @@ impl SettingsItem {
             icon: None,
             layout: SettingLayout::FullLine,
             name,
-            possible_values: None,
+            // possible_values: None,
             setting_type,
             toggled,
         }
-    }
-
-    pub fn name(mut self, name: impl Into<SharedString>) -> Self {
-        self.name = name.into();
-        self
-    }
-
-    pub fn get_name(&self) -> &SharedString {
-        &self.name
-    }
-
-    pub fn get_id(&self) -> &SettingId {
-        &self.id
     }
 
     pub fn layout(mut self, layout: SettingLayout) -> Self {
@@ -286,20 +273,20 @@ impl SettingsItem {
         self
     }
 
-    pub fn hide_label(mut self, hide_label: bool) -> Self {
-        self.hide_label = hide_label;
-        self
-    }
+    // pub fn hide_label(mut self, hide_label: bool) -> Self {
+    //     self.hide_label = hide_label;
+    //     self
+    // }
 
     pub fn icon(mut self, icon: IconName) -> Self {
         self.icon = Some(icon);
         self
     }
 
-    pub fn disabled(mut self, disabled: bool) -> Self {
-        self.disabled = disabled;
-        self
-    }
+    // pub fn disabled(mut self, disabled: bool) -> Self {
+    //     self.disabled = disabled;
+    //     self
+    // }
 }
 
 impl RenderOnce for SettingsItem {
@@ -424,16 +411,13 @@ impl SettingsMenu {
         self.groups.push(group);
         self
     }
-
-    pub fn get_groups(&self) -> &Vec<SettingsGroup> {
-        &self.groups
-    }
 }
 
 impl Render for SettingsMenu {
     fn render(&mut self, cx: &mut ui::ViewContext<Self>) -> impl IntoElement {
         let is_empty = self.groups.is_empty();
         v_flex()
+            .id(ElementId::Name(self.name.clone()))
             .elevation_2(cx)
             .min_w_56()
             .max_w_96()
