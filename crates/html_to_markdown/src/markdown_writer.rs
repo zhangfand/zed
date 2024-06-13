@@ -46,7 +46,7 @@ impl MarkdownWriter {
     pub fn is_inside(&self, tag: &str) -> bool {
         self.current_element_stack
             .iter()
-            .any(|parent_element| parent_element.tag() == tag)
+            .any(|parent_element| parent_element.tag == tag)
     }
 
     /// Appends the given string slice onto the end of the Markdown output.
@@ -94,7 +94,10 @@ impl MarkdownWriter {
             } => {
                 let tag_name = name.local.to_string();
                 if !tag_name.is_empty() {
-                    current_element = Some(HtmlElement::new(tag_name, attrs.clone()));
+                    current_element = Some(HtmlElement {
+                        tag: tag_name,
+                        attrs: attrs.clone(),
+                    });
                 }
             }
             NodeData::Text { ref contents } => {
@@ -127,7 +130,7 @@ impl MarkdownWriter {
 
     fn start_tag(&mut self, tag: &HtmlElement, handlers: &mut [TagHandler]) -> StartTagOutcome {
         for handler in handlers {
-            if handler.borrow().should_handle(tag.tag()) {
+            if handler.borrow().should_handle(tag.tag.as_str()) {
                 match handler.borrow_mut().handle_tag_start(tag, self) {
                     StartTagOutcome::Continue => {}
                     StartTagOutcome::Skip => return StartTagOutcome::Skip,
@@ -140,7 +143,7 @@ impl MarkdownWriter {
 
     fn end_tag(&mut self, tag: &HtmlElement, handlers: &mut [TagHandler]) {
         for handler in handlers {
-            if handler.borrow().should_handle(tag.tag()) {
+            if handler.borrow().should_handle(tag.tag.as_str()) {
                 handler.borrow_mut().handle_tag_end(tag, self);
             }
         }

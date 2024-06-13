@@ -24,8 +24,6 @@ if [[ -n $apt ]]; then
     libvulkan1
     libgit2-dev
     make
-    clang
-    mold
   )
   $maysudo "$apt" install -y "${deps[@]}"
   exit 0
@@ -38,8 +36,6 @@ if [[ -n $dnf ]]; then
   deps=(
     gcc
     g++
-    clang
-    mold
     alsa-lib-devel
     fontconfig-devel
     wayland-devel
@@ -75,7 +71,6 @@ if [[ -n $zyp ]]; then
     openssl-devel
     libzstd-devel
     libvulkan1
-    mold
   )
   $maysudo "$zyp" install -y "${deps[@]}"
   exit 0
@@ -89,12 +84,10 @@ if [[ -n $pacman ]]; then
     alsa-lib
     fontconfig
     wayland
-    libgit2
     libxkbcommon-x11
     openssl
     zstd
     pkgconf
-    mold
   )
   $maysudo "$pacman" -S --needed --noconfirm "${deps[@]}"
   exit 0
@@ -113,7 +106,6 @@ if [[ -n $xbps ]]; then
     openssl-devel
     wayland-devel
     vulkan-loader
-    mold
   )
   $maysudo "$xbps" -Syu "${deps[@]}"
   exit 0
@@ -132,7 +124,6 @@ if [[ -n $emerge ]]; then
     media-libs/vulkan-loader
     x11-libs/libxcb
     x11-libs/libxkbcommon
-    sys-devel/mold
   )
   $maysudo "$emerge" -u "${deps[@]}"
   exit 0

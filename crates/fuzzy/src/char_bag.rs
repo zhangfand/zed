@@ -1,6 +1,6 @@
 use std::iter::FromIterator;
 
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub struct CharBag(u64);
 
 impl CharBag {

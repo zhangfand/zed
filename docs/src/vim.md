@@ -137,26 +137,6 @@ Binding `jk` to exit insert mode and go to normal mode:
 }
 ```
 
-### Restoring some sense of normality
-
-If you're using Vim mode on Linux or Windows, you may find that it has overridden keybindings
-that you can't live without. You can restore them to their defaults by copying these into your keymap:
-
-```
-{
-  "context": "Editor && !VimWaiting && !menu",
-  "bindings": {
-    "ctrl-c": "editor::Copy",          // vim default: return to normal mode
-    "ctrl-x": "editor::Cut",           // vim default: increment
-    "ctrl-v": "editor::Paste",         // vim default: visual block mode
-    "ctrl-y": "editor::Undo",          // vim default: line up
-    "ctrl-f": "buffer_search::Deploy", // vim default: page down
-    "ctrl-o": "workspace::Open",       // vim default: go back
-    "ctrl-a": "editor::SelectAll",     // vim default: increment
-  }
-},
-```
-
 ## Command palette
 
 Vim mode allows you to enable Zed’s command palette with `:`. This means that you can use vim's command palette to run any action that Zed supports.
@@ -235,9 +215,9 @@ Some vim settings are available to modify the default vim behavior:
 ```json
 {
   "vim": {
-    // "always": use system clipboard when no register is specified
-    // "never": don't use system clipboard unless "+ or "* is specified
-    // "on_yank": use system clipboard for yank operations when no register is specified
+    // "always": use system clipboard
+    // "never": don't use system clipboard
+    // "on_yank": use system clipboard for yank operations
     "use_system_clipboard": "always",
     // Lets `f` and `t` motions extend across multiple lines
     "use_multiline_find": true

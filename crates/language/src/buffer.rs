@@ -2738,13 +2738,12 @@ impl BufferSnapshot {
         Some(items)
     }
 
-    pub fn outline_items_containing<T: ToOffset>(
+    fn outline_items_containing(
         &self,
-        range: Range<T>,
+        range: Range<usize>,
         include_extra_context: bool,
         theme: Option<&SyntaxTheme>,
     ) -> Option<Vec<OutlineItem<Anchor>>> {
-        let range = range.to_offset(self);
         let mut matches = self.syntax.matches(range.clone(), &self.text, |grammar| {
             grammar.outline_config.as_ref().map(|c| &c.query)
         });

@@ -16,9 +16,8 @@ use language::{
     OffsetRangeExt, PointUtf16, ToOffset, ToPointUtf16, Transaction, Unclipped,
 };
 use lsp::{
-    CompletionContext, CompletionListItemDefaultsEditRange, CompletionTriggerKind,
-    DocumentHighlightKind, LanguageServer, LanguageServerId, LinkedEditingRangeServerCapabilities,
-    OneOf, ServerCapabilities,
+    CompletionListItemDefaultsEditRange, DocumentHighlightKind, LanguageServer, LanguageServerId,
+    LinkedEditingRangeServerCapabilities, OneOf, ServerCapabilities,
 };
 use std::{cmp::Reverse, ops::Range, path::Path, sync::Arc};
 use text::{BufferId, LineEnding};
@@ -128,7 +127,6 @@ pub(crate) struct GetHover {
 
 pub(crate) struct GetCompletions {
     pub position: PointUtf16,
-    pub context: CompletionContext,
 }
 
 #[derive(Clone)]
@@ -187,7 +185,7 @@ impl LspCommand for PrepareRename {
     ) -> lsp::TextDocumentPositionParams {
         lsp::TextDocumentPositionParams {
             text_document: lsp::TextDocumentIdentifier {
-                uri: lsp::Uri::from_file_path(path).unwrap().into(),
+                uri: lsp::Url::from_file_path(path).unwrap(),
             },
             position: point_to_lsp(self.position),
         }
@@ -311,7 +309,7 @@ impl LspCommand for PerformRename {
         lsp::RenameParams {
             text_document_position: lsp::TextDocumentPositionParams {
                 text_document: lsp::TextDocumentIdentifier {
-                    uri: lsp::Uri::from_file_path(path).unwrap().into(),
+                    uri: lsp::Url::from_file_path(path).unwrap(),
                 },
                 position: point_to_lsp(self.position),
             },
@@ -430,7 +428,7 @@ impl LspCommand for GetDefinition {
         lsp::GotoDefinitionParams {
             text_document_position_params: lsp::TextDocumentPositionParams {
                 text_document: lsp::TextDocumentIdentifier {
-                    uri: lsp::Uri::from_file_path(path).unwrap().into(),
+                    uri: lsp::Url::from_file_path(path).unwrap(),
                 },
                 position: point_to_lsp(self.position),
             },
@@ -523,7 +521,7 @@ impl LspCommand for GetImplementation {
         lsp::GotoImplementationParams {
             text_document_position_params: lsp::TextDocumentPositionParams {
                 text_document: lsp::TextDocumentIdentifier {
-                    uri: lsp::Uri::from_file_path(path).unwrap().into(),
+                    uri: lsp::Url::from_file_path(path).unwrap(),
                 },
                 position: point_to_lsp(self.position),
             },
@@ -624,7 +622,7 @@ impl LspCommand for GetTypeDefinition {
         lsp::GotoTypeDefinitionParams {
             text_document_position_params: lsp::TextDocumentPositionParams {
                 text_document: lsp::TextDocumentIdentifier {
-                    uri: lsp::Uri::from_file_path(path).unwrap().into(),
+                    uri: lsp::Url::from_file_path(path).unwrap(),
                 },
                 position: point_to_lsp(self.position),
             },
@@ -820,7 +818,7 @@ async fn location_links_from_lsp(
         let target_buffer_handle = project
             .update(&mut cx, |this, cx| {
                 this.open_local_buffer_via_lsp(
-                    target_uri.into(),
+                    target_uri,
                     language_server.server_id(),
                     lsp_adapter.name.clone(),
                     cx,
@@ -927,7 +925,7 @@ impl LspCommand for GetReferences {
         lsp::ReferenceParams {
             text_document_position: lsp::TextDocumentPositionParams {
                 text_document: lsp::TextDocumentIdentifier {
-                    uri: lsp::Uri::from_file_path(path).unwrap().into(),
+                    uri: lsp::Url::from_file_path(path).unwrap(),
                 },
                 position: point_to_lsp(self.position),
             },
@@ -956,7 +954,7 @@ impl LspCommand for GetReferences {
                 let target_buffer_handle = project
                     .update(&mut cx, |this, cx| {
                         this.open_local_buffer_via_lsp(
-                            lsp_location.uri.into(),
+                            lsp_location.uri,
                             language_server.server_id(),
                             lsp_adapter.name.clone(),
                             cx,
@@ -1094,7 +1092,7 @@ impl LspCommand for GetDocumentHighlights {
         lsp::DocumentHighlightParams {
             text_document_position_params: lsp::TextDocumentPositionParams {
                 text_document: lsp::TextDocumentIdentifier {
-                    uri: lsp::Uri::from_file_path(path).unwrap().into(),
+                    uri: lsp::Url::from_file_path(path).unwrap(),
                 },
                 position: point_to_lsp(self.position),
             },
@@ -1241,7 +1239,7 @@ impl LspCommand for GetHover {
         lsp::HoverParams {
             text_document_position_params: lsp::TextDocumentPositionParams {
                 text_document: lsp::TextDocumentIdentifier {
-                    uri: lsp::Uri::from_file_path(path).unwrap().into(),
+                    uri: lsp::Url::from_file_path(path).unwrap(),
                 },
                 position: point_to_lsp(self.position),
             },
@@ -1463,10 +1461,10 @@ impl LspCommand for GetCompletions {
     ) -> lsp::CompletionParams {
         lsp::CompletionParams {
             text_document_position: lsp::TextDocumentPositionParams::new(
-                lsp::TextDocumentIdentifier::new(lsp::Uri::from_file_path(path).unwrap().into()),
+                lsp::TextDocumentIdentifier::new(lsp::Url::from_file_path(path).unwrap()),
                 point_to_lsp(self.position),
             ),
-            context: Some(self.context.clone()),
+            context: Default::default(),
             work_done_progress_params: Default::default(),
             partial_result_params: Default::default(),
         }
@@ -1651,13 +1649,7 @@ impl LspCommand for GetCompletions {
                 })
             })
             .ok_or_else(|| anyhow!("invalid position"))??;
-        Ok(Self {
-            position,
-            context: CompletionContext {
-                trigger_kind: CompletionTriggerKind::INVOKED,
-                trigger_character: None,
-            },
-        })
+        Ok(Self { position })
     }
 
     fn response_to_proto(
@@ -1768,7 +1760,7 @@ impl LspCommand for GetCodeActions {
 
         lsp::CodeActionParams {
             text_document: lsp::TextDocumentIdentifier::new(
-                lsp::Uri::from_file_path(path).unwrap().into(),
+                lsp::Url::from_file_path(path).unwrap(),
             ),
             range: range_to_lsp(self.range.to_point_utf16(buffer)),
             work_done_progress_params: Default::default(),
@@ -1940,7 +1932,7 @@ impl LspCommand for OnTypeFormatting {
     ) -> lsp::DocumentOnTypeFormattingParams {
         lsp::DocumentOnTypeFormattingParams {
             text_document_position: lsp::TextDocumentPositionParams::new(
-                lsp::TextDocumentIdentifier::new(lsp::Uri::from_file_path(path).unwrap().into()),
+                lsp::TextDocumentIdentifier::new(lsp::Url::from_file_path(path).unwrap()),
                 point_to_lsp(self.position),
             ),
             ch: self.trigger.clone(),
@@ -2282,9 +2274,8 @@ impl InlayHints {
                                     Some(((uri, range), server_id)) => Some((
                                         LanguageServerId(server_id as usize),
                                         lsp::Location {
-                                            uri: lsp::Uri::from_file_path(&uri)
-                                                .context("invalid uri in hint part {part:?}")?
-                                                .into(),
+                                            uri: lsp::Url::parse(&uri)
+                                                .context("invalid uri in hint part {part:?}")?,
                                             range: lsp::Range::new(
                                                 point_to_lsp(PointUtf16::new(
                                                     range.start.row,
@@ -2444,7 +2435,7 @@ impl LspCommand for InlayHints {
     ) -> lsp::InlayHintParams {
         lsp::InlayHintParams {
             text_document: lsp::TextDocumentIdentifier {
-                uri: lsp::Uri::from_file_path(path).unwrap().into(),
+                uri: lsp::Url::from_file_path(path).unwrap(),
             },
             range: range_to_lsp(self.range.to_point_utf16(buffer)),
             work_done_progress_params: Default::default(),
@@ -2600,7 +2591,7 @@ impl LspCommand for LinkedEditingRange {
         let position = self.position.to_point_utf16(&buffer.snapshot());
         lsp::LinkedEditingRangeParams {
             text_document_position_params: lsp::TextDocumentPositionParams::new(
-                lsp::TextDocumentIdentifier::new(lsp::Uri::from_file_path(path).unwrap().into()),
+                lsp::TextDocumentIdentifier::new(lsp::Url::from_file_path(path).unwrap()),
                 point_to_lsp(position),
             ),
             work_done_progress_params: Default::default(),

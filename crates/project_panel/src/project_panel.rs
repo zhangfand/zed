@@ -1792,10 +1792,6 @@ impl ProjectPanel {
                     .unwrap_or(&[]);
 
                 let entry_range = range.start.saturating_sub(ix)..end_ix - ix;
-                let entries = visible_worktree_entries
-                    .iter()
-                    .map(|e| (e.path.clone()))
-                    .collect();
                 for entry in visible_worktree_entries[entry_range].iter() {
                     let status = git_status_setting.then(|| entry.git_status).flatten();
                     let is_expanded = expanded_entry_ids.binary_search(&entry.id).is_ok();
@@ -1816,8 +1812,10 @@ impl ProjectPanel {
                         }
                     };
 
-                    let (depth, difference) =
-                        ProjectPanel::calculate_depth_and_difference(entry, &entries);
+                    let (depth, difference) = ProjectPanel::calculate_depth_and_difference(
+                        entry,
+                        visible_worktree_entries,
+                    );
 
                     let filename = match difference {
                         diff if diff > 1 => entry
@@ -1890,21 +1888,32 @@ impl ProjectPanel {
 
     fn calculate_depth_and_difference(
         entry: &Entry,
-        visible_worktree_entries: &HashSet<Arc<Path>>,
+        visible_worktree_entries: &Vec<Entry>,
     ) -> (usize, usize) {
+        let visible_worktree_paths: HashSet<Arc<Path>> = visible_worktree_entries
+            .iter()
+            .map(|e| e.path.clone())
+            .collect();
+
         let (depth, difference) = entry
             .path
             .ancestors()
             .skip(1) // Skip the entry itself
             .find_map(|ancestor| {
-                if let Some(parent_entry) = visible_worktree_entries.get(ancestor) {
+                if visible_worktree_paths.contains(ancestor) {
+                    let parent_entry = visible_worktree_entries
+                        .iter()
+                        .find(|&e| &*e.path == ancestor)
+                        .unwrap();
+
                     let entry_path_components_count = entry.path.components().count();
-                    let parent_path_components_count = parent_entry.components().count();
+                    let parent_path_components_count = parent_entry.path.components().count();
                     let difference = entry_path_components_count - parent_path_components_count;
                     let depth = parent_entry
+                        .path
                         .ancestors()
                         .skip(1)
-                        .filter(|ancestor| visible_worktree_entries.contains(*ancestor))
+                        .filter(|ancestor| visible_worktree_paths.contains(*ancestor))
                         .count();
                     Some((depth + 1, difference))
                 } else {

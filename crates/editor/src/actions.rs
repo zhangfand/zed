@@ -125,11 +125,6 @@ pub struct ExpandExcerptsDown {
     #[serde(default)]
     pub(super) lines: u32,
 }
-#[derive(PartialEq, Clone, Deserialize, Default)]
-pub struct ShowCompletions {
-    #[serde(default)]
-    pub(super) trigger: Option<char>,
-}
 
 impl_actions!(
     editor,
@@ -152,7 +147,6 @@ impl_actions!(
         SelectToBeginningOfLine,
         SelectToEndOfLine,
         SelectUpByLines,
-        ShowCompletions,
         ToggleCodeActions,
         ToggleComments,
         UnfoldAt,
@@ -280,6 +274,7 @@ gpui::actions!(
         SelectToStartOfParagraph,
         SelectUp,
         ShowCharacterPalette,
+        ShowCompletions,
         ShowInlineCompletion,
         ShuffleLines,
         SortLinesCaseInsensitive,

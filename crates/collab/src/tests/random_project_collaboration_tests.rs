@@ -14,9 +14,7 @@ use language::{
 };
 use lsp::FakeLanguageServer;
 use pretty_assertions::assert_eq;
-use project::{
-    search::SearchQuery, Project, ProjectPath, SearchResult, DEFAULT_COMPLETION_CONTEXT,
-};
+use project::{search::SearchQuery, Project, ProjectPath, SearchResult};
 use rand::{
     distributions::{Alphanumeric, DistString},
     prelude::*,
@@ -831,7 +829,7 @@ impl RandomizedTest for ProjectCollaborationTest {
                         .map_ok(|_| ())
                         .boxed(),
                     LspRequestKind::Completion => project
-                        .completions(&buffer, offset, DEFAULT_COMPLETION_CONTEXT, cx)
+                        .completions(&buffer, offset, cx)
                         .map_ok(|_| ())
                         .boxed(),
                     LspRequestKind::CodeAction => project
@@ -1101,7 +1099,7 @@ impl RandomizedTest for ProjectCollaborationTest {
                                         files
                                             .into_iter()
                                             .map(|file| lsp::Location {
-                                                uri: lsp::Uri::from_file_path(file).unwrap().into(),
+                                                uri: lsp::Url::from_file_path(file).unwrap(),
                                                 range: Default::default(),
                                             })
                                             .collect(),

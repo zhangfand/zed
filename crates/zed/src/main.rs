@@ -185,7 +185,6 @@ fn init_ui(app_state: Arc<AppState>, cx: &mut AppContext) -> Result<()> {
     outline::init(cx);
     project_symbols::init(cx);
     project_panel::init(Assets, cx);
-    outline_panel::init(Assets, cx);
     tasks_ui::init(cx);
     channel::init(&app_state.client.clone(), app_state.user_store.clone(), cx);
     search::init(cx);
@@ -500,7 +499,6 @@ fn handle_open_request(request: OpenRequest, app_state: Arc<AppState>, cx: &mut 
         let app_state = app_state.clone();
         cx.spawn(move |cx| handle_cli_connection(connection, app_state, cx))
             .detach();
-        return;
     }
 
     if let Err(e) = init_ui(app_state.clone(), cx) {
