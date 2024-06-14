@@ -9,11 +9,15 @@ mod stories;
 #[cfg(feature = "stories")]
 pub use stories::*;
 
+mod render_setting;
+mod setting_item;
+mod settings;
+
 use ui::{prelude::*, Checkbox, ListHeader};
 
 #[derive(Debug, Clone, IntoElement)]
 struct DropdownMenu {
-    id: ElementId,
+    pub id: ElementId,
     current_item: Option<SharedString>,
     // items: Vec<SharedString>,
     full_width: bool,
@@ -126,6 +130,7 @@ pub enum SettingType {
     Input(InputType),
     Dropdown,
     Range,
+    Unsupported,
 }
 
 // pub enum SettingsItems {
@@ -135,8 +140,8 @@ pub enum SettingType {
 // }
 
 #[derive(Debug, Clone, IntoElement)]
-struct SettingsGroup {
-    name: String,
+pub struct SettingsGroup {
+    pub name: String,
     settings: Vec<SettingsItem>,
 }
 
@@ -174,7 +179,7 @@ impl RenderOnce for SettingsGroup {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-enum SettingLayout {
+pub enum SettingLayout {
     Stacked,
     AutoWidth,
     FullLine,
@@ -193,6 +198,12 @@ impl From<SettingId> for ElementId {
 impl From<&str> for SettingId {
     fn from(id: &str) -> Self {
         Self(id.to_string().into())
+    }
+}
+
+impl From<SharedString> for SettingId {
+    fn from(id: SharedString) -> Self {
+        Self(id)
     }
 }
 
@@ -224,8 +235,8 @@ impl From<SettingValue> for bool {
 }
 
 #[derive(Debug, Clone, IntoElement)]
-struct SettingsItem {
-    id: SettingId,
+pub struct SettingsItem {
+    pub id: SettingId,
     current_value: Option<SettingValue>,
     disabled: bool,
     hide_label: bool,
@@ -343,6 +354,7 @@ impl RenderOnce for SettingsItem {
                     .into_any_element(),
             ),
             SettingType::Range => Some(div().child("range").into_any_element()),
+            SettingType::Unsupported => None,
         };
 
         let checkbox = Checkbox::new(
@@ -394,7 +406,7 @@ impl RenderOnce for SettingsItem {
     }
 }
 
-struct SettingsMenu {
+pub struct SettingsMenu {
     name: SharedString,
     groups: Vec<SettingsGroup>,
 }

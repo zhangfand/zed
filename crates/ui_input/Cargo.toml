@@ -1,5 +1,5 @@
 [package]
-name = "ui_text_field"
+name = "ui_input"
 version = "0.1.0"
 edition = "2021"
 publish = false
@@ -9,14 +9,18 @@ license = "GPL-3.0-or-later"
 workspace = true
 
 [lib]
-path = "src/ui_text_field.rs"
+name = "ui_input"
+path = "src/ui_input.rs"
 
 [dependencies]
 editor.workspace = true
+itertools = { workspace = true, optional = true }
 gpui.workspace = true
 settings.workspace = true
 theme.workspace = true
 ui.workspace = true
+story = { workspace = true, optional = true }
 
 [features]
 default = []
+stories = ["dep:itertools", "dep:story"]
