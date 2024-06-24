@@ -340,16 +340,13 @@ impl ProjectDiffEditor {
                 loop {
                     match new_order_entries.peek() {
                         Some((new_path, new_entry)) => {
-                            let aa = project::compare_paths(
+                            match project::compare_paths(
                                 (current_path.path.as_ref(), true),
                                 (new_path.path.as_ref(), true),
-                            );
-                            match aa {
+                            ) {
                                 Ordering::Less => {
                                     excerpts_to_remove
                                         .extend(current_excerpts.map(|(excerpt_id, _)| excerpt_id));
-                                    latest_excerpt_id =
-                                        last_current_excerpt_id.unwrap_or(latest_excerpt_id);
                                     break;
                                 }
                                 Ordering::Greater => {
@@ -679,13 +676,9 @@ impl ProjectDiffEditor {
                                                 }
                                             }
                                         }
-                                        None => {
-                                            excerpts_to_remove.extend(
-                                                current_excerpts.map(|(excerpt_id, _)| excerpt_id),
-                                            );
-                                            latest_excerpt_id = last_current_excerpt_id
-                                                .unwrap_or(latest_excerpt_id);
-                                        }
+                                        None => excerpts_to_remove.extend(
+                                            current_excerpts.map(|(excerpt_id, _)| excerpt_id),
+                                        ),
                                     }
                                     let _ = new_order_entries.next();
                                     break;
@@ -695,10 +688,21 @@ impl ProjectDiffEditor {
                         None => {
                             excerpts_to_remove
                                 .extend(current_excerpts.map(|(excerpt_id, _)| excerpt_id));
-                            latest_excerpt_id =
-                                last_current_excerpt_id.unwrap_or(latest_excerpt_id);
                             break;
                         }
+                    }
+                }
+                latest_excerpt_id = last_current_excerpt_id.unwrap_or(latest_excerpt_id);
+            }
+
+            for (_, project_entry_id) in new_order_entries {
+                if let Some(changes) = new_changes.get(project_entry_id) {
+                    if !changes.hunks.is_empty() {
+                        new_excerpt_hunks
+                            .entry(latest_excerpt_id)
+                            .or_insert_with(|| (changes.buffer.clone(), Vec::new()))
+                            .1
+                            .extend(changes.hunks.iter().map(|hunk| hunk.buffer_range.clone()));
                     }
                 }
             }
