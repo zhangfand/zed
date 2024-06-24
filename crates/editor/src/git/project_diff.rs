@@ -314,8 +314,10 @@ impl ProjectDiffEditor {
             let current_entries = self.buffer_changes.entry(worktree_id).or_default();
             let mut new_order_entries = new_entry_order.iter().fuse().peekable();
             let mut excerpts_to_remove = Vec::new();
-            let mut new_excerpt_hunks =
-                BTreeMap::<ExcerptId, (Model<Buffer>, Vec<Range<text::Anchor>>)>::new();
+            let mut new_excerpt_hunks = BTreeMap::<
+                ExcerptId,
+                Vec<(ProjectPath, Model<Buffer>, Vec<Range<text::Anchor>>)>,
+            >::new();
             let mut excerpt_to_expand =
                 HashMap::<(u32, ExpandExcerptDirection), Vec<ExcerptId>>::default();
             let mut latest_excerpt_id = ExcerptId::min();
@@ -352,18 +354,34 @@ impl ProjectDiffEditor {
                                 Ordering::Greater => {
                                     if let Some(new_changes) = new_changes.get(new_entry) {
                                         if !new_changes.hunks.is_empty() {
-                                            new_excerpt_hunks
+                                            let hunks = new_excerpt_hunks
                                                 .entry(latest_excerpt_id)
-                                                .or_insert_with(|| {
-                                                    (new_changes.buffer.clone(), Vec::new())
-                                                })
-                                                .1
-                                                .extend(
+                                                .or_default();
+                                            match hunks.binary_search_by(|(probe, ..)| {
+                                                project::compare_paths(
+                                                    (new_path.path.as_ref(), true),
+                                                    (probe.path.as_ref(), true),
+                                                )
+                                            }) {
+                                                Ok(i) => hunks[i].2.extend(
                                                     new_changes
                                                         .hunks
                                                         .iter()
                                                         .map(|hunk| hunk.buffer_range.clone()),
-                                                );
+                                                ),
+                                                Err(i) => hunks.insert(
+                                                    i,
+                                                    (
+                                                        new_path.clone(),
+                                                        new_changes.buffer.clone(),
+                                                        new_changes
+                                                            .hunks
+                                                            .iter()
+                                                            .map(|hunk| hunk.buffer_range.clone())
+                                                            .collect(),
+                                                    ),
+                                                ),
+                                            }
                                         }
                                     };
                                     let _ = new_order_entries.next();
@@ -481,6 +499,8 @@ impl ProjectDiffEditor {
                                                 }
                                             }
 
+                                            let mut excerpts_with_new_changes =
+                                                HashSet::<ExcerptId>::default();
                                             'new_hunks: for new_hunk in new_hunks_with_updates {
                                                 loop {
                                                     match current_excerpts.peek() {
@@ -512,6 +532,10 @@ impl ProjectDiffEditor {
                                                                     Ordering::Greater
                                                                     | Ordering::Equal,
                                                                 ) => {
+                                                                    excerpts_with_new_changes
+                                                                        .insert(
+                                                                            *current_excerpt_id,
+                                                                        );
                                                                     continue 'new_hunks;
                                                                 }
                                                                 (
@@ -547,6 +571,10 @@ impl ProjectDiffEditor {
                                                                             .row,
                                                                     );
                                                                     excerpt_to_expand.entry((expand_up.max(expand_down).max(DEFAULT_MULTIBUFFER_CONTEXT), ExpandExcerptDirection::UpAndDown)).or_default().push(*current_excerpt_id);
+                                                                    excerpts_with_new_changes
+                                                                        .insert(
+                                                                            *current_excerpt_id,
+                                                                        );
                                                                     continue 'new_hunks;
                                                                 }
                                                                 (
@@ -578,32 +606,44 @@ impl ProjectDiffEditor {
                                                                                 .row,
                                                                         );
                                                                         excerpt_to_expand.entry((expand_up.max(DEFAULT_MULTIBUFFER_CONTEXT), ExpandExcerptDirection::Up)).or_default().push(*current_excerpt_id);
+                                                                        excerpts_with_new_changes
+                                                                            .insert(
+                                                                                *current_excerpt_id,
+                                                                            );
                                                                         continue 'new_hunks;
                                                                     } else {
                                                                         if !new_changes
                                                                             .hunks
                                                                             .is_empty()
                                                                         {
-                                                                            new_excerpt_hunks
+                                                                            let hunks = new_excerpt_hunks
                                                                                 .entry(latest_excerpt_id)
-                                                                                .or_insert_with(|| {
-                                                                                    (
-                                                                                        new_changes
-                                                                                            .buffer
-                                                                                            .clone(),
-                                                                                        Vec::new(),
-                                                                                    )
-                                                                                })
-                                                                                .1
-                                                                                .extend(
+                                                                                .or_default();
+                                                                            match hunks.binary_search_by(|(probe, ..)| {
+                                                                                project::compare_paths(
+                                                                                    (new_path.path.as_ref(), true),
+                                                                                    (probe.path.as_ref(), true),
+                                                                                )
+                                                                            }) {
+                                                                                Ok(i) => hunks[i].2.extend(
                                                                                     new_changes
                                                                                         .hunks
                                                                                         .iter()
-                                                                                        .map(|hunk| {
-                                                                                            hunk.buffer_range
-                                                                                                .clone()
-                                                                                        }),
-                                                                                );
+                                                                                        .map(|hunk| hunk.buffer_range.clone()),
+                                                                                ),
+                                                                                Err(i) => hunks.insert(
+                                                                                    i,
+                                                                                    (
+                                                                                        new_path.clone(),
+                                                                                        new_changes.buffer.clone(),
+                                                                                        new_changes
+                                                                                            .hunks
+                                                                                            .iter()
+                                                                                            .map(|hunk| hunk.buffer_range.clone())
+                                                                                            .collect(),
+                                                                                    ),
+                                                                                ),
+                                                                            }
                                                                         }
                                                                         continue 'new_hunks;
                                                                     }
@@ -645,6 +685,10 @@ impl ProjectDiffEditor {
                                                                             .row,
                                                                     );
                                                                         excerpt_to_expand.entry((expand_down.max(DEFAULT_MULTIBUFFER_CONTEXT), ExpandExcerptDirection::Down)).or_default().push(*current_excerpt_id);
+                                                                        excerpts_with_new_changes
+                                                                            .insert(
+                                                                                *current_excerpt_id,
+                                                                            );
                                                                         continue 'new_hunks;
                                                                     } else {
                                                                         latest_excerpt_id =
@@ -656,24 +700,74 @@ impl ProjectDiffEditor {
                                                             }
                                                         }
                                                         None => {
-                                                            new_excerpt_hunks
+                                                            let hunks = new_excerpt_hunks
                                                                 .entry(latest_excerpt_id)
-                                                                .or_insert_with(|| {
-                                                                    (
-                                                                        current_changes
-                                                                            .buffer
-                                                                            .clone(),
-                                                                        Vec::new(),
+                                                                .or_default();
+                                                            match hunks.binary_search_by(
+                                                                |(probe, ..)| {
+                                                                    project::compare_paths(
+                                                                        (
+                                                                            new_path.path.as_ref(),
+                                                                            true,
+                                                                        ),
+                                                                        (probe.path.as_ref(), true),
                                                                     )
-                                                                })
-                                                                .1
-                                                                .push(
-                                                                    new_hunk.buffer_range.clone(),
-                                                                );
+                                                                },
+                                                            ) {
+                                                                Ok(i) => hunks[i].2.extend(
+                                                                    new_changes.hunks.iter().map(
+                                                                        |hunk| {
+                                                                            hunk.buffer_range
+                                                                                .clone()
+                                                                        },
+                                                                    ),
+                                                                ),
+                                                                Err(i) => hunks.insert(
+                                                                    i,
+                                                                    (
+                                                                        new_path.clone(),
+                                                                        new_changes.buffer.clone(),
+                                                                        new_changes
+                                                                            .hunks
+                                                                            .iter()
+                                                                            .map(|hunk| {
+                                                                                hunk.buffer_range
+                                                                                    .clone()
+                                                                            })
+                                                                            .collect(),
+                                                                    ),
+                                                                ),
+                                                            }
                                                             continue 'new_hunks;
                                                         }
                                                     }
                                                 }
+                                            }
+
+                                            for (excerpt_id, excerpt_range) in current_excerpts {
+                                                if !excerpts_with_new_changes.contains(&excerpt_id)
+                                                    && !new_hunks_unchanged.iter().any(|hunk| {
+                                                        excerpt_range
+                                                            .context
+                                                            .start
+                                                            .cmp(
+                                                                &hunk.buffer_range.end,
+                                                                &buffer_snapshot,
+                                                            )
+                                                            .is_le()
+                                                            && excerpt_range
+                                                                .context
+                                                                .end
+                                                                .cmp(
+                                                                    &hunk.buffer_range.start,
+                                                                    &buffer_snapshot,
+                                                                )
+                                                                .is_ge()
+                                                    })
+                                                {
+                                                    excerpts_to_remove.push(excerpt_id);
+                                                }
+                                                latest_excerpt_id = excerpt_id;
                                             }
                                         }
                                         None => excerpts_to_remove.extend(
@@ -695,41 +789,62 @@ impl ProjectDiffEditor {
                 latest_excerpt_id = last_current_excerpt_id.unwrap_or(latest_excerpt_id);
             }
 
-            for (_, project_entry_id) in new_order_entries {
+            for (path, project_entry_id) in new_order_entries {
                 if let Some(changes) = new_changes.get(project_entry_id) {
                     if !changes.hunks.is_empty() {
-                        new_excerpt_hunks
-                            .entry(latest_excerpt_id)
-                            .or_insert_with(|| (changes.buffer.clone(), Vec::new()))
-                            .1
-                            .extend(changes.hunks.iter().map(|hunk| hunk.buffer_range.clone()));
+                        let hunks = new_excerpt_hunks.entry(latest_excerpt_id).or_default();
+                        match hunks.binary_search_by(|(probe, ..)| {
+                            project::compare_paths(
+                                (path.path.as_ref(), true),
+                                (probe.path.as_ref(), true),
+                            )
+                        }) {
+                            Ok(i) => hunks[i]
+                                .2
+                                .extend(changes.hunks.iter().map(|hunk| hunk.buffer_range.clone())),
+                            Err(i) => hunks.insert(
+                                i,
+                                (
+                                    path.clone(),
+                                    changes.buffer.clone(),
+                                    changes
+                                        .hunks
+                                        .iter()
+                                        .map(|hunk| hunk.buffer_range.clone())
+                                        .collect(),
+                                ),
+                            ),
+                        }
                     }
                 }
             }
 
             self.excerpts.update(cx, |multi_buffer, cx| {
-                for (after_excerpt_id, (buffer, hunk_ranges)) in new_excerpt_hunks {
-                    let buffer_snapshot = buffer.read(cx).snapshot();
-                    let max_point = buffer_snapshot.max_point();
-                    multi_buffer.insert_excerpts_after(
-                        after_excerpt_id,
-                        buffer,
-                        hunk_ranges.into_iter().map(|range| {
-                            let mut extended_point_range = range.to_point(&buffer_snapshot);
-                            extended_point_range.start.row = extended_point_range
-                                .start
-                                .row
-                                .saturating_sub(DEFAULT_MULTIBUFFER_CONTEXT);
-                            extended_point_range.end.row = (extended_point_range.end.row
-                                + DEFAULT_MULTIBUFFER_CONTEXT)
-                                .min(max_point.row);
-                            ExcerptRange {
-                                context: extended_point_range,
-                                primary: None,
-                            }
-                        }),
-                        cx,
-                    );
+                for (mut after_excerpt_id, excerpts_to_add) in new_excerpt_hunks {
+                    for (_, buffer, hunk_ranges) in excerpts_to_add {
+                        let buffer_snapshot = buffer.read(cx).snapshot();
+                        let max_point = buffer_snapshot.max_point();
+                        let new_excerpts = multi_buffer.insert_excerpts_after(
+                            after_excerpt_id,
+                            buffer,
+                            hunk_ranges.into_iter().map(|range| {
+                                let mut extended_point_range = range.to_point(&buffer_snapshot);
+                                extended_point_range.start.row = extended_point_range
+                                    .start
+                                    .row
+                                    .saturating_sub(DEFAULT_MULTIBUFFER_CONTEXT);
+                                extended_point_range.end.row = (extended_point_range.end.row
+                                    + DEFAULT_MULTIBUFFER_CONTEXT)
+                                    .min(max_point.row);
+                                ExcerptRange {
+                                    context: extended_point_range,
+                                    primary: None,
+                                }
+                            }),
+                            cx,
+                        );
+                        after_excerpt_id = new_excerpts.last().copied().unwrap_or(after_excerpt_id);
+                    }
                 }
                 multi_buffer.remove_excerpts(excerpts_to_remove, cx);
                 for ((line_count, direction), excerpts) in excerpt_to_expand {
