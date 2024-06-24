@@ -339,138 +339,191 @@ impl ProjectDiffEditor {
                 let mut current_excerpts = buffer_excerpts.into_iter().fuse().peekable();
                 loop {
                     match new_order_entries.peek() {
-                        Some((new_path, new_entry)) => match current_path.cmp(new_path) {
-                            Ordering::Less => {
-                                excerpts_to_remove
-                                    .extend(current_excerpts.map(|(excerpt_id, _)| excerpt_id));
-                                latest_excerpt_id =
-                                    last_current_excerpt_id.unwrap_or(latest_excerpt_id);
-                                break;
-                            }
-                            Ordering::Greater => {
-                                if let Some(new_changes) = new_changes.get(new_entry) {
-                                    new_excerpt_hunks
-                                        .entry(latest_excerpt_id)
-                                        .or_insert_with(|| (new_changes.buffer.clone(), Vec::new()))
-                                        .1
-                                        .extend(
-                                            new_changes
-                                                .hunks
-                                                .iter()
-                                                .map(|hunk| hunk.buffer_range.clone()),
-                                        );
-                                };
-                            }
-                            Ordering::Equal => match new_changes.get(new_entry) {
-                                Some(new_changes) => {
-                                    let buffer_snapshot = new_changes.buffer.read(cx).snapshot();
-                                    let mut current_hunks =
-                                        current_changes.hunks.iter().fuse().peekable();
-                                    let mut new_hunks_unchanged =
-                                        Vec::with_capacity(new_changes.hunks.len());
-                                    let mut new_hunks_with_updates =
-                                        Vec::with_capacity(new_changes.hunks.len());
-                                    'new_changes: for new_hunk in &new_changes.hunks {
-                                        loop {
-                                            match current_hunks.peek() {
-                                                Some(current_hunk) => {
-                                                    match (
-                                                        current_hunk.buffer_range.start.cmp(
-                                                            &new_hunk.buffer_range.start,
-                                                            &buffer_snapshot,
-                                                        ),
-                                                        current_hunk.buffer_range.end.cmp(
-                                                            &new_hunk.buffer_range.end,
-                                                            &buffer_snapshot,
-                                                        ),
-                                                    ) {
-                                                        (Ordering::Equal, Ordering::Equal) => {
-                                                            new_hunks_unchanged.push(new_hunk);
-                                                            let _ = current_hunks.next();
-                                                            continue 'new_changes;
-                                                        }
-                                                        (Ordering::Equal, _)
-                                                        | (_, Ordering::Equal) => {
-                                                            new_hunks_with_updates.push(new_hunk);
-                                                            continue 'new_changes;
-                                                        }
-                                                        (Ordering::Less, Ordering::Greater)
-                                                        | (Ordering::Greater, Ordering::Less) => {
-                                                            new_hunks_with_updates.push(new_hunk);
-                                                            continue 'new_changes;
-                                                        }
-                                                        (Ordering::Less, Ordering::Less) => {
-                                                            if current_hunk
-                                                                .buffer_range
-                                                                .start
-                                                                .cmp(
+                        Some((new_path, new_entry)) => {
+                            let aa = project::compare_paths(
+                                (current_path.path.as_ref(), true),
+                                (new_path.path.as_ref(), true),
+                            );
+                            match aa {
+                                Ordering::Less => {
+                                    excerpts_to_remove
+                                        .extend(current_excerpts.map(|(excerpt_id, _)| excerpt_id));
+                                    latest_excerpt_id =
+                                        last_current_excerpt_id.unwrap_or(latest_excerpt_id);
+                                    break;
+                                }
+                                Ordering::Greater => {
+                                    if let Some(new_changes) = new_changes.get(new_entry) {
+                                        if !new_changes.hunks.is_empty() {
+                                            new_excerpt_hunks
+                                                .entry(latest_excerpt_id)
+                                                .or_insert_with(|| {
+                                                    (new_changes.buffer.clone(), Vec::new())
+                                                })
+                                                .1
+                                                .extend(
+                                                    new_changes
+                                                        .hunks
+                                                        .iter()
+                                                        .map(|hunk| hunk.buffer_range.clone()),
+                                                );
+                                        }
+                                    };
+                                    let _ = new_order_entries.next();
+                                }
+                                Ordering::Equal => {
+                                    match new_changes.get(new_entry) {
+                                        Some(new_changes) => {
+                                            let buffer_snapshot =
+                                                new_changes.buffer.read(cx).snapshot();
+                                            let mut current_hunks =
+                                                current_changes.hunks.iter().fuse().peekable();
+                                            let mut new_hunks_unchanged =
+                                                Vec::with_capacity(new_changes.hunks.len());
+                                            let mut new_hunks_with_updates =
+                                                Vec::with_capacity(new_changes.hunks.len());
+                                            'new_changes: for new_hunk in &new_changes.hunks {
+                                                loop {
+                                                    match current_hunks.peek() {
+                                                        Some(current_hunk) => {
+                                                            match (
+                                                                current_hunk
+                                                                    .buffer_range
+                                                                    .start
+                                                                    .cmp(
+                                                                        &new_hunk
+                                                                            .buffer_range
+                                                                            .start,
+                                                                        &buffer_snapshot,
+                                                                    ),
+                                                                current_hunk.buffer_range.end.cmp(
                                                                     &new_hunk.buffer_range.end,
                                                                     &buffer_snapshot,
+                                                                ),
+                                                            ) {
+                                                                (
+                                                                    Ordering::Equal,
+                                                                    Ordering::Equal,
+                                                                ) => {
+                                                                    new_hunks_unchanged
+                                                                        .push(new_hunk);
+                                                                    let _ = current_hunks.next();
+                                                                    continue 'new_changes;
+                                                                }
+                                                                (Ordering::Equal, _)
+                                                                | (_, Ordering::Equal) => {
+                                                                    new_hunks_with_updates
+                                                                        .push(new_hunk);
+                                                                    continue 'new_changes;
+                                                                }
+                                                                (
+                                                                    Ordering::Less,
+                                                                    Ordering::Greater,
                                                                 )
-                                                                .is_le()
-                                                            {
-                                                                new_hunks_with_updates
-                                                                    .push(new_hunk);
-                                                                continue 'new_changes;
-                                                            } else {
-                                                                let _ = current_hunks.next();
+                                                                | (
+                                                                    Ordering::Greater,
+                                                                    Ordering::Less,
+                                                                ) => {
+                                                                    new_hunks_with_updates
+                                                                        .push(new_hunk);
+                                                                    continue 'new_changes;
+                                                                }
+                                                                (
+                                                                    Ordering::Less,
+                                                                    Ordering::Less,
+                                                                ) => {
+                                                                    if current_hunk
+                                                                        .buffer_range
+                                                                        .start
+                                                                        .cmp(
+                                                                            &new_hunk
+                                                                                .buffer_range
+                                                                                .end,
+                                                                            &buffer_snapshot,
+                                                                        )
+                                                                        .is_le()
+                                                                    {
+                                                                        new_hunks_with_updates
+                                                                            .push(new_hunk);
+                                                                        continue 'new_changes;
+                                                                    } else {
+                                                                        let _ =
+                                                                            current_hunks.next();
+                                                                    }
+                                                                }
+                                                                (
+                                                                    Ordering::Greater,
+                                                                    Ordering::Greater,
+                                                                ) => {
+                                                                    if current_hunk
+                                                                        .buffer_range
+                                                                        .end
+                                                                        .cmp(
+                                                                            &new_hunk
+                                                                                .buffer_range
+                                                                                .start,
+                                                                            &buffer_snapshot,
+                                                                        )
+                                                                        .is_ge()
+                                                                    {
+                                                                        new_hunks_with_updates
+                                                                            .push(new_hunk);
+                                                                        continue 'new_changes;
+                                                                    } else {
+                                                                        let _ =
+                                                                            current_hunks.next();
+                                                                    }
+                                                                }
                                                             }
                                                         }
-                                                        (Ordering::Greater, Ordering::Greater) => {
-                                                            if current_hunk
-                                                                .buffer_range
-                                                                .end
-                                                                .cmp(
-                                                                    &new_hunk.buffer_range.start,
-                                                                    &buffer_snapshot,
-                                                                )
-                                                                .is_ge()
-                                                            {
-                                                                new_hunks_with_updates
-                                                                    .push(new_hunk);
-                                                                continue 'new_changes;
-                                                            } else {
-                                                                let _ = current_hunks.next();
-                                                            }
+                                                        None => {
+                                                            new_hunks_with_updates.push(new_hunk);
+                                                            continue 'new_changes;
                                                         }
                                                     }
                                                 }
-                                                None => {
-                                                    new_hunks_with_updates.push(new_hunk);
-                                                    continue 'new_changes;
-                                                }
                                             }
-                                        }
-                                    }
 
-                                    'new_hunks: for new_hunk in new_hunks_with_updates {
-                                        loop {
-                                            match current_excerpts.peek() {
-                                                Some((
-                                                    current_excerpt_id,
-                                                    current_excerpt_range,
-                                                )) => {
-                                                    match (
-                                                        current_excerpt_range.context.start.cmp(
-                                                            &new_hunk.buffer_range.start,
-                                                            &buffer_snapshot,
-                                                        ),
-                                                        current_excerpt_range.context.end.cmp(
-                                                            &new_hunk.buffer_range.end,
-                                                            &buffer_snapshot,
-                                                        ),
-                                                    ) {
-                                                        (
-                                                            Ordering::Less | Ordering::Equal,
-                                                            Ordering::Greater | Ordering::Equal,
-                                                        ) => {
-                                                            continue 'new_hunks;
-                                                        }
-                                                        (
-                                                            Ordering::Greater | Ordering::Equal,
-                                                            Ordering::Less | Ordering::Equal,
-                                                        ) => {
-                                                            let expand_up = current_excerpt_range
+                                            'new_hunks: for new_hunk in new_hunks_with_updates {
+                                                loop {
+                                                    match current_excerpts.peek() {
+                                                        Some((
+                                                            current_excerpt_id,
+                                                            current_excerpt_range,
+                                                        )) => {
+                                                            match (
+                                                                current_excerpt_range
+                                                                    .context
+                                                                    .start
+                                                                    .cmp(
+                                                                        &new_hunk
+                                                                            .buffer_range
+                                                                            .start,
+                                                                        &buffer_snapshot,
+                                                                    ),
+                                                                current_excerpt_range
+                                                                    .context
+                                                                    .end
+                                                                    .cmp(
+                                                                        &new_hunk.buffer_range.end,
+                                                                        &buffer_snapshot,
+                                                                    ),
+                                                            ) {
+                                                                (
+                                                                    Ordering::Less
+                                                                    | Ordering::Equal,
+                                                                    Ordering::Greater
+                                                                    | Ordering::Equal,
+                                                                ) => {
+                                                                    continue 'new_hunks;
+                                                                }
+                                                                (
+                                                                    Ordering::Greater
+                                                                    | Ordering::Equal,
+                                                                    Ordering::Less
+                                                                    | Ordering::Equal,
+                                                                ) => {
+                                                                    let expand_up = current_excerpt_range
                                                                 .context
                                                                 .start
                                                                 .to_point(&buffer_snapshot)
@@ -482,88 +535,7 @@ impl ProjectDiffEditor {
                                                                         .to_point(&buffer_snapshot)
                                                                         .row,
                                                                 );
-                                                            let expand_down = new_hunk
-                                                                .buffer_range
-                                                                .end
-                                                                .to_point(&buffer_snapshot)
-                                                                .row
-                                                                .saturating_sub(
-                                                                    current_excerpt_range
-                                                                        .context
-                                                                        .end
-                                                                        .to_point(&buffer_snapshot)
-                                                                        .row,
-                                                                );
-                                                            excerpt_to_expand.entry((expand_up.max(expand_down).max(DEFAULT_MULTIBUFFER_CONTEXT), ExpandExcerptDirection::UpAndDown)).or_default().push(*current_excerpt_id);
-                                                            continue 'new_hunks;
-                                                        }
-                                                        (Ordering::Less, Ordering::Less) => {
-                                                            if current_excerpt_range
-                                                                .context
-                                                                .start
-                                                                .cmp(
-                                                                    &new_hunk.buffer_range.end,
-                                                                    &buffer_snapshot,
-                                                                )
-                                                                .is_le()
-                                                            {
-                                                                let expand_up = current_excerpt_range
-                                                                        .context
-                                                                        .start
-                                                                        .to_point(&buffer_snapshot)
-                                                                        .row
-                                                                        .saturating_sub(
-                                                                            new_hunk.buffer_range
-                                                                                .start
-                                                                                .to_point(
-                                                                                    &buffer_snapshot,
-                                                                                )
-                                                                                .row,
-                                                                        );
-                                                                excerpt_to_expand.entry((expand_up.max(DEFAULT_MULTIBUFFER_CONTEXT), ExpandExcerptDirection::Up)).or_default().push(*current_excerpt_id);
-                                                                continue 'new_hunks;
-                                                            } else {
-                                                                new_excerpt_hunks
-                                                                    .entry(latest_excerpt_id)
-                                                                    .or_insert_with(|| {
-                                                                        (
-                                                                            new_changes
-                                                                                .buffer
-                                                                                .clone(),
-                                                                            Vec::new(),
-                                                                        )
-                                                                    })
-                                                                    .1
-                                                                    .extend(
-                                                                        new_changes
-                                                                            .hunks
-                                                                            .iter()
-                                                                            .map(|hunk| {
-                                                                                hunk.buffer_range
-                                                                                    .clone()
-                                                                            }),
-                                                                    );
-                                                                continue 'new_hunks;
-                                                            }
-                                                        }
-                                                        /* TODO kb remove or leave?
-                                                            [    ><<<<<<<<new_e
-                                                        ----[---->--]----<--
-                                                           cur_s > cur_e <
-                                                                 >       <
-                                                            new_s>>>>>>>><
-                                                        */
-                                                        (Ordering::Greater, Ordering::Greater) => {
-                                                            if current_excerpt_range
-                                                                .context
-                                                                .end
-                                                                .cmp(
-                                                                    &new_hunk.buffer_range.start,
-                                                                    &buffer_snapshot,
-                                                                )
-                                                                .is_ge()
-                                                            {
-                                                                let expand_down = new_hunk
+                                                                    let expand_down = new_hunk
                                                                     .buffer_range
                                                                     .end
                                                                     .to_point(&buffer_snapshot)
@@ -577,42 +549,149 @@ impl ProjectDiffEditor {
                                                                             )
                                                                             .row,
                                                                     );
-                                                                excerpt_to_expand.entry((expand_down.max(DEFAULT_MULTIBUFFER_CONTEXT), ExpandExcerptDirection::Down)).or_default().push(*current_excerpt_id);
-                                                                continue 'new_hunks;
-                                                            } else {
-                                                                latest_excerpt_id =
-                                                                    *current_excerpt_id;
-                                                                let _ = current_excerpts.next();
+                                                                    excerpt_to_expand.entry((expand_up.max(expand_down).max(DEFAULT_MULTIBUFFER_CONTEXT), ExpandExcerptDirection::UpAndDown)).or_default().push(*current_excerpt_id);
+                                                                    continue 'new_hunks;
+                                                                }
+                                                                (
+                                                                    Ordering::Less,
+                                                                    Ordering::Less,
+                                                                ) => {
+                                                                    if current_excerpt_range
+                                                                        .context
+                                                                        .start
+                                                                        .cmp(
+                                                                            &new_hunk
+                                                                                .buffer_range
+                                                                                .end,
+                                                                            &buffer_snapshot,
+                                                                        )
+                                                                        .is_le()
+                                                                    {
+                                                                        let expand_up = current_excerpt_range
+                                                                        .context
+                                                                        .start
+                                                                        .to_point(&buffer_snapshot)
+                                                                        .row
+                                                                        .saturating_sub(
+                                                                            new_hunk.buffer_range
+                                                                                .start
+                                                                                .to_point(
+                                                                                    &buffer_snapshot,
+                                                                                )
+                                                                                .row,
+                                                                        );
+                                                                        excerpt_to_expand.entry((expand_up.max(DEFAULT_MULTIBUFFER_CONTEXT), ExpandExcerptDirection::Up)).or_default().push(*current_excerpt_id);
+                                                                        continue 'new_hunks;
+                                                                    } else {
+                                                                        if !new_changes
+                                                                            .hunks
+                                                                            .is_empty()
+                                                                        {
+                                                                            new_excerpt_hunks
+                                                                                .entry(latest_excerpt_id)
+                                                                                .or_insert_with(|| {
+                                                                                    (
+                                                                                        new_changes
+                                                                                            .buffer
+                                                                                            .clone(),
+                                                                                        Vec::new(),
+                                                                                    )
+                                                                                })
+                                                                                .1
+                                                                                .extend(
+                                                                                    new_changes
+                                                                                        .hunks
+                                                                                        .iter()
+                                                                                        .map(|hunk| {
+                                                                                            hunk.buffer_range
+                                                                                                .clone()
+                                                                                        }),
+                                                                                );
+                                                                        }
+                                                                        continue 'new_hunks;
+                                                                    }
+                                                                }
+                                                                /* TODO kb remove or leave?
+                                                                    [    ><<<<<<<<new_e
+                                                                ----[---->--]----<--
+                                                                   cur_s > cur_e <
+                                                                         >       <
+                                                                    new_s>>>>>>>><
+                                                                */
+                                                                (
+                                                                    Ordering::Greater,
+                                                                    Ordering::Greater,
+                                                                ) => {
+                                                                    if current_excerpt_range
+                                                                        .context
+                                                                        .end
+                                                                        .cmp(
+                                                                            &new_hunk
+                                                                                .buffer_range
+                                                                                .start,
+                                                                            &buffer_snapshot,
+                                                                        )
+                                                                        .is_ge()
+                                                                    {
+                                                                        let expand_down = new_hunk
+                                                                    .buffer_range
+                                                                    .end
+                                                                    .to_point(&buffer_snapshot)
+                                                                    .row
+                                                                    .saturating_sub(
+                                                                        current_excerpt_range
+                                                                            .context
+                                                                            .end
+                                                                            .to_point(
+                                                                                &buffer_snapshot,
+                                                                            )
+                                                                            .row,
+                                                                    );
+                                                                        excerpt_to_expand.entry((expand_down.max(DEFAULT_MULTIBUFFER_CONTEXT), ExpandExcerptDirection::Down)).or_default().push(*current_excerpt_id);
+                                                                        continue 'new_hunks;
+                                                                    } else {
+                                                                        latest_excerpt_id =
+                                                                            *current_excerpt_id;
+                                                                        let _ =
+                                                                            current_excerpts.next();
+                                                                    }
+                                                                }
                                                             }
+                                                        }
+                                                        None => {
+                                                            new_excerpt_hunks
+                                                                .entry(latest_excerpt_id)
+                                                                .or_insert_with(|| {
+                                                                    (
+                                                                        current_changes
+                                                                            .buffer
+                                                                            .clone(),
+                                                                        Vec::new(),
+                                                                    )
+                                                                })
+                                                                .1
+                                                                .push(
+                                                                    new_hunk.buffer_range.clone(),
+                                                                );
+                                                            continue 'new_hunks;
                                                         }
                                                     }
                                                 }
-                                                None => {
-                                                    new_excerpt_hunks
-                                                        .entry(latest_excerpt_id)
-                                                        .or_insert_with(|| {
-                                                            (
-                                                                current_changes.buffer.clone(),
-                                                                Vec::new(),
-                                                            )
-                                                        })
-                                                        .1
-                                                        .push(new_hunk.buffer_range.clone());
-                                                    continue 'new_hunks;
-                                                }
                                             }
                                         }
+                                        None => {
+                                            excerpts_to_remove.extend(
+                                                current_excerpts.map(|(excerpt_id, _)| excerpt_id),
+                                            );
+                                            latest_excerpt_id = last_current_excerpt_id
+                                                .unwrap_or(latest_excerpt_id);
+                                        }
                                     }
-                                }
-                                None => {
-                                    excerpts_to_remove
-                                        .extend(current_excerpts.map(|(excerpt_id, _)| excerpt_id));
-                                    latest_excerpt_id =
-                                        last_current_excerpt_id.unwrap_or(latest_excerpt_id);
+                                    let _ = new_order_entries.next();
                                     break;
                                 }
-                            },
-                        },
+                            }
+                        }
                         None => {
                             excerpts_to_remove
                                 .extend(current_excerpts.map(|(excerpt_id, _)| excerpt_id));
@@ -621,11 +700,9 @@ impl ProjectDiffEditor {
                             break;
                         }
                     }
-                    let _ = new_order_entries.next();
                 }
             }
 
-            // TODO kb insert new excerpts (first), remove the old ones (second, as some of these ids could be used for insertion), then expand the rest
             self.excerpts.update(cx, |multi_buffer, cx| {
                 for (after_excerpt_id, (buffer, hunk_ranges)) in new_excerpt_hunks {
                     let buffer_snapshot = buffer.read(cx).snapshot();
