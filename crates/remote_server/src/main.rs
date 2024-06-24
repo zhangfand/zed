@@ -53,12 +53,10 @@ fn main() {
     app.headless().run(|cx| {
         Server::init(cx);
 
-        let mut server = Server::new(cx);
+        let mut server = Server::new(outgoing_tx, cx);
         cx.spawn(move |cx| async move {
             while let Some(message) = incoming_rx.next().await {
-                server
-                    .handle_message(message, outgoing_tx.clone(), cx.clone())
-                    .await;
+                server.handle_message(message, cx.clone()).await;
             }
         })
         .detach();
