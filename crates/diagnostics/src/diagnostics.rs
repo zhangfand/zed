@@ -9,7 +9,9 @@ use anyhow::Result;
 use collections::{BTreeSet, HashMap, HashSet};
 use editor::{
     diagnostic_block_renderer,
-    display_map::{BlockDisposition, BlockId, BlockProperties, BlockStyle},
+    display_map::{
+        BlockDisposition, BlockId, BlockProperties, BlockStyle, DisplayRow, ToDisplayPoint,
+    },
     scroll::Autoscroll,
     Bias, Editor, EditorEvent, ExcerptId, MultiBuffer,
 };
@@ -360,7 +362,6 @@ impl ProjectDiagnosticsEditor {
         let mut current_excerpts = multi_buffer_snapshot.excerpts().fuse().peekable();
         let mut current_diagnostics = path_state.diagnostics.iter().fuse().peekable();
         let mut blocks_to_remove = HashSet::default();
-        let mut blocks_to_add = Vec::new();
         let mut unchanged_blocks = HashMap::default();
         let mut excerpts_with_new_diagnostics = HashSet::default();
         let mut excerpts_to_remove = HashSet::default();
@@ -563,10 +564,7 @@ impl ProjectDiagnosticsEditor {
 
             loop {
                 match current_diagnostics.peek() {
-                    None => {
-                        blocks_to_add.push(diagnostic_index);
-                        break;
-                    }
+                    None => break,
                     Some((current_diagnostic, current_block)) => {
                         match compare_data_locations(
                             current_diagnostic,
@@ -581,7 +579,6 @@ impl ProjectDiagnosticsEditor {
                                     unchanged_blocks.insert(diagnostic_index, *current_block);
                                 } else {
                                     blocks_to_remove.insert(*current_block);
-                                    blocks_to_add.push(diagnostic_index);
                                 }
                                 let _ = current_diagnostics.next();
                                 break;
@@ -664,54 +661,71 @@ impl ProjectDiagnosticsEditor {
 
         let editor_snapshot = self.editor.update(cx, |editor, cx| editor.snapshot(cx));
         let mut updated_excerpts = editor_snapshot.buffer_snapshot.excerpts().fuse().peekable();
-        let mut diagnostics_with_blocks = HashMap::default();
-        let new_blocks =
-            blocks_to_add
-                .into_iter()
-                .enumerate()
-                .flat_map(|(block_index, diagnostic_index)| {
-                    diagnostics_with_blocks.insert(diagnostic_index, block_index);
-                    let new_diagnostic = &new_diagnostics[diagnostic_index].0.entry;
-                    let block_position = new_diagnostic.range.start;
-                    let excerpt_id = loop {
-                        match updated_excerpts.peek() {
-                            None => break None,
-                            Some((excerpt_id, excerpt_buffer_snapshot, excerpt_range)) => {
-                                let excerpt_range = &excerpt_range.context;
+        // TODO kb: deduplicate diagnostics per DisplayRow
+        // * go over `new_diagnostics.iter().enumerate()` and form a `BTreeMap<(DisplayRow, &str, &str), (usize, Anchor, Vec<usize>)>`
+        //   collection of duplicate diagnostic (message, source (as the editor displays it), DisplayRow)
+        //   with respective new_diagnostics indices (leftmost index, with the earliest Anchor, is the one that should be used to create the block)
+        //   During that pass, clean up `unchanged_blocks` from duplicate blocks (on 2nd addition, do remove the 1st block too).
+        //
+        // * go over the `BTreeMap` values and create a `Vec<BlockProperties>` from the `Anchor` given (filter out by `unchanged_blocks`), get the Vec<BlockId> back
+        //
+        // * go over the values again (zipped with the `Vec<BlockId>` from above), and put the `BlockId` into `new_diagnostics` (+ use `unchanged_blocks`)
+        //   After that, all `Option<BlockId>` there should be `Some`.
+        //
+        // * `path_state.diagnostics = new_diagnostics.into_iter.filter_map(...).collect();`
+        //
+        //
+        // let mut diagnostics_with_blocks = HashMap::default();
+        // let new_blocks =
+        //     blocks_to_add
+        //         .into_iter()
+        //         .enumerate()
+        //         .flat_map(|(block_index, diagnostic_index)| {
+        //             diagnostics_with_blocks.insert(diagnostic_index, block_index);
+        //             let new_diagnostic = &new_diagnostics[diagnostic_index].0.entry;
+        //             let block_position = new_diagnostic.range.start;
+        //             let excerpt_id = loop {
+        //                 match updated_excerpts.peek() {
+        //                     None => break None,
+        //                     Some((excerpt_id, excerpt_buffer_snapshot, excerpt_range)) => {
+        //                         let excerpt_range = &excerpt_range.context;
 
-                                match block_position
-                                    .cmp(&excerpt_range.start, excerpt_buffer_snapshot)
-                                {
-                                    Ordering::Less => break None,
-                                    Ordering::Equal | Ordering::Greater => match block_position
-                                        .cmp(&excerpt_range.end, excerpt_buffer_snapshot)
-                                    {
-                                        Ordering::Equal | Ordering::Less => {
-                                            break Some(*excerpt_id)
-                                        }
-                                        Ordering::Greater => {}
-                                    },
-                                }
-                            }
-                        }
-                        let _ = updated_excerpts.next();
-                    }?;
+        //                         match block_position
+        //                             .cmp(&excerpt_range.start, excerpt_buffer_snapshot)
+        //                         {
+        //                             Ordering::Less => break None,
+        //                             Ordering::Equal | Ordering::Greater => match block_position
+        //                                 .cmp(&excerpt_range.end, excerpt_buffer_snapshot)
+        //                             {
+        //                                 Ordering::Equal | Ordering::Less => {
+        //                                     break Some(*excerpt_id)
+        //                                 }
+        //                                 Ordering::Greater => {
+        //                                     let _ = updated_excerpts.next();
+        //                                 }
+        //                             },
+        //                         }
+        //                     }
+        //                 }
+        //             }?;
 
-                    Some(BlockProperties {
-                        position: editor_snapshot
-                            .buffer_snapshot
-                            .anchor_in_excerpt(excerpt_id, block_position)?,
-                        height: new_diagnostic.diagnostic.message.matches('\n').count() as u8 + 1,
-                        style: BlockStyle::Sticky,
-                        render: diagnostic_block_renderer(
-                            new_diagnostic.diagnostic.clone(),
-                            false,
-                            true,
-                        ),
-                        disposition: BlockDisposition::Above,
-                    })
-                });
-        // TODO kb rework block approach: need to unite them if they belong to the same display_row
+        //             let position = editor_snapshot
+        //                 .buffer_snapshot
+        //                 .anchor_in_excerpt(excerpt_id, block_position)?;
+        //             let aa = position.to_display_point(&editor_snapshot).row();
+
+        //             Some(BlockProperties {
+        //                 position,
+        //                 height: new_diagnostic.diagnostic.message.matches('\n').count() as u8 + 1,
+        //                 style: BlockStyle::Sticky,
+        //                 render: diagnostic_block_renderer(
+        //                     new_diagnostic.diagnostic.clone(),
+        //                     false,
+        //                     true,
+        //                 ),
+        //                 disposition: BlockDisposition::Above,
+        //             })
+        //         });
         let new_block_ids = self.editor.update(cx, |editor, cx| {
             editor.remove_blocks(blocks_to_remove, None, cx);
             editor.insert_blocks(new_blocks, Some(Autoscroll::fit()), cx)
